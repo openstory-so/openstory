@@ -109,8 +109,8 @@ type FrameMirrorColumn =
 export type FrameUpdateInput = Omit<Partial<NewFrame>, FrameMirrorColumn>;
 
 // One bound param per id; 90 keeps each query under D1's 100-bound-parameter
-// ceiling (#1322). Unit tests run on libsql, which has no such cap — an
-// unchunked list passes CI and throws `too many SQL variables` on D1.
+// ceiling (#1322). Unit tests enforce the
+// same cap (`src/platform/server/db/test-d1.ts`).
 const FRAMES_BY_IDS_BATCH = 90;
 
 export function createFramesMethods(db: Database) {
@@ -352,23 +352,27 @@ export function createFramesMethods(db: Database) {
     },
 
     delete: async (frameId: string): Promise<boolean> => {
-      const result = await db.delete(frames).where(eq(frames.id, frameId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      const result = await db
+        .delete(frames)
+        .where(eq(frames.id, frameId))
+        .returning({ id: frames.id });
+      return result.length > 0;
     },
 
     deleteByShot: async (shotId: string): Promise<number> => {
-      const result = await db.delete(frames).where(eq(frames.shotId, shotId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+      const result = await db
+        .delete(frames)
+        .where(eq(frames.shotId, shotId))
+        .returning({ id: frames.id });
+      return result.length;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(frames)
-        .where(eq(frames.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(frames.sequenceId, sequenceId))
+        .returning({ id: frames.id });
+      return result.length;
     },
 
     /** The frame plus its selected version — the only source of the still. */

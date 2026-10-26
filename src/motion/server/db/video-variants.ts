@@ -49,8 +49,8 @@ export type VideoVariantGroup = {
 
 // One bound param per shot, so chunk below D1's 100-param ceiling — both batch
 // getters below run on the shots read path with every shot of a sequence
-// (matches SELECTED_MOTION_BY_SHOTS_BATCH). Unit tests run on libsql, which has
-// no such cap, so an unchunked list passes CI and throws on D1 (#1019).
+// (matches SELECTED_MOTION_BY_SHOTS_BATCH). Unit tests enforce the
+// same cap (`src/platform/server/db/test-d1.ts`), so an unchunked list fails there too (#1019).
 const VIDEO_BY_SHOTS_BATCH = 90;
 
 /** Shared latest-primary selector for full views and narrow polling reads. */
@@ -872,9 +872,9 @@ export function createVideoVariantsMethods(db: Database) {
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(videoVariants)
-        .where(eq(videoVariants.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(videoVariants.sequenceId, sequenceId))
+        .returning({ id: videoVariants.id });
+      return result.length;
     },
   };
 }

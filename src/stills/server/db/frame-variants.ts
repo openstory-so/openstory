@@ -150,8 +150,8 @@ const oldestFirst = [asc(frameVariants.createdAt), asc(frameVariants.id)];
 
 // One bound param per frame, so chunk below D1's 100-param ceiling — this runs
 // on the shots read path with every anchor frame of a sequence (matches
-// VIDEO_BY_SHOTS_BATCH). Unit tests run on libsql, which has no such cap, so an
-// unchunked list passes CI and throws on D1 (#1019).
+// VIDEO_BY_SHOTS_BATCH). Unit tests enforce the
+// same cap (`src/platform/server/db/test-d1.ts`), so an unchunked list fails there too (#1019).
 const PREVIEW_BY_FRAMES_BATCH = 90;
 
 /**
@@ -1770,17 +1770,17 @@ export function createFrameVariantsMethods(db: Database) {
     deleteByFrame: async (frameId: string): Promise<number> => {
       const result = await db
         .delete(frameVariants)
-        .where(eq(frameVariants.frameId, frameId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(frameVariants.frameId, frameId))
+        .returning({ id: frameVariants.id });
+      return result.length;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(frameVariants)
-        .where(eq(frameVariants.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(frameVariants.sequenceId, sequenceId))
+        .returning({ id: frameVariants.id });
+      return result.length;
     },
   };
   return methods;

@@ -13,6 +13,7 @@
  *     revives a soft-deleted row.
  */
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
+import { createTestDb } from '@/platform/server/db/test-d1';
 
 import { charactersToBible } from '@/cast/server/bibles-from-scoped';
 import { hashVisualPromptInput } from '@/shots/input-hash';
@@ -39,11 +40,7 @@ import {
   teams,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCharacterLooksMethods } from './character-looks';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
@@ -55,7 +52,7 @@ import { createSequencesMethods } from '@/sequences/server/db/sequences';
 /** A hard delete of characters that hold no saved voice. */
 const NO_VOICES = { releasedVoiceIds: [] };
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let teamId = '';
@@ -154,13 +151,11 @@ async function liveVisualPromptHash(): Promise<string> {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

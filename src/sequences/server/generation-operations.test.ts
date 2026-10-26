@@ -5,10 +5,8 @@
  * own tests; these pin the contract around them.
  */
 
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -21,7 +19,6 @@ import {
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   scenes,
   sequences,
@@ -120,7 +117,7 @@ const {
   startExportOperation,
 } = await import('./generation-operations');
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId: string;
 let userId: string;
@@ -163,12 +160,10 @@ const missing = {
 };
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   vi.mocked(getDb).mockReturnValue(db);
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -277,14 +272,15 @@ describe('plan_generation', () => {
 
   it('a plan of 200 shot ids round-trips through its token (past the old 4 KiB cap)', async () => {
     const shotIds = Array.from({ length: 200 }, () => generateId());
-    await db.insert(shots).values(
-      shotIds.map((id, i) => ({
+    // One row per insert: D1 caps a query at 100 bound variables.
+    for (const [i, id] of shotIds.entries()) {
+      await db.insert(shots).values({
         id,
         sequenceId,
         sceneId: dbSceneId(sceneId),
         shotNumber: i + 2,
-      }))
-    );
+      });
+    }
     const { planToken } = await planGeneration(scoped(), actor(), sequenceId, {
       ...stale,
       target: { kind: 'shots', shotIds },

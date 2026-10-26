@@ -1,7 +1,5 @@
-import { createClient, type Client } from '@libsql/client';
 import { readFileSync } from 'node:fs';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -13,11 +11,10 @@ import {
 } from 'vitest';
 import type { Database } from '@/platform/server/db/client';
 import { bytePlusAssets } from '@/platform/server/db/schema/byteplus-assets';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { BytePlusAsset } from '@/models/server/byteplus-assets';
 
 let db: Database;
-let client: Client;
+let closeDb: () => Promise<void>;
 let arkAssets: BytePlusAsset[] = [];
 const deleted: string[] = [];
 
@@ -50,13 +47,11 @@ const NOW = new Date('2026-09-07T10:00:00Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

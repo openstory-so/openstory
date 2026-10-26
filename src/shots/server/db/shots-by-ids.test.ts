@@ -10,13 +10,10 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import { shots, sequences, styles, teams } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { eq } from 'drizzle-orm';
-import { type Client, createClient } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import {
   afterAll,
   beforeAll,
@@ -29,7 +26,7 @@ import {
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 import { createShotsMethods } from './shots';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId = '';
 
@@ -86,13 +83,11 @@ async function seedSequences(
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 let styleId = '';
@@ -213,8 +208,8 @@ describe('listShotsByIds', () => {
 
 describe('shots.getByIds (#1322)', () => {
   it("chunks the id list under D1's 100-param ceiling and returns every row", async () => {
-    // 70 sequences × 3 shots = 210 ids → 3 batches of ≤90. libsql has no
-    // bound-param cap, so the spy is what pins the fan-out.
+    // 70 sequences × 3 shots = 210 ids → 3 batches of ≤90. The spy pins the
+    // fan-out (the test D1 also enforces the cap).
     await seedSequences(styleId, 70);
     const all = await db.select({ id: shots.id }).from(shots);
     const ids = all.map((s) => s.id);

@@ -6,10 +6,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import {
   characters,
@@ -22,10 +20,9 @@ import {
   teams,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 
 const team = { id: '', name: 'T', slug: 't' };
@@ -74,13 +71,11 @@ async function seed() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

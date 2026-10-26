@@ -1,3 +1,4 @@
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   locationReferencePhotos,
   locations,
@@ -45,9 +46,6 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { mcpServer, serveMcpRequest } from './server';
@@ -66,7 +64,6 @@ import type { Database } from '@/platform/server/db/client';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   frames,
   frameVariants,
@@ -100,7 +97,7 @@ import { sha256Hex } from '@/platform/compliance/hash';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId: string;
 let sequenceId: string;
@@ -199,21 +196,17 @@ async function addScene(orderIndex: number) {
   return id;
 }
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({
-    client,
-    relations,
+  ({ db, close: closeDb } = await createTestDb({
     logger: {
       logQuery(query) {
         queries.push(query);
       },
     },
-  });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  }));
   vi.mocked(getDb).mockReturnValue(db);
 });
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
   vi.unstubAllEnvs();
 });
 beforeEach(async () => {

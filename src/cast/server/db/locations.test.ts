@@ -13,10 +13,8 @@
  *
  * Analysis (`createBulk`) is in `locations-create-bulk.test.ts`.
  */
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { generateId } from '@/platform/id';
@@ -34,13 +32,12 @@ import {
   teams,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { createLocationsMethods } from './locations';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId = '';
 let otherTeamId = '';
@@ -63,13 +60,11 @@ const STYLE = {
 const analysis = { source: 'analysis' as const, createdBy: null };
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

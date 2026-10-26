@@ -13,11 +13,9 @@
  * replay yields zero deltas instead of split-brained `TOKEN_2` references.
  */
 
-import { type Client, createClient } from '@libsql/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
@@ -34,11 +32,10 @@ import {
   teams,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
-import { relations } from '@/platform/server/db/schema/relations';
 import { createSequenceElementsMethods } from './sequence-elements';
 import { createScenesMethods } from '@/shots/server/db/scenes';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId = '';
 let sequenceId = '';
@@ -80,13 +77,11 @@ async function seed() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

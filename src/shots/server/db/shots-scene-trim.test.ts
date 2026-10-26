@@ -16,10 +16,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { asc, eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import {
   type DbSceneId,
@@ -31,12 +29,11 @@ import {
   teams,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
 import { createScenesMethods } from './scenes';
 import { createShotsMethods } from './shots';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let otherSequenceId = '';
@@ -122,13 +119,11 @@ async function survivingSceneIds(forSequenceId: string): Promise<string[]> {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

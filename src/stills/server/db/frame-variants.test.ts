@@ -10,6 +10,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   framePromptVersions,
@@ -27,11 +28,7 @@ import {
   shotImageInputHash,
   type ShotImageInputHash,
 } from '@/shots/input-hash';
-import { relations } from '@/platform/server/db/schema/relations';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import {
   afterAll,
   beforeAll,
@@ -44,7 +41,7 @@ import {
 import { createFramePromptVersionsMethods } from '@/shots/server/db/frame-prompt-versions';
 import { createFrameVariantsMethods } from './frame-variants';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let shotId = '';
@@ -160,13 +157,11 @@ function variantInput(
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {
@@ -1380,8 +1375,8 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
 describe('frameVariants.getSelectedByFrameIds (#1322)', () => {
   it("chunks the id list under D1's 100-param ceiling and returns every selection", async () => {
     // The scenes page loads this for every frame of a sequence; a >100-frame
-    // sequence threw `too many SQL variables` on D1. libsql has no cap, so the
-    // spy is what pins the fan-out.
+    // sequence threw `too many SQL variables` on D1. The spy pins the fan-out
+    // (the test D1 also enforces the cap).
     const m = createFrameVariantsMethods(db);
     const ids: string[] = [];
     for (let i = 0; i < 200; i++) {

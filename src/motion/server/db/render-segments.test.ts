@@ -1,6 +1,6 @@
 /**
  * Behavioural tests for the scoped `render_segments` layer (#990) against a real
- * migrated in-memory D1 (libsql), mirroring the `video-variants.test.ts`
+ * migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), mirroring the `video-variants.test.ts`
  * harness. Pins `ensureForShot` — the lazy materialization of the degenerate
  * per-shot render segment whose Cloudflare-step-retry idempotency the motion
  * workflow depends on: first-use creation + shot link, the existing-segment
@@ -8,10 +8,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -23,10 +21,9 @@ import {
   teams,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
-import { relations } from '@/platform/server/db/schema/relations';
 import { createRenderSegmentsMethods } from './render-segments';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let methods: ReturnType<typeof createRenderSegmentsMethods>;
 
@@ -83,14 +80,12 @@ async function seed() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   methods = createRenderSegmentsMethods(db);
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

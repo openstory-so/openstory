@@ -4,10 +4,8 @@
  * failure. Only the workflow trigger is mocked.
  */
 
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -20,7 +18,6 @@ import {
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   renderSegments,
   scenes,
@@ -43,19 +40,17 @@ vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 const { previewExport, resolveExportCut, startExport } =
   await import('./export');
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId: string;
 let sequenceId: string;
 let videoId: string;
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   vi.mocked(getDb).mockReturnValue(db);
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.clearAllMocks();

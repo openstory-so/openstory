@@ -3,34 +3,29 @@
  * stale SQL column literals (#1116 / imageModel+videoModel pattern).
  */
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
+import { createTestDb } from '@/platform/server/db/test-d1';
 
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { sequences, styles, teams, user } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createSequencesMethods } from './sequences';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId = '';
 let userId = '';
 let styleId = '';
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

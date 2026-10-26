@@ -7,14 +7,20 @@
  * row), then row insert → workflow trigger → run-id persistence.
  *
  * Uses the house vi.doMock + dynamic-import pattern: `#db-client` is a real
- * migrated in-memory D1 (libsql), the modelschemas fetch / credit gate /
+ * migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), the modelschemas fetch / credit gate /
  * workflow trigger are recorded fakes.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClient } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import {
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  afterAll,
+} from 'vitest';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -23,10 +29,10 @@ import {
   user,
   type GeneratedAssetInput,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { ModelInputJsonSchema } from '@/models/server/schema-fetch';
 
 let db: Database;
+let closeDb: () => Promise<void>;
 
 const mockFetchModelInputSchema = vi.fn();
 const mockRequireCredits = vi.fn();
@@ -67,12 +73,12 @@ const TEAM_ID = generateId();
 const USER_ID = 'user-1';
 
 beforeAll(async () => {
-  const client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
   await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
 });
+
+afterAll(() => closeDb());
 
 beforeEach(async () => {
   await db.delete(generatedAssets);

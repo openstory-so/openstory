@@ -786,9 +786,9 @@ export function createSequenceElementsMethods(db: Database) {
     delete: async (id: string): Promise<boolean> => {
       const result = await db
         .delete(sequenceElements)
-        .where(eq(sequenceElements.id, id));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined
-      return (result.rowsAffected ?? 0) > 0;
+        .where(eq(sequenceElements.id, id))
+        .returning({ id: sequenceElements.id });
+      return result.length > 0;
     },
 
     getShotIdsForElement: async (

@@ -164,9 +164,9 @@ export function createRenderSegmentsMethods(db: Database) {
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(renderSegments)
-        .where(eq(renderSegments.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(renderSegments.sequenceId, sequenceId))
+        .returning({ id: renderSegments.id });
+      return result.length;
     },
 
     /**

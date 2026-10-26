@@ -466,7 +466,7 @@ export const deleteCharactersStatements = (db: Database, where: SQL) => {
     db
       .delete(characterVoiceVersions)
       .where(inArray(characterVoiceVersions.characterId, theirs)),
-    db.delete(characters).where(where),
+    db.delete(characters).where(where).returning({ id: characters.id }),
   ] as const;
 };
 
@@ -1816,9 +1816,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
         ),
         ...deleteCharactersStatements(db, mine),
       ]);
-      const result = results[results.length - 1];
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result?.rowsAffected ?? 0) > 0;
+      const deleted = results[results.length - 1];
+      return Array.isArray(deleted) && deleted.length > 0;
     },
 
     /**

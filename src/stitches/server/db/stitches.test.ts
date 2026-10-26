@@ -4,18 +4,15 @@
  * only its own team can read or publish it, publish happens once, and the
  * public read answers only after it.
  */
-import { type Client, createClient } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import { teams, user } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { StitchCut } from '@/stitches/cut';
 import { createPublicStitchReads, createStitchesMethods } from './stitches';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 const teamId = generateId();
 const otherTeamId = generateId();
@@ -30,9 +27,7 @@ const cut: StitchCut = {
 };
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
   await db.insert(teams).values([
     { id: teamId, name: 'T', slug: 't' },
@@ -40,8 +35,8 @@ beforeAll(async () => {
   ]);
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 describe('stitches rows', () => {

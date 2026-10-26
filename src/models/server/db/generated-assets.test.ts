@@ -1,6 +1,6 @@
 /**
  * Behavioural tests for the scoped `generated_assets` layer (#458) against a
- * real migrated in-memory D1 (libsql), mirroring the `video-variants.test.ts`
+ * real migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), mirroring the `video-variants.test.ts`
  * harness.
  *
  * Pins the team boundary (reads filter on teamId, writes inject
@@ -10,9 +10,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -22,10 +20,9 @@ import {
   user,
   type NewGeneratedAsset,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { createGeneratedAssetsMethods } from './generated-assets';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let methods: ReturnType<typeof createGeneratedAssetsMethods>;
 let otherTeamMethods: ReturnType<typeof createGeneratedAssetsMethods>;
@@ -64,13 +61,11 @@ function assetInput(
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

@@ -10,6 +10,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   frameVariants,
@@ -19,15 +20,11 @@ import {
   styles,
   teams,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { assembleShotViews, selectShotViewRows } from './shot-view-query';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let frameId = '';
 
@@ -42,9 +39,7 @@ async function assemble() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 
   const teamId = generateId();
   const sequenceId = generateId();
@@ -91,8 +86,8 @@ beforeAll(async () => {
   frameId = frame.id;
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 it('resolves previewThumbnailUrl through the whole assembly path', async () => {

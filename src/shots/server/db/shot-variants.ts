@@ -286,15 +286,17 @@ export function createShotVariantsMethods(db: Database) {
     deleteByShot: async (shotId: string): Promise<number> => {
       const result = await db
         .delete(shotVariants)
-        .where(eq(shotVariants.shotId, shotId));
-      return result.rowsAffected;
+        .where(eq(shotVariants.shotId, shotId))
+        .returning({ id: shotVariants.id });
+      return result.length;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(shotVariants)
-        .where(eq(shotVariants.sequenceId, sequenceId));
-      return result.rowsAffected;
+        .where(eq(shotVariants.sequenceId, sequenceId))
+        .returning({ id: shotVariants.id });
+      return result.length;
     },
   };
 }

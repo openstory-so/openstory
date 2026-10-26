@@ -10,9 +10,9 @@
  *    just quietly freezes. (Same three-places problem the workflow wiring
  *    test exists for.)
  *
- * 2. D1's 100-bound-param ceiling. Unit tests run on libsql, which has no
- *    such cap, so an over-wide chunk passes CI and throws only in production
- *    (the #1019 class of bug). Assert the arithmetic directly against the
+ * 2. D1's 100-bound-param ceiling. An over-wide chunk throws in
+ *    production (the #1019 class of bug), and in the test D1 only when a test
+ *    reaches it. Assert the arithmetic directly against the
  *    real column counts instead of trusting a comment.
  *
  * 3. The observed-median query returning nothing. Every failure mode here is
@@ -27,9 +27,18 @@
  *    used to discard live prices and our own medians along with it.
  */
 
-import { createClient } from '@libsql/client';
+import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import {
   collectObservedUnits,
   computeLedgerObservedUnits,
@@ -47,8 +56,6 @@ import {
 } from '@/platform/server/db/schema';
 import { modelUsageObservations } from '@/platform/server/db/schema/model-pricing';
 import { eq, getTableColumns } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const WRANGLER_PATH = 'wrangler.jsonc';
 
@@ -93,11 +100,14 @@ describe('D1 bound-param ceiling', () => {
 });
 
 describe('computeObservedUnits', () => {
-  const client = createClient({ url: ':memory:' });
-  const db = drizzle({ client });
+  let db: Database;
+  let closeDb: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close: closeDb } = await createTestDb());
+  });
+  afterAll(() => closeDb());
 
   beforeEach(async () => {
-    await migrate(db, { migrationsFolder: './drizzle/migrations' });
     await db.delete(modelUsageObservations);
   });
 
@@ -185,8 +195,9 @@ describe('computeObservedUnits', () => {
       numImages: 1,
       createdAt: new Date(base - 500_000 - i * 1000),
     }));
-    for (let i = 0; i < busy.length; i += 50) {
-      await db.insert(modelUsageObservations).values(busy.slice(i, i + 50));
+    // 16 rows × 6 columns stays under D1's 100 bound variables.
+    for (let i = 0; i < busy.length; i += 16) {
+      await db.insert(modelUsageObservations).values(busy.slice(i, i + 16));
     }
     await db.insert(modelUsageObservations).values(quiet);
 
@@ -225,15 +236,19 @@ describe('computeObservedUnits', () => {
  * silently degrades what it already had, or (in the empty case) deletes it.
  */
 describe('refreshFalPricing', () => {
-  const client = createClient({ url: ':memory:' });
-  const db = drizzle({ client });
+  let db: Database;
+  let closeDb: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close: closeDb } = await createTestDb());
+  });
+  afterAll(() => closeDb());
 
   /** Args the stubbed typical-units fetch was called with, per load(). */
   let typicalCalledWith: { endpointId: string }[] | undefined;
   /** Ids the stubbed price fetch was asked about, per load(). */
   let pricesRequested: string[] | undefined;
 
-  /** Load the module with fal's fetchers stubbed and D1 pointed at libsql. */
+  /** Load the module with fal's fetchers stubbed and D1 pointed at the test D1. */
   async function load(opts: {
     prices: { endpointId: string; unitPriceUsd: number; unit: string }[];
     typical?: Record<string, number>;
@@ -313,7 +328,6 @@ describe('refreshFalPricing', () => {
   });
 
   beforeEach(async () => {
-    await migrate(db, { migrationsFolder: './drizzle/migrations' });
     await db.delete(modelPricing);
     await db.delete(modelPricingHistory);
     await db.delete(modelUsageObservations);
@@ -792,11 +806,14 @@ describe('refreshFalPricing', () => {
 });
 
 describe('computeLedgerObservedUnits', () => {
-  const client = createClient({ url: ':memory:' });
-  const db = drizzle({ client });
+  let db: Database;
+  let closeDb: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close: closeDb } = await createTestDb());
+  });
+  afterAll(() => closeDb());
 
   beforeEach(async () => {
-    await migrate(db, { migrationsFolder: './drizzle/migrations' });
     await db
       .insert(teams)
       .values({ id: 'team-1', name: 't', slug: 'team-1-slug' })

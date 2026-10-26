@@ -12,6 +12,7 @@
  */
 
 import { selectSequencesFrom } from '@/sequences/server/db/sequences';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
   computeVideoManifestInputHash,
@@ -38,7 +39,6 @@ import {
 } from '@/platform/server/db/schema';
 import type { VideoManifest } from '@/platform/server/db/schema';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   computeUploadedStillInputHash,
   parseUploadedStoragePath,
@@ -48,10 +48,7 @@ import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import { uploadAttestations } from '@/platform/server/db/schema';
 import { isSelectedVersionStale } from '@/shots/scene-segments';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
-import { type Client, createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { eq, sql } from 'drizzle-orm';
 import {
   afterAll,
   beforeAll,
@@ -68,7 +65,7 @@ import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequ
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
 import { createVideoVariantsMethods } from '@/motion/server/db/video-variants';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let shotId = '';
@@ -179,10 +176,9 @@ async function seedSelectedImage(inputHash: string) {
 async function seedSegmentAndVideo(frameVersionId: string) {
   // render_segments.sceneId is NOT NULL → seed a minimal scene first.
   const sceneId = generateId();
-  await client.execute({
-    sql: 'INSERT INTO scenes (id, sequence_id, order_index, created_at, updated_at) VALUES (?, ?, 0, ?, ?)',
-    args: [sceneId, sequenceId, Date.now(), Date.now()],
-  });
+  await db.run(
+    sql`INSERT INTO scenes (id, sequence_id, order_index, created_at, updated_at) VALUES (${sceneId}, ${sequenceId}, 0, ${Date.now()}, ${Date.now()})`
+  );
   await db
     .insert(renderSegments)
     .values({ id: shotId, sceneId, sequenceId })
@@ -354,13 +350,11 @@ async function verifyThumbnailStaleness(scene: Scene | null) {
 const uploadUrl = () => `/r2/thumbnails/teams/x/${generateId()}.png`;
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

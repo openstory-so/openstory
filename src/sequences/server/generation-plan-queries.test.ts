@@ -4,9 +4,7 @@
  * is one round trip to the primary, 350–450 ms from Europe, so a count that
  * grows per entity is a page that does not load there.
  */
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
@@ -14,7 +12,6 @@ import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
 // oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real repositories, not mocks
 import { createScopedDb } from '@/platform/server/db/scoped';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   characterSheetVariants,
   locationSheetVariants,
@@ -50,25 +47,21 @@ import { computeGenerationPlan } from './generation-plan';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let queries: string[] = [];
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({
-    client,
-    relations,
+  ({ db, close: closeDb } = await createTestDb({
     logger: {
       logQuery(query) {
         queries.push(query);
       },
     },
-  });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  }));
   vi.mocked(getDb).mockReturnValue(db);
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 
 /** A sequence with `n` shots, `n` characters with hashed sheets and `n` locations with hashed sheets. */
 async function seed(n: number) {

@@ -6,12 +6,18 @@
  * row failed and drops unused holds.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  afterAll,
+} from 'vitest';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
 import { micros } from '@/billing/money';
-import { createClient } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -20,11 +26,11 @@ import {
   uploadAttestations,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { studioCreateInputSchema } from '@/studio/schema';
 
 let db: Database;
+let closeDb: () => Promise<void>;
 
 const mockReserveRunCredits = vi.fn();
 const mockTriggerWorkflow = vi.fn();
@@ -108,12 +114,12 @@ const TEAM_ID = generateId();
 const USER_ID = 'user-1';
 
 beforeAll(async () => {
-  const client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
   await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
 });
+
+afterAll(() => closeDb());
 
 beforeEach(async () => {
   await db.delete(generatedAssets);

@@ -17,19 +17,16 @@
  */
 
 import type { Database } from './client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   appMetadata,
   locations,
   styles,
   teams,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { ensureSystemTemplatesSeeded } from './seed-system-templates';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
-import { createClient, type Client } from '@libsql/client';
-import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // DB-contract literals (also what production rows contain) — the module
@@ -37,7 +34,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const HASH_KEY = 'system-templates-seed-hash';
 const LOCK_KEY = 'system-templates-seed-lock';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 
 async function getMetaRow(key: string) {
@@ -56,13 +53,11 @@ async function templateCounts() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 describe('ensureSystemTemplatesSeeded', () => {
@@ -190,13 +185,12 @@ describe('ensureSystemTemplatesSeeded', () => {
 
   it('a failed sync releases the lock and leaves the hash unwritten', async () => {
     // Dedicated DB so the breakage doesn't leak into other tests.
-    const brokenClient = createClient({ url: ':memory:' });
-    const brokenDb: Database = drizzle({ client: brokenClient, relations });
-    await migrate(brokenDb, { migrationsFolder: './drizzle/migrations' });
+    const broken = await createTestDb();
+    const brokenDb: Database = broken.db;
     // Styles are what the sync writes. Failing there proves a partial sync
     // does not get marked complete.
-    await brokenClient.execute('PRAGMA foreign_keys = OFF');
-    await brokenClient.execute('DROP TABLE styles');
+    await brokenDb.run(sql`PRAGMA foreign_keys = OFF`);
+    await brokenDb.run(sql`DROP TABLE styles`);
 
     await expect(ensureSystemTemplatesSeeded(brokenDb)).rejects.toThrow();
 
@@ -204,6 +198,6 @@ describe('ensureSystemTemplatesSeeded', () => {
     expect(rows.find((r) => r.key === HASH_KEY)).toBeUndefined();
     expect(rows.find((r) => r.key === LOCK_KEY)).toBeUndefined();
 
-    brokenClient.close();
+    await broken.close();
   });
 });

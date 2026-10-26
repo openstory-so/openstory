@@ -7,6 +7,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   frameVariants,
@@ -17,11 +18,7 @@ import {
   teams,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import {
   afterAll,
   beforeAll,
@@ -33,7 +30,7 @@ import {
 } from 'vitest';
 import { createFramesMethods } from './frames';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let shotId = '';
@@ -79,13 +76,11 @@ async function seed() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {
@@ -341,8 +336,8 @@ describe('frames.setPendingPromoteVersionId (#1101)', () => {
 
 describe('frames.getByIds (#1322)', () => {
   it("chunks the id list under D1's 100-param ceiling and returns every row", async () => {
-    // libsql has no bound-param cap, so a single IN(…) would pass here and
-    // throw `too many SQL variables` on D1 — assert the fan-out directly.
+    // A single IN(…) would throw `too many SQL variables` on D1 (and in the
+    // test D1); assert the fan-out directly too.
     const m = createFramesMethods(db);
     const ids: string[] = [];
     for (let i = 0; i < 200; i++) {

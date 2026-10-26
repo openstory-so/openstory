@@ -408,17 +408,19 @@ export function createScenesMethods(db: Database) {
     },
 
     delete: async (sceneId: DbSceneId): Promise<boolean> => {
-      const result = await db.delete(scenes).where(eq(scenes.id, sceneId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      const result = await db
+        .delete(scenes)
+        .where(eq(scenes.id, sceneId))
+        .returning({ id: scenes.id });
+      return result.length > 0;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(scenes)
-        .where(eq(scenes.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(scenes.sequenceId, sequenceId))
+        .returning({ id: scenes.id });
+      return result.length;
     },
 
     /**
@@ -442,9 +444,9 @@ export function createScenesMethods(db: Database) {
             eq(scenes.sequenceId, sequenceId),
             gte(scenes.orderIndex, minOrderIndex)
           )
-        );
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        )
+        .returning({ id: scenes.id });
+      return result.length;
     },
 
     createBulk: async (sceneData: NewScene[]): Promise<SceneRow[]> => {

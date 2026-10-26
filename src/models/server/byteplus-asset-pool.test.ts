@@ -7,9 +7,7 @@
  * very batch is about to reuse, and a slot a create is still filling (#1531).
  */
 
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -24,7 +22,6 @@ import {
   bytePlusAssetLeases,
   bytePlusAssets,
 } from '@/platform/server/db/schema/byteplus-assets';
-import { relations } from '@/platform/server/db/schema/relations';
 import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { generateId } from '@/platform/id';
 import { eq } from 'drizzle-orm';
@@ -46,7 +43,7 @@ const {
 } = await import('./byteplus-asset-pool');
 const { aigcGroupName } = await import('./byteplus-config');
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let ledger: ReturnType<typeof createBytePlusAssetsMethods>;
 
@@ -228,14 +225,12 @@ const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000);
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   ledger = createBytePlusAssetsMethods(db);
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

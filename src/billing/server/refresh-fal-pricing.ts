@@ -111,7 +111,7 @@ type ObservedUnitsByEndpoint = Map<string, ObservedUnits>;
 
 /**
  * The single method `computeObservedUnits` needs — structural so tests can
- * run the query against plain libsql (the bug this guards lives in drizzle's
+ * run the query against the test D1 (the bug this guards lives in drizzle's
  * column mapping, so a stub would prove nothing).
  */
 type ObservationReader = {

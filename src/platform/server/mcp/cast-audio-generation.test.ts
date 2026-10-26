@@ -3,6 +3,7 @@
  * real scoped repositories and the migrated SQLite schema. Workflow triggers
  * and realtime are mocked; nothing reaches a provider.
  */
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -12,9 +13,6 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { createMCPServer } from '@tanstack/ai-mcp/server';
@@ -25,7 +23,6 @@ import type { Database } from '@/platform/server/db/client';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   characterBibleVersions,
   frames,
@@ -70,7 +67,7 @@ const server = createMCPServer({
   sessions: 'reject',
 });
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId: string;
 let sequenceId: string;
@@ -148,12 +145,10 @@ const refused = (code: string) => ({
 });
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   vi.mocked(getDb).mockReturnValue(db);
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.mocked(triggerWorkflow).mockClear();

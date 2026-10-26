@@ -4,6 +4,7 @@
  * voice is released, provider first and row second. A link in an archived
  * sequence is not a holder of the voice (#2017).
  */
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   afterAll,
   beforeAll,
@@ -13,10 +14,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -27,7 +25,6 @@ import {
   teams,
   user,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { asStub } from '@/test/as-stub';
 import {
@@ -62,7 +59,7 @@ vi.mock('@/models/server/elevenlabs-config', () => ({
 
 // One per test: a voice id is counted across every team's rows.
 let VOICE = '';
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let teamId = '';
 let userId = '';
@@ -111,13 +108,11 @@ const archive = async (sequenceId: string) =>
     .where(eq(sequences.id, sequenceId));
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {

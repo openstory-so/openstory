@@ -1,6 +1,6 @@
 /**
  * Behavioural tests for the scoped `video_variants` layer (#990) against a real
- * migrated in-memory D1 (libsql), mirroring the `is-stale.test.ts` harness.
+ * migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), mirroring the `is-stale.test.ts` harness.
  *
  * Pins the append-only version store + selection-as-pointer contract: append
  * (with generating-retry idempotency), list-by-group ordering / discard
@@ -14,10 +14,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { and, eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import {
   videoManifestInputHash,
@@ -37,13 +35,12 @@ import {
   type NewVideoVariant,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   createVideoVariantsMethods,
   getPrimaryVideoByShotIds,
 } from './video-variants';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let methods: ReturnType<typeof createVideoVariantsMethods>;
 
@@ -194,14 +191,12 @@ function versionInput(
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
   methods = createVideoVariantsMethods(db);
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {
@@ -680,9 +675,8 @@ describe('discard / undiscard', () => {
 });
 
 // Both batch getters bind one param per shot id, so they chunk at 90 to stay
-// under D1's 100-bound-parameter ceiling (#1019). These tests run on libsql,
-// which has NO param cap — so they cannot reproduce the overflow itself. What
-// they pin is that the chunking loop reduces correctly across the boundary: a
+// under D1's 100-bound-parameter ceiling (#1019). The test D1 enforces the
+// cap, so an unchunked getter fails here. Beyond that, what they pin is that the chunking loop reduces correctly across the boundary: a
 // loop that drops the trailing partial batch, or overwrites the accumulator
 // per chunk, silently loses videos for every shot past the first 90.
 describe('batch getters chunk past D1s parameter ceiling (#1019)', () => {
@@ -694,15 +688,16 @@ describe('batch getters chunk past D1s parameter ceiling (#1019)', () => {
     const extraShotIds = Array.from({ length: OVER_ONE_CHUNK - 1 }, () =>
       generateId()
     );
-    await db.insert(shots).values(
-      extraShotIds.map((id, i) => ({
+    // One row per insert: D1 caps a query at 100 bound variables.
+    for (const [i, id] of extraShotIds.entries()) {
+      await db.insert(shots).values({
         id,
         sequenceId,
         sceneId,
         shotNumber: i + 2,
         renderSegmentId: segmentId,
-      }))
-    );
+      });
+    }
     const allShotIds = [shotId, ...extraShotIds];
     expect(allShotIds.length).toBeGreaterThan(90);
     // The last id sits in the trailing partial batch — the one a loop that

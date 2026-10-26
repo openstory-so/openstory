@@ -1284,8 +1284,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           )
         );
       if (!opts.activity) {
-        const result = await claim;
-        return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+        const claimed = await claim.returning({ id: characterLooks.id });
+        return { versionId, held: claimed.length > 0 };
       }
       const [claimed] = await db.batch([
         claim.returning({ id: characterLooks.id }),

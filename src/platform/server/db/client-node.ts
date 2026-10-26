@@ -6,23 +6,20 @@
  *
  * The app only touches the database inside Workerd, where `#db-client` resolves
  * to `client-d1.ts` (Cloudflare D1). This module exists so that:
- *   - `Database` (`ReturnType<typeof getDb>`) is typed against the libSQL driver
- *     that unit tests inject via `drizzle({ client, relations })` from an
- *     in-memory `@libsql/client` database.
+ *   - `Database` (`ReturnType<typeof getDb>`) is the same D1 driver type, which
+ *     is also what unit tests get from `createTestDb` (`src/platform/server/db/test-d1.ts`).
  *   - any Node code that reaches `getDb()` without injecting its own instance
  *     fails loudly instead of silently connecting somewhere unexpected.
  */
 
-import type { Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
+import { drizzle } from 'drizzle-orm/d1';
 import { relations } from '@/platform/server/db/schema/relations';
 
 type Database = ReturnType<typeof buildDb>;
 
-// Never executed — only its return type defines `Database`, mirroring the
-// in-memory libSQL instances unit tests construct and pass around.
-function buildDb(client: Client) {
-  return drizzle({ client, relations });
+// Never executed — only its return type defines `Database`.
+function buildDb(d1: D1Database) {
+  return drizzle(d1, { relations });
 }
 
 export const getDb = (): Database => {

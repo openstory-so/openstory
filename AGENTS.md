@@ -471,7 +471,7 @@ See `src/ui/` and any domain's `ui/` for the house pattern.
 - Route handlers: test the logic next to where it lives (the domain's `server/` folder, e.g. `platform/server/api-v1/device-routes.test.ts`). Never put a test under `src/routes/` — every file there becomes a route (`boundaries/wrong-place` fails it).
 - Services/utils: co-located (`service.test.ts`).
 - Focus: business logic, not React components.
-- DB: mock `#db-client` via `vi.doMock` (not real connections); ULID primary keys.
+- DB: a test that needs a database calls `createTestDb()` (`src/platform/server/db/test-d1.ts`): in-process SQLite behind the D1 API, so it answers like D1 (no `rowsAffected`, at most 100 bound variables per query, foreign keys always on, no `BEGIN`). Never build a libsql client in a test. Code that calls `getDb()` gets it via `vi.doMock('#db-client', …)`. ULID primary keys.
 - Workflows: mock workflow context + AI calls; pass auth (userId/teamId) through context.
 - `vitest.config.ts` is **self-contained** — it does not extend `vite.config.ts`, because the Cloudflare Vite plugin rejects the SSR-externals shape Vitest injects.
 

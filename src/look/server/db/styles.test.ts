@@ -7,6 +7,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   styles,
@@ -15,14 +16,10 @@ import {
   type NewStyle,
   type Style,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { createPublicStylesReadMethods, createStylesMethods } from './styles';
 import { OpenStoryError } from '@/platform/errors';
 import type { ServerManagedStyleColumn } from '@/look/server/style.schemas';
-import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, or, sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import {
   afterAll,
   beforeAll,
@@ -88,7 +85,7 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
   };
 }
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 
 const team = { id: '', name: 'T', slug: 't' };
@@ -123,13 +120,11 @@ async function seed() {
 }
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
 
-afterAll(() => {
-  client.close();
+afterAll(async () => {
+  await closeDb();
 });
 
 beforeEach(async () => {
@@ -258,7 +253,8 @@ describe('createStylesMethods.listByIds', () => {
       name: `Batch Style ${i}`,
       config: baseConfig,
     }));
-    await db.insert(styles).values(rows);
+    // One row per insert: D1 caps a query at 100 bound variables.
+    for (const row of rows) await db.insert(styles).values(row);
 
     const fetched = await createStylesMethods(
       db,

@@ -1,10 +1,7 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   framePromptVersions,
   sequences,
@@ -28,7 +25,7 @@ import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
 import { persistShotSpec } from '@/shots/server/persist-shot-spec';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 const { createScopedDb } = await import('@/platform/server/db/scoped');
@@ -111,11 +108,9 @@ const scene: Scene = {
   })),
 };
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 
 it('keeps persisted derived prompts current before sheets exist, while retaining edit staleness', async () => {
   const teamId = generateId(),

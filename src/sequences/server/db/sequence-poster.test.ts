@@ -1,7 +1,5 @@
-import { createClient, type Client } from '@libsql/client';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   beforeAll,
   beforeEach,
@@ -12,7 +10,6 @@ import {
   vi,
 } from 'vitest';
 import type { Database } from '@/platform/server/db/client';
-import { relations } from '@/platform/server/db/schema/relations';
 import {
   frames,
   renderSegments,
@@ -28,17 +25,15 @@ import { createSequencesMethods } from './sequences';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { videoPosterUrl } from '@/look/cloudflare-video';
 
-let client: Client;
+let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId: string;
 let teamId: string;
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ({ db, close: closeDb } = await createTestDb());
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 beforeEach(async () => {
   // Separate teams keep FK fixtures isolated without depending on deletion order.
   const [team] = await db

@@ -4,9 +4,18 @@
  * we charged and what fal billed.
  */
 
-import { createClient } from '@libsql/client';
+import type { Database } from '@/platform/server/db/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import {
   modelPricing,
   modelPricingHistory,
@@ -14,8 +23,6 @@ import {
   transactions,
 } from '@/platform/server/db/schema';
 import { modelUsageObservations } from '@/platform/server/db/schema/model-pricing';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 
 describe('fal billing reconcile cron wiring', () => {
   const wrangler = readFileSync('wrangler.jsonc', 'utf-8');
@@ -39,8 +46,12 @@ describe('fal billing reconcile cron wiring', () => {
 });
 
 describe('reconcileFalBilling', () => {
-  const client = createClient({ url: ':memory:' });
-  const db = drizzle({ client });
+  let db: Database;
+  let closeDb: () => Promise<void>;
+  beforeAll(async () => {
+    ({ db, close: closeDb } = await createTestDb());
+  });
+  afterAll(() => closeDb());
 
   const driftReports: unknown[] = [];
 
@@ -128,7 +139,6 @@ describe('reconcileFalBilling', () => {
   }
 
   beforeEach(async () => {
-    await migrate(db, { migrationsFolder: './drizzle/migrations' });
     // transactions.teamId FK needs a parent row.
     await db
       .insert(teams)

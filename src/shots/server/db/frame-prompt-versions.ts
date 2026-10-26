@@ -82,8 +82,8 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
   );
 
 // One bound param per frame id; 90 keeps each query under D1's 100-bound-
-// parameter ceiling. Unit tests run on libsql, which has no such cap — an
-// unchunked list passes CI and throws `too many SQL variables` on D1 (#1019).
+// parameter ceiling. Unit tests enforce the
+// same cap (`src/platform/server/db/test-d1.ts`), so an unchunked list fails there too (#1019).
 const SELECTED_PROMPTS_BY_FRAMES_BATCH = 90;
 
 async function getSelectedImagePromptsByFrameIds(

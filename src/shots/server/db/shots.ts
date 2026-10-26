@@ -85,7 +85,7 @@ export type ShotWithAnchorFrame = Shot & { anchorFrameId: string };
 const ANCHOR_FRAMES_BATCH = 9;
 
 // One bound param per id; 90 keeps `getByIds` under D1's 100-bound-parameter
-// ceiling (#1322). libsql (unit tests) has no such cap.
+// ceiling (#1322), which unit tests enforce too (`src/platform/server/db/test-d1.ts`).
 const SHOTS_BY_IDS_BATCH = 90;
 
 // No `hasVideo` filter: it had no callers, and its condition was inverted
@@ -294,9 +294,11 @@ export function createShotsMethods(db: Database) {
     /** HARD delete — admin/GC and the storyboard wipe; the product Delete is
      * {@link softDelete}. */
     delete: async (shotId: string): Promise<boolean> => {
-      const result = await db.delete(shots).where(eq(shots.id, shotId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      const result = await db
+        .delete(shots)
+        .where(eq(shots.id, shotId))
+        .returning({ id: shots.id });
+      return result.length > 0;
     },
 
     /**
@@ -543,9 +545,9 @@ export function createShotsMethods(db: Database) {
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(shots)
-        .where(eq(shots.sequenceId, sequenceId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .where(eq(shots.sequenceId, sequenceId))
+        .returning({ id: shots.id });
+      return result.length;
     },
 
     /**
@@ -559,22 +561,24 @@ export function createShotsMethods(db: Database) {
       sequenceId: string,
       minOrderIndex: number
     ): Promise<number> => {
-      const result = await db.delete(shots).where(
-        inArray(
-          shots.sceneId,
-          db
-            .select({ id: scenes.id })
-            .from(scenes)
-            .where(
-              and(
-                eq(scenes.sequenceId, sequenceId),
-                gte(scenes.orderIndex, minOrderIndex)
+      const result = await db
+        .delete(shots)
+        .where(
+          inArray(
+            shots.sceneId,
+            db
+              .select({ id: scenes.id })
+              .from(scenes)
+              .where(
+                and(
+                  eq(scenes.sequenceId, sequenceId),
+                  gte(scenes.orderIndex, minOrderIndex)
+                )
               )
-            )
+          )
         )
-      );
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        .returning({ id: shots.id });
+      return result.length;
     },
 
     /**
@@ -590,9 +594,9 @@ export function createShotsMethods(db: Database) {
         .delete(shots)
         .where(
           and(eq(shots.sceneId, sceneId), gte(shots.shotNumber, minShotNumber))
-        );
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return result.rowsAffected ?? 0;
+        )
+        .returning({ id: shots.id });
+      return result.length;
     },
 
     createBulk: async (shotData: NewShot[]): Promise<Shot[]> => {

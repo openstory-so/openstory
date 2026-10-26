@@ -4,36 +4,42 @@
  * no run is behind.
  */
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
-import { type Client, createClient } from '@libsql/client';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
   characterLooks,
   characterSheetVariants,
+  characters,
+  teams,
 } from '@/platform/server/db/schema';
-import { relations } from '@/platform/server/db/schema/relations';
 import { reconcileLookSheetClaimsPass } from './reconcile-all';
 
-let client: Client;
+const TEAM_ID = generateId();
+let closeDb: () => Promise<void>;
 let db: Database;
 
 beforeAll(async () => {
-  client = createClient({ url: ':memory:' });
-  db = drizzle({ client, relations });
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
-  // The looks' characters are outside this pass; they are not built.
-  await client.execute('PRAGMA foreign_keys = OFF');
+  ({ db, close: closeDb } = await createTestDb());
+  await db.insert(teams).values({ id: TEAM_ID, name: 'T', slug: 't' });
 });
-afterAll(() => client.close());
+afterAll(() => closeDb());
 beforeEach(async () => {
   await db.delete(characterSheetVariants);
   await db.delete(characterLooks);
+  await db.delete(characters);
 });
 
 const HOUR = 60 * 60 * 1000;
 async function look(id: string, claim: string | null, ageMs: number) {
+  // A bare character row: the pass reads only the look and its sheets.
+  await db.insert(characters).values({
+    id,
+    teamId: TEAM_ID,
+    legacyName: 'unused',
+    selectedBibleVersionId: id,
+  });
   await db.insert(characterLooks).values({
     id,
     characterId: id,
