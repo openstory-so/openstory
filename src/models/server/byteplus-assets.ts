@@ -8,6 +8,7 @@
  * to complete H5 verification — out of scope here.
  */
 
+import { getLogger } from '@/platform/logger';
 import { aigcGroupName } from './byteplus-config';
 import {
   bytePlusOpenApi,
@@ -63,6 +64,8 @@ export type BytePlusAssetGroup = {
   GroupType?: string;
   CreateTime?: string;
 };
+
+const logger = getLogger(['openstory', 'ai', 'byteplus-assets']);
 
 function assetNameFor(identity: string): string {
   // CreateAsset Name is max 64 chars and is the ListAssets search key.
@@ -275,8 +278,14 @@ async function waitForAssetActive(
     if (last.Status === 'Active') return last;
     if (last.Status === 'Failed') {
       // A refused asset still takes a slot until deleted (#2207).
-      // The hourly sweep deletes it if this delete fails.
-      await deleteAsset(config, id).catch(() => undefined);
+      // Not thrown: the refusal is the error to report. The hourly sweep
+      // deletes the asset; the warning shows if the leak comes back.
+      await deleteAsset(config, id).catch((error: unknown) => {
+        logger.warn('BytePlus refused asset could not be deleted', {
+          assetId: id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
       throw new BytePlusAssetRefusedError(
         id,
         last.Error?.Code,

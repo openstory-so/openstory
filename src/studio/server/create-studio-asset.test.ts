@@ -622,7 +622,7 @@ describe('createStudioAssets', () => {
         count: 1,
         mode: 'reference',
         referenceImages: [],
-        referenceVideos: ['/r2/uploads/long.mp4'],
+        referenceVideos: [{ url: '/r2/uploads/long.mp4' }],
         referenceAudio: [],
       })
     ).rejects.toThrow(/reference video between 1.8 and 30.2 seconds/);

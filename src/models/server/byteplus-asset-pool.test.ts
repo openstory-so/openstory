@@ -669,7 +669,7 @@ describe('assets Ark holds that the ledger does not (#2207)', () => {
     );
     expect(ark.deleted).toEqual(['ark-idle']);
     const rows = await db.select({ assetId: bytePlusAssets.assetId }).from(bytePlusAssets); // prettier-ignore
-    expect(rows.map((row) => row.assetId ?? "").toSorted((a, b) => a.localeCompare(b))).toEqual(['ark-1', 'ark-busy']); // prettier-ignore
+    expect(rows.map((row) => row.assetId ?? '').sort((a, b) => a.localeCompare(b))).toEqual(['ark-1', 'ark-busy']); // prettier-ignore
   });
 
   it('Ark full and every slot leased: the pool-full error stands, nothing deleted', async () => {
