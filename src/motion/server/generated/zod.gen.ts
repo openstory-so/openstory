@@ -2372,3 +2372,112 @@ export const zGetKlingV4ImageToVideoRequestsByRequestIdPath = z.object({
 });
 
 export const zGetKlingV4ImageToVideoRequestsByRequestIdResponse = zV4ImageToVideoOutput;
+
+/**
+ * KlingV4Element
+ */
+export const zKlingV4Element = z.object({
+  video_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  frontal_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  reference_image_urls: z.union([
+    z.array(z.string()).max(3),
+    z.unknown()
+  ]).optional(),
+  voice_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
+});
+
+/**
+ * ReferenceToVideoInput
+ */
+export const zV4ReferenceToVideoInput = z.object({
+  video_urls: z.union([
+    z.array(z.string()).max(5),
+    z.unknown()
+  ]).optional(),
+  prompt: z.union([
+    z.string().max(26000),
+    z.unknown()
+  ]).optional(),
+  multi_prompt: z.union([
+    z.array(zKlingV4Shot).min(1),
+    z.unknown()
+  ]).optional(),
+  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
+    description: 'Video duration in seconds (3-30).'
+  }).optional().default(5),
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p'),
+  aspect_ratio: z.enum([
+    'auto',
+    '16:9',
+    '9:16',
+    '1:1',
+    '21:9'
+  ]).register(z.globalRegistry, {
+    description: 'Aspect ratio of the generated video. \'auto\' adapts it to the references.'
+  }).optional().default('16:9'),
+  image_urls: z.union([
+    z.array(z.string()).max(10),
+    z.unknown()
+  ]).optional(),
+  start_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  elements: z.union([
+    z.array(zKlingV4Element).max(7),
+    z.unknown()
+  ]).optional()
+});
+
+/**
+ * ReferenceToVideoOutput
+ */
+export const zV4ReferenceToVideoOutput = z.object({
+  video: zFile
+});
+
+/**
+ * TextToVideoInput
+ */
+export const zV4TextToVideoInput = z.object({
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p'),
+  aspect_ratio: z.enum([
+    '16:9',
+    '9:16',
+    '1:1',
+    '21:9'
+  ]).register(z.globalRegistry, {
+    description: 'Aspect ratio of the generated video.'
+  }).optional().default('16:9'),
+  prompt: z.union([
+    z.string().max(26000),
+    z.unknown()
+  ]).optional(),
+  multi_prompt: z.union([
+    z.array(zKlingV4Shot).min(1),
+    z.unknown()
+  ]).optional(),
+  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
+    description: 'Video duration in seconds (3-30).'
+  }).optional().default(5)
+});
+
+/**
+ * VideoOutput
+ */
+export const zV4TextToVideoOutput = z.object({
+  video: zFile
+});

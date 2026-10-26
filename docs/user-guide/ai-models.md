@@ -66,7 +66,7 @@ These models animate still images into video clips.
 | **Seedance 2.0**       | ByteDance | ~3.5 min  | Proprietary | Quality default; native audio              |
 | Seedance 2.0 Mini      | ByteDance | ~2 min    | Proprietary | Half the 2.0 rate, 720p; BytePlus via only |
 | Grok Imagine Video 1.5 | SpaceXAI  | ~30s      | Proprietary | Highest quality ranking                    |
-| Kling 3.0 Omni         | Kling     | ~5 min    | Proprietary |                                            |
+| Kling 4.0              | Kling     | ~5 min    | Proprietary | Native audio, always on; up to 30s         |
 
 ### Aspect Ratio Compatibility
 

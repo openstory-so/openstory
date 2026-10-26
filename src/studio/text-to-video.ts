@@ -169,6 +169,14 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxAudio: 0,
     note: 'Reference mode runs on Kling O3 Pro, the tier with a reference endpoint. Start and end frames are not available in this mode.',
   },
+  kling_v4: {
+    endpointId: 'kling/v4/reference-to-video',
+    imageField: 'image_urls',
+    imageTag: atImage,
+    maxImages: 10,
+    maxVideos: 0,
+    maxAudio: 0,
+  },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
     imageField: 'image_urls',

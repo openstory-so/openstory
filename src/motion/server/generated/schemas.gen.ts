@@ -3474,3 +3474,437 @@ export const KlingV4ShotSchema = {
     'prompt'
   ]
 } as const;
+
+export const KlingV4ElementSchema = {
+  properties: {
+    video_url: {
+      anyOf: [
+        {
+          type: 'string',
+          limit_description: 'Max file size: 300.0MB, Min width: 700px, Min height: 700px, Max width: 4553px, Max height: 4553px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Min duration: 3.0s, Max duration: 30.05s, Min FPS: 23.9, Max FPS: 60.05, Timeout: 30.0s',
+          'x-fal': {
+            timeout: 30,
+            max_file_size: 314572800,
+            max_duration: 30.05,
+            min_fps: 23.9,
+            max_aspect_ratio: 2.5,
+            max_height: 4553,
+            min_height: 700,
+            max_width: 4553,
+            max_fps: 60.05,
+            min_duration: 3,
+            min_width: 700,
+            min_aspect_ratio: 0.4
+          },
+          ui: {
+            field: 'video'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'A video of the element, used instead of images (3-30s).',
+      title: 'Video Url'
+    },
+    frontal_image_url: {
+      anyOf: [
+        {
+          type: 'string',
+          limit_description: 'Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+          'x-fal': {
+            timeout: 20,
+            max_aspect_ratio: 2.5,
+            max_file_size: 31457280,
+            min_width: 300,
+            min_aspect_ratio: 0.4,
+            min_height: 300
+          },
+          ui: {
+            field: 'image'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'The frontal image of the element (main view).',
+      title: 'Frontal Image Url'
+    },
+    reference_image_urls: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            limit_description: 'Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+            'x-fal': {
+              timeout: 20,
+              max_aspect_ratio: 2.5,
+              max_file_size: 31457280,
+              min_width: 300,
+              min_aspect_ratio: 0.4,
+              min_height: 300
+            },
+            ui: {
+              field: 'image'
+            },
+            _fal_ui_field: 'image'
+          },
+          maxItems: 3
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Additional views of the element from different angles (1-3).',
+      title: 'Reference Image Urls'
+    },
+    voice_id: {
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Voice bound to this element. Create one with https://fal.ai/models/fal-ai/kling-video/create-voice',
+      title: 'Voice Id'
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'frontal_image_url',
+    'reference_image_urls',
+    'video_url',
+    'voice_id'
+  ],
+  title: 'KlingV4Element'
+} as const;
+
+export const V4ReferenceToVideoInputSchema = {
+  properties: {
+    video_urls: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            limit_description: 'Max file size: 300.0MB, Min width: 700px, Min height: 700px, Max width: 4553px, Max height: 4553px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Min duration: 3.0s, Max duration: 30.05s, Min FPS: 23.9, Max FPS: 60.05, Timeout: 30.0s',
+            'x-fal': {
+              timeout: 30,
+              max_file_size: 314572800,
+              max_duration: 30.05,
+              min_fps: 23.9,
+              max_aspect_ratio: 2.5,
+              max_height: 4553,
+              min_height: 700,
+              max_width: 4553,
+              max_fps: 60.05,
+              min_duration: 3,
+              min_width: 700,
+              min_aspect_ratio: 0.4
+            },
+            ui: {
+              field: 'video'
+            },
+            _fal_ui_field: 'video'
+          },
+          maxItems: 5
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Reference videos (3-30s each, 30s combined with element videos), referenced as @Video1, @Video2, ... (max 5).',
+      title: 'Video Urls',
+      examples: [
+        null
+      ]
+    },
+    prompt: {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: 26000
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Text prompt. Reference inputs as @Image1, @Video1, @Element1, etc. Either prompt or multi_prompt must be provided.',
+      title: 'Prompt',
+      examples: [
+        '@Element1 and @Element2 are having dinner at the table in @Image1'
+      ]
+    },
+    multi_prompt: {
+      anyOf: [
+        {
+          minItems: 1,
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/KlingV4Shot'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.',
+      title: 'Multi Prompt',
+      examples: [
+        null
+      ]
+    },
+    duration: {
+      title: 'Duration',
+      minimum: 3,
+      description: 'Video duration in seconds (3-30).',
+      maximum: 30,
+      default: 5,
+      type: 'integer'
+    },
+    resolution: {
+      title: 'Resolution',
+      type: 'string',
+      description: 'Output resolution.',
+      enum: [
+        '720p',
+        '1080p'
+      ],
+      default: '1080p'
+    },
+    aspect_ratio: {
+      title: 'Aspect Ratio',
+      type: 'string',
+      description: 'Aspect ratio of the generated video. \'auto\' adapts it to the references.',
+      enum: [
+        'auto',
+        '16:9',
+        '9:16',
+        '1:1',
+        '21:9'
+      ],
+      default: '16:9'
+    },
+    image_urls: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            limit_description: 'Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+            'x-fal': {
+              timeout: 20,
+              max_aspect_ratio: 2.5,
+              max_file_size: 31457280,
+              min_width: 300,
+              min_aspect_ratio: 0.4,
+              min_height: 300
+            },
+            ui: {
+              field: 'image'
+            },
+            _fal_ui_field: 'image'
+          },
+          maxItems: 10
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Reference images, referenced as @Image1, @Image2, ... (max 10).',
+      title: 'Image Urls',
+      examples: [
+        null
+      ]
+    },
+    start_image_url: {
+      anyOf: [
+        {
+          type: 'string',
+          limit_description: 'Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+          'x-fal': {
+            timeout: 20,
+            max_aspect_ratio: 2.5,
+            max_file_size: 31457280,
+            min_width: 300,
+            min_aspect_ratio: 0.4,
+            min_height: 300
+          },
+          ui: {
+            field: 'image'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Optional image to use as the first frame. Counts toward the image reference limit.',
+      title: 'Start Image Url'
+    },
+    elements: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/KlingV4Element'
+          },
+          maxItems: 7
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Characters/objects, referenced as @Element1, @Element2, ... (max 7). Up to 3 elements may carry a voice_id and up to 3 may be video elements.',
+      title: 'Elements',
+      examples: [
+        null
+      ]
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'prompt',
+    'multi_prompt',
+    'duration',
+    'start_image_url',
+    'image_urls',
+    'video_urls',
+    'elements',
+    'resolution',
+    'aspect_ratio'
+  ],
+  title: 'ReferenceToVideoInput'
+} as const;
+
+export const V4ReferenceToVideoOutputSchema = {
+  properties: {
+    video: {
+      $ref: '#/components/schemas/File',
+      description: 'The generated video.',
+      examples: [
+        {
+          file_name: 'output.mp4',
+          content_type: 'video/mp4',
+          url: 'https://v3b.fal.media/files/b/0aac4497/-fHk6MiMZhLy2FncCbyM7_clip_reference.mp4',
+          file_size: 3020124
+        }
+      ]
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'video'
+  ],
+  title: 'ReferenceToVideoOutput',
+  required: [
+    'video'
+  ]
+} as const;
+
+export const V4TextToVideoInputSchema = {
+  properties: {
+    resolution: {
+      title: 'Resolution',
+      type: 'string',
+      description: 'Output resolution.',
+      enum: [
+        '720p',
+        '1080p'
+      ],
+      default: '1080p'
+    },
+    aspect_ratio: {
+      title: 'Aspect Ratio',
+      type: 'string',
+      description: 'Aspect ratio of the generated video.',
+      enum: [
+        '16:9',
+        '9:16',
+        '1:1',
+        '21:9'
+      ],
+      default: '16:9'
+    },
+    prompt: {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: 26000
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Text prompt. Either prompt or multi_prompt must be provided.',
+      title: 'Prompt',
+      examples: [
+        'A detective in a black trench coat stands on a rooftop in the rain, looking through a telescope at the street below.'
+      ]
+    },
+    multi_prompt: {
+      anyOf: [
+        {
+          minItems: 1,
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/KlingV4Shot'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.',
+      title: 'Multi Prompt',
+      examples: [
+        null
+      ]
+    },
+    duration: {
+      title: 'Duration',
+      minimum: 3,
+      description: 'Video duration in seconds (3-30).',
+      maximum: 30,
+      default: 5,
+      type: 'integer'
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'prompt',
+    'multi_prompt',
+    'duration',
+    'resolution',
+    'aspect_ratio'
+  ],
+  title: 'TextToVideoInput'
+} as const;
+
+export const V4TextToVideoOutputSchema = {
+  properties: {
+    video: {
+      $ref: '#/components/schemas/File',
+      description: 'The generated video.',
+      examples: [
+        {
+          file_name: 'output.mp4',
+          content_type: 'video/mp4',
+          url: 'https://v3b.fal.media/files/b/0aac4496/QzdMSy4uSKyFfMjtU65MA_clip_text.mp4',
+          file_size: 3478246
+        }
+      ]
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'video'
+  ],
+  title: 'VideoOutput',
+  required: [
+    'video'
+  ]
+} as const;

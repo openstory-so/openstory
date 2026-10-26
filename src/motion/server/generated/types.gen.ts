@@ -3280,3 +3280,143 @@ export type GetKlingV4ImageToVideoRequestsByRequestIdResponses = {
 };
 
 export type GetKlingV4ImageToVideoRequestsByRequestIdResponse = GetKlingV4ImageToVideoRequestsByRequestIdResponses[keyof GetKlingV4ImageToVideoRequestsByRequestIdResponses];
+
+/**
+ * KlingV4Element
+ */
+export type KlingV4Element = {
+  /**
+   * Video Url
+   *
+   * A video of the element, used instead of images (3-30s).
+   */
+  video_url?: string | unknown;
+  /**
+   * Frontal Image Url
+   *
+   * The frontal image of the element (main view).
+   */
+  frontal_image_url?: string | unknown;
+  /**
+   * Reference Image Urls
+   *
+   * Additional views of the element from different angles (1-3).
+   */
+  reference_image_urls?: Array<string> | unknown;
+  /**
+   * Voice Id
+   *
+   * Voice bound to this element. Create one with https://fal.ai/models/fal-ai/kling-video/create-voice
+   */
+  voice_id?: string | unknown;
+};
+
+/**
+ * ReferenceToVideoInput
+ */
+export type V4ReferenceToVideoInput = {
+  /**
+   * Video Urls
+   *
+   * Reference videos (3-30s each, 30s combined with element videos), referenced as @Video1, @Video2, ... (max 5).
+   */
+  video_urls?: Array<string> | unknown;
+  /**
+   * Prompt
+   *
+   * Text prompt. Reference inputs as @Image1, @Video1, @Element1, etc. Either prompt or multi_prompt must be provided.
+   */
+  prompt?: string | unknown;
+  /**
+   * Multi Prompt
+   *
+   * Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.
+   */
+  multi_prompt?: Array<KlingV4Shot> | unknown;
+  /**
+   * Duration
+   *
+   * Video duration in seconds (3-30).
+   */
+  duration?: number;
+  /**
+   * Resolution
+   *
+   * Output resolution.
+   */
+  resolution?: '720p' | '1080p';
+  /**
+   * Aspect Ratio
+   *
+   * Aspect ratio of the generated video. 'auto' adapts it to the references.
+   */
+  aspect_ratio?: 'auto' | '16:9' | '9:16' | '1:1' | '21:9';
+  /**
+   * Image Urls
+   *
+   * Reference images, referenced as @Image1, @Image2, ... (max 10).
+   */
+  image_urls?: Array<string> | unknown;
+  /**
+   * Start Image Url
+   *
+   * Optional image to use as the first frame. Counts toward the image reference limit.
+   */
+  start_image_url?: string | unknown;
+  /**
+   * Elements
+   *
+   * Characters/objects, referenced as @Element1, @Element2, ... (max 7). Up to 3 elements may carry a voice_id and up to 3 may be video elements.
+   */
+  elements?: Array<KlingV4Element> | unknown;
+};
+
+/**
+ * ReferenceToVideoOutput
+ */
+export type V4ReferenceToVideoOutput = {
+  video: File;
+};
+
+/**
+ * TextToVideoInput
+ */
+export type V4TextToVideoInput = {
+  /**
+   * Resolution
+   *
+   * Output resolution.
+   */
+  resolution?: '720p' | '1080p';
+  /**
+   * Aspect Ratio
+   *
+   * Aspect ratio of the generated video.
+   */
+  aspect_ratio?: '16:9' | '9:16' | '1:1' | '21:9';
+  /**
+   * Prompt
+   *
+   * Text prompt. Either prompt or multi_prompt must be provided.
+   */
+  prompt?: string | unknown;
+  /**
+   * Multi Prompt
+   *
+   * Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.
+   */
+  multi_prompt?: Array<KlingV4Shot> | unknown;
+  /**
+   * Duration
+   *
+   * Video duration in seconds (3-30).
+   */
+  duration?: number;
+};
+
+/**
+ * VideoOutput
+ */
+export type V4TextToVideoOutput = {
+  video: File;
+};

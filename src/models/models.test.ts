@@ -259,7 +259,7 @@ describe('supportsReferenceOnlyMotion', () => {
     expect(supportsReferenceOnlyMotion('grok_imagine_video_1_5')).toBe(false);
   });
 
-  it('includes both Seedance tiers, H3 Max, Omni Flash and Kling O3', () => {
+  it('includes both Seedance tiers, H3 Max, Omni Flash, Kling O3 and Kling 4', () => {
     expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
     expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
     // H3 Max's reference-to-video route requires only `prompt` — no still.
@@ -270,9 +270,13 @@ describe('supportsReferenceOnlyMotion', () => {
     // Kling v3 Pro's start-frame shots stay on i2v; refs and reference-only
     // route to Kling O3 Pro, whose start frame is optional.
     expect(supportsReferenceOnlyMotion('kling_v3_pro')).toBe(true);
+    // Kling 4.0's references and reference-only shots go to its own
+    // reference-to-video sibling.
+    expect(supportsReferenceOnlyMotion('kling_v4')).toBe(true);
     expect(referenceOnlyMotionModels().sort()).toEqual([
       'gemini_omni_flash',
       'kling_v3_pro',
+      'kling_v4',
       'minimax_h3_max',
       'seedance_v2',
       'seedance_v2_5',

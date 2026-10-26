@@ -105,7 +105,7 @@ The AI model for image-to-video animation. Toggle **Auto-generate motion** to au
 | MiniMax H3 Max         | MiniMax   | ~10s (Turbo default; native audio) |
 | Seedance 2.0           | ByteDance | ~3.5 min (Quality default; audio)  |
 | Grok Imagine Video 1.5 | SpaceXAI  | ~30s                               |
-| Kling 3.0 Omni         | Kling     | ~5 min                             |
+| Kling 4.0              | Kling     | ~5 min (native audio, always on)   |
 
 ### Music Model
 

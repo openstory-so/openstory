@@ -237,7 +237,7 @@ predate reference-only and so were image-to-video.
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
-2.5, MiniMax H3 Max, Gemini Omni Flash and Kling O3 Pro, each with a
+2.5, MiniMax H3 Max, Gemini Omni Flash, Kling O3 Pro and Kling 4.0, each with a
 `reference-to-video` route whose start frame is optional (H3 Max takes its
 images in `reference_image_urls` rather than `image_urls` — `imageField` on
 the endpoint config, so no builder needs to know the field name; a genuinely
@@ -253,15 +253,21 @@ references, and reference-only shots, route to Kling O3 Pro
 (`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
 frame is optional. Catalog key stays `kling_v3_pro`.
 
-Kling 4.0 (`kling_v4`, #2177) has no entry in `MOTION_REFERENCE_ENDPOINTS`:
-fal's `kling/v4/reference-to-video` is not wired, so it never renders
-reference-only, and references on its image-to-video route are inlined as
-bible descriptions.
+Kling 4.0 (`kling_v4`, #2177) replaces Kling 3.0 Omni in the pickers;
+`kling_v3_pro` is hidden but still renders for sequences that stored it. It
+follows the same split: start-frame-only shots stay on
+`kling/v4/image-to-video`, while shots with references and reference-only
+shots route to `kling/v4/reference-to-video`, whose `start_image_url` is
+optional, with `kling/v4/text-to-video` for a reference-only shot that matched
+nothing. Its reference route takes up to 10 `image_urls`. It also offers video
+references and `elements`; neither is wired, since video references bill on
+input plus output length.
 
-Three Kling-specific consequences of that split.
+Three Kling-specific consequences of that split. They apply to both
+generations; the image budget differs.
 
-**The still is pinned, not described.** O3 is the only reference endpoint with
-a real start-frame field, so a shot that rendered one sends it as
+**The still is pinned, not described.** O3 and Kling 4.0 are the only
+reference endpoints with a real start-frame field, so a shot that rendered one sends it as
 `start_image_url` rather than as `image_urls[0]` with a "Use @Image1 as the
 starting frame." line. The frame is then guaranteed instead of requested, the
 image-to-video motion template's NO VISUAL REDUNDANCY rule ("the video model
@@ -281,8 +287,8 @@ sound throughout). Both are `supportsAudio: true`; with the switch off,
 `buildMotionShotPrompt` asks for silence in the prompt instead, since there is
 no API field to set.
 
-**The image budget is the tightest we have.** O3 takes 4 (Seedance 9, H3 Max
-9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to
+**The image budget is the tightest we have on O3.** O3 takes 4 (Kling 4.0
+10, Seedance 9, H3 Max 9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to
 sheets — the same budget the deleted inline `elements` path allowed — but a
 scene casting five still drops one, so the submit path warns and emits
 `motion_references_over_cap`.

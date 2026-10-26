@@ -98,6 +98,9 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // Packed via `multi_prompt[]` (1–15s per shot) + `shot_type: customize`.
     supportsInClipMultiShot: true,
     performance: { estimatedGenerationTime: 306, quality: 'best' as const },
+    // Replaced by Kling 4.0 (#2177); kept so sequences that stored it still
+    // render on v3 and their records stay accurate.
+    hidden: true,
   },
   kling_v4: {
     id: 'kling/v4/image-to-video',
@@ -1020,6 +1023,16 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     textToVideoEndpointId: 'fal-ai/kling-video/o3/pro/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 4,
+  },
+  // Kling 4.0's sibling with an optional `start_image_url` (pinned when a
+  // still exists, like O3) and up to 10 `image_urls`. Video refs and
+  // `elements` exist on the schema but are not wired: video refs bill at a
+  // different rate on input plus output length.
+  kling_v4: {
+    endpointId: 'kling/v4/reference-to-video',
+    textToVideoEndpointId: 'kling/v4/text-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 10,
   },
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {

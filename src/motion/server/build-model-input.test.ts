@@ -657,6 +657,50 @@ describe('buildMotionRequest — reference-only', () => {
     expect(input.prompt).toContain('@Image1');
   });
 
+  it('routes Kling 4 reference-only to its reference endpoint at 720p in the sequence ratio', () => {
+    const { endpointId, input } = buildMotionRequest(
+      { ...referenceOnlyOptions, aspectRatio: '9:16' },
+      'kling_v4'
+    );
+
+    expect(endpointId).toBe('kling/v4/reference-to-video');
+    expect(input).not.toHaveProperty('start_image_url');
+    expect(input).toMatchObject({
+      image_urls: ['https://example.com/scarlett.png'],
+      aspect_ratio: '9:16',
+      resolution: '720p',
+    });
+    expect(input).not.toHaveProperty('generate_audio');
+    expect(input.prompt).toContain('@Image1');
+  });
+
+  it('pins a Kling 4 still in start_image_url when the shot has references', () => {
+    const { endpointId, input } = buildMotionRequest(
+      {
+        ...referenceOnlyOptions,
+        referenceOnly: false,
+        imageUrl: 'https://example.com/still.png',
+      },
+      'kling_v4'
+    );
+
+    expect(endpointId).toBe('kling/v4/reference-to-video');
+    expect(input).toMatchObject({
+      start_image_url: 'https://example.com/still.png',
+      image_urls: ['https://example.com/scarlett.png'],
+    });
+  });
+
+  it('sends a Kling 4 reference-only shot with no sheets to text-to-video', () => {
+    const { endpointId, input } = buildMotionRequest(
+      { ...referenceOnlyOptions, referenceImages: [] },
+      'kling_v4'
+    );
+
+    expect(endpointId).toBe('kling/v4/text-to-video');
+    expect(input).toMatchObject({ aspect_ratio: '16:9', resolution: '720p' });
+  });
+
   it('refuses a start-frame model asked to render without one', () => {
     expect(() =>
       buildMotionRequest(
