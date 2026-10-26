@@ -102,12 +102,14 @@ async function putMultipart(
     throw new Error('putToR2: upload URL is missing bucket/path for multipart');
   }
   const filename = parsed.searchParams.get('filename');
-  const base = `/api/storage/multipart?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}${filename ? `&filename=${encodeURIComponent(filename)}` : ''}`;
+  // Every phase carries the type: `complete` starts the likeness check, which
+  // judges the file by it (#2192).
+  const base = `/api/storage/multipart?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}&contentType=${encodeURIComponent(contentType)}${filename ? `&filename=${encodeURIComponent(filename)}` : ''}`;
 
-  const createRes = await fetch(
-    `${base}&action=create&contentType=${encodeURIComponent(contentType)}`,
-    { method: 'POST', signal }
-  );
+  const createRes = await fetch(`${base}&action=create`, {
+    method: 'POST',
+    signal,
+  });
   if (!createRes.ok) {
     throw new Error(`Multipart create failed: ${createRes.status}`);
   }

@@ -21,6 +21,11 @@ import {
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
+import {
+  assertCanGenerate,
+  resolveEnforcementState,
+} from '@/platform/server/compliance/enforcement';
+import { loadComplianceRecords } from '@/platform/server/db/scoped';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { buildInstanceId } from '@/platform/server/workflow/instance-id';
 import { readInstanceIfExists } from '@/platform/server/workflow/run-outcome';
@@ -80,19 +85,34 @@ async function startUploadCheck(
   });
 }
 
+type StoredUpload = {
+  bucket: StorageBucket;
+  contentType: string;
+  teamId: string;
+  userId: string;
+};
+
+/**
+ * Refuse, before any bytes are written, an upload whose check could not
+ * start: the trigger refuses an account that may not generate, and an
+ * upload refused after it landed would leave its bytes behind.
+ */
+export async function requireUploadCheckAllowed(
+  opts: StoredUpload
+): Promise<void> {
+  if (!checksOnUpload(opts.bucket, opts.contentType)) return;
+  const { enforcement } = await loadComplianceRecords(opts.userId, opts.teamId);
+  assertCanGenerate(resolveEnforcementState(enforcement));
+}
+
 /**
  * Start the check for an upload the route just stored, when the gate judges
  * that kind of file. Called after the bytes land, so the check never waits
  * on the browser.
  */
-export async function startCheckForStoredUpload(opts: {
-  bucket: StorageBucket;
-  path: string;
-  contentType: string;
-  teamId: string;
-  userId: string;
-  request: Request;
-}): Promise<void> {
+export async function startCheckForStoredUpload(
+  opts: StoredUpload & { path: string; request: Request }
+): Promise<void> {
   if (!checksOnUpload(opts.bucket, opts.contentType)) return;
   await startUploadCheck({
     userId: opts.userId,
