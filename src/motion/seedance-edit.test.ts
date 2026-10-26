@@ -227,9 +227,10 @@ describe('seedance edit constraints (#2036)', () => {
     ).toBe(
       "@Video1 couldn't be used. Duration must be between 1.8s and 30.2s. You were not charged for this video."
     );
+    // A sequence shot asks with no references: the stored url still never shows.
     expect(
       explainSeedanceFailure(
-        'BytePlus OpenAPI CreateAsset failed (InvalidParameter.DurationTooLong): Duration must be between 1.8s and 30.2s',
+        'BytePlus OpenAPI CreateAsset failed (InvalidParameter.DurationTooLong): Duration must be between 1.8s and 30.2s (/r2/clip.mp4)',
         'byteplus'
       )
     ).toBe(

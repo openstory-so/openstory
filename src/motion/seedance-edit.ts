@@ -235,7 +235,9 @@ export function isSeedanceInternalServiceError(
   return via === 'byteplus' && /InternalServiceError/.test(message);
 }
 
-function providerDetail(message: string, reference?: string): string {
+// The asset pool appends the stored url so a caller with the references
+// can name the one refused; it is never shown, whoever asks.
+function providerDetail(message: string): string {
   return message
     .replace(/^Motion generation failed:\s*/i, '')
     .replace(
@@ -243,7 +245,7 @@ function providerDetail(message: string, reference?: string): string {
       ''
     )
     .replace(/BytePlus (?:Ark|OpenAPI) [\w .-]*failed \([^)]*\):\s*/i, '')
-    .replace(reference ? ` (${reference})` : '', '')
+    .replace(/\s*\((?:\/r2\/|https?:\/\/)[^)\s]*\)\s*$/, '')
     .trim();
 }
 
@@ -276,13 +278,12 @@ function referenceTag(
   message: string,
   urls: readonly string[] | undefined,
   prefix: 'Image' | 'Video'
-): { tag: string; url: string } | null {
+): string | null {
   if (!urls) return null;
   const index = urls.findIndex(
     (url) => url.length > 0 && message.includes(url)
   );
-  const url = urls[index];
-  return url === undefined ? null : { tag: `@${prefix}${index + 1}`, url };
+  return index >= 0 ? `@${prefix}${index + 1}` : null;
 }
 
 export function explainSeedanceFailure(
@@ -300,16 +301,16 @@ export function explainSeedanceFailure(
     referenceTag(message, references?.videos, 'Video');
   if (/failed processing/.test(message)) {
     return reference
-      ? `${reference.tag} couldn't be processed. You weren't charged.`
+      ? `${reference} couldn't be processed. You weren't charged.`
       : REFERENCE_PROCESS_MESSAGE;
   }
   if (/TaskTypeConstraint/.test(message))
     return SEEDANCE_EDIT_CONSTRAINT_MESSAGE;
   if (/InternalServiceError/.test(message)) return SEEDANCE_INTERNAL_MESSAGE;
   const lead = reference
-    ? `${reference.tag} couldn't be used.`
+    ? `${reference} couldn't be used.`
     : "Seedance couldn't process this video.";
-  const detail = providerDetail(message, reference?.url);
+  const detail = providerDetail(message);
   if (!detail) return `${lead} ${NOT_CHARGED}`;
   const short = detail.length > 180 ? `${detail.slice(0, 177)}…` : detail;
   const stop = /[.!?…]$/.test(short) ? '' : '.';

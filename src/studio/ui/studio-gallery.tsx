@@ -140,18 +140,21 @@ export function studioShownFailure(error: string | null | undefined): string {
  */
 function StudioFailure({
   error,
+  label,
   className,
   style,
   children,
 }: {
   error: string | null | undefined;
+  /** What was asked for, so one failed tile reads apart from the next. */
+  label: string;
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
 }) {
   return (
-    <div
-      role="alert"
+    <section
+      aria-label={`Couldn't generate ${label}`}
       className="flex w-full flex-col items-center justify-center gap-3 p-4 text-center"
       style={style}
     >
@@ -167,7 +170,7 @@ function StudioFailure({
       {children && (
         <div className="flex flex-wrap justify-center gap-2">{children}</div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -211,6 +214,7 @@ function StudioCard({
       {asset.status === 'failed' ? (
         <StudioFailure
           error={asset.error}
+          label={prompt || 'this asset'}
           className="line-clamp-4 sm:line-clamp-6"
           style={{ aspectRatio: studioAspectRatio(asset).replace(':', ' / ') }}
         >
@@ -493,7 +497,11 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const video = primary?.contentType.startsWith('video/') ?? false;
   if (asset.status === 'failed') {
     return (
-      <StudioFailure error={asset.error} className="min-h-0 overflow-y-auto" />
+      <StudioFailure
+        error={asset.error}
+        label={prompt || 'this asset'}
+        className="min-h-0 overflow-y-auto"
+      />
     );
   }
   if (!primary) {
