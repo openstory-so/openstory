@@ -532,6 +532,8 @@ describe('createStudioAssets', () => {
 
   it('keeps a short Seedance 2.5 reference clip when the prompt does not say edit (#2036)', async () => {
     bytePlusLive = true;
+    // Inside Ark's 1.8–30.2s asset window, outside the 4–30s edit window.
+    mockMeasureStoredMediaDuration.mockResolvedValue(2);
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
@@ -556,7 +558,6 @@ describe('createStudioAssets', () => {
       referenceAudio: [],
     });
 
-    expect(mockMeasureStoredMediaDuration).not.toHaveBeenCalled();
     expect(mockTriggerWorkflow).toHaveBeenCalledWith(
       '/studio',
       expect.objectContaining({
@@ -564,6 +565,29 @@ describe('createStudioAssets', () => {
       }),
       expect.anything()
     );
+  });
+
+  it('refuses a Seedance 2.5 reference clip outside Ark 1.8–30.2s before any hold (#2205)', async () => {
+    bytePlusLive = true;
+    mockMeasureStoredMediaDuration.mockResolvedValue(45);
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'seedance_v2_5',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: ['/r2/uploads/long.mp4'],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/reference video between 1.8 and 30.2 seconds/);
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 
   it('refuses a Seedance 2.5 edit outside 4–30s before any hold (#2036)', async () => {

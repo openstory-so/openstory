@@ -13,7 +13,7 @@
 import { readMediaDuration } from '@/cast/element-kind';
 import {
   isSeedanceEdit,
-  seedanceEditLengthMessage,
+  seedanceClipLengthMessage,
 } from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
@@ -939,17 +939,18 @@ export function StudioComposer({
       taken[kind] += 1;
       const durationSeconds =
         kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
-      if (
-        kind === 'video' &&
-        isSeedanceEdit({
+      if (kind === 'video') {
+        const lengthMessage = seedanceClipLengthMessage(durationSeconds, {
           model: compatibleVideoModel,
           onArk: vias.byteplus === true,
-          prompt,
-          hasInputVideo: true,
-          explicitEdit: mode === 'edit',
-        })
-      ) {
-        const lengthMessage = seedanceEditLengthMessage(durationSeconds);
+          edit: isSeedanceEdit({
+            model: compatibleVideoModel,
+            onArk: vias.byteplus === true,
+            prompt,
+            hasInputVideo: true,
+            explicitEdit: mode === 'edit',
+          }),
+        });
         if (lengthMessage) {
           toast.error(lengthMessage);
           continue;
@@ -1257,13 +1258,15 @@ export function StudioComposer({
       setPromptTooLongOpen(true);
       return;
     }
-    if (followsReferenceVideo) {
-      for (const ref of videoRefs) {
-        const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
-        if (lengthMessage) {
-          toast.error(lengthMessage);
-          return;
-        }
+    for (const ref of videoRefs) {
+      const lengthMessage = seedanceClipLengthMessage(ref.durationSeconds, {
+        model: compatibleVideoModel,
+        onArk: vias.byteplus === true,
+        edit: followsReferenceVideo,
+      });
+      if (lengthMessage) {
+        toast.error(lengthMessage);
+        return;
       }
     }
     if (trimmed.length === 0) {

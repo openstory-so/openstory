@@ -199,8 +199,8 @@ export async function createPooledAsset(
     });
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
-    // The asset id alone does not say which still failed (#2163).
-    if (/failed processing/.test(text) && !text.includes(input.storedUrl)) {
+    // Ark's text never says which reference it refused (#2163, #2205).
+    if (!text.includes(input.storedUrl)) {
       throw new Error(`${text} (${input.storedUrl})`);
     }
     throw error;

@@ -92,6 +92,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from 'react';
 import { toast } from 'sonner';
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
@@ -133,15 +134,55 @@ export function studioShownFailure(error: string | null | undefined): string {
   return stored ? stored : 'Generation failed';
 }
 
+/**
+ * A failed generation, in the tile or the viewer: what went wrong in plain
+ * words, with the actions under it (#2205). Not a wall of red.
+ */
+function StudioFailure({
+  error,
+  className,
+  style,
+  children,
+}: {
+  error: string | null | undefined;
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex w-full flex-col items-center justify-center gap-3 p-4 text-center"
+      style={style}
+    >
+      <p className="text-sm font-medium">Couldn't generate</p>
+      <p
+        className={cn(
+          'max-w-prose text-sm break-words text-muted-foreground select-text',
+          className
+        )}
+      >
+        {studioShownFailure(error)}
+      </p>
+      {children && (
+        <div className="flex flex-wrap justify-center gap-2">{children}</div>
+      )}
+    </div>
+  );
+}
+
 function StudioCard({
   asset,
   onOpen,
   supportMode,
+  onReuse,
 }: {
   asset: StudioGalleryAsset;
   onOpen: () => void;
   supportMode: boolean;
+  onReuse?: (reuse: StudioReuse) => void;
 }) {
+  const reuse = studioReuse(asset);
   const favorite = useToggleStudioFavorite();
   const renderAtQuality = useRenderStudioAssetAtQuality();
   const primary = studioPrimaryOutput(asset);
@@ -167,55 +208,68 @@ function StudioCard({
 
   return (
     <article className="group relative overflow-hidden rounded-lg border bg-muted">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="block w-full overflow-hidden text-left"
-        style={{ aspectRatio: studioAspectRatio(asset).replace(':', ' / ') }}
-        aria-label={prompt || 'Generated asset'}
-      >
-        {inFlight ? (
-          <Skeleton className="h-full w-full rounded-none" />
-        ) : asset.status === 'failed' ? (
-          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-destructive">
-            <span className="line-clamp-6">
-              {studioShownFailure(asset.error)}
-            </span>
-          </div>
-        ) : isVideo && primary ? (
-          <video
-            src={primary.url}
-            poster={poster?.url}
-            muted
-            playsInline
-            loop
-            className="h-full w-full object-cover"
-            onMouseEnter={(event) => {
-              if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-                return;
-              playHoverPreview(event.currentTarget);
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.pause();
-              event.currentTarget.currentTime = 0;
-            }}
-          >
-            <track kind="captions" />
-          </video>
-        ) : primary ? (
-          <AppImage
-            src={primary.url}
-            alt={prompt || 'Generated image'}
-            width={768}
-            height={768}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No output
-          </div>
-        )}
-      </button>
+      {asset.status === 'failed' ? (
+        <StudioFailure
+          error={asset.error}
+          className="line-clamp-4 sm:line-clamp-6"
+          style={{ aspectRatio: studioAspectRatio(asset).replace(':', ' / ') }}
+        >
+          {onReuse && reuse && (
+            <Button type="button" size="sm" onClick={() => onReuse(reuse)}>
+              Try again
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="outline" onClick={onOpen}>
+            Details
+          </Button>
+        </StudioFailure>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="block w-full overflow-hidden text-left"
+          style={{ aspectRatio: studioAspectRatio(asset).replace(':', ' / ') }}
+          aria-label={prompt || 'Generated asset'}
+        >
+          {inFlight ? (
+            <Skeleton className="h-full w-full rounded-none" />
+          ) : isVideo && primary ? (
+            <video
+              src={primary.url}
+              poster={poster?.url}
+              muted
+              playsInline
+              loop
+              className="h-full w-full object-cover"
+              onMouseEnter={(event) => {
+                if (
+                  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                )
+                  return;
+                playHoverPreview(event.currentTarget);
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.pause();
+                event.currentTarget.currentTime = 0;
+              }}
+            >
+              <track kind="captions" />
+            </video>
+          ) : primary ? (
+            <AppImage
+              src={primary.url}
+              alt={prompt || 'Generated image'}
+              width={768}
+              height={768}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No output
+            </div>
+          )}
+        </button>
+      )}
       {/* A draft tile says so, with the days left to render its final (#1756). */}
       {asset.draftTaskId && asset.status === 'completed' && (
         <span className="pointer-events-none absolute top-2 left-2 z-10 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
@@ -439,9 +493,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const video = primary?.contentType.startsWith('video/') ?? false;
   if (asset.status === 'failed') {
     return (
-      <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
-        {studioShownFailure(asset.error)}
-      </p>
+      <StudioFailure error={asset.error} className="min-h-0 overflow-y-auto" />
     );
   }
   if (!primary) {
@@ -1211,6 +1263,7 @@ export function StudioGallery({
               asset={asset}
               onOpen={() => setOpenId(asset.id)}
               supportMode={supportMode}
+              onReuse={onReuse}
             />
           </div>
         ))}
