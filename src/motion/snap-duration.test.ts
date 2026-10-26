@@ -8,9 +8,9 @@ import {
 } from './snap-duration';
 
 describe('durationGridForModel', () => {
-  it('returns H3 Max contiguous 5–15s clips', () => {
+  it('returns H3 Max whole seconds 1–15 (fal takes 0.92–15)', () => {
     expect(durationGridForModel('minimax_h3_max')).toEqual([
-      5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
   });
 
@@ -22,15 +22,15 @@ describe('durationGridForModel', () => {
 });
 
 describe('editorialDurationGridForModel', () => {
-  it('offers 1s through H3 Max’s 15s cap, not the 5s render floor', () => {
+  it('offers 1s through H3 Max’s 15s cap', () => {
     expect(editorialDurationGridForModel('minimax_h3_max')[0]).toBe(1);
     expect(editorialDurationGridForModel('minimax_h3_max')?.at(-1)).toBe(15);
   });
 });
 
 describe('snapDuration', () => {
-  it('snaps 4s onto the H3 Max 5s floor', () => {
-    expect(snapDuration(4, 'minimax_h3_max')).toBe(5);
+  it('snaps 3s onto the Seedance 2.0 4s floor', () => {
+    expect(snapDuration(3, 'seedance_v2')).toBe(4);
   });
 
   it('keeps a value already on the grid', () => {

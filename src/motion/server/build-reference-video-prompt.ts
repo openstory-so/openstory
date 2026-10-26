@@ -176,6 +176,14 @@ export function bindableReferences(
   return [...parts.images, ...parts.videos, ...parts.audio];
 }
 
+/** Will at least one image reference ride the image list (still excluded)? */
+export function hasBindableImageReference(
+  binding: ReferencePromptBinding | null,
+  references: ReferenceImageDescription[]
+): boolean {
+  return partitionReferences(binding, references, false).images.length > 0;
+}
+
 /**
  * Would attaching this reference bust the endpoint's length limits? Unknown
  * length is never "too long" — see `partitionReferences`.

@@ -11,6 +11,7 @@ import {
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   type ImageToVideoModel,
+  type MotionReferenceEndpointConfig,
   videoModelSupportsAudio,
 } from '@/models/models';
 import { pickVideoResolution } from '@/models/resolutions';
@@ -23,6 +24,7 @@ import type { z } from 'zod';
 import {
   bindableReferences,
   buildReferenceVideoPrompt,
+  hasBindableImageReference,
 } from './build-reference-video-prompt';
 import {
   applyMotionTransform,
@@ -218,20 +220,28 @@ type RegisteredMotionOutput = ReturnType<MotionTransform<MotionEndpointId>>;
  * Does this reference-to-video submission pin the still in its own
  * start-frame field rather than spending the first image slot on it?
  *
- * Only true where the endpoint actually has such a field (Kling O3) and the
- * shot actually rendered a still. Exported so the over-cap check in
+ * Only true where the endpoint actually has such a field (Kling O3, Kling 4,
+ * H3 Max), the shot actually rendered a still, and a sheet will fill the
+ * image list without it. fal refuses a request whose only references are
+ * audio ("Audio cannot be the only reference input"), so a shot whose sole
+ * reference is a recorded line keeps the still in the image list as before.
+ * Exported so the over-cap check in
  * `submitFalMotionJob` computes the same reference budget the builder does —
  * the two disagreeing would mean warning about drops that never happened, or
  * missing the ones that did.
  */
 export function pinsDedicatedStartFrame(
-  endpointId: MotionEndpointId,
-  options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceOnly'>
+  config: MotionReferenceEndpointConfig,
+  options: Pick<
+    GenerateMotionOptions,
+    'imageUrl' | 'referenceOnly' | 'referenceImages'
+  >
 ): boolean {
   return (
     !options.referenceOnly &&
     Boolean(options.imageUrl) &&
-    hasStartFrameField(MOTION_JSON_SCHEMAS[endpointId])
+    hasStartFrameField(MOTION_JSON_SCHEMAS[config.endpointId]) &&
+    hasBindableImageReference(config, options.referenceImages ?? [])
   );
 }
 
@@ -315,7 +325,10 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     );
   }
 
-  const pinsStartFrame = pinsDedicatedStartFrame(endpointId, options);
+  const pinsStartFrame = pinsDedicatedStartFrame(
+    endpoint.referenceConfig,
+    options
+  );
 
   const { prompt, imageUrls, videoUrls, audioUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
@@ -340,7 +353,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     // because fal rejects a request with no reference image OR video.
     [imageField]: imageUrls,
     // The transform maps `imageUrl` onto the schema's start-frame field
-    // (`start_image_url` on Kling O3, the only reference endpoint with one).
+    // (`start_image_url` on Kling O3 and Kling 4, `image_url` on H3 Max).
     ...(pinsStartFrame && { imageUrl: options.imageUrl }),
     ...(videoUrls.length > 0 && {
       [config.videoField ?? 'video_urls']: videoUrls,

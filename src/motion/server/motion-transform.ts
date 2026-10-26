@@ -49,8 +49,10 @@ export function getDurationValues<T extends MotionJSONSchema>(
 
   const withRange = unwrapAnyOf(dur, 'minimum');
   if (withRange) {
-    const min = Number(withRange.minimum);
-    const max = Number(withRange.maximum);
+    // Whole seconds inside the range: a fractional bound (H3 Max takes
+    // 0.92–15) must not shift every step onto 0.92, 1.92, …
+    const min = Math.ceil(Number(withRange.minimum));
+    const max = Math.floor(Number(withRange.maximum));
     return Array.from({ length: max - min + 1 }, (_, i) => min + i);
   }
 

@@ -56,10 +56,10 @@ describe('packMotionBatchShots', () => {
     };
     const [packed] = packMotionBatchShots(
       [
-        { ...shot('a', 'sc-1', 3), referenceImages: [location, steve] },
-        { ...shot('b', 'sc-1', 2), referenceImages: [location, elara] },
+        { ...shot('a', 'sc-1', 2), referenceImages: [location, steve] },
+        { ...shot('b', 'sc-1', 1), referenceImages: [location, elara] },
       ],
-      ['minimax_h3_max']
+      ['seedance_v2']
     );
     const bound = buildReferenceVideoPrompt(
       { tag: (n) => `Image ${n}`, maxImages: 9 },
@@ -164,23 +164,23 @@ describe('packMotionBatchShots', () => {
     expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
   });
 
-  it('4s+6s H3 packs as one 10s job when each payload carries editorial seconds', () => {
+  it('3s+5s Seedance packs as one 8s job when each payload carries editorial seconds', () => {
     const packed = packMotionBatchShots(
       [
-        shot('a', 'sc-1', packPayloadDurationSeconds(4000)),
-        shot('b', 'sc-1', packPayloadDurationSeconds(6000)),
+        shot('a', 'sc-1', packPayloadDurationSeconds(3000)),
+        shot('b', 'sc-1', packPayloadDurationSeconds(5000)),
       ],
-      ['minimax_h3_max']
+      ['seedance_v2']
     );
     expect(packed).toHaveLength(1);
-    expect(packed[0]).toMatchObject({ shotId: 'a', duration: 10 });
+    expect(packed[0]).toMatchObject({ shotId: 'a', duration: 8 });
     expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
   });
 
-  it('writing the packed sum onto the clicked shot splits H3 4s+6s into two jobs', () => {
+  it('writing the packed sum onto the clicked shot splits Seedance 3s+5s into two jobs', () => {
     const packed = packMotionBatchShots(
-      [shot('a', 'sc-1', 10), shot('b', 'sc-1', 6)],
-      ['minimax_h3_max']
+      [shot('a', 'sc-1', 8), shot('b', 'sc-1', 5)],
+      ['seedance_v2']
     );
     expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
     expect(packed.every((s) => s.coveredShots === undefined)).toBe(true);
@@ -280,18 +280,27 @@ describe('packMotionBatchShots — prompt length', () => {
 });
 
 describe('packMotionBatchShots — leftover min', () => {
-  it('uses minimum H3 groups without leaving a short tail: [5][5][9]', () => {
+  it('uses minimum Seedance groups without leaving a short tail: [4][4][4][7]', () => {
     const shots = Array.from({ length: 19 }, (_, i) =>
       shot(`s${i}`, 'sc-1', 1)
     );
+    const packed = packMotionBatchShots(shots, ['seedance_v2']);
+    expect(packed.map((p) => [p.coveredShots?.length, p.duration])).toEqual([
+      [4, 4],
+      [4, 4],
+      [4, 4],
+      [7, 7],
+    ]);
+  });
+
+  it('renders 1s H3 Max shots alone now that its floor is 1s', () => {
+    const shots = Array.from({ length: 3 }, (_, i) => shot(`s${i}`, 'sc-1', 1));
     const packed = packMotionBatchShots(shots, ['minimax_h3_max']);
-    expect(packed).toHaveLength(3);
-    expect(packed[0]?.coveredShots).toHaveLength(5);
-    expect(packed[0]?.duration).toBe(5);
-    expect(packed[1]?.coveredShots).toHaveLength(5);
-    expect(packed[1]?.duration).toBe(5);
-    expect(packed[2]?.coveredShots).toHaveLength(9);
-    expect(packed[2]?.duration).toBe(9);
+    expect(packed.map((p) => [p.shotId, p.duration])).toEqual([
+      ['s0', 1],
+      ['s1', 1],
+      ['s2', 1],
+    ]);
   });
 
   it('a Grok leftover shot does not pack into Seedance neighbours', () => {

@@ -92,8 +92,8 @@ describe('resolveSegmentMinMs', () => {
     expect(resolveSegmentMinMs('seedance_v2')).toBe(4_000);
   });
 
-  it('returns H3 Max’s 5s floor', () => {
-    expect(resolveSegmentMinMs('minimax_h3_max')).toBe(5_000);
+  it('returns H3 Max’s 1s floor', () => {
+    expect(resolveSegmentMinMs('minimax_h3_max')).toBe(1_000);
   });
 });
 

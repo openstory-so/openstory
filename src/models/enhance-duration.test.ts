@@ -121,22 +121,22 @@ describe('durationCorrectionNeeded', () => {
 
 describe('assessDurationFit', () => {
   it('reports the snapped total, off-grid labels included', () => {
-    // 9 × 4s labels snap up to the H3 Max 5s floor — the script renders at
-    // 45s whatever the enhance target was.
+    // 9 × 3s labels snap up to the Seedance 2.0 4s floor — the script renders
+    // at 36s whatever the enhance target was.
     expect(
-      assessDurationFit(NINE_SCENES.replaceAll('5s', '4s'), 'minimax_h3_max')
+      assessDurationFit(NINE_SCENES.replaceAll('5s', '3s'), 'seedance_v2')
         .snappedSeconds
-    ).toBe(45);
+    ).toBe(36);
     expect(
-      assessDurationFit(FIVE_SCENES.replaceAll('5s', '6s'), 'minimax_h3_max')
+      assessDurationFit(FIVE_SCENES.replaceAll('5s', '6s'), 'seedance_v2')
         .snappedSeconds
     ).toBe(30);
   });
 
   it('reports no total for an unlabeled script', () => {
-    const fit = assessDurationFit('A door opens.', 'minimax_h3_max');
+    const fit = assessDurationFit('A door opens.', 'seedance_v2');
     expect(fit.snappedSeconds).toBeNull();
-    expect(fit.clipGrid).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(fit.clipGrid).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   });
 });
 
@@ -194,9 +194,9 @@ describe('estimateMotionDurations', () => {
       script: 'a one-liner',
       targetSeconds: 30,
       sceneCount: 8,
-      model: 'minimax_h3_max',
+      model: 'seedance_v2',
     });
-    // 30/8 = 3.75 → H3 Max floor 5
-    expect(perShotSeconds).toBe(5);
+    // 30/8 = 3.75 → Seedance 2.0 floor 4
+    expect(perShotSeconds).toBe(4);
   });
 });
