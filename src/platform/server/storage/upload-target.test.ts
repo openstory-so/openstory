@@ -72,6 +72,24 @@ describe('stitch files are written once (#2127)', () => {
   });
 });
 
+describe('checked uploads are written once (#2192)', () => {
+  const talentRequest = (path: string) =>
+    new Request(
+      `https://app.example.com/api/storage/upload?bucket=talent&path=${encodeURIComponent(path)}&contentType=image%2Fpng`
+    );
+
+  it('takes a first write, and 409s new bytes under a checked key', async () => {
+    const path = `${TEAM}/uploads/01UP.png`;
+    expect((await resolveUploadTarget(talentRequest(path), USER)).ok).toBe(
+      true
+    );
+    fileExists.mockResolvedValue(true);
+    const again = await resolveUploadTarget(talentRequest(path), USER);
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.response.status).toBe(409);
+  });
+});
+
 describe('resolveUploadTarget', () => {
   it('authorizes the team named in the path, not the caller’s “first” team', async () => {
     const resolved = await resolveUploadTarget(

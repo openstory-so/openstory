@@ -42,6 +42,7 @@ import {
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
+import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -214,11 +215,17 @@ function analyzeUpload(opts: {
   });
 }
 
-/** A raw URL, or one of this team's own stored objects. */
+/**
+ * A raw URL, or one of this team's own stored objects. Ownership is the
+ * key's owner segment, read the way the upload route reads it
+ * (`<bucket>/<team>/…` or `<bucket>/teams/<team>/…`), never a substring.
+ */
 function isCheckable(url: string, teamId: string): boolean {
-  return url.startsWith('/r2/')
-    ? url.includes(`/${teamId}/`)
-    : needsLikenessCheck(url);
+  const key = r2KeyFromUrl(url);
+  if (key === null) return needsLikenessCheck(url);
+  if (mediaUrlHasTraversal(url)) return false;
+  const path = key.split('/').slice(1);
+  return (path[0] === 'teams' ? path[1] : path[0]) === teamId;
 }
 
 /** Refuse a URL {@link isCheckable} rejects: another team's file. */

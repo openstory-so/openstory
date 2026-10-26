@@ -4,7 +4,7 @@
  * The upload route starts it when the bytes land, so a closed tab, a reload
  * or a trip to checkout cannot cut it off. The browser only reads the
  * result: the ledger row once there is one, else the run's state. One run
- * per URL (the dedup id is the URL's hash); a retry after a failed run is a
+ * per team and URL (the dedup id is their hash); a retry after a failed run is a
  * new attempt, up to the trigger's generation cap.
  */
 
@@ -13,6 +13,7 @@ import { sha256Hex } from '@/platform/compliance/hash';
 import { OpenStoryError, ValidationError } from '@/platform/errors';
 import {
   getPublicUrl,
+  LIKENESS_CHECKED_BUCKETS,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -53,13 +54,7 @@ export type UploadCheckWorkflowInput = UserWorkflowContext & {
  */
 function checksOnUpload(bucket: StorageBucket, contentType: string): boolean {
   if (contentType.startsWith('image/')) {
-    return (
-      bucket === STORAGE_BUCKETS.THUMBNAILS ||
-      bucket === STORAGE_BUCKETS.CHARACTERS ||
-      bucket === STORAGE_BUCKETS.LOCATIONS ||
-      bucket === STORAGE_BUCKETS.TALENT ||
-      bucket === STORAGE_BUCKETS.ELEMENTS
-    );
+    return LIKENESS_CHECKED_BUCKETS.has(bucket);
   }
   if (contentType.startsWith('video/')) {
     return (
@@ -69,8 +64,9 @@ function checksOnUpload(bucket: StorageBucket, contentType: string): boolean {
   return false;
 }
 
-async function checkKey(url: string): Promise<string> {
-  return sha256Hex(url);
+/** Per team: two teams may check the same raw URL, each on its own run. */
+async function checkKey(teamId: string, url: string): Promise<string> {
+  return sha256Hex(`${teamId}:${url}`);
 }
 
 /** Start (or join) the check for one upload. */
@@ -78,7 +74,7 @@ async function startUploadCheck(
   input: UploadCheckWorkflowInput
 ): Promise<void> {
   await triggerWorkflow(`/${UPLOAD_CHECK_TRIGGER}`, input, {
-    deduplicationId: await checkKey(input.url),
+    deduplicationId: await checkKey(input.teamId, input.url),
   });
 }
 
@@ -113,11 +109,14 @@ type CheckRun = {
 };
 
 /** The newest attempt's run for this URL, or null when none was started. */
-async function latestCheckRun(url: string): Promise<CheckRun | null> {
+async function latestCheckRun(
+  teamId: string,
+  url: string
+): Promise<CheckRun | null> {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
   const env = getEnv() as unknown as CloudflareEnv;
   const binding = getCfBindingForTriggerPath(UPLOAD_CHECK_TRIGGER, env);
-  const suffix = await checkKey(url);
+  const suffix = await checkKey(teamId, url);
   let latest: CheckRun | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const id = buildInstanceId({
@@ -184,7 +183,7 @@ export async function readUploadCheck(
   requireCheckable(ref.url, scopedDb.teamId);
   const onRecord = await uploadRightsOnRecord(scopedDb, ref.url);
   if (onRecord) return onRecord;
-  const run = await latestCheckRun(ref.url);
+  const run = await latestCheckRun(scopedDb.teamId, ref.url);
   if (!run) {
     await startUploadCheck(checkInput(scopedDb, ref, request));
     return { status: 'checking' };
@@ -217,7 +216,7 @@ export async function retryUploadCheck(
   requireCheckable(ref.url, scopedDb.teamId);
   const onRecord = await uploadRightsOnRecord(scopedDb, ref.url);
   if (onRecord) return onRecord;
-  const run = await latestCheckRun(ref.url);
+  const run = await latestCheckRun(scopedDb.teamId, ref.url);
   if (run && run.status !== 'errored' && run.status !== 'terminated') {
     return { status: 'checking' };
   }

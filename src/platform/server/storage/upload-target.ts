@@ -11,7 +11,11 @@
 import { fileExists } from '#storage';
 import { isSystemAdmin } from '@/platform/server/auth/system-admin';
 import { getUserTeamMembership } from '@/platform/server/db/scoped';
-import { STORAGE_BUCKETS, type StorageBucket } from './buckets';
+import {
+  LIKENESS_CHECKED_BUCKETS,
+  STORAGE_BUCKETS,
+  type StorageBucket,
+} from './buckets';
 
 const bucketByName = new Map<string, StorageBucket>(
   Object.values(STORAGE_BUCKETS).map((b) => [b, b])
@@ -93,6 +97,16 @@ export async function resolveUploadTarget(
     (await fileExists(validBucket, path))
   ) {
     return fail('A stitch file cannot be replaced; share the cut again', 409);
+  }
+  // Same for an upload the likeness check judged (#2192): its verdict is
+  // keyed by URL, so new bytes under the old key would keep it. Every upload
+  // path ends in a fresh id, so only a replay writes here twice.
+  // ponytail: exists-then-put race; an R2 conditional put closes it if needed.
+  if (
+    LIKENESS_CHECKED_BUCKETS.has(validBucket) &&
+    (await fileExists(validBucket, path))
+  ) {
+    return fail('This file is already uploaded; upload it again', 409);
   }
 
   return {

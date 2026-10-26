@@ -22,6 +22,19 @@ export const STORAGE_BUCKETS = {
 export type StorageBucket =
   (typeof STORAGE_BUCKETS)[keyof typeof STORAGE_BUCKETS];
 
+/**
+ * Buckets whose user uploads get the likeness check (#2192). A verdict is
+ * keyed by URL, so an object here is written once: an overwrite would keep
+ * the old file's verdict.
+ */
+export const LIKENESS_CHECKED_BUCKETS: ReadonlySet<StorageBucket> = new Set([
+  STORAGE_BUCKETS.THUMBNAILS,
+  STORAGE_BUCKETS.CHARACTERS,
+  STORAGE_BUCKETS.LOCATIONS,
+  STORAGE_BUCKETS.TALENT,
+  STORAGE_BUCKETS.ELEMENTS,
+]);
+
 export type UploadResult = {
   path: string;
   publicUrl: string;
