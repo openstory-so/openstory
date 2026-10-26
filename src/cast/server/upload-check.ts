@@ -18,14 +18,9 @@ import {
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { isInstanceNotFoundError } from '@/platform/server/workflow/errors';
 import { buildInstanceId } from '@/platform/server/workflow/instance-id';
-import { disposeRpcStub } from '@/platform/server/workflow/rpc-dispose';
-import { getCfBindingForTriggerPath } from '@/platform/server/workflow/trigger-bindings';
-import type {
-  CloudflareEnv,
-  UserWorkflowContext,
-} from '@/platform/server/workflow/types';
+import { readInstanceIfExists } from '@/platform/server/workflow/run-outcome';
+import type { UserWorkflowContext } from '@/platform/server/workflow/types';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadCheck, UploadRef } from '@/cast/upload-rights';
 import {
@@ -108,8 +103,9 @@ export async function startCheckForStoredUpload(opts: {
 
 type CheckRun = {
   attempt: number;
-  status: InstanceStatus['status'];
-  error: { name: string; message: string } | null;
+  status: string;
+  /** The engine's error, flattened to `NAME: message`. */
+  error: string | null;
 };
 
 /** The newest attempt's run for this URL, or null when none was started. */
@@ -117,31 +113,26 @@ async function latestCheckRun(
   teamId: string,
   url: string
 ): Promise<CheckRun | null> {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
-  const env = getEnv() as unknown as CloudflareEnv;
-  const binding = getCfBindingForTriggerPath(UPLOAD_CHECK_TRIGGER, env);
   const suffix = await checkKey(teamId, url);
   let latest: CheckRun | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const id = buildInstanceId({
-      env,
-      workflowName: UPLOAD_CHECK_TRIGGER,
-      suffix,
-      generation: attempt,
-    });
-    let instance: WorkflowInstance;
-    try {
-      instance = await binding.get(id);
-    } catch (error) {
-      if (isInstanceNotFoundError(error)) break;
-      throw error;
+    const read = await readInstanceIfExists(
+      buildInstanceId({
+        env: getEnv(),
+        workflowName: UPLOAD_CHECK_TRIGGER,
+        suffix,
+        generation: attempt,
+      })
+    );
+    if (read.kind === 'missing') break;
+    if (read.kind !== 'read') {
+      throw new OpenStoryError(
+        'The check for a real person could not be read. Try again.',
+        'UPLOAD_CHECK_FAILED',
+        502
+      );
     }
-    try {
-      const { status, error } = await instance.status();
-      latest = { attempt, status, error: error ?? null };
-    } finally {
-      disposeRpcStub(instance);
-    }
+    latest = { attempt, status: read.status, error: read.error };
   }
   return latest;
 }
@@ -152,11 +143,14 @@ async function latestCheckRun(
  * can still offer what fixes it.
  */
 function checkFailure(run: CheckRun): OpenStoryError {
-  const name = run.error?.name ?? '';
-  const message = run.error?.message ?? 'The check for a real person stopped.';
-  return /^[A-Z][A-Z_]+$/.test(name)
-    ? new OpenStoryError(message, name, 400)
-    : new OpenStoryError(message, 'UPLOAD_CHECK_FAILED', 502);
+  const refusal = /^([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '');
+  return refusal
+    ? new OpenStoryError(refusal[2], refusal[1], 400)
+    : new OpenStoryError(
+        'The check for a real person stopped. Try again.',
+        'UPLOAD_CHECK_FAILED',
+        502
+      );
 }
 
 function checkInput(

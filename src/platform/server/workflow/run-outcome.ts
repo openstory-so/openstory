@@ -102,6 +102,24 @@ export type InstanceRead =
  * unreadable left the generation mutex and pollers waiting on it for good.
  */
 export async function readInstanceStatus(runId: string): Promise<InstanceRead> {
+  const read = await readInstanceIfExists(runId);
+  return read.kind === 'missing'
+    ? {
+        kind: 'read',
+        status: 'errored',
+        output: undefined,
+        error: 'Instance no longer exists',
+      }
+    : read;
+}
+
+/**
+ * {@link readInstanceStatus}, but an instance the engine does not have is
+ * `missing`: for a caller that probes ids it may never have created.
+ */
+export async function readInstanceIfExists(
+  runId: string
+): Promise<InstanceRead | { kind: 'missing' }> {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
   const env = getEnv() as unknown as CloudflareEnv;
   const binding = getCfBindingForRunId(runId, env);
@@ -125,14 +143,7 @@ export async function readInstanceStatus(runId: string): Promise<InstanceRead> {
       disposeRpcStub(instance);
     }
   } catch (error) {
-    if (isInstanceNotFoundError(error)) {
-      return {
-        kind: 'read',
-        status: 'errored',
-        output: undefined,
-        error: 'Instance no longer exists',
-      };
-    }
+    if (isInstanceNotFoundError(error)) return { kind: 'missing' };
     logger.error(`Failed to read workflow ${runId}:`, {
       data: error instanceof Error ? error.message : error,
     });
