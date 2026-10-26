@@ -14,6 +14,15 @@ import {
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+
+/**
+ * What a billed vision call reads and writes. Narrow so a request and a
+ * workflow (`UploadCheckWorkflow`, through its named hatches) both satisfy it.
+ */
+export type VisionBillingDb = {
+  apiKeys: Pick<ScopedDb['apiKeys'], 'resolveLlmKey'>;
+  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'deductCredits'>;
+};
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import {
@@ -25,7 +34,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'cast', 'talent-vision']);
 
 export type AnalyzeTalentMediaForTeamInput = {
-  scopedDb: ScopedDb;
+  scopedDb: VisionBillingDb;
   userId: string;
   imageUrls: string[];
   filenames?: string[];
@@ -60,7 +69,7 @@ export async function analyzeTalentMediaForTeam(
  * platform's); with none the clip is refused, never judged by another model.
  */
 export async function analyzeTalentClipForTeam(input: {
-  scopedDb: ScopedDb;
+  scopedDb: VisionBillingDb;
   userId: string;
   /** Storage key of the clip (`<bucket>/<path>`). */
   key: string;
@@ -94,7 +103,7 @@ export async function analyzeTalentClipForTeam(input: {
 }
 
 async function requireVisionCredits(
-  scopedDb: ScopedDb,
+  scopedDb: VisionBillingDb,
   llmKey: ResolvedLlmKey
 ): Promise<void> {
   if (llmKey.source === 'team') return;
@@ -107,7 +116,7 @@ async function requireVisionCredits(
 }
 
 async function billTalentVision(
-  input: { scopedDb: ScopedDb; idempotencyKey: string },
+  input: { scopedDb: VisionBillingDb; idempotencyKey: string },
   result: TalentVisionResult,
   mediaCount: number
 ): Promise<void> {

@@ -24,6 +24,12 @@ export type UploadRights =
   /** A real person, and the sign-off is still owed. */
   | { status: 'needs_portrait' };
 
+/**
+ * What a read of the check returns (#2192): the verdict, or that its run is
+ * still going and the caller should ask again.
+ */
+export type UploadCheck = UploadRights | { status: 'checking' };
+
 /** One image to check: the stored URL, plus the original filename as a hint. */
 export const uploadRefSchema = z.object({
   url: mediaUrlSchema,

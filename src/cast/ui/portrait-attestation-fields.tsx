@@ -1,6 +1,6 @@
 import { Checkbox } from '@/ui/shadcn/checkbox';
-import { Input } from '@/ui/shadcn/input';
 import { Label } from '@/ui/shadcn/label';
+import { Textarea } from '@/ui/shadcn/textarea';
 import {
   PORTRAIT_RIGHTS_V1,
   type AttestationStatement,
@@ -58,12 +58,15 @@ export function PortraitAttestationFields({
       {statement.requiresBasis ? (
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-basis`}>Basis for authorization</Label>
-          <Input
+          {/* Multi-line: a basis can be a long sentence. Ctrl/Cmd+Enter confirms. */}
+          <Textarea
             id={`${id}-basis`}
             value={authorizationBasis}
             onChange={(event) => onAuthorizationBasisChange(event.target.value)}
             placeholder="e.g. signed release on file, this is me, contract #123"
             autoComplete="off"
+            rows={3}
+            maxLength={500}
           />
         </div>
       ) : null}

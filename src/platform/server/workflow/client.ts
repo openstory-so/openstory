@@ -52,6 +52,13 @@ function withAbsoluteMediaUrls(value: unknown): unknown {
 const WRITE_ONLY_TRIGGERS = new Set(['sequence-export']);
 
 /**
+ * Triggers that run for real under e2e. The app waits on their answer (the
+ * upload likeness check, #2192), so a mocked id would leave it waiting; the
+ * run's model calls go to the same mocks as the rest of e2e.
+ */
+const RUNS_UNDER_E2E = new Set(['upload-check']);
+
+/**
  * Refuse to start durable work for a restricted account.
  *
  * Reads the account's enforcement rows and resolves them with the shared
@@ -134,7 +141,11 @@ export async function triggerWorkflowRun<
   await assertTriggerAllowed(urlPath, body, options?.enforcement);
 
   const env = getEnv();
-  if (env.E2E_TEST === 'true' && env.E2E_FULL_PIPELINE !== 'true') {
+  if (
+    env.E2E_TEST === 'true' &&
+    env.E2E_FULL_PIPELINE !== 'true' &&
+    !RUNS_UNDER_E2E.has(urlPath.replace(/^\//, ''))
+  ) {
     const mockId = options?.deduplicationId ?? `mock-${Date.now()}`;
     logger.info(`Skipping workflow trigger: ${urlPath} (mock ID: ${mockId})`);
     return { workflowRunId: mockId, reused: false };

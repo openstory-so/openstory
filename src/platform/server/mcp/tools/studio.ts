@@ -88,7 +88,7 @@ const createStudioAssetsTool = openstoryTool({
     endImageUrl: mediaRef.optional(),
   }),
   outputSchema: startedSchema,
-  run: async (input, { scopedDb }) => {
+  run: async (input, { scopedDb, request }) => {
     if (input.activity === 'image') {
       const extra = VIDEO_ONLY.find((key) => input[key] !== undefined);
       const refs = input.referenceVideos.length + input.referenceAudio.length;
@@ -108,7 +108,8 @@ const createStudioAssetsTool = openstoryTool({
         startImageUrl:
           input.startImageUrl && fromShareableUrl(input.startImageUrl),
         endImageUrl: input.endImageUrl && fromShareableUrl(input.endImageUrl),
-      })
+      }),
+      request
     );
     const n = result.assets.length;
     return {
@@ -129,8 +130,14 @@ const editStudioAssetTool = openstoryTool({
     draft: z.boolean().default(false),
   }),
   outputSchema: startedSchema,
-  run: async (input, { scopedDb }) => ({
-    data: await editStudioAsset(scopedDb, input.id, input.prompt, input.draft),
+  run: async (input, { scopedDb, request }) => ({
+    data: await editStudioAsset(
+      scopedDb,
+      input.id,
+      input.prompt,
+      input.draft,
+      request
+    ),
     summary: 'Started the edit.',
   }),
 });
@@ -142,8 +149,8 @@ const renderStudioAssetAtQualityTool = openstoryTool({
   annotations: paid,
   inputSchema: z.strictObject({ id: assetId }),
   outputSchema: startedSchema,
-  run: async (input, { scopedDb }) => ({
-    data: await renderStudioAssetAtQuality(scopedDb, input.id),
+  run: async (input, { scopedDb, request }) => ({
+    data: await renderStudioAssetAtQuality(scopedDb, input.id, request),
     summary: 'Started the 1080p render.',
   }),
 });

@@ -69,7 +69,10 @@ rather than only asserted in a policy document:
   authorization covering AI generation, and place responsibility for holding that
   authorization on the user.
 - **At the point of upload**, every image is classified for a real person on
-  the server (`classifyUpload`, `src/cast/server/upload-rights.ts`). An image
+  the server (`classifyUpload`, `src/cast/server/upload-rights.ts`). The
+  upload route starts the check as `UploadCheckWorkflow` when the bytes land
+  (#2192), so a closed tab cannot cut it off; Studio's create checks any
+  upload of the team's still without a verdict instead of refusing it. An image
   that shows one cannot be used until the uploader ticks the portrait-rights
   statement and names the basis for the authorization. Stored in
   `upload_attestations` with a SHA-256 of the exact statement text shown, so a

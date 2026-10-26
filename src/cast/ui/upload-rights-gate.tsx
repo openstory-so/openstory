@@ -159,8 +159,11 @@ export function UploadRightsGateProvider({
         <DialogContent
           className="max-w-lg"
           onKeyDown={(event) => {
-            if (event.key !== 'Enter') return;
-            if (!(event.target instanceof HTMLInputElement)) return;
+            // The basis is a textarea: Ctrl/Cmd+Enter confirms, Enter is a newline.
+            if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) {
+              return;
+            }
+            if (!(event.target instanceof HTMLTextAreaElement)) return;
             event.preventDefault();
             if (canConfirm && !saving) void confirm();
           }}

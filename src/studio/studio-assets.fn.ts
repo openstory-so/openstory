@@ -39,15 +39,25 @@ import {
 } from './schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
+import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+
+/** Who asked, for an upload a create has to check itself (#2192). */
+function likenessRequest() {
+  const request = getRequest();
+  return {
+    ipAddress: request.headers.get('cf-connecting-ip'),
+    userAgent: request.headers.get('user-agent'),
+  };
+}
 
 export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
-    return createStudioAssets(context.scopedDb, data);
+    return createStudioAssets(context.scopedDb, data, likenessRequest());
   });
 
 /**
@@ -117,7 +127,11 @@ export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
-    return renderStudioAssetAtQuality(context.scopedDb, data.id);
+    return renderStudioAssetAtQuality(
+      context.scopedDb,
+      data.id,
+      likenessRequest()
+    );
   });
 
 /** Rewrite a finished clip from a prompt (#1925); see `editStudioAsset`. */
@@ -133,7 +147,13 @@ export const editStudioAssetFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    return editStudioAsset(context.scopedDb, data.id, data.prompt, data.draft);
+    return editStudioAsset(
+      context.scopedDb,
+      data.id,
+      data.prompt,
+      data.draft,
+      likenessRequest()
+    );
   });
 
 /** The prompts a clip was made from (#1925); see `getStudioEditHistory`. */

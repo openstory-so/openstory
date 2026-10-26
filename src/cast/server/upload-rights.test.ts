@@ -182,7 +182,7 @@ describe('classifyUpload', () => {
 
     await expect(
       classifyUpload({ scopedDb, userId: USER_ID, url: clip, request })
-    ).rejects.toThrow('can’t be checked for a real person');
+    ).rejects.toThrow('not an upload of yours');
     expect(mockAnalyzeClip).not.toHaveBeenCalled();
   });
 

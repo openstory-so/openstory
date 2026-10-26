@@ -1,6 +1,14 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
-import { attestUploadsFn, classifyUploadFn } from '@/cast/upload-rights.fn';
-import type { PortraitAttestation, UploadRef } from '@/cast/upload-rights';
+import {
+  attestUploadsFn,
+  classifyUploadFn,
+  retryUploadCheckFn,
+} from '@/cast/upload-rights.fn';
+import type {
+  PortraitAttestation,
+  UploadRef,
+  UploadRights,
+} from '@/cast/upload-rights';
 import {
   queryOptions,
   useMutation,
@@ -14,17 +22,49 @@ export const uploadRightsKeys = {
   url: (url: string) => [...uploadRightsKeys.all, url] as const,
 };
 
+/** How often to ask again while the check's run is going. */
+const CHECK_POLL_MS = 1500;
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    });
+  });
+}
+
 /**
- * One rights check per URL, never refetched while observed. The server is
- * what makes a re-check free (the ledger row); the cache only saves the
- * round trip.
+ * The check's answer for one URL, never refetched while observed. The upload
+ * started the check on the server (#2192); this only waits for its verdict,
+ * so leaving the page does not stop it. A failed check is the query's error.
  */
 export function uploadRightsQuery(ref: UploadRef) {
   return queryOptions({
     queryKey: uploadRightsKeys.url(ref.url),
-    queryFn: () => classifyUploadFn({ data: ref }),
+    queryFn: async ({ signal }): Promise<UploadRights> => {
+      for (;;) {
+        const check = await classifyUploadFn({ data: ref, signal });
+        if (check.status !== 'checking') return check;
+        await wait(CHECK_POLL_MS, signal);
+      }
+    },
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
+  });
+}
+
+/** Start a failed check again, then wait for its answer. */
+export function useRetryUploadCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ref: UploadRef) => retryUploadCheckFn({ data: ref }),
+    onSuccess: (_check, ref) =>
+      queryClient.refetchQueries({ queryKey: uploadRightsKeys.url(ref.url) }),
+    onError: (error) => {
+      toast.error(error.message);
+    },
   });
 }
 

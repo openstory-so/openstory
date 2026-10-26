@@ -4,6 +4,7 @@ import {
   createMultipartUpload,
   uploadPart,
 } from '#storage';
+import { startCheckForStoredUpload } from '@/cast/server/upload-check';
 import { authRequestMiddleware } from '@/platform/middleware.fn';
 import { handleApiError } from '@/platform/errors';
 import { resolveUploadTarget } from '@/platform/server/storage/upload-target';
@@ -79,6 +80,15 @@ export const Route = createFileRoute('/api/storage/multipart')({
               uploadId,
               parsed.data.parts
             );
+            // The likeness check starts here, not from the browser (#2192).
+            await startCheckForStoredUpload({
+              bucket,
+              path,
+              contentType,
+              teamId: resolved.target.teamId,
+              userId: context.user.id,
+              request,
+            });
             return Response.json({
               success: true,
               publicUrl: result.publicUrl,

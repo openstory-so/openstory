@@ -288,6 +288,18 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The team locations the writer picked (#1695). A location deleted from the team since the pick is left out of the read; name and description come from the trigger snapshot.',
     },
   ],
+  'upload-check-workflow.ts': [
+    {
+      read: 'resolveLlmKey',
+      bucket: 'CREDENTIAL',
+      why: 'Resolved inside the classify step that spends it (#2192).',
+    },
+    {
+      read: 'billing.hasEnoughCredits',
+      bucket: 'BALANCE',
+      why: 'The vision call is billed; the balance is checked in the step that charges it.',
+    },
+  ],
   'element-vision-workflow.ts': [
     {
       read: 'resolveLlmKey',

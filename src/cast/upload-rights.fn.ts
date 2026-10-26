@@ -1,16 +1,16 @@
 /**
- * Upload rights server fns (#1581): the check and the sign-off. Every
+ * Upload rights server fns (#1581): the check's answer and the sign-off.
+ * The check itself runs as a workflow the upload starts (#2192); every
  * finalize then only reads the ledger (`requireUploadRights`).
  */
 
-import { attestUploads, classifyUpload } from '@/cast/server/upload-rights';
+import { readUploadCheck, retryUploadCheck } from '@/cast/server/upload-check';
+import { attestUploads, requireCheckable } from '@/cast/server/upload-rights';
 import {
-  needsLikenessCheck,
   portraitAttestationSchema,
   uploadRefSchema,
-  type UploadRights,
+  type UploadCheck,
 } from '@/cast/upload-rights';
-import { ValidationError } from '@/platform/errors';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
@@ -25,32 +25,24 @@ function requestContext() {
   };
 }
 
-/** A raw URL, or one of this team's own stored objects. */
-function isCheckable(url: string, teamId: string): boolean {
-  return url.startsWith('/r2/')
-    ? url.includes(`/${teamId}/`)
-    : needsLikenessCheck(url);
-}
-
 /**
- * Rights check for one image: what is on record for this team, or one
- * classifier call whose verdict is written so Generate never looks again.
+ * The check's answer for one upload: the verdict on record, or `checking`
+ * while its run goes. Asked again until it answers; a failed run throws.
  */
 export const classifyUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(uploadRefSchema))
-  .handler(async ({ context, data }): Promise<UploadRights> => {
-    if (!isCheckable(data.url, context.teamId)) {
-      throw new ValidationError('This image is not an upload of yours');
-    }
-    return classifyUpload({
-      scopedDb: context.scopedDb,
-      userId: context.user.id,
-      url: data.url,
-      filename: data.filename,
-      request: requestContext(),
-    });
-  });
+  .handler(({ context, data }): Promise<UploadCheck> =>
+    readUploadCheck(context.scopedDb, data, requestContext())
+  );
+
+/** Run the check again after it failed. */
+export const retryUploadCheckFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(uploadRefSchema))
+  .handler(({ context, data }): Promise<UploadCheck> =>
+    retryUploadCheck(context.scopedDb, data, requestContext())
+  );
 
 /** Record the portrait sign-off for real-person uploads. */
 export const attestUploadsFn = createServerFn({ method: 'POST' })
@@ -64,9 +56,7 @@ export const attestUploadsFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     for (const claim of data.attestations) {
-      if (!isCheckable(claim.url, context.teamId)) {
-        throw new ValidationError('This image is not an upload of yours');
-      }
+      requireCheckable(claim.url, context.teamId);
     }
     await attestUploads(context.scopedDb, data.attestations, requestContext());
     return { attested: data.attestations.length };

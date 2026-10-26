@@ -21,6 +21,8 @@ type UploadTarget = {
   bucket: StorageBucket;
   path: string;
   contentType: string;
+  /** The team the path's owner segment names; the caller is a member. */
+  teamId: string;
 };
 
 type Resolved =
@@ -93,5 +95,8 @@ export async function resolveUploadTarget(
     return fail('A stitch file cannot be replaced; share the cut again', 409);
   }
 
-  return { ok: true, target: { bucket: validBucket, path, contentType } };
+  return {
+    ok: true,
+    target: { bucket: validBucket, path, contentType, teamId: ownerSegment },
+  };
 }

@@ -28,7 +28,8 @@ import {
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import {
   likenessFromLedger,
-  requireUploadRights,
+  requireCheckedUploadRights,
+  type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
 import { studioLikenessMedia } from '@/studio/reference-rights';
@@ -171,7 +172,8 @@ async function zeroUnusedReservations(
  */
 async function requireOwnEditSource(
   scopedDb: ScopedDb,
-  input: { sourceAssetId?: string; sourceVideoUrl?: string }
+  input: { sourceAssetId?: string; sourceVideoUrl?: string },
+  request: LikenessRequestContext
 ): Promise<void> {
   const source = input.sourceAssetId
     ? await scopedDb.generatedAssets.getById(input.sourceAssetId)
@@ -196,7 +198,7 @@ async function requireOwnEditSource(
       'This clip was made from an uploaded reference video, so it cannot be edited'
     );
   }
-  await requireStudioClipChain(scopedDb, [{ assetId: source.id }]);
+  await requireStudioClipChain(scopedDb, [{ assetId: source.id }], request);
 }
 
 function stringList(value: unknown): string[] {
@@ -243,7 +245,8 @@ type ClipLink = { assetId: string } | { url: string };
  */
 async function requireStudioClipChain(
   scopedDb: ScopedDb,
-  start: ClipLink[]
+  start: ClipLink[],
+  request: LikenessRequestContext
 ): Promise<void> {
   const seen = new Set<string>();
   const queue = [...start];
@@ -266,7 +269,7 @@ async function requireStudioClipChain(
       'url' in link &&
       studioPrimaryOutput(asset)?.url !== link.url
     ) {
-      await requireUploadRights(scopedDb, [link.url]);
+      await requireCheckedUploadRights(scopedDb, [link.url], request);
       continue;
     }
     if (!asset) {
@@ -276,7 +279,7 @@ async function requireStudioClipChain(
         );
       }
       // Not a Studio clip of this team: it needs its own ledger row.
-      await requireUploadRights(scopedDb, [link.url]);
+      await requireCheckedUploadRights(scopedDb, [link.url], request);
       continue;
     }
     for (const url of stringList(asset.input.referenceVideos)) {
@@ -293,6 +296,8 @@ async function requireStudioClipChain(
 export async function createStudioAssets(
   scopedDb: ScopedDb,
   input: StudioCreateInput,
+  /** Who asked, for an upload this create has to check itself (#2192). */
+  request: LikenessRequestContext,
   options: {
     /** See `StudioGenerationWorkflowInput.finalFromDraftTaskId` (#1756). */
     finalFromDraftTaskId?: string;
@@ -311,7 +316,9 @@ export async function createStudioAssets(
     if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
       throw new ValidationError('Unknown video model');
     }
-    if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
+    if (input.mode === 'edit') {
+      await requireOwnEditSource(scopedDb, input, request);
+    }
     // An edit's length follows the clip, so the hold prices the model's
     // longest clip (#2036).
     const followsClip = isSeedanceEdit({
@@ -369,13 +376,15 @@ export async function createStudioAssets(
     teamId: scopedDb.teamId,
   });
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
-  // (#1581); library stills passed the same gate when they were saved.
+  // (#1581); library stills passed the same gate when they were saved. One
+  // the upload's check never answered for is checked here (#2192).
   for (const url of studioLikenessMedia(input)) {
     refuseTraversableReferenceUrl(url);
   }
-  await requireUploadRights(
+  await requireCheckedUploadRights(
     scopedDb,
-    studioLikenessMedia(input).filter(needsLikenessCheck)
+    studioLikenessMedia(input).filter(needsLikenessCheck),
+    request
   );
   if (input.activity === 'video' && input.mode === 'reference') {
     // The gate judged a stored file by its type; a clip stored as a still
@@ -391,7 +400,8 @@ export async function createStudioAssets(
       scopedDb,
       input.referenceVideos
         .filter((url) => !needsLikenessCheck(url))
-        .map((url) => ({ url }))
+        .map((url) => ({ url })),
+      request
     );
   }
   const noPersonImages: string[] = [];
@@ -528,7 +538,8 @@ export async function createStudioAssets(
  */
 export async function renderStudioAssetAtQuality(
   scopedDb: ScopedDb,
-  assetId: string
+  assetId: string,
+  request: LikenessRequestContext
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio') {
@@ -549,7 +560,7 @@ export async function renderStudioAssetAtQuality(
     resolution: DRAFT_FINAL_RESOLUTION,
     count: 1,
   });
-  return createStudioAssets(scopedDb, input, {
+  return createStudioAssets(scopedDb, input, request, {
     finalFromDraftTaskId: asset.draftTaskId,
   });
 }
@@ -567,7 +578,8 @@ export async function editStudioAsset(
    * Edit a final as a 480p Ark draft (#1756). A draft's edit is always a
    * draft, whatever is asked: its final comes from Render final.
    */
-  draft: boolean
+  draft: boolean,
+  request: LikenessRequestContext
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
@@ -596,5 +608,5 @@ export async function editStudioAsset(
     sourceVideoUrl: video.url,
     sourceAssetId: asset.id,
   });
-  return createStudioAssets(scopedDb, input);
+  return createStudioAssets(scopedDb, input, request);
 }

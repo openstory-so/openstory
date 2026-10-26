@@ -1,4 +1,5 @@
 import { uploadFile } from '#storage';
+import { startCheckForStoredUpload } from '@/cast/server/upload-check';
 import { authRequestMiddleware } from '@/platform/middleware.fn';
 import { handleApiError } from '@/platform/errors';
 import { resolveUploadTarget } from '@/platform/server/storage/upload-target';
@@ -12,7 +13,7 @@ export const Route = createFileRoute('/api/storage/upload')({
         try {
           const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
-          const { bucket, path, contentType } = resolved.target;
+          const { bucket, path, contentType, teamId } = resolved.target;
 
           const body = request.body;
           if (!body) {
@@ -56,6 +57,15 @@ export const Route = createFileRoute('/api/storage/upload')({
 
           await uploadFile(bucket, path, fixedLength.readable, {
             contentType,
+          });
+          // The likeness check starts here, not from the browser (#2192).
+          await startCheckForStoredUpload({
+            bucket,
+            path,
+            contentType,
+            teamId,
+            userId: context.user.id,
+            request,
           });
 
           return Response.json({ success: true });

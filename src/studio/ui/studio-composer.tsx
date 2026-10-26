@@ -79,7 +79,11 @@ import {
   needsLikenessCheck,
   type PortraitAttestation,
 } from '@/cast/upload-rights';
-import { useAttestUploads, useUploadRights } from '@/cast/ui/use-upload-rights';
+import {
+  useAttestUploads,
+  useRetryUploadCheck,
+  useUploadRights,
+} from '@/cast/ui/use-upload-rights';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { studioLikenessMedia } from '@/studio/reference-rights';
@@ -367,6 +371,7 @@ export function StudioComposer({
   const pendingCreates = useStudioPendingCreates(activity);
   const upload = useUploadStudioMedia();
   const attest = useAttestUploads();
+  const retryCheck = useRetryUploadCheck();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();
   const vias = useViaAvailability();
@@ -1484,12 +1489,14 @@ export function StudioComposer({
       )}
 
       {isAuthenticated && checks.length > 0 && (
-        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
+        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Ctrl/Cmd+Enter in the basis field confirms rights, not Generate (the outer form)
         <div
           className="flex shrink-0 flex-col gap-2"
           onKeyDown={(event) => {
-            if (event.key !== 'Enter') return;
-            if (!(event.target instanceof HTMLInputElement)) return;
+            if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) {
+              return;
+            }
+            if (!(event.target instanceof HTMLTextAreaElement)) return;
             event.preventDefault();
             if (rightsTicked && !attest.isPending) confirmRights();
           }}
@@ -1497,8 +1504,13 @@ export function StudioComposer({
           {checks
             .filter((c) => c.query.isError)
             .map((c) => (
-              <p key={c.url} className="text-xs text-destructive">
-                Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+              <p
+                key={c.url}
+                className="flex flex-wrap items-baseline gap-1 text-xs text-destructive"
+              >
+                <span>
+                  Couldn't check {badgeFor(c.url)}: {c.query.error?.message}
+                </span>
                 {isInsufficientCreditsError(c.query.error) ? (
                   <Button
                     type="button"
@@ -1509,17 +1521,22 @@ export function StudioComposer({
                   >
                     Add credits
                   </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => void c.query.refetch()}
-                  >
-                    Retry
-                  </Button>
-                )}
+                ) : null}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  disabled={retryCheck.isPending}
+                  onClick={() =>
+                    retryCheck.mutate({
+                      url: c.url,
+                      filename: tiles.find((r) => r.url === c.url)?.label,
+                    })
+                  }
+                >
+                  {retryCheck.isPending ? 'Retrying…' : 'Retry'}
+                </Button>
               </p>
             ))}
           {portraitUrls.length > 0 && (
