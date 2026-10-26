@@ -23,10 +23,6 @@
     "#flush-scheduler": {
       "workerd": "./src/platform/server/observability/flush-scheduler.cloudflare.ts",
       "default": "./src/platform/server/observability/flush-scheduler.ts"
-    },
-    "#actions/*": {
-      "storybook": "./src/app/actions/*/index.mock.ts",
-      "default": "./src/app/actions/*/index.ts"
     }
   },
   "scripts": {
