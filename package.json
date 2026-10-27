@@ -156,7 +156,7 @@
     "@unpic/react": "^1.0.2",
     "@videojs/media": "^10.0.1",
     "@videojs/react": "^10.0.1",
-    "better-auth": "1.7.7",
+    "better-auth": "1.7.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
