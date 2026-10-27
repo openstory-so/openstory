@@ -293,6 +293,55 @@ export function createShotDialogueMethods(db: Database) {
           )
         ),
 
+    /** Every speech file of a sequence (#2209). A speech is the whole take. */
+    listSpeechesBySequence: async (
+      sequenceId: string
+    ): Promise<{ id: string; url: string; storageKey: string }[]> =>
+      db
+        .select({
+          id: dialogueSpeeches.id,
+          url: dialogueSpeeches.url,
+          storageKey: dialogueSpeeches.storageKey,
+        })
+        .from(dialogueSpeeches)
+        .where(eq(dialogueSpeeches.sequenceId, sequenceId)),
+
+    /**
+     * Every section of the sequence's live shots (#2209). `selected` is the
+     * shot's current cut. The manifest groups these into one cuts file per
+     * speech; this does not change {@link getSelectedSectionsBySequence}.
+     */
+    listSectionsBySequence: async (
+      sequenceId: string
+    ): Promise<
+      {
+        shotId: string;
+        speechId: string;
+        fromSeconds: number;
+        toSeconds: number;
+        selected: boolean;
+      }[]
+    > => {
+      const rows = await db
+        .select({
+          shotId: shotDialogueSections.shotId,
+          speechId: shotDialogueSections.speechId,
+          fromSeconds: shotDialogueSections.fromSeconds,
+          toSeconds: shotDialogueSections.toSeconds,
+          selectedAt: shotDialogueSections.selectedAt,
+        })
+        .from(shotDialogueSections)
+        .innerJoin(shots, eq(shots.id, shotDialogueSections.shotId))
+        .where(and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt)));
+      return rows.map((row) => ({
+        shotId: row.shotId,
+        speechId: row.speechId,
+        fromSeconds: row.fromSeconds,
+        toSeconds: row.toSeconds,
+        selected: row.selectedAt != null,
+      }));
+    },
+
     /**
      * Append the lines as a new selected version. Returns the selected row
      * UNCHANGED when it already says exactly this — a re-analysis, a replayed

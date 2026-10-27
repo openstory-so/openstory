@@ -25,9 +25,10 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import { downloadSequenceAssets } from './assets.js';
 import { readImageSize } from './image-size.js';
 import { extensionOf, mediaType, readBytes } from './media-file.js';
-import { shareCut } from './share.js';
+import { openStoryApiKey, refreshOpenStoryApiKey, shareCut } from './share.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
 import { placeTimelineCues } from './place-cues.js';
 import { parseSubtitles } from './subtitles.js';
@@ -48,6 +49,7 @@ export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-g
 
        stitch bundle <dir> [cut options] <file>...
        stitch share [--origin url] [--portrait-rights basis] [cut options] <file>...
+       stitch assets <sequenceId> [--history] [--exports] [--origin url] [--dir dir]
        stitch skill [--global]
 
 Play stills and videos in the browser. Each file is a path or an http(s) URL;
@@ -66,6 +68,12 @@ can open. The first share signs in with a device code and keeps the key in
 ~/.openstory/stitch.json. --origin picks the OpenStory server. Every still is
 checked for a real person; one who is needs --portrait-rights with the basis
 for using their likeness (a release reference, "self", a contract id).
+
+stitch assets downloads a sequence into ./<sequenceId> (or --dir). The first
+run signs in the same way as share. A later run skips a file that is already
+there at the same version. --history adds every completed version.
+--exports adds rendered MP4s. Run it with npx @openstory/stitch assets or
+bunx @openstory/stitch assets.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -126,12 +134,21 @@ type ShareRequest = {
   origin: string;
   portraitRights: string | null;
 } & LocalCut;
+type AssetsRequest = {
+  kind: 'assets';
+  sequenceId: string;
+  origin: string;
+  dir: string;
+  history: boolean;
+  exports: boolean;
+};
 export type CliRequest =
   | SkillRequest
   | HelpRequest
   | PlayRequest
   | BundleRequest
-  | ShareRequest;
+  | ShareRequest
+  | AssetsRequest;
 
 export const DEFAULT_ORIGIN = 'https://openstory.so';
 
@@ -143,6 +160,7 @@ export async function parseArgs(
   argv: string[],
   cwd: string
 ): Promise<CliRequest> {
+  if (argv[0] === 'assets') return parseAssets(argv.slice(1), cwd);
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
   if (argv[0] === 'skill') return parseSkill(argv.slice(1));
   if (argv[0] === 'bundle') {
@@ -189,6 +207,49 @@ export async function parseArgs(
     };
   }
   return { kind: 'play', ...(await parseCut(argv, cwd)) };
+}
+
+function parseAssets(argv: string[], cwd: string): CliRequest {
+  if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
+  let origin = DEFAULT_ORIGIN;
+  let dir: string | null = null;
+  let history = false;
+  let exportsFlag = false;
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] ?? '';
+    if (arg === '--origin') {
+      const value = argv[i + 1];
+      if (value === undefined || !isHttpUrl(value)) {
+        throw new Error('--origin needs an http(s) URL');
+      }
+      origin = new URL(value).origin;
+      i += 1;
+    } else if (arg === '--dir') {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('-')) {
+        throw new Error('--dir needs a directory');
+      }
+      dir = resolve(cwd, value);
+      i += 1;
+    } else if (arg === '--history') history = true;
+    else if (arg === '--exports') exportsFlag = true;
+    else if (arg.startsWith('-')) throw new Error(`Unknown argument: ${arg}`);
+    else rest.push(arg);
+  }
+  const sequenceId = rest[0];
+  if (sequenceId === undefined) {
+    throw new Error('stitch assets needs a sequence id');
+  }
+  if (rest.length > 1) throw new Error(`Unknown argument: ${rest[1]}`);
+  return {
+    kind: 'assets',
+    sequenceId,
+    origin,
+    dir: dir ?? resolve(cwd, sequenceId),
+    history,
+    exports: exportsFlag,
+  };
 }
 
 function parseSkill(argv: string[]): SkillRequest {
@@ -880,6 +941,7 @@ export async function main(
     stderr?: Writer;
     home?: string;
     open?: (url: string) => void;
+    fetch?: typeof fetch;
     packageRoot?: string;
   } = {}
 ): Promise<void> {
@@ -900,6 +962,32 @@ export async function main(
         packageRoot: io.packageRoot ?? packageRoot(),
       });
       stdout.write(dests.map((dest) => `${dest}\n`).join(''));
+      return;
+    }
+    if (request.kind === 'assets') {
+      const home = io.home ?? homedir();
+      const open = io.open ?? ((target: string) => openUrl(target, stderr));
+      const auth = {
+        origin: request.origin,
+        home,
+        stderr,
+        open,
+        fetch: io.fetch,
+      };
+      const result = await downloadSequenceAssets({
+        sequenceId: request.sequenceId,
+        origin: request.origin,
+        home,
+        dest: request.dir,
+        history: request.history,
+        includeExports: request.exports,
+        fetch: io.fetch,
+        key: () => openStoryApiKey(auth),
+        refresh: () => refreshOpenStoryApiKey(auth),
+      });
+      stdout.write(
+        `Saved ${result.saved} files. Skipped ${result.skipped} already there.\n`
+      );
       return;
     }
     const pageDir = join(io.packageRoot ?? packageRoot(), 'dist', 'page');

@@ -1341,6 +1341,34 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
+     * Completed stills that have bytes in R2, for the asset manifest (#2209).
+     * Preview frames with only a provider url stay out. Discarded rows are
+     * included only when the caller asked for history.
+     */
+    listStoredBySequence: async (
+      sequenceId: string,
+      options?: { includeDiscarded?: boolean }
+    ): Promise<ImageVariantWithShot[]> => {
+      const rows = await db
+        .select({ variant: frameVariants, shotId: frames.shotId })
+        .from(frameVariants)
+        .innerJoin(frames, eq(frames.id, frameVariants.frameId))
+        .where(
+          and(
+            eq(frameVariants.sequenceId, sequenceId),
+            eq(frameVariants.status, 'completed'),
+            isNotNull(frameVariants.storagePath),
+            ne(frameVariants.kind, 'preview'),
+            options?.includeDiscarded
+              ? undefined
+              : isNull(frameVariants.discardedAt)
+          )
+        )
+        .orderBy(...oldestFirst);
+      return rows.map((r) => ({ ...r.variant, shotId: r.shotId }));
+    },
+
+    /**
      * Distinct `kind:'model'` model names ATTEMPTED in a sequence — in-flight,
      * failed, cancelled, or rendered — this drives the user-facing image-model
      * dropdown. Only the completed-without-image husk is excluded.

@@ -30,6 +30,11 @@ import { composeSequenceScriptFromDb } from '@/shots/server/scene-script';
 import { readPage } from '@/platform/server/read-page';
 import { NotFoundError } from '@/platform/errors';
 import {
+  assetScopeSchema,
+  sequenceAssetSchema,
+} from '@/sequences/sequence-assets';
+import { listSequenceAssets } from '@/sequences/server/sequence-assets';
+import {
   productionRead,
   collectionInput,
   sequenceInput,
@@ -287,6 +292,26 @@ export const productionReadTools = [
         nextCursor: page.nextCursor,
       };
     }
+  ),
+  productionRead(
+    'list_sequence_assets',
+    'List the files of a sequence for download. scope selected is the current cut. scope history adds every completed stored version, including discarded ones. includeExports adds rendered MP4s, which stay off otherwise. File urls are origin-relative /r2 paths.',
+    sequenceInput.extend({
+      scope: assetScopeSchema.optional(),
+      includeExports: z.boolean().optional(),
+    }),
+    z.object({
+      sequenceId: z.string(),
+      title: z.string(),
+      scope: assetScopeSchema,
+      includeExports: z.boolean(),
+      assets: z.array(sequenceAssetSchema),
+    }),
+    async (input, { scopedDb }) =>
+      listSequenceAssets(scopedDb, input.sequenceId, {
+        scope: input.scope ?? 'selected',
+        includeExports: input.includeExports ?? false,
+      })
   ),
   productionRead(
     'get_export_status',

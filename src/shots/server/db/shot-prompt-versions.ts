@@ -36,6 +36,7 @@ import {
   exists,
   inArray,
   isNotNull,
+  isNull,
   lte,
   ne,
   notExists,
@@ -818,6 +819,32 @@ export function createShotPromptVersionsMethods(db: Database) {
       });
       return true;
     },
+
+    /**
+     * The selected motion prompt of every live shot (#2209). One sidecar per
+     * shot. Visual prompts are not part of the asset folder.
+     */
+    listSelectedMotionBySequence: async (
+      sequenceId: string
+    ): Promise<{ id: string; shotId: string; text: string }[]> =>
+      db
+        .select({
+          id: shotPromptVersions.id,
+          shotId: shots.id,
+          text: shotPromptVersions.text,
+        })
+        .from(shots)
+        .innerJoin(
+          shotPromptVersions,
+          eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
+        )
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            isNull(shots.deletedAt),
+            eq(shotPromptVersions.promptType, 'motion')
+          )
+        ),
 
     /** List the revision history for a shot's prompt, newest first. */
     listByShot: async (

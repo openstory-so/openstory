@@ -22,7 +22,17 @@ import {
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
 import { liveLookSheetVersionId, requireLook } from './character-looks';
-import { and, asc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
@@ -102,6 +112,41 @@ export function createCharacterSheetVariantsMethods(
           asc(characterSheetVariants.createdAt),
           asc(characterSheetVariants.id)
         );
+    },
+
+    /**
+     * Completed sheets with bytes in R2 for these characters (#2209). Chunked
+     * under D1's bound-parameter cap. A row with no lookId belongs to the
+     * character's default look.
+     */
+    listStoredByCharacterIds: async (
+      characterIds: string[],
+      options?: { includeDiscarded?: boolean }
+    ): Promise<CharacterSheetVariant[]> => {
+      const rows: CharacterSheetVariant[] = [];
+      for (let i = 0; i < characterIds.length; i += 90) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(characterSheetVariants)
+            .where(
+              and(
+                ofTeam(),
+                inArray(
+                  characterSheetVariants.characterId,
+                  characterIds.slice(i, i + 90)
+                ),
+                eq(characterSheetVariants.status, 'completed'),
+                isNotNull(characterSheetVariants.storagePath),
+                options?.includeDiscarded
+                  ? undefined
+                  : isNull(characterSheetVariants.discardedAt)
+              )
+            )
+            .orderBy(asc(characterSheetVariants.id)))
+        );
+      }
+      return rows;
     },
 
     listDivergentByCharacter: async (

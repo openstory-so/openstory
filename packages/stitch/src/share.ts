@@ -51,6 +51,27 @@ const SHARED_EXTENSIONS = new Set([
   '.m4a',
 ]);
 
+/** The stored key, or a fresh device-code sign-in. */
+export async function openStoryApiKey(
+  options: Pick<ShareOptions, 'origin' | 'home' | 'stderr' | 'open'> & {
+    fetch?: typeof fetch;
+  }
+): Promise<string> {
+  const fetchFn = options.fetch ?? fetch;
+  const stored = await storedKey(options.home, options.origin);
+  if (stored) return stored;
+  return signIn({ ...options, fetch: fetchFn });
+}
+
+/** Always signs in again. Used when a stored key is rejected. */
+export async function refreshOpenStoryApiKey(
+  options: Pick<ShareOptions, 'origin' | 'home' | 'stderr' | 'open'> & {
+    fetch?: typeof fetch;
+  }
+): Promise<string> {
+  return signIn({ ...options, fetch: options.fetch ?? fetch });
+}
+
 /** Uploads the cut and returns the public link. */
 export async function shareCut(options: ShareOptions): Promise<string> {
   const fetchFn = options.fetch ?? fetch;

@@ -34,7 +34,16 @@ import type {
   VideoManifest,
   VideoVariant,
 } from '@/platform/server/db/schema';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { buildRenderSegmentSelect } from './render-segments';
@@ -441,6 +450,31 @@ export function createVideoVariantsMethods(db: Database) {
           and(
             eq(videoVariants.sequenceId, sequenceId),
             isNull(videoVariants.discardedAt)
+          )
+        )
+        .orderBy(asc(videoVariants.id));
+    },
+
+    /**
+     * Completed clips that have bytes in R2, for the asset manifest (#2209).
+     * One row is the file for every shot in its segment. Discarded rows are
+     * included only when the caller asked for history.
+     */
+    listStoredBySequence: async (
+      sequenceId: string,
+      options?: { includeDiscarded?: boolean }
+    ): Promise<VideoVariant[]> => {
+      return await db
+        .select()
+        .from(videoVariants)
+        .where(
+          and(
+            eq(videoVariants.sequenceId, sequenceId),
+            eq(videoVariants.status, 'completed'),
+            isNotNull(videoVariants.storagePath),
+            options?.includeDiscarded
+              ? undefined
+              : isNull(videoVariants.discardedAt)
           )
         )
         .orderBy(asc(videoVariants.id));

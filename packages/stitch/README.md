@@ -137,6 +137,17 @@ The first share signs you in: the command prints a short code and opens the appr
 
 Both take every cut option of the play command. Neither opens a browser on the cut itself.
 
+## Sequence files
+
+`npx @openstory/stitch assets <sequenceId>` downloads the current cut into `./<sequenceId>`. `bunx @openstory/stitch assets <sequenceId>` is the same command. The first run signs in the same way as share. A later run skips a file that is already there at the same version.
+
+```sh
+npx @openstory/stitch assets 01JSEQUENCE --dir ./room
+bunx @openstory/stitch assets 01JSEQUENCE --history --exports
+```
+
+`--history` adds every completed version, including ones you discarded. `--exports` adds rendered MP4s of the cut. `--origin` points at another OpenStory server. Shared cast, location, and style files are kept once in `~/.openstory/assets` and linked into the folder.
+
 An agent with no shell can share the same cut through the OpenStory MCP server's `create_stitch` tool: each media slot is a URL the server fetches or a small file as base64.
 
 ## Skill

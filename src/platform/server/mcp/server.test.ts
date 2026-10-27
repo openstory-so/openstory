@@ -159,6 +159,7 @@ describe('tools/list and whoami', () => {
       'openstory.get_version',
       'openstory.get_shot_audio',
       'openstory.list_exports',
+      'openstory.list_sequence_assets',
       'openstory.get_export_status',
       'openstory.list_sequence_events',
       'openstory.get_sequence_event',

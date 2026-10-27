@@ -23,7 +23,7 @@ import {
   locations,
   locationSheetVariants,
 } from '@/platform/server/db/schema';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
@@ -147,6 +147,40 @@ export function createLocationSheetVariantsMethods(
           asc(locationSheetVariants.createdAt),
           asc(locationSheetVariants.id)
         );
+    },
+
+    /**
+     * Completed sheets with bytes in R2 for these locations (#2209). Chunked
+     * under D1's bound-parameter cap.
+     */
+    listStoredByLocationIds: async (
+      locationIds: string[],
+      options?: { includeDiscarded?: boolean }
+    ): Promise<LocationSheetVariant[]> => {
+      const rows: LocationSheetVariant[] = [];
+      for (let i = 0; i < locationIds.length; i += 90) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(locationSheetVariants)
+            .where(
+              and(
+                ofTeam,
+                inArray(
+                  locationSheetVariants.locationId,
+                  locationIds.slice(i, i + 90)
+                ),
+                eq(locationSheetVariants.status, 'completed'),
+                isNotNull(locationSheetVariants.storagePath),
+                options?.includeDiscarded
+                  ? undefined
+                  : isNull(locationSheetVariants.discardedAt)
+              )
+            )
+            .orderBy(asc(locationSheetVariants.id)))
+        );
+      }
+      return rows;
     },
 
     /**

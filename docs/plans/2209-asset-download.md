@@ -1,6 +1,6 @@
 # Sequence asset download (#2209)
 
-Recommendation for letting a person take a sequence's media off OpenStory and keep a local copy in sync. This is the decision record. The downloader itself is a follow-up.
+Decision record for taking a sequence's media off OpenStory. Slices 1 to 4 shipped in this change: the manifest, the asset page, Chromium folder save, and `npx` / `bunx @openstory/stitch assets`. The rules that bite live in `docs/architecture/asset-download.md`. A container zip is still not built. A Worker zip and raw R2 credentials stay ruled out.
 
 ## What exists today
 

@@ -27,6 +27,7 @@ import {
 } from './style-input-schema';
 import { errorEnvelopeSchema, rootDocumentSchema } from './discovery';
 import { styleListResultSchema } from './styles';
+import { sequenceAssetsResultSchema } from './sequence-assets';
 import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
 import { z, type ZodType } from 'zod';
@@ -636,6 +637,51 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/sequences/{id}/assets`]: {
+        get: {
+          tags: ['sequences'],
+          summary: 'List sequence files',
+          description:
+            'Lists the files of one sequence. `scope=selected` (the default) is the current cut. `scope=history` adds every completed stored version, including discarded ones. `exports=true` adds rendered MP4s. Each file `url` is an origin-relative `/r2/…?download` path. Text rows (script, prompts, dialogue cuts) carry `text` and no url.',
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'The sequence id (ULID).',
+              schema: { type: 'string' },
+            },
+            {
+              name: 'scope',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['selected', 'history'] },
+              description:
+                'selected is the current cut. history includes every completed version.',
+            },
+            {
+              name: 'exports',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['true'] },
+              description: 'Pass true to include rendered sequence MP4s.',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'The asset manifest.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SequenceAssetsResult' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse('No team associated with the key.'),
+            '404': errorResponse('No such sequence for this key.'),
+          },
+        },
+      },
       [`${API_V1_BASE}/stitches`]: {
         post: {
           tags: ['stitches'],
@@ -758,6 +804,7 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(oneShotWaitResultSchema),
         ...componentDefs(sequenceExportsResultSchema),
         ...componentDefs(sequenceExportAcceptedSchema),
+        ...componentDefs(sequenceAssetsResultSchema),
         ...componentDefs(styleListResultSchema),
         ...componentDefs(rootDocumentSchema),
         ...componentDefs(errorEnvelopeSchema),

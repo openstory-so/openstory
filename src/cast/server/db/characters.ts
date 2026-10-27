@@ -1681,6 +1681,45 @@ export function createCharactersMethods(db: Database, teamId: string) {
       return rows.map((row) => ({ ...row, current: Boolean(row.current) }));
     },
 
+    /**
+     * Voice Design takes for the sequence's live cast (#2209). The saved
+     * voice id is a provider slot, not a file: the MP3s are `previews`.
+     * `selected` is the character's current version. A released row stays
+     * in history and cannot be the current take.
+     */
+    listVoiceTakesBySequence: async (sequenceId: string) => {
+      const rows = await db
+        .select({
+          id: characterVoiceVersions.id,
+          characterId: characterVoiceVersions.characterId,
+          previews: characterVoiceVersions.previews,
+          status: characterVoiceVersions.status,
+          releasedAt: characterVoiceVersions.releasedAt,
+          selected: sql<number>`(${characters.selectedVoiceVersionId} = ${characterVoiceVersions.id})`,
+        })
+        .from(characterVoiceVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterVoiceVersions.characterId)
+        )
+        .innerJoin(sequenceCast, eq(sequenceCast.characterId, characters.id))
+        .where(
+          and(
+            eq(sequenceCast.sequenceId, sequenceId),
+            isNull(sequenceCast.removedAt),
+            isNull(characters.deletedAt)
+          )
+        );
+      return rows.map((row) => ({
+        id: row.id,
+        characterId: row.characterId,
+        previews: row.previews ?? [],
+        status: row.status,
+        released: row.releasedAt != null,
+        selected: Boolean(row.selected),
+      }));
+    },
+
     /** The husk this run holds, including after it completed in place (#1715). */
     getVoiceVersionById: async (id: string) => {
       const [row] = await db

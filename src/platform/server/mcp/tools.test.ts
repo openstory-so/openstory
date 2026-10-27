@@ -930,6 +930,7 @@ describe('complete production reads', () => {
       ['get_version', { kind: 'image', entityId: frameId, versionId: imageId }],
       ['get_shot_audio', { shotId }],
       ['list_exports', {}],
+      ['list_sequence_assets', {}],
       ['get_export_status', { exportId }],
       ['list_sequence_events', {}],
       ['get_sequence_event', { eventId }],

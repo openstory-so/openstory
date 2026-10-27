@@ -320,6 +320,15 @@ changing the area, and update it in the same PR.**
   assistant-only tool, add an MCP tool. Only a delete
   pauses the run for the user; a spend starts at once and shows on the page. Page
   context is read off the router, never registered by a page.
+- **Sequence asset download (#2209)** — `docs/architecture/asset-download.md`.
+  The manifest is the product (`GET /api/v1/sequences/$id/assets`, MCP
+  `list_sequence_assets`). Default scope is the current cut; `scope=history`
+  adds every completed stored version, including discarded. Rendered MP4s
+  stay off unless `exports=true`. The asset page and
+  `npx @openstory/stitch assets` write that list. Do not zip in the Worker
+  and do not hand out R2 credentials. Preview frames and provider-CDN urls
+  stay out. Dialogue is the speech file plus a cuts JSON. A scene reorder
+  leaves the old files on disk.
 - **Server-side export** — `docs/architecture/public-api-internals.md`. No
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).

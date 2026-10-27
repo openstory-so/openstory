@@ -31,6 +31,9 @@ describe('buildOpenApiDocument', () => {
     expect(doc.paths['/api/v1/sequences'].get).toBeDefined();
     expect(doc.paths['/api/v1/sequences'].post).toBeDefined();
     expect(doc.paths['/api/v1/sequences/{id}'].get).toBeDefined();
+    expect(doc.paths['/api/v1/sequences/{id}/assets'].get).toBeDefined();
+    expect(doc.components.schemas).toHaveProperty('SequenceAssetsResult');
+    expect(doc.components.schemas).toHaveProperty('SequenceAsset');
     expect(doc.paths['/api/v1/openapi.json'].get).toBeDefined();
     expect(doc.paths['/api/v1/scripts/enhance'].post).toBeDefined();
     expect(doc.paths['/api/v1/device/code'].post).toBeDefined();
