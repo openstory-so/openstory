@@ -20,6 +20,7 @@
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
+    "src/assets.ts",
     "src/cli.ts",
     "src/image-size.ts",
     "src/media-file.ts",
