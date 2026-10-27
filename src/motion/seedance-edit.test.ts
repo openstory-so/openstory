@@ -5,8 +5,6 @@ import {
   arkSendsSeedanceEdit,
   isSeedanceEdit,
   seedanceEditLengthMessage,
-  seedanceClipLengthMessage,
-  seedanceReferenceLengthMessage,
   seedanceEditSeconds,
   seedanceUserFacingError,
 } from './seedance-edit';
@@ -77,34 +75,6 @@ describe('seedance edit constraints (#2036)', () => {
     // Seedance's own 30s clip reads a hair over; that still fits.
     expect(seedanceEditLengthMessage(30.04)).toBeNull();
     expect(seedanceEditLengthMessage(30.21)).toMatch(/30\.3s\.$/);
-  });
-
-  it('refuses a reference clip outside Ark 1.8–30.2s, only on Ark Seedance', () => {
-    expect(seedanceReferenceLengthMessage(1.5)).toBe(
-      'Seedance can only use a reference video between 1.8 and 30.2 seconds. This one is 1.5s.'
-    );
-    expect(seedanceReferenceLengthMessage(45)).toMatch(/45s\.$/);
-    expect(seedanceReferenceLengthMessage(1.8)).toBeNull();
-    expect(seedanceReferenceLengthMessage(30.2)).toBeNull();
-    expect(seedanceReferenceLengthMessage(null)).toBeNull();
-    const ark = { model: 'seedance_v2_5', onArk: true };
-    expect(seedanceClipLengthMessage(3, { ...ark, edit: false })).toBeNull();
-    expect(seedanceClipLengthMessage(3, { ...ark, edit: true })).toMatch(
-      /only edit/
-    );
-    expect(seedanceClipLengthMessage(45, { ...ark, edit: false })).toMatch(
-      /reference video/
-    );
-    expect(
-      seedanceClipLengthMessage(45, { ...ark, onArk: false, edit: false })
-    ).toBeNull();
-    expect(
-      seedanceClipLengthMessage(45, {
-        model: 'kling',
-        onArk: true,
-        edit: false,
-      })
-    ).toBeNull();
   });
 
   it('gives the longest clip an edit will follow, and null otherwise', () => {

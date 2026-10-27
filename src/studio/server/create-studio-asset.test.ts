@@ -625,8 +625,72 @@ describe('createStudioAssets', () => {
         referenceVideos: [{ url: '/r2/uploads/long.mp4' }],
         referenceAudio: [],
       })
-    ).rejects.toThrow(/reference video between 1.8 and 30.2 seconds/);
+    ).rejects.toThrow(/@Video1 — 45s, over its 30.2s limit/);
     expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('refuses Seedance 2.5 clips that each fit but together pass Ark 30.2s (#2210)', async () => {
+    bytePlusLive = true;
+    mockMeasureStoredMediaDuration.mockResolvedValue(20);
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'seedance_v2_5',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: [
+          { url: '/r2/uploads/a.mp4' },
+          { url: '/r2/uploads/b.mp4' },
+        ],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/together — 40s of clips, over its 30.2s combined limit/);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
+  it('checks every model’s clip window, not only Seedance on Ark (#2210)', async () => {
+    mockMeasureStoredMediaDuration.mockResolvedValue(20);
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'minimax_h3_max',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: [{ url: '/r2/uploads/long.mp4' }],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/20s, over its 15s limit/);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'minimax_h3_max',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: [{ url: '/r2/uploads/clip.mkv' }],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/it is MKV, and models take MP4 or MOV/);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
   });
 
   it('refuses a Seedance 2.5 edit outside 4–30s before any hold (#2036)', async () => {

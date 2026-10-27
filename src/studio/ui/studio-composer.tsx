@@ -11,10 +11,8 @@
  */
 
 import { readMediaDuration } from '@/cast/element-kind';
-import {
-  isSeedanceEdit,
-  seedanceClipLengthMessage,
-} from '@/motion/seedance-edit';
+import { isSeedanceEdit } from '@/motion/seedance-edit';
+import { unusableShotReferenceLines } from '@/motion/reference-support';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
@@ -923,6 +921,21 @@ export function StudioComposer({
           ? 'audio'
           : null;
 
+  // The rule a sequence shot answers to (`unusableShotReferenceLines`): the
+  // model's clip window, format, the Seedance edit window and the combined
+  // cap, so the composer cannot refuse less than the server does (#2210).
+  const clipProblemLines = (clips: StudioReference[]): string[] =>
+    unusableShotReferenceLines(
+      compatibleVideoModel,
+      clips.map((ref, index) => ({
+        kind: 'video' as const,
+        token: `@Video${index + 1}`,
+        referenceImageUrl: ref.url,
+        durationSeconds: ref.durationSeconds,
+      })),
+      { hasStartFrame: false, prompt, onArk: vias.byteplus === true }
+    );
+
   const uploadFiles = async (files: File[], target: PickerTarget) => {
     const taken: Record<StudioReferenceKind, number> = {
       image: 0,
@@ -946,19 +959,14 @@ export function StudioComposer({
       const durationSeconds =
         kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
       if (kind === 'video') {
-        const lengthMessage = seedanceClipLengthMessage(durationSeconds, {
-          model: compatibleVideoModel,
-          onArk: vias.byteplus === true,
-          edit: isSeedanceEdit({
-            model: compatibleVideoModel,
-            onArk: vias.byteplus === true,
-            prompt,
-            hasInputVideo: true,
-            explicitEdit: mode === 'edit',
-          }),
-        });
-        if (lengthMessage) {
-          toast.error(lengthMessage);
+        // Checked with the clips already attached, so the combined cap
+        // (#2210) and the format refuse before the upload, not at Generate.
+        const lines = clipProblemLines([
+          ...videoRefs,
+          { url: file.name, label: file.name, kind, durationSeconds },
+        ]);
+        if (lines.length > 0) {
+          toast.error(lines.join(' '));
           continue;
         }
       }
@@ -1269,16 +1277,10 @@ export function StudioComposer({
       setPromptTooLongOpen(true);
       return;
     }
-    for (const ref of videoRefs) {
-      const lengthMessage = seedanceClipLengthMessage(ref.durationSeconds, {
-        model: compatibleVideoModel,
-        onArk: vias.byteplus === true,
-        edit: followsReferenceVideo,
-      });
-      if (lengthMessage) {
-        toast.error(lengthMessage);
-        return;
-      }
+    const clipLines = clipProblemLines(videoRefs);
+    if (clipLines.length > 0) {
+      toast.error(clipLines.join(' '));
+      return;
     }
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {

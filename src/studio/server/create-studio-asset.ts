@@ -55,8 +55,8 @@ import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-d
 import {
   generationCouldNotStartMessage,
   isSeedanceEdit,
-  seedanceClipLengthMessage,
 } from '@/motion/seedance-edit';
+import { unusableShotReferenceLines } from '@/motion/reference-support';
 import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
@@ -389,42 +389,44 @@ export async function createStudioAssets(
         (input.mode === 'reference' && input.referenceVideos.length > 0),
       explicitEdit: input.mode === 'edit',
     });
-    // A reference clip outside the window (4–30s for an edit, Ark's
-    // 1.8–30.2s asset window otherwise, #2205) is refused before the hold.
-    // The length is read from the stored file, never taken from the client.
-    // A URL that is not ours stays unknown and still submits; a file of ours
-    // that cannot be read is refused, not treated as unknown. Edit mode's
-    // source is a clip Seedance made, so it is assumed to be inside the
-    // window.
-    const arkClips =
-      input.videoModel === 'seedance_v2_5' &&
-      byteplus &&
-      input.mode === 'reference' &&
-      input.referenceVideos.length > 0;
-    if (arkClips) {
-      const clipSeconds = await Promise.all(
-        referenceVideoUrls.map(async (url) => {
+    // Every reference clip is checked before the hold through the rule a
+    // sequence shot uses (`unusableShotReferenceLines`, #2210): the model's
+    // own length window, its format, the Seedance edit window, and the
+    // combined cap — Ark's r2v caps the SUM of clips at 30.2s and H3 Max at
+    // 15s, which a per-clip check let through. The length is read from the
+    // stored file, never taken from the client. A URL that is not ours stays
+    // unknown and still submits; a file of ours that cannot be read is
+    // refused, not treated as unknown. Edit mode's source is a clip Seedance
+    // made, so it is assumed to be inside the window.
+    if (input.mode === 'reference' && referenceVideoUrls.length > 0) {
+      const attached = await Promise.all(
+        referenceVideoUrls.map(async (url, index) => {
           const key = r2KeyFromUrl(url);
-          if (!key) return null;
-          return measureOwnMediaDuration(key).catch((error: unknown) => {
-            logger.warn('Could not read a Studio reference video', {
-              key,
-              error,
-            });
-            throw new ValidationError(
-              "Couldn't read that reference video. Try again."
-            );
-          });
+          const durationSeconds = key
+            ? await measureOwnMediaDuration(key).catch((error: unknown) => {
+                logger.warn('Could not read a Studio reference video', {
+                  key,
+                  error,
+                });
+                throw new ValidationError(
+                  "Couldn't read that reference video. Try again."
+                );
+              })
+            : null;
+          return {
+            kind: 'video' as const,
+            token: `@Video${index + 1}`,
+            referenceImageUrl: url,
+            durationSeconds,
+          };
         })
       );
-      for (const seconds of clipSeconds) {
-        const lengthMessage = seedanceClipLengthMessage(seconds, {
-          model: input.videoModel,
-          onArk: byteplus,
-          edit: followsClip,
-        });
-        if (lengthMessage) throw new ValidationError(lengthMessage);
-      }
+      const lines = unusableShotReferenceLines(input.videoModel, attached, {
+        hasStartFrame: false,
+        prompt: input.prompt,
+        onArk: byteplus,
+      });
+      if (lines.length > 0) throw new ValidationError(lines.join(' '));
     }
     input = {
       ...input,

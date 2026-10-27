@@ -159,17 +159,9 @@ function knownSeconds(seconds: number | null | undefined): number | null {
   return seconds != null && Number.isFinite(seconds) ? seconds : null;
 }
 
-// Ark's CreateAsset window for a reference clip
-// (`InvalidParameter.DurationTooLong` / `DurationTooShort`, #2205).
-const SEEDANCE_REFERENCE_MIN_SECONDS = 1.8;
-const SEEDANCE_REFERENCE_MAX_SECONDS = 30.2;
-
 // Rounds away from the window, so 3.99s reads 3.9s and never "4s".
-function formatSeconds(
-  seconds: number,
-  min = SEEDANCE_EDIT_MIN_SECONDS
-): string {
-  const round = seconds < min ? Math.floor : Math.ceil;
+function formatSeconds(seconds: number): string {
+  const round = seconds < SEEDANCE_EDIT_MIN_SECONDS ? Math.floor : Math.ceil;
   const rounded = round(seconds * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
@@ -192,39 +184,6 @@ export function seedanceEditLengthMessage(
     return null;
   }
   return `Seedance can only edit a video ${EDIT_WINDOW}. This one is ${formatSeconds(seconds)}s.`;
-}
-
-/**
- * Plain refusal when a known reference clip is outside Ark's 1.8–30.2s
- * asset window; null when unknown or inside. The edit window (4–30s) is
- * narrower, so an edit asks `seedanceEditLengthMessage` instead.
- */
-export function seedanceReferenceLengthMessage(
-  length: number | null | undefined
-): string | null {
-  const seconds = knownSeconds(length);
-  if (
-    seconds === null ||
-    (seconds >= SEEDANCE_REFERENCE_MIN_SECONDS &&
-      seconds <= SEEDANCE_REFERENCE_MAX_SECONDS)
-  ) {
-    return null;
-  }
-  return `Seedance can only use a reference video between ${SEEDANCE_REFERENCE_MIN_SECONDS} and ${SEEDANCE_REFERENCE_MAX_SECONDS} seconds. This one is ${formatSeconds(seconds, SEEDANCE_REFERENCE_MIN_SECONDS)}s.`;
-}
-
-/**
- * The refusal for a clip on an Ark Seedance run: the edit window when the
- * run follows the clip, Ark's asset window otherwise. Null off Ark.
- */
-export function seedanceClipLengthMessage(
-  length: number | null | undefined,
-  job: { model: string | null | undefined; onArk: boolean; edit: boolean }
-): string | null {
-  if (job.model !== 'seedance_v2_5' || !job.onArk) return null;
-  return job.edit
-    ? seedanceEditLengthMessage(length)
-    : seedanceReferenceLengthMessage(length);
 }
 
 /** Ark's async `InternalServiceError`, only on a job we sent to BytePlus. */
