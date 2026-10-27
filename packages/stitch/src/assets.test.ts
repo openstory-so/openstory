@@ -15,6 +15,12 @@ import { main, parseArgs } from './cli.js';
 
 const origin = 'https://os.test';
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
 function manifest(assets: unknown[]) {
   return {
     sequenceId: 'SEQ',
@@ -68,7 +74,7 @@ describe('stitch assets', () => {
       const calls: string[] = [];
       let token = 'old';
       const fetchFn: typeof fetch = async (input, init) => {
-        const url = new URL(String(input));
+        const url = new URL(requestUrl(input));
         calls.push(url.pathname);
         const auth = new Headers(init?.headers).get('authorization');
         if (auth === 'Bearer old') return new Response('no', { status: 401 });
@@ -193,7 +199,7 @@ describe('stitch assets', () => {
         stderr: { write: (text) => stderr.push(text) },
         packageRoot: join(cwd, 'missing-package'),
         fetch: async (input) => {
-          const url = new URL(String(input));
+          const url = new URL(requestUrl(input));
           if (url.pathname === '/api/v1/sequences/SEQ/assets') {
             expect(url.searchParams.get('scope')).toBe('selected');
             return Response.json(manifest([]));
