@@ -49,7 +49,7 @@ export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-g
 
        stitch bundle <dir> [cut options] <file>...
        stitch share [--origin url] [--portrait-rights basis] [cut options] <file>...
-       stitch assets <sequenceId> [--history] [--exports] [--origin url] [--dir dir]
+       stitch pull <sequenceId> [--history] [--exports] [--origin url] [--dir dir]
        stitch skill [--global]
 
 Play stills and videos in the browser. Each file is a path or an http(s) URL;
@@ -69,11 +69,11 @@ can open. The first share signs in with a device code and keeps the key in
 checked for a real person; one who is needs --portrait-rights with the basis
 for using their likeness (a release reference, "self", a contract id).
 
-stitch assets downloads a sequence into ./<sequenceId> (or --dir). The first
+stitch pull downloads a sequence into ./<sequenceId> (or --dir). The first
 run signs in the same way as share. A later run skips a file that is already
 there at the same version. --history adds every completed version.
---exports adds rendered MP4s. Run it with npx @openstory/stitch assets or
-bunx @openstory/stitch assets.
+--exports adds rendered MP4s. Run it with npx @openstory/stitch pull or
+bunx @openstory/stitch pull.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -134,8 +134,8 @@ type ShareRequest = {
   origin: string;
   portraitRights: string | null;
 } & LocalCut;
-type AssetsRequest = {
-  kind: 'assets';
+type PullRequest = {
+  kind: 'pull';
   sequenceId: string;
   origin: string;
   dir: string;
@@ -148,7 +148,7 @@ export type CliRequest =
   | PlayRequest
   | BundleRequest
   | ShareRequest
-  | AssetsRequest;
+  | PullRequest;
 
 export const DEFAULT_ORIGIN = 'https://openstory.so';
 
@@ -160,7 +160,7 @@ export async function parseArgs(
   argv: string[],
   cwd: string
 ): Promise<CliRequest> {
-  if (argv[0] === 'assets') return parseAssets(argv.slice(1), cwd);
+  if (argv[0] === 'pull') return parsePull(argv.slice(1), cwd);
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
   if (argv[0] === 'skill') return parseSkill(argv.slice(1));
   if (argv[0] === 'bundle') {
@@ -209,7 +209,7 @@ export async function parseArgs(
   return { kind: 'play', ...(await parseCut(argv, cwd)) };
 }
 
-function parseAssets(argv: string[], cwd: string): CliRequest {
+function parsePull(argv: string[], cwd: string): CliRequest {
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
   let origin = DEFAULT_ORIGIN;
   let dir: string | null = null;
@@ -239,11 +239,11 @@ function parseAssets(argv: string[], cwd: string): CliRequest {
   }
   const sequenceId = rest[0];
   if (sequenceId === undefined) {
-    throw new Error('stitch assets needs a sequence id');
+    throw new Error('stitch pull needs a sequence id');
   }
   if (rest.length > 1) throw new Error(`Unknown argument: ${rest[1]}`);
   return {
-    kind: 'assets',
+    kind: 'pull',
     sequenceId,
     origin,
     dir: dir ?? resolve(cwd, sequenceId),
@@ -964,7 +964,7 @@ export async function main(
       stdout.write(dests.map((dest) => `${dest}\n`).join(''));
       return;
     }
-    if (request.kind === 'assets') {
+    if (request.kind === 'pull') {
       const home = io.home ?? homedir();
       const open = io.open ?? ((target: string) => openUrl(target, stderr));
       const auth = {

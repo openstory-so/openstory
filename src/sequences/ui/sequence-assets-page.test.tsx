@@ -49,7 +49,7 @@ describe('sequence assets page', () => {
     );
     expect(html).toContain('Scene 1');
     expect(html).toContain('Download');
-    expect(html).toContain('npx @openstory/stitch assets SEQ');
+    expect(html).toContain('npx @openstory/stitch pull SEQ');
     expect(html).toContain('href="/r2/team/still.png?download"');
   });
 

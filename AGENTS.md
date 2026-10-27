@@ -325,7 +325,7 @@ changing the area, and update it in the same PR.**
   `list_sequence_assets`). Default scope is the current cut; `scope=history`
   adds every completed stored version, including discarded. Rendered MP4s
   stay off unless `exports=true`. The asset page and
-  `npx @openstory/stitch assets` write that list. Do not zip in the Worker
+  `npx @openstory/stitch pull` write that list. Do not zip in the Worker
   and do not hand out R2 credentials. Preview frames and provider-CDN urls
   stay out. Dialogue is the speech file plus a cuts JSON. A scene reorder
   leaves the old files on disk.

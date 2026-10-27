@@ -106,7 +106,7 @@ export function SequenceAssetsView({
       {!folderSave ? (
         <p>
           This browser saves one file at a time. Use Download on each row, or{' '}
-          <code>npx @openstory/stitch assets {sequenceId}</code>.
+          <code>npx @openstory/stitch pull {sequenceId}</code>.
         </p>
       ) : null}
       {body.assets.length === 0 ? (

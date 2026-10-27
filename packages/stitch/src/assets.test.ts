@@ -31,17 +31,17 @@ function manifest(assets: unknown[]) {
   };
 }
 
-describe('stitch assets', () => {
+describe('stitch pull', () => {
   it('parses flags before the global help short-circuit', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
     try {
-      expect(await parseArgs(['assets', '--help'], cwd)).toEqual({
+      expect(await parseArgs(['pull', '--help'], cwd)).toEqual({
         kind: 'help',
       });
       expect(
         await parseArgs(
           [
-            'assets',
+            'pull',
             'SEQ',
             '--history',
             '--exports',
@@ -53,14 +53,14 @@ describe('stitch assets', () => {
           cwd
         )
       ).toEqual({
-        kind: 'assets',
+        kind: 'pull',
         sequenceId: 'SEQ',
         origin: 'http://localhost:3000',
         dir: join(cwd, 'out'),
         history: true,
         exports: true,
       });
-      await expect(parseArgs(['assets'], cwd)).rejects.toThrow('sequence id');
+      await expect(parseArgs(['pull'], cwd)).rejects.toThrow('sequence id');
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -192,7 +192,7 @@ describe('stitch assets', () => {
       );
       const stdout: string[] = [];
       const stderr: string[] = [];
-      await main(['assets', 'SEQ', '--dir', 'out'], {
+      await main(['pull', 'SEQ', '--dir', 'out'], {
         cwd,
         home,
         stdout: { write: (text) => stdout.push(text) },

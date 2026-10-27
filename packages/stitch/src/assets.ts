@@ -1,5 +1,5 @@
 /**
- * `stitch assets`: download one sequence's files into a folder.
+ * `stitch pull`: download one sequence's files into a folder.
  *
  * The command asks the public API for the manifest, then writes each file.
  * A second run skips a path whose versionId is unchanged and whose file is

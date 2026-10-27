@@ -1,6 +1,6 @@
 # Sequence asset download (#2209)
 
-Decision record for taking a sequence's media off OpenStory. Slices 1 to 4 shipped in this change: the manifest, the asset page, Chromium folder save, and `npx` / `bunx @openstory/stitch assets`. The rules that bite live in `docs/architecture/asset-download.md`. A container zip is still not built. A Worker zip and raw R2 credentials stay ruled out.
+Decision record for taking a sequence's media off OpenStory. Slices 1 to 4 shipped in this change: the manifest, the asset page, Chromium folder save, and `npx` / `bunx @openstory/stitch pull`. The rules that bite live in `docs/architecture/asset-download.md`. A container zip is still not built. A Worker zip and raw R2 credentials stay ruled out.
 
 ## What exists today
 

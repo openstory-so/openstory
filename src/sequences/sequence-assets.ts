@@ -1,7 +1,7 @@
 /**
  * Sequence asset manifest (#2209). One list of the files a sequence can
  * download: the selected cut, or every completed stored version. The asset
- * page, the folder save and `npx @openstory/stitch assets` all write this
+ * page, the folder save and `npx @openstory/stitch pull` all write this
  * list. Text rows (script, prompt, dialogue cuts) carry `text` and no url.
  * File rows carry an origin-relative `/r2/…?download` url.
  *

@@ -139,11 +139,11 @@ Both take every cut option of the play command. Neither opens a browser on the c
 
 ## Sequence files
 
-`npx @openstory/stitch assets <sequenceId>` downloads the current cut into `./<sequenceId>`. `bunx @openstory/stitch assets <sequenceId>` is the same command. The first run signs in the same way as share. A later run skips a file that is already there at the same version.
+`npx @openstory/stitch pull <sequenceId>` downloads the current cut into `./<sequenceId>`. `bunx @openstory/stitch pull <sequenceId>` is the same command. The first run signs in the same way as share. A later run skips a file that is already there at the same version.
 
 ```sh
-npx @openstory/stitch assets 01JSEQUENCE --dir ./room
-bunx @openstory/stitch assets 01JSEQUENCE --history --exports
+npx @openstory/stitch pull 01JSEQUENCE --dir ./room
+bunx @openstory/stitch pull 01JSEQUENCE --history --exports
 ```
 
 `--history` adds every completed version, including ones you discarded. `--exports` adds rendered MP4s of the cut. `--origin` points at another OpenStory server. Shared cast, location, and style files are kept once in `~/.openstory/assets` and linked into the folder.
