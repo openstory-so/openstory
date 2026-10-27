@@ -3,13 +3,15 @@
  * Canvas/Script toggle's trailing slot (desktop); `overlay` is the icon on the
  * theatre player, at the 44px mobile hit target. Both open the same menu:
  * Download / Copy link once the current cut has a render, otherwise why it
- * has none and "Render MP4 on server". "Publish to social…" (#1267) exists
- * only for teams that saved an Upload-Post key; everyone else never sees it.
- * "Share stitch link" (#2140) needs no render: it shares the cut the theatre
- * plays as a public /stitch page and copies its link.
+ * has none and "Render MP4 on server". "All files" opens the asset page
+ * (#2209). "Publish to social…" (#1267) exists only for teams that saved an
+ * Upload-Post key; everyone else never sees it. "Share stitch link" (#2140)
+ * needs no render: it shares the cut the theatre plays as a public /stitch
+ * page and copies its link.
  */
 
 import { Button } from '@/ui/shadcn/button';
+import { Link } from '@tanstack/react-router';
 import { shareSequenceStitchFn } from '@/stitches/stitch.fn';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { toast } from 'sonner';
@@ -30,7 +32,8 @@ import {
   ChevronDown,
   CircleStop,
   Download,
-  Link,
+  FolderOpen,
+  Link as LinkIcon,
   Loader2,
   Send,
   Server,
@@ -62,13 +65,14 @@ type PublishTarget = {
 };
 
 export const SequenceDownloadMenu: React.FC<{
+  sequenceId: string;
   sequenceExport: SequenceExportState;
   /** Draft clips in the cut (#1756) — the render would carry 480p shots. */
   draftLabel?: string | null;
   variant: 'toolbar' | 'overlay';
   /** Enables "Share stitch link", and "Publish to social…" when the team has an Upload-Post key. */
   publish?: PublishTarget;
-}> = ({ sequenceExport, draftLabel = null, variant, publish }) => {
+}> = ({ sequenceId, sequenceExport, draftLabel = null, variant, publish }) => {
   const {
     isRunning,
     freshExportUrl,
@@ -196,11 +200,18 @@ export const SequenceDownloadMenu: React.FC<{
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link to="/sequences/$id/assets" params={{ id: sequenceId }}>
+              <FolderOpen />
+              All files
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={!freshExportUrl}
             onClick={sequenceExport.copyLink}
           >
-            <Link />
+            <LinkIcon />
             Copy link
             {!freshExportUrl && (
               <span className="ml-auto text-xs text-muted-foreground">

@@ -11,6 +11,7 @@ import type {
   SequenceAssetsBody,
 } from '@/sequences/sequence-assets';
 import { Button } from '@/ui/shadcn/button';
+import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 import { useState } from 'react';
 
 type DirHandle = {
@@ -53,32 +54,41 @@ export function SequenceAssetsView({
   const folderSave =
     typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
+  const fileCount = `${body.assets.length} ${body.assets.length === 1 ? 'file' : 'files'}`;
+  const hint = folderSave
+    ? `${fileCount}. Save folder writes them into a directory you pick.`
+    : `${fileCount}. This browser saves one file at a time. Use Download on each row, or npx @openstory/stitch pull ${sequenceId}.`;
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 pt-4 md:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleGroup
+            type="single"
+            value={scope}
+            variant="outline"
+            size="sm"
+            spacing={0}
+            onValueChange={(next) => {
+              if (next === 'selected' || next === 'history') onScope(next);
+            }}
+          >
+            <ToggleGroupItem value="selected">Current cut</ToggleGroupItem>
+            <ToggleGroupItem value="history">All versions</ToggleGroupItem>
+          </ToggleGroup>
+          <Button
+            type="button"
+            size="sm"
+            variant={includeExports ? 'default' : 'outline'}
+            aria-pressed={includeExports}
+            onClick={() => onExports(!includeExports)}
+          >
+            Include renders
+          </Button>
+        </div>
         <Button
           type="button"
-          variant={scope === 'selected' ? 'default' : 'outline'}
-          onClick={() => onScope('selected')}
-        >
-          Current cut
-        </Button>
-        <Button
-          type="button"
-          variant={scope === 'history' ? 'default' : 'outline'}
-          onClick={() => onScope('history')}
-        >
-          All versions
-        </Button>
-        <Button
-          type="button"
-          variant={includeExports ? 'default' : 'outline'}
-          onClick={() => onExports(!includeExports)}
-        >
-          {includeExports ? 'Hide renders' : 'Include renders'}
-        </Button>
-        <Button
-          type="button"
+          size="sm"
           disabled={saving || body.assets.length === 0}
           onClick={() => {
             setSaving(true);
@@ -100,43 +110,46 @@ export function SequenceAssetsView({
           {saving ? 'Saving…' : 'Save folder'}
         </Button>
       </div>
-      {note ? (
-        <output className="text-sm text-muted-foreground">{note}</output>
-      ) : null}
-      {!folderSave ? (
-        <p>
-          This browser saves one file at a time. Use Download on each row, or{' '}
-          <code>npx @openstory/stitch pull {sequenceId}</code>.
-        </p>
-      ) : null}
-      {body.assets.length === 0 ? (
-        <p>This sequence has no stored files yet.</p>
-      ) : (
-        groups.map(([group, assets]) => (
-          <section key={group} className="flex flex-col gap-2">
-            <h2>{group}</h2>
-            <ul className="flex flex-col gap-2">
-              {assets.map((asset) => (
-                <li
-                  key={asset.id}
-                  className="flex flex-wrap items-center justify-between gap-3"
-                >
-                  <span>
-                    {`${asset.label}${asset.discarded ? ' (discarded)' : ''}${asset.shared ? ' (shared)' : ''}`}
-                  </span>
-                  {asset.url ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={asset.url} download>
-                        Download
-                      </a>
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
+      <output className="block shrink-0 px-4 pt-3 text-sm text-muted-foreground md:px-6">
+        {note ?? hint}
+      </output>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 md:px-6">
+        {body.assets.length === 0 ? (
+          <p>This sequence has no stored files yet.</p>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {groups.map(([group, assets]) => (
+              <section key={group} className="flex flex-col gap-1">
+                <h2 className="text-sm text-muted-foreground">{group}</h2>
+                <ul className="flex flex-col">
+                  {assets.map((asset) => (
+                    <li
+                      key={asset.id}
+                      className="flex items-center justify-between gap-3 border-b py-2"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm">
+                          {`${asset.label}${asset.discarded ? ' (discarded)' : ''}${asset.shared ? ' (shared)' : ''}`}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {asset.relativePath}
+                        </span>
+                      </span>
+                      {asset.url ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={asset.url} download>
+                            Download
+                          </a>
+                        </Button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

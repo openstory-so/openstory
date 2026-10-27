@@ -1,6 +1,5 @@
 import { getSequenceAssetsFn } from '@/sequences/sequence-assets.fn';
 import { SequenceAssetsView } from '@/sequences/ui/sequence-assets-page';
-import { PageContainer } from '@/ui/layout/page-container';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -20,10 +19,10 @@ export const Route = createFileRoute('/_app/sequences/$id/assets')({
 
 function AssetsPage() {
   return (
-    <PageContainer>
+    <div className="flex h-full min-h-0 flex-col">
       <Suspense
         fallback={
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 px-4 pt-4 md:px-6">
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
@@ -32,7 +31,7 @@ function AssetsPage() {
       >
         <AssetsContent />
       </Suspense>
-    </PageContainer>
+    </div>
   );
 }
 

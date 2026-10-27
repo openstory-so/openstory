@@ -275,6 +275,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
                 Chat about this
               </Button>
               <SequenceDownloadMenu
+                sequenceId={sequence.id}
                 sequenceExport={sequenceExport}
                 draftLabel={draftLabel}
                 variant="overlay"

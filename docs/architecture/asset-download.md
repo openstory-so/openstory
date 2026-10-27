@@ -5,7 +5,7 @@ The manifest is the product. The asset page, the Chromium folder save, and `npx 
 ## Where it lives
 
 - `GET /api/v1/sequences/{id}/assets` returns the list. `scope` is `selected` (default) or `history`. `exports=true` adds rendered MP4s. Any other `scope` is read as `selected`.
-- The page is `/sequences/$id/assets`. The scenes chrome links to it with the label Assets.
+- The page is `/sequences/$id/assets`. Download → All files opens it. The Canvas/Script bar does not.
 - MCP tool `openstory.list_sequence_assets`. Same list. A long history can pass the 256 KiB tool cap; that is accepted.
 - `npx @openstory/stitch pull <sequenceId>` and `bunx @openstory/stitch pull <sequenceId>`. Flags: `--history`, `--exports`, `--origin`, `--dir` (default `./<sequenceId>`).
 

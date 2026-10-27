@@ -115,7 +115,7 @@ import { useIsMobile } from '@/ui/use-mobile';
 import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useRouter } from '@tanstack/react-router';
+import { useRouter } from '@tanstack/react-router';
 import { captureSequenceReadySeen } from '@/sequences/ui/theatre/player-events';
 
 import {
@@ -1846,20 +1846,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                         Chat about this
                       </Button>
                       <CopyScriptButton sequenceId={sequenceId} />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-11 md:h-8"
-                        asChild
-                      >
-                        <Link
-                          to="/sequences/$id/assets"
-                          params={{ id: sequenceId }}
-                        >
-                          Assets
-                        </Link>
-                      </Button>
                       <SequenceDownloadMenu
+                        sequenceId={sequenceId}
                         sequenceExport={sequenceExport}
                         draftLabel={theatreDraftLabel(shots ?? [])}
                         variant="toolbar"
