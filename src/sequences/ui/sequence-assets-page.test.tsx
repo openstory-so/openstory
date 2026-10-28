@@ -6,7 +6,10 @@ import type {
   SequenceAssetsBody,
 } from '@/sequences/sequence-assets';
 
-import { SequenceAssetsView } from './sequence-assets-page';
+import {
+  SequenceAssetsView,
+  sequencePullCommand,
+} from './sequence-assets-page';
 
 const still: SequenceAsset = {
   id: 'scenes/1/shots/1/still.png',
@@ -36,7 +39,7 @@ function body(assets: SequenceAsset[]): SequenceAssetsBody {
 }
 
 describe('sequence assets page', () => {
-  it('lists a file and names the npx command when the folder picker is absent', () => {
+  it('lists a file and shows a command that can be copied', () => {
     const html = renderToStaticMarkup(
       <SequenceAssetsView
         sequenceId="SEQ"
@@ -53,7 +56,27 @@ describe('sequence assets page', () => {
     expect(html).toContain('Current cut');
     expect(html).toContain('Save folder');
     expect(html).toContain('npx @openstory/stitch pull SEQ');
+    expect(html).toContain('Copy');
     expect(html).toContain('href="/r2/team/still.png?download"');
+  });
+
+  it('builds the pull command from the toggles and the page origin', () => {
+    expect(
+      sequencePullCommand('SEQ', {
+        history: false,
+        exports: false,
+        origin: 'https://openstory.so',
+      })
+    ).toBe('npx @openstory/stitch pull SEQ');
+    expect(
+      sequencePullCommand('SEQ', {
+        history: true,
+        exports: true,
+        origin: 'https://snappy-wombat.openstory.so',
+      })
+    ).toBe(
+      'npx @openstory/stitch pull SEQ --history --exports --origin https://snappy-wombat.openstory.so'
+    );
   });
 
   it('says when the sequence has no stored files', () => {

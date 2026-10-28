@@ -10,9 +10,10 @@ import type {
   SequenceAsset,
   SequenceAssetsBody,
 } from '@/sequences/sequence-assets';
+import { copyTextToClipboard } from '@/ui/clipboard';
 import { Button } from '@/ui/shadcn/button';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type DirHandle = {
   getDirectoryHandle(
@@ -50,14 +51,26 @@ export function SequenceAssetsView({
 }) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const groups = groupAssets(body.assets);
   const folderSave =
     typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  const command = sequencePullCommand(sequenceId, {
+    history: scope === 'history',
+    exports: includeExports,
+    origin: typeof window === 'undefined' ? undefined : window.location.origin,
+  });
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const fileCount = `${body.assets.length} ${body.assets.length === 1 ? 'file' : 'files'}`;
   const hint = folderSave
-    ? `${fileCount}. Save folder writes them into a directory you pick.`
-    : `${fileCount}. This browser saves one file at a time. Use Download on each row, or npx @openstory/stitch pull ${sequenceId}.`;
+    ? `${fileCount}. Save folder writes them into a directory you pick. The command below writes the same list.`
+    : `${fileCount}. This browser saves one file at a time. Use Download on a row, or the command below.`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -113,6 +126,25 @@ export function SequenceAssetsView({
       <output className="block shrink-0 px-4 pt-3 text-sm text-muted-foreground md:px-6">
         {note ?? hint}
       </output>
+      <div className="flex shrink-0 items-center gap-2 px-4 pt-2 md:px-6">
+        <code className="min-w-0 flex-1 truncate text-sm" title={command}>
+          {command}
+        </code>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label={copied ? 'Command copied' : 'Copy command'}
+          onClick={() => {
+            void copyTextToClipboard(command).then((ok) => {
+              if (ok) setCopied(true);
+              else setNote('Could not copy the command.');
+            });
+          }}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 md:px-6">
         {body.assets.length === 0 ? (
           <p>This sequence has no stored files yet.</p>
@@ -152,6 +184,20 @@ export function SequenceAssetsView({
       </div>
     </div>
   );
+}
+
+/** The pull line for the list on screen. Production omits `--origin`. */
+export function sequencePullCommand(
+  sequenceId: string,
+  options: { history: boolean; exports: boolean; origin?: string }
+): string {
+  const parts = ['npx @openstory/stitch pull', sequenceId];
+  if (options.history) parts.push('--history');
+  if (options.exports) parts.push('--exports');
+  if (options.origin && options.origin !== 'https://openstory.so') {
+    parts.push('--origin', options.origin);
+  }
+  return parts.join(' ');
 }
 
 function groupAssets(assets: SequenceAsset[]): [string, SequenceAsset[]][] {
