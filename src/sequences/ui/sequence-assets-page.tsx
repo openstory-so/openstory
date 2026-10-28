@@ -128,7 +128,7 @@ export function SequenceAssetsView({
       <div className="shrink-0 px-4 pt-3 md:px-6">
         <Terminal
           label="Pull command"
-          comment="Writes the same list."
+          comment="Run this to download these files."
           lines={[command]}
         />
       </div>
