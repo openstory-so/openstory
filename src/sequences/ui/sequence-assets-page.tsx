@@ -68,8 +68,9 @@ export function SequenceAssetsView({
   }, [copied]);
 
   const fileCount = `${body.assets.length} ${body.assets.length === 1 ? 'file' : 'files'}`;
+  const folderName = sequenceAssetFolderName(body);
   const hint = folderSave
-    ? `${fileCount}. Save folder writes them into a directory you pick. The command below writes the same list.`
+    ? `${fileCount}. Save folder opens in Movies and writes a folder named ${folderName}. Chrome blocks your home folder, Desktop, Documents, and Downloads.`
     : `${fileCount}. This browser saves one file at a time. Use Download on a row, or the command below.`;
 
   return (
@@ -113,6 +114,9 @@ export function SequenceAssetsView({
                   error instanceof DOMException &&
                   error.name === 'AbortError'
                 ) {
+                  setNote(
+                    'Chrome blocked that folder. In the picker, open Movies, or open a folder you made inside Downloads. Do not choose Downloads, Documents, Desktop, or your home folder.'
+                  );
                   return;
                 }
                 setNote(error instanceof Error ? error.message : 'Save failed');
@@ -186,6 +190,16 @@ export function SequenceAssetsView({
   );
 }
 
+/** Directory name inside the folder the user picks. */
+export function sequenceAssetFolderName(body: SequenceAssetsBody): string {
+  const cleaned = body.title
+    .replace(/[\\/:\0]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned || cleaned === '.' || cleaned === '..') return body.sequenceId;
+  return cleaned;
+}
+
 /** The pull line for the list on screen. Production omits `--origin`. */
 export function sequencePullCommand(
   sequenceId: string,
@@ -215,13 +229,25 @@ async function saveFolder(body: SequenceAssetsBody): Promise<string> {
     window as Window & {
       showDirectoryPicker?: (options: {
         mode: 'readwrite';
+        id: string;
+        startIn: 'videos';
       }) => Promise<DirHandle>;
     }
   ).showDirectoryPicker;
   if (!picker) {
     return 'This browser saves one file at a time. Use Download on each row.';
   }
-  const root = await picker({ mode: 'readwrite' });
+  // A fresh id so a previously rejected home, Desktop, Documents, or
+  // Downloads folder is not offered again. Movies is not on Chrome's block
+  // list, so Select works there. Files go in a child named for the sequence.
+  const parent = await picker({
+    mode: 'readwrite',
+    id: 'openstory-sequence-assets',
+    startIn: 'videos',
+  });
+  const root = await parent.getDirectoryHandle(sequenceAssetFolderName(body), {
+    create: true,
+  });
   const previous = versionsByPath(await readManifest(root));
   const present = new Set<string>();
   for (const asset of body.assets) {

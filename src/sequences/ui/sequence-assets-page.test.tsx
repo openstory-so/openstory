@@ -8,6 +8,7 @@ import type {
 
 import {
   SequenceAssetsView,
+  sequenceAssetFolderName,
   sequencePullCommand,
 } from './sequence-assets-page';
 
@@ -58,6 +59,14 @@ describe('sequence assets page', () => {
     expect(html).toContain('npx @openstory/stitch pull SEQ');
     expect(html).toContain('Copy');
     expect(html).toContain('href="/r2/team/still.png?download"');
+  });
+
+  it('names the folder after the sequence title', () => {
+    expect(sequenceAssetFolderName(body([]))).toBe('Room');
+    expect(sequenceAssetFolderName({ ...body([]), title: 'a/b:c' })).toBe(
+      'a b c'
+    );
+    expect(sequenceAssetFolderName({ ...body([]), title: '  ' })).toBe('SEQ');
   });
 
   it('builds the pull command from the toggles and the page origin', () => {
