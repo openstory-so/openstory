@@ -1,6 +1,6 @@
 /**
  * Asset page (#2209). Groups the manifest, downloads one file, and in
- * Chromium saves the folder. Other browsers keep the per-row download.
+ * Chromium downloads the folder. Other browsers keep the per-row download.
  */
 import {
   pendingAssets,
@@ -63,7 +63,7 @@ export function SequenceAssetsView({
   const fileCount = `${body.assets.length} ${body.assets.length === 1 ? 'file' : 'files'}`;
   const folderName = sequenceAssetFolderName(body);
   const hint = folderSave
-    ? `${fileCount}. Save folder opens in Movies and writes a folder named ${folderName}. Chrome blocks your home folder, Desktop, Documents, and Downloads.`
+    ? `${fileCount}. Download folder opens in Movies and writes a folder named ${folderName}. Chrome blocks your home folder, Desktop, Documents, and Downloads.`
     : `${fileCount}. This browser saves one file at a time. Use Download on a row, or the command below.`;
 
   return (
@@ -112,12 +112,14 @@ export function SequenceAssetsView({
                   );
                   return;
                 }
-                setNote(error instanceof Error ? error.message : 'Save failed');
+                setNote(
+                  error instanceof Error ? error.message : 'Download failed'
+                );
               })
               .finally(() => setSaving(false));
           }}
         >
-          {saving ? 'Saving…' : 'Save folder'}
+          {saving ? 'Downloading…' : 'Download folder'}
         </Button>
       </div>
       <output className="block shrink-0 px-4 pt-3 text-sm text-muted-foreground md:px-6">
@@ -262,7 +264,7 @@ async function saveFolder(body: SequenceAssetsBody): Promise<string> {
     `${JSON.stringify({ ...body, assets: body.assets }, null, 2)}\n`
   );
   const skipped = body.assets.length - pending.length;
-  return `Saved ${pending.length} files. Skipped ${skipped} already there.`;
+  return `Downloaded ${pending.length} files. Skipped ${skipped} already there.`;
 }
 
 async function readManifest(root: DirHandle): Promise<unknown> {
