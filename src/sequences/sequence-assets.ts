@@ -156,6 +156,7 @@ export type SequenceAssetSource = {
       id: string;
       name: string;
       deleted: boolean;
+      isDefault: boolean;
       selectedSheetVersionId: string | null;
       sheetImageUrl: string | null;
       sheetImagePath: string | null;
@@ -563,7 +564,10 @@ function pushCast(
       );
       emitVersioned(assets, {
         versions,
-        pointerId: look.selectedSheetVersionId,
+        // A default look's pointer stays null on purpose. The live sheet is
+        // the row the backfill stored under the character's id.
+        pointerId:
+          look.selectedSheetVersionId ?? (look.isDefault ? character.id : null),
         history,
         folder: `cast/${character.id}/looks/${lookId}`,
         stem: 'sheet',
@@ -676,7 +680,8 @@ function pushLocations(
     const versions = byLocation.get(location.id) ?? [];
     emitVersioned(assets, {
       versions,
-      pointerId: location.selectedReferenceVersionId,
+      // A null pointer is the row the backfill stored under the location's id.
+      pointerId: location.selectedReferenceVersionId ?? location.id,
       history,
       folder: `locations/${location.id}`,
       stem: 'sheet',

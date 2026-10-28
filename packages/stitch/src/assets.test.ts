@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdtemp,
   readFile,
@@ -129,7 +130,7 @@ describe('stitch pull', () => {
         home,
         '.openstory',
         'assets',
-        `${encodeURIComponent('sheet:1')}.png`
+        `${createHash('sha256').update('/r2/team/sheet.png').digest('hex')}.png`
       );
       const cached = await stat(cache);
       const linked = await stat(join(dest, 'cast/c/looks/c/sheet.png'));
@@ -209,9 +210,132 @@ describe('stitch pull', () => {
       });
       expect(stdout.join('')).toBe('Saved 0 files. Skipped 0 already there.\n');
       expect(stderr).toEqual([]);
+      await main(['pull', 'SEQ', '--history', '--exports', '--dir', 'out'], {
+        cwd,
+        home,
+        stdout: { write: () => {} },
+        stderr: { write: () => {} },
+        packageRoot: join(cwd, 'missing-package'),
+        fetch: async (input) => {
+          const url = new URL(requestUrl(input));
+          expect(url.searchParams.get('scope')).toBe('history');
+          expect(url.searchParams.get('exports')).toBe('true');
+          return Response.json(manifest([]));
+        },
+      });
       expect(
         await readFile(join(cwd, 'out', 'manifest.json'), 'utf8')
       ).toContain('"assets": []');
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a portrait out of the sheet cache and refuses a path that leaves the folder', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
+    try {
+      const home = join(cwd, 'home');
+      const dest = join(cwd, 'out');
+      const fetched: string[] = [];
+      const fetchFn: typeof fetch = async (input) => {
+        const url = new URL(requestUrl(input));
+        fetched.push(url.href);
+        if (url.pathname === '/api/v1/sequences/SEQ/assets') {
+          return Response.json(
+            manifest([
+              {
+                relativePath: 'cast/c/portrait.png',
+                versionId: 'sheet-1',
+                url: '/r2/team/portrait.png?download',
+                text: null,
+                shared: true,
+              },
+              {
+                relativePath: 'cast/c/sheet.png',
+                versionId: 'sheet-1',
+                url: '/r2/team/sheet.png?download',
+                text: null,
+                shared: true,
+              },
+            ])
+          );
+        }
+        if (url.pathname === '/r2/team/portrait.png') {
+          return new Response('portrait-bytes');
+        }
+        if (url.pathname === '/r2/team/sheet.png') {
+          return new Response('sheet-bytes');
+        }
+        return new Response('missing', { status: 404 });
+      };
+      await downloadSequenceAssets({
+        sequenceId: 'SEQ',
+        origin,
+        home,
+        dest,
+        history: false,
+        includeExports: false,
+        fetch: fetchFn,
+        key: async () => 'new',
+        refresh: async () => 'new',
+      });
+      expect(await readFile(join(dest, 'cast/c/portrait.png'), 'utf8')).toBe(
+        'portrait-bytes'
+      );
+      expect(await readFile(join(dest, 'cast/c/sheet.png'), 'utf8')).toBe(
+        'sheet-bytes'
+      );
+
+      await expect(
+        downloadSequenceAssets({
+          sequenceId: 'SEQ',
+          origin,
+          home,
+          dest,
+          history: false,
+          includeExports: false,
+          fetch: async () =>
+            Response.json(
+              manifest([
+                {
+                  relativePath: '/etc/passwd',
+                  versionId: 'x',
+                  url: null,
+                  text: 'no',
+                  shared: false,
+                },
+              ])
+            ),
+          key: async () => 'new',
+          refresh: async () => 'new',
+        })
+      ).rejects.toThrow('Refusing to write /etc/passwd');
+
+      await expect(
+        downloadSequenceAssets({
+          sequenceId: 'SEQ',
+          origin,
+          home,
+          dest,
+          history: false,
+          includeExports: false,
+          fetch: async () =>
+            Response.json(
+              manifest([
+                {
+                  relativePath: 'cast/c/sheet.png',
+                  versionId: 'x',
+                  url: 'https://evil.example/sheet.png',
+                  text: null,
+                  shared: false,
+                },
+              ])
+            ),
+          key: async () => 'new',
+          refresh: async () => 'new',
+        })
+      ).rejects.toThrow('Refusing https://evil.example/sheet.png');
+      expect(fetched.some((url) => url.includes('evil.example'))).toBe(false);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

@@ -80,6 +80,7 @@ export type SequenceAssetDb = {
           id: string;
           name: string;
           deletedAt: Date | null;
+          isDefault: boolean;
           selectedSheetVersionId: string | null;
           sheetImageUrl: string | null;
           sheetImagePath: string | null;
@@ -264,6 +265,7 @@ export async function listSequenceAssets(
         id: look.id,
         name: look.name,
         deleted: look.deletedAt != null,
+        isDefault: look.isDefault,
         selectedSheetVersionId: look.selectedSheetVersionId,
         sheetImageUrl: look.sheetImageUrl,
         sheetImagePath: look.sheetImagePath,

@@ -10,10 +10,10 @@ import type {
   SequenceAsset,
   SequenceAssetsBody,
 } from '@/sequences/sequence-assets';
-import { copyTextToClipboard } from '@/ui/clipboard';
 import { Button } from '@/ui/shadcn/button';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
-import { useEffect, useState } from 'react';
+import { Terminal } from '@/ui/terminal-command';
+import { useState } from 'react';
 
 type DirHandle = {
   getDirectoryHandle(
@@ -51,7 +51,6 @@ export function SequenceAssetsView({
 }) {
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const groups = groupAssets(body.assets);
   const folderSave =
     typeof window !== 'undefined' && 'showDirectoryPicker' in window;
@@ -60,12 +59,6 @@ export function SequenceAssetsView({
     exports: includeExports,
     origin: typeof window === 'undefined' ? undefined : window.location.origin,
   });
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(timer);
-  }, [copied]);
 
   const fileCount = `${body.assets.length} ${body.assets.length === 1 ? 'file' : 'files'}`;
   const folderName = sequenceAssetFolderName(body);
@@ -130,24 +123,12 @@ export function SequenceAssetsView({
       <output className="block shrink-0 px-4 pt-3 text-sm text-muted-foreground md:px-6">
         {note ?? hint}
       </output>
-      <div className="flex shrink-0 items-center gap-2 px-4 pt-2 md:px-6">
-        <code className="min-w-0 flex-1 truncate text-sm" title={command}>
-          {command}
-        </code>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          aria-label={copied ? 'Command copied' : 'Copy command'}
-          onClick={() => {
-            void copyTextToClipboard(command).then((ok) => {
-              if (ok) setCopied(true);
-              else setNote('Could not copy the command.');
-            });
-          }}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
+      <div className="shrink-0 px-4 pt-3 md:px-6">
+        <Terminal
+          label="Pull command"
+          comment="Writes the same list."
+          lines={[command]}
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 md:px-6">
         {body.assets.length === 0 ? (

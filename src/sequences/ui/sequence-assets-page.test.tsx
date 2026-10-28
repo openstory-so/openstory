@@ -57,7 +57,8 @@ describe('sequence assets page', () => {
     expect(html).toContain('Current cut');
     expect(html).toContain('Save folder');
     expect(html).toContain('npx @openstory/stitch pull SEQ');
-    expect(html).toContain('Copy');
+    expect(html).toContain('Copy Pull command');
+    expect(html).toContain('# Writes the same list.');
     expect(html).toContain('href="/r2/team/still.png?download"');
   });
 

@@ -235,6 +235,7 @@ describe('projectSequenceAssets', () => {
               id: 'ada',
               name: 'Default',
               deleted: false,
+              isDefault: true,
               selectedSheetVersionId: 'sheet',
               sheetImageUrl: null,
               sheetImagePath: null,
@@ -294,6 +295,82 @@ describe('projectSequenceAssets', () => {
     expect(assets.map((asset) => asset.relativePath)).toEqual(
       expect.arrayContaining(['elements/LOGO.png', 'elements/element-bad.mp3'])
     );
+  });
+
+  it('treats a null default-look pointer as the character id', () => {
+    const sheet = {
+      id: 'ada',
+      characterId: 'ada',
+      lookId: null,
+      url: '/r2/team/sheet.png',
+      storagePath: 'team/sheet.png',
+      portraitUrl: null,
+      status: 'completed',
+      discardedAt: null,
+    };
+    const look = {
+      id: 'ada',
+      name: 'Default',
+      deleted: false,
+      isDefault: true,
+      selectedSheetVersionId: null,
+      sheetImageUrl: '/r2/team/sheet.png',
+      sheetImagePath: 'team/sheet.png',
+      sheetPortraitUrl: null,
+    };
+    const selected = project({
+      characters: [{ id: 'ada', name: 'Ada', looks: [look] }],
+      sheets: [sheet],
+    });
+    expect(
+      selected.find((asset) => asset.kind === 'character_sheet')
+    ).toMatchObject({
+      relativePath: 'cast/ada/looks/ada/sheet.png',
+      selected: true,
+      versionId: 'ada',
+    });
+
+    const otherLook = { ...look, id: 'gala', isDefault: false };
+    const skipped = project({
+      characters: [{ id: 'ada', name: 'Ada', looks: [otherLook] }],
+      sheets: [{ ...sheet, lookId: 'gala' }],
+    });
+    expect(skipped.some((asset) => asset.kind === 'character_sheet')).toBe(
+      false
+    );
+  });
+
+  it('treats a null location pointer as the location id', () => {
+    const assets = project({
+      locations: [
+        {
+          id: 'room',
+          name: 'Room',
+          selectedReferenceVersionId: null,
+          referenceImageUrl: '/r2/team/room.png',
+          referenceImagePath: 'team/room.png',
+          referencePortraitUrl: null,
+        },
+      ],
+      locationSheets: [
+        {
+          id: 'room',
+          locationId: 'room',
+          url: '/r2/team/room.png',
+          storagePath: 'team/room.png',
+          portraitUrl: null,
+          status: 'completed',
+          discardedAt: null,
+        },
+      ],
+    });
+    expect(
+      assets.find((asset) => asset.kind === 'location_sheet')
+    ).toMatchObject({
+      relativePath: 'locations/room/sheet.png',
+      selected: true,
+      versionId: 'room',
+    });
   });
 
   it('leaves rendered cuts out until they are asked for', () => {

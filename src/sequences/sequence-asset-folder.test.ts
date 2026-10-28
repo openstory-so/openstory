@@ -33,4 +33,37 @@ describe('sequence asset folder', () => {
       )
     ).toEqual(['segments/v.mp4']);
   });
+
+  it('rewrites a path when the version changed or the file is gone', () => {
+    const assets = [
+      {
+        relativePath: 'script.txt',
+        versionId: 's2',
+        url: null,
+        text: 'INT. ROOM',
+      },
+      {
+        relativePath: 'segments/v.mp4',
+        versionId: 'v1',
+        url: '/r2/team/v.mp4?download',
+        text: null,
+      },
+    ];
+    const previous = versionsByPath({
+      assets: [
+        { relativePath: 'script.txt', versionId: 's1' },
+        { relativePath: 'segments/v.mp4', versionId: 'v1' },
+      ],
+    });
+    expect(
+      pendingAssets(assets, previous, () => true).map(
+        (asset) => asset.relativePath
+      )
+    ).toEqual(['script.txt']);
+    expect(
+      pendingAssets(assets, previous, () => false).map(
+        (asset) => asset.relativePath
+      )
+    ).toEqual(['script.txt', 'segments/v.mp4']);
+  });
 });
