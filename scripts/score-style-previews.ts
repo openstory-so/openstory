@@ -218,7 +218,7 @@ async function scoreStyle(
     max_tokens: 1200,
     temperature: 0,
     observationName: 'score-style-preview',
-    apiKey: { key: openRouterKey, via: 'openrouter' },
+    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
   });
   const parsed = styleVerdictSchema.parse(JSON.parse(extractJson(reply)));
 

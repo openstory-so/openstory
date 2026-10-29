@@ -219,7 +219,7 @@ async function enhance(
     temperature: TEMP,
     ...(REASONING && { reasoning: { effort: REASONING } }),
     observationName: 'eval-enhance-creativity',
-    apiKey: { key: openRouterKey, via: 'openrouter' },
+    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
   });
 }
 
@@ -288,7 +288,7 @@ async function judge(
     max_tokens: 700,
     temperature: 0,
     observationName: 'eval-enhance-creativity-judge',
-    apiKey: { key: openRouterKey, via: 'openrouter' },
+    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
   });
   return verdictSchema.parse(JSON.parse(extractJson(reply)));
 }
