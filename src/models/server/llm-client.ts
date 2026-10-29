@@ -33,6 +33,12 @@ import {
   isRegionBlockedLlmError,
   regionFallbackModel,
 } from '@/models/region-policy';
+import {
+  isGoogleRegionBlockedError,
+  isGoogleRegionBlockedHere,
+  isGoogleRegionBlockedMessage,
+  markGoogleRegionBlocked,
+} from '@/models/google-region';
 import { aiDebugLogger } from '@/platform/server/ai/ai-debug-logger';
 import { generateId } from '@/platform/id';
 import {
@@ -993,6 +999,24 @@ function formatRunErrorMessage(detail: RunErrorDetail): string {
 }
 
 /**
+ * Which region blocks the caller will retry after `throwNotedRunError`
+ * throws: a model swap for an Anthropic block (#1259), a via swap for a
+ * Google refusal (`google-region.ts`). Decides only the log level — a block
+ * that will be retried is a warning, a terminal one an error.
+ */
+export type RegionRetries = { model: boolean; via: boolean };
+
+const NO_REGION_RETRY: RegionRetries = { model: false, via: false };
+
+/** What a call on `model` wrapped in `withRegionFallback` can still retry. */
+export function regionRetriesFor(model: TextModel): RegionRetries {
+  return {
+    model: regionFallbackModel(model) !== null,
+    via: !isGoogleRegionBlockedHere(),
+  };
+}
+
+/**
  * Rethrow a RUN_ERROR recorded while draining `chat()`. Must run AFTER the
  * `for await` completes: throwing inside the loop calls `iterator.return()`
  * (for-await-of close), which skips TanStack's `onError` and leaves the OTel
@@ -1000,7 +1024,7 @@ function formatRunErrorMessage(detail: RunErrorDetail): string {
  */
 export function throwNotedRunError(
   detail: RunErrorDetail | null,
-  canRetryRegionBlock = false
+  canRetry: RegionRetries = NO_REGION_RETRY
 ): void {
   if (!detail) return;
   // Log the formatted string as the message (not as a `{ properties }` field)
@@ -1010,7 +1034,10 @@ export function throwNotedRunError(
   const properties = { runError: detail.event, rawEvent: detail.rawEvent };
   // Only downgrade attempts the caller can recover. Terminal failures must
   // still count as errors, even when their message describes a region block.
-  if (canRetryRegionBlock && isRegionBlockedLlmError(message)) {
+  if (
+    (canRetry.model && isRegionBlockedLlmError(message)) ||
+    (canRetry.via && isGoogleRegionBlockedMessage(message))
+  ) {
     logger.warn(message, properties);
   } else {
     logger.error(message, properties);
@@ -1039,6 +1066,24 @@ export async function* callLLMStream<T>(
     }
     return;
   } catch (error) {
+    // Google refusing the location (`google-region.ts`) is a via block, not
+    // a model block: same model, key re-resolved (the resolvers now answer
+    // OpenRouter for it). A fixed Google key with no resolver is dropped so
+    // `createAdapter` falls back to the platform key the same way.
+    if (
+      !yielded &&
+      isGoogleRegionBlockedError(error) &&
+      !isGoogleRegionBlockedHere()
+    ) {
+      markGoogleRegionBlocked(`model ${params.model}`, error);
+      const apiKey = params.resolveApiKey
+        ? await params.resolveApiKey(params.model)
+        : params.apiKey?.via === 'google'
+          ? undefined
+          : params.apiKey;
+      yield* callLLMStreamOnce({ ...params, apiKey });
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     const fallback =
       !yielded && isRegionBlockedLlmError(message)
@@ -1180,9 +1225,9 @@ async function* callLLMStreamOnce<T>(
   }
   throwNotedRunError(
     runError,
-    canRetryRegionBlock &&
-      !yielded &&
-      regionFallbackModel(params.model) !== null
+    canRetryRegionBlock && !yielded
+      ? regionRetriesFor(params.model)
+      : NO_REGION_RETRY
   );
 
   yield {

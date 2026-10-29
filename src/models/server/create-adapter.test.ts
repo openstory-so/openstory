@@ -9,6 +9,10 @@
 
 import type { HTTPClient } from '@openrouter/sdk/lib/http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  markGoogleRegionBlocked,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
 
 // Mutable so individual tests can vary platform keys (reset in beforeEach).
 const testEnv: {
@@ -470,6 +474,26 @@ describe('native Google routing', () => {
     const call = lastCall();
     if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
     expect(call.key).toBe('platform-or');
+  });
+
+  it('sends a Gemini model to OpenRouter while Google refuses this location', () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+    markGoogleRegionBlocked('test');
+    try {
+      expect(getPlatformLlmKey(GEMINI_MODEL)).toStrictEqual({
+        key: 'platform-or',
+        via: 'openrouter',
+        source: 'platform',
+      });
+      createAdapter(GEMINI_MODEL);
+      expect(createGeminiChatMock).not.toHaveBeenCalled();
+      const call = lastCall();
+      if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
+      expect(call.key).toBe('platform-or');
+    } finally {
+      resetGoogleRegionBlock();
+    }
   });
 });
 

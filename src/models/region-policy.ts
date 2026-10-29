@@ -27,9 +27,18 @@
  * expose; the vision helpers used to be three more, which is how
  * `classifyUploadFn` (#1581, via talent vision) came to die on "This model is
  * not available in your region".
+ *
+ * Google's Gemini API has a geo-block of its own, on the native `google` via
+ * rather than on a model; `google-region.ts` owns that one, and the same two
+ * retry points carry it (as a via swap, not a model swap).
  */
 
 import type { TextModel } from './models';
+import {
+  isGoogleRegionBlockedError,
+  isGoogleRegionBlockedHere,
+  markGoogleRegionBlocked,
+} from './google-region';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'region-policy']);
@@ -113,6 +122,11 @@ export function isRegionBlockedModel(
 /**
  * Run an LLM call; on a region-block error, retry once with the
  * region-available fallback model. Any other error rethrows untouched.
+ *
+ * A refusal from Google's own API (`google-region.ts`) is the other region
+ * block: the MODEL is fine, the native via is not reachable from here. That
+ * retry keeps the model and re-runs; `run` resolves its key inside, and the
+ * resolvers now answer with OpenRouter for it.
  */
 export async function withRegionFallback<T>(
   model: TextModel,
@@ -121,6 +135,10 @@ export async function withRegionFallback<T>(
   try {
     return await run(model);
   } catch (error) {
+    if (isGoogleRegionBlockedError(error) && !isGoogleRegionBlockedHere()) {
+      markGoogleRegionBlocked(`model ${model}`, error);
+      return run(model);
+    }
     const message = error instanceof Error ? error.message : String(error);
     const fallback = isRegionBlockedLlmError(message)
       ? regionFallbackModel(model)

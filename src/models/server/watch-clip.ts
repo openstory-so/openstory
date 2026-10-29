@@ -18,6 +18,10 @@ import {
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
+import {
+  GEMINI_REGION_REFUSED_MESSAGE,
+  isGoogleRegionBlockedHere,
+} from '@/models/google-region';
 import { getLogger } from '@/platform/logger';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { storageObjectContentType } from '#storage';
@@ -42,8 +46,12 @@ export async function watchClipForTeam(
   }
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL);
   if (llmKey.via !== 'google') {
+    // The Files API has no other via: a clip is watched by Gemini or not at
+    // all, so a Google refusal of this location is the end of it here.
     throw new ValidationError(
-      'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
+      isGoogleRegionBlockedHere()
+        ? GEMINI_REGION_REFUSED_MESSAGE
+        : 'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
   if (llmKey.source !== 'team') {

@@ -24,6 +24,7 @@ import {
   llmCostFromUsage,
   openRouterProviderForModel,
   PROMPT_REASONING,
+  regionRetriesFor,
   throwNotedRunError,
   toGeminiThinkingLevel,
 } from './llm-client';
@@ -35,10 +36,7 @@ import {
   getMaxOutputTokens,
   resolveVisionModel,
 } from '@/models/models.config';
-import {
-  regionFallbackModel,
-  withRegionFallback,
-} from '@/models/region-policy';
+import { withRegionFallback } from '@/models/region-policy';
 import { extractStreamingStringField } from '@/platform/server/ai/stream-extract';
 import type { Microdollars } from '@/billing/money';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
@@ -481,7 +479,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError, regionFallbackModel(model) !== null);
+            throwNotedRunError(runError, regionRetriesFor(model));
             assertStructuredOutput(
               structuredObject,
               logName,
@@ -713,7 +711,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError, regionFallbackModel(model) !== null);
+            throwNotedRunError(runError, regionRetriesFor(model));
             await flushDelta();
             assertStructuredOutput(
               structuredJson,

@@ -24,6 +24,10 @@ export type VisionBillingDb = {
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'deductCredits'>;
 };
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
+import {
+  GEMINI_REGION_REFUSED_MESSAGE,
+  isGoogleRegionBlockedHere,
+} from '@/models/google-region';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import {
   deleteGeminiFile,
@@ -78,8 +82,12 @@ export async function analyzeTalentClipForTeam(input: {
 }): Promise<TalentVisionResult> {
   const llmKey = await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL);
   if (llmKey.via !== 'google') {
+    // The Files API has no other via (see `google-region.ts`): from a
+    // location Google refuses, a clip cannot be checked at all.
     throw new ValidationError(
-      'Checking a clip for a real person needs a Gemini API key. Add one in Settings → API Keys.'
+      isGoogleRegionBlockedHere()
+        ? GEMINI_REGION_REFUSED_MESSAGE
+        : 'Checking a clip for a real person needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
   await requireVisionCredits(input.scopedDb, llmKey);

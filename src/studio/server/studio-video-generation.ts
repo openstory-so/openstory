@@ -27,6 +27,11 @@ import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
 import { billedFields } from '@/billing/billed-quantity';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
+import {
+  resolveGoogleKeyForNewCall,
+  resolveGoogleKeyForStampedJob,
+} from '@/models/server/google-key';
+import { withGoogleRegionFallback } from '@/models/google-region';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
   createDeadlineFetch,
@@ -160,14 +165,6 @@ function createNativeVideoAdapter(apiKey: string) {
     fetch: workersSafeFetch,
     ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
   });
-}
-
-async function resolveOptionalGoogleKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('google');
-  const platformKey = getEnv().GEMINI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 function createNativeGeminiVideoAdapter(apiKey: string) {
@@ -475,6 +472,16 @@ export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
 export async function submitStudioVideoJob(
   options: SubmitStudioVideoOptions
 ): Promise<StudioVideoJobSubmission> {
+  // Google refuses some locations before any job exists (`google-region.ts`);
+  // the second attempt resolves its via again and lands on fal.
+  return withGoogleRegionFallback('studio video submit', () =>
+    submitStudioVideoJobOnce(options)
+  );
+}
+
+async function submitStudioVideoJobOnce(
+  options: SubmitStudioVideoOptions
+): Promise<StudioVideoJobSubmission> {
   const modelKey = options.model;
   const threadId = generateId();
   const mode = options.mode ?? 'text';
@@ -506,7 +513,7 @@ export async function submitStudioVideoJob(
     ? await resolveOptionalXaiKey(options.credentials)
     : undefined;
   const googleKey = isNativeGeminiVideoModel(modelKey)
-    ? await resolveOptionalGoogleKey(options.credentials)
+    ? await resolveGoogleKeyForNewCall(options.credentials)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
@@ -827,7 +834,7 @@ export async function pollStudioVideoJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(credentials);
+      const key = await resolveGoogleKeyForStampedJob(credentials);
       if (!key) {
         throw new Error(
           `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`

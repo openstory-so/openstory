@@ -4,6 +4,10 @@ import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
+import {
+  isGoogleRegionBlockedHere,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
 import { z } from 'zod';
 import { getLogger } from '@/platform/logger';
 import { getMaxOutputTokens } from '@/models/models.config';
@@ -480,6 +484,84 @@ describe('llm-client', () => {
         REGION_FALLBACK_MODEL,
         undefined
       );
+    });
+
+    it('keeps the model and drops the Google key when Google refuses the location', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: '400 User location is not supported for the API use.',
+              metadata: { tanstack: { model: 'gemini-3.8-flash' } },
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'via openrouter' };
+          })()
+        );
+
+      try {
+        const result = await callLLM({
+          model: 'google/gemini-3.8-flash',
+          messages: [{ role: 'user', content: 'test' }],
+          apiKey: { key: 'platform-google', via: 'google' },
+        });
+
+        expect(result).toBe('via openrouter');
+        expect(errorLog).not.toHaveBeenCalled();
+        expect(mockChat).toHaveBeenCalledTimes(2);
+        // Same model; no key, so createAdapter resolves the platform key —
+        // which the memo now answers with OpenRouter.
+        expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+          2,
+          'google/gemini-3.8-flash',
+          undefined
+        );
+        expect(isGoogleRegionBlockedHere()).toBe(true);
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
+    it('re-resolves the key for the same model when a resolver is given', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: '400 User location is not supported for the API use.',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+      const resolveApiKey = vi.fn(async () => ({
+        key: 'team-openrouter',
+        via: 'openrouter' as const,
+      }));
+
+      try {
+        await callLLM({
+          model: 'google/gemini-3.8-flash',
+          messages: [{ role: 'user', content: 'test' }],
+          apiKey: { key: 'team-google', via: 'google' },
+          resolveApiKey,
+        });
+        expect(resolveApiKey).toHaveBeenCalledWith('google/gemini-3.8-flash');
+        expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+          2,
+          'google/gemini-3.8-flash',
+          { key: 'team-openrouter', via: 'openrouter' }
+        );
+      } finally {
+        resetGoogleRegionBlock();
+      }
     });
 
     it('logs a failed fallback at error level', async () => {

@@ -19,6 +19,11 @@ import {
 } from '@/models/server/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
+import {
+  resolveGoogleKeyForNewCall,
+  resolveGoogleKeyForStampedJob,
+} from '@/models/server/google-key';
+import { withGoogleRegionFallback } from '@/models/google-region';
 import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
@@ -195,16 +200,6 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
-/** Undefined when the model isn't Omni Flash or no Google key exists — it
- *  then goes to fal as before. */
-async function resolveOptionalGoogleKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('google');
-  const platformKey = getEnv().GEMINI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
 /**
  * Can this model render a reference-only shot FOR THIS TEAM?
  *
@@ -246,7 +241,7 @@ export async function resolveMotionVia(
     if (xaiKey) return 'xai';
   }
   if (isNativeGeminiVideoModel(modelKey)) {
-    const googleKey = await resolveOptionalGoogleKey(credentials);
+    const googleKey = await resolveGoogleKeyForNewCall(credentials);
     if (googleKey) return 'google';
   }
   if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
@@ -483,6 +478,16 @@ export function arkStillsToRegister(
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
+  // Google refuses some locations before any job exists (`google-region.ts`);
+  // the second attempt resolves its via again and lands on fal.
+  return withGoogleRegionFallback('motion submit', () =>
+    submitMotionJobOnce(options)
+  );
+}
+
+async function submitMotionJobOnce(
+  options: SubmitMotionOptions
+): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
   // One id for the submit and every poll of this job. A fresh id per attempt
   // keeps a content-flag re-roll from resuming the refused run.
@@ -499,7 +504,7 @@ export async function submitMotionJob(
       : undefined;
   const googleKey =
     via === 'google'
-      ? await resolveOptionalGoogleKey(options.credentials)
+      ? await resolveGoogleKeyForNewCall(options.credentials)
       : undefined;
 
   // A clip or voice line this model cannot use — it takes no reference of
@@ -835,7 +840,7 @@ export async function pollMotionJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(credentials);
+      const key = await resolveGoogleKeyForStampedJob(credentials);
       if (!key) {
         throw new Error(
           `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`

@@ -98,6 +98,32 @@ Google won't fetch`data:`as a URI. Chat vision (motion prompts) and
 native image refs must also inline stored stills: Google's`fileData.fileUri`HTTP fetch (CDN / fal URLs) sits on a separate quota
 that 429s while the same bytes as`inlineData`succeed.`toVisionImageSource(..., { inline: true })` is that path.
 
+**Google refuses some locations, and the native via runs where the user is.**
+The Gemini API is not offered in every country (Hong Kong and mainland China
+among them) and it judges the CALLER's address. A Worker — Workflows included
+— runs in the Cloudflare colo nearest the user, so a user there is refused from
+"server-side" code with `400 FAILED_PRECONDITION: User location is not
+supported for the API use.` (a paying customer in Hong Kong lost 19 Nano Banana
+stills in a row to it on 2026-10-28). `src/models/google-region.ts` is the
+remedy, the via twin of the Anthropic model swap in `region-policy.ts` (#1259):
+every Gemini model we route natively also exists on the no-key via (text on
+OpenRouter, Nano Banana and Omni Flash on fal), so on that refusal the call is
+run once more exactly as a deployment with no Google key would run it, and the
+isolate remembers for an hour (`markGoogleRegionBlocked`) so later calls choose
+the fallback via before anything is sent. Every Google key resolver consults the
+memo — `resolveLlmKey` / `getPlatformLlmKey` for text, the shared
+`resolveGoogleKeyForNewCall` (`src/models/server/google-key.ts`) for stills,
+motion and studio — and the retry points are `withRegionFallback`,
+`callLLMStream`, `generateImageWithProvider`, `submitMotionJob` and
+`submitStudioVideoJob`. This is not the provider hop AGENTS.md forbids: the
+refusal comes back before Google starts a job, with no spend, no job id and no
+via stamp. A job already stamped `google` is still polled on Google
+(`resolveGoogleKeyForStampedJob`) — poll follows the stamp. The two features
+only the Files API can serve (watching a clip, checking a clip for a real
+person) have no via to fall back to and say so (`GEMINI_REGION_REFUSED_MESSAGE`).
+The region is never guessed from `cf-ipcountry`: the refusal is the ground
+truth, and it costs one failed round-trip per isolate, not per call.
+
 ## Native Grok (xAI)
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of

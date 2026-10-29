@@ -18,6 +18,7 @@ import {
   isSeedSpeechConfigured,
 } from '@/models/server/seed-speech-config';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
+import { isGoogleRegionBlockedHere } from '@/models/google-region';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import {
   LLMTR_BASE_URL,
@@ -428,7 +429,10 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       if (xai) return { ...xai, via: 'xai' };
     }
 
-    if (model && nativeGeminiTextModel(model)) {
+    // Google refuses some locations outright (`google-region.ts`); from an
+    // isolate it has refused, a Gemini model takes the via it would take with
+    // no Google key at all — OpenRouter carries the same models.
+    if (model && nativeGeminiTextModel(model) && !isGoogleRegionBlockedHere()) {
       const google = await resolveOptionalKey('google');
       if (google) return { ...google, via: 'google' };
     }

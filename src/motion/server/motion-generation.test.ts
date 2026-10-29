@@ -5,6 +5,10 @@ import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
 import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
 import { micros } from '@/billing/money';
 import {
+  markGoogleRegionBlocked,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
+import {
   mockFalVideo,
   mockGenerateVideo,
   mockGetVideoJobStatus,
@@ -1107,6 +1111,83 @@ describe('Motion Service', () => {
       expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
     });
 
+    // Google judges the caller's address and Workers run next to the user,
+    // so a Hong Kong user is refused before any job exists. The clip then
+    // goes to fal's Omni Flash, as it would with no Google key — and the
+    // isolate remembers, so the next shot never asks Google.
+    it('resubmits to fal when Google refuses the location, then skips Google', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      mockGenerateVideo
+        .mockRejectedValueOnce(
+          new Error('400 User location is not supported for the API use.')
+        )
+        .mockResolvedValue({
+          jobId: 'fal-omni-after-refusal',
+          model: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
+        });
+
+      try {
+        const result = await submitMotionJob({
+          heldSeedanceEditSeconds: null,
+          arkAssets: registeredAssets,
+          imageUrl: 'https://example.com/image.jpg',
+          prompt: 'A person walking',
+          model: 'gemini_omni_flash',
+          duration: 5,
+        });
+
+        expect(result.via).toBe('fal');
+        expect(result.jobId).toBe('fal-omni-after-refusal');
+        expect(mockCreateGeminiVideo).toHaveBeenCalledTimes(1);
+        expect(mockGenerateVideo).toHaveBeenCalledTimes(2);
+        expect(mockFalVideo).toHaveBeenCalledTimes(1);
+
+        // The memo: the next shot chooses fal without a Google round-trip.
+        await expect(resolveMotionVia('gemini_omni_flash')).resolves.toBe(
+          'fal'
+        );
+        mockCreateGeminiVideo.mockClear();
+        mockGenerateVideo.mockClear();
+        await submitMotionJob({
+          heldSeedanceEditSeconds: null,
+          arkAssets: registeredAssets,
+          imageUrl: 'https://example.com/image.jpg',
+          prompt: 'A person walking',
+          model: 'gemini_omni_flash',
+          duration: 5,
+        });
+        expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
+        expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
+    it('does not retry a Google refusal from an isolate already marked', async () => {
+      // No resolver chose Google here (the memo was set), so a refusal is a
+      // real failure — never a loop.
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      markGoogleRegionBlocked('earlier');
+      mockGenerateVideo.mockRejectedValue(
+        new Error('400 User location is not supported for the API use.')
+      );
+      try {
+        await expect(
+          submitMotionJob({
+            heldSeedanceEditSeconds: null,
+            arkAssets: registeredAssets,
+            imageUrl: 'https://example.com/image.jpg',
+            prompt: 'A person walking',
+            model: 'gemini_omni_flash',
+            duration: 5,
+          })
+        ).rejects.toThrow('User location');
+        expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
     it('sends the still + prompt with the task pinned to image_to_video', async () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
@@ -1230,6 +1311,28 @@ describe('Motion Service', () => {
       await expect(
         pollMotionJob('google-job', 'gemini_omni_flash', undefined, 'google')
       ).rejects.toThrow(/no Google key is available/);
+    });
+
+    it('still polls Google for a google-stamped job while new calls skip Google', async () => {
+      // Poll MUST follow the stamp: the region memo steers only new calls.
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      markGoogleRegionBlocked('earlier');
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'google-job',
+        status: 'processing',
+      });
+      try {
+        const result = await pollMotionJob(
+          'google-job',
+          'gemini_omni_flash',
+          undefined,
+          'google'
+        );
+        expect(result.status).toBe('processing');
+        expect(mockCreateGeminiVideo).toHaveBeenCalled();
+      } finally {
+        resetGoogleRegionBlock();
+      }
     });
   });
 
