@@ -429,9 +429,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       if (xai) return { ...xai, via: 'xai' };
     }
 
-    // Google refuses some locations outright (`google-region.ts`); from an
-    // isolate it has refused, a Gemini model takes the via it would take with
-    // no Google key at all — OpenRouter carries the same models.
+    // Skipped where Google refused this isolate's location (`google-region.ts`).
     if (model && nativeGeminiTextModel(model) && !isGoogleRegionBlockedHere()) {
       const google = await resolveOptionalKey('google');
       if (google) return { ...google, via: 'google' };

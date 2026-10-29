@@ -129,9 +129,7 @@ describe('withRegionFallback', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  // Google refusing the location is a via block, not a model block: the
-  // Gemini model is kept and the retry re-resolves its key, which the memo
-  // now steers to OpenRouter.
+  // A Google refusal keeps the model and re-resolves the key off Google.
   it('retries the SAME model after Google refuses the location', async () => {
     const seen: boolean[] = [];
     const run = vi.fn(async (_model: string) => {
@@ -150,7 +148,7 @@ describe('withRegionFallback', () => {
   });
 
   it('does not retry a Google refusal from an isolate already marked', async () => {
-    markGoogleRegionBlocked('earlier');
+    markGoogleRegionBlocked('earlier', new Error('refused'));
     const run = vi
       .fn()
       .mockRejectedValue(

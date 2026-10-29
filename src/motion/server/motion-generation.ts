@@ -236,22 +236,36 @@ export async function resolveMotionVia(
   modelKey: ImageToVideoModel,
   credentials?: CredentialScopedDb
 ): Promise<MediaVia> {
+  return (await resolveMotionRoute(modelKey, credentials)).via;
+}
+
+/** The via plus the native key it was chosen with, resolved once per submit. */
+async function resolveMotionRoute(
+  modelKey: ImageToVideoModel,
+  credentials: CredentialScopedDb | undefined
+): Promise<
+  | { via: 'xai'; xaiKey: ResolvedApiKey }
+  | { via: 'google'; googleKey: ResolvedApiKey }
+  | { via: Exclude<MediaVia, 'xai' | 'google'> }
+> {
   if (isNativeGrokVideoModel(modelKey)) {
     const xaiKey = await resolveOptionalXaiKey(credentials);
-    if (xaiKey) return 'xai';
+    if (xaiKey) return { via: 'xai', xaiKey };
   }
   if (isNativeGeminiVideoModel(modelKey)) {
     const googleKey = await resolveGoogleKeyForNewCall(credentials);
-    if (googleKey) return 'google';
+    if (googleKey) return { via: 'google', googleKey };
   }
   if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
     const falKey = await resolveOptionalFalKey(credentials);
-    return claimBytePlusVia({
-      native: true,
-      usingOwnFalKey: falKey?.source === 'team',
-    });
+    return {
+      via: claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: falKey?.source === 'team',
+      }),
+    };
   }
-  return 'fal';
+  return { via: 'fal' };
 }
 
 /**
@@ -478,8 +492,7 @@ export function arkStillsToRegister(
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
-  // Google refuses some locations before any job exists (`google-region.ts`);
-  // the second attempt resolves its via again and lands on fal.
+  // A Google location refusal re-runs once off Google (`google-region.ts`).
   return withGoogleRegionFallback('motion submit', () =>
     submitMotionJobOnce(options)
   );
@@ -497,15 +510,10 @@ async function submitMotionJobOnce(
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
   // Google-only) deploy must not reach it. BytePlus is platform-only (no
   // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
-  const via = await resolveMotionVia(modelKey, options.credentials);
-  const xaiKey =
-    via === 'xai'
-      ? await resolveOptionalXaiKey(options.credentials)
-      : undefined;
-  const googleKey =
-    via === 'google'
-      ? await resolveGoogleKeyForNewCall(options.credentials)
-      : undefined;
+  const route = await resolveMotionRoute(modelKey, options.credentials);
+  const { via } = route;
+  const xaiKey = route.via === 'xai' ? route.xaiKey : undefined;
+  const googleKey = route.via === 'google' ? route.googleKey : undefined;
 
   // A clip or voice line this model cannot use — it takes no reference of
   // that kind, or not one that long — is a refusal, not a degradation

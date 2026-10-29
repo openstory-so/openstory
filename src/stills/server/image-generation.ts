@@ -121,9 +121,7 @@ export async function generateImageWithProvider(
   // The via of the attempt in flight, for the failure span.
   let via: MediaVia = 'fal';
   try {
-    // Google refuses some locations before any image is drawn
-    // (`google-region.ts`); the second attempt chooses its via again and
-    // lands on fal, as a deployment with no Google key would.
+    // A Google location refusal re-runs once off Google (`google-region.ts`).
     const result = await withGoogleRegionFallback(
       'image generation',
       async () => {
@@ -186,13 +184,7 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
-/**
- * Which via this model submits to right now, with the keys that decided it.
- * Same order as video: native xAI first so an xAI-only deploy never hits
- * resolveKey('fal'), then Google when the model is a Nano Banana and a Google
- * key resolves (and Google has not refused this location), then BytePlus
- * (platform Ark, vetoed for a BYOK fal team), then fal.
- */
+/** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal team), fal. */
 async function resolveImageVia(
   model: ImageGenerationParams['model'],
   credentials: CredentialScopedDb | undefined

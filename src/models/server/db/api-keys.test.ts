@@ -757,13 +757,12 @@ describe('native Google key resolution', () => {
     ).toMatchObject({ via: 'openrouter' });
   });
 
-  // Google refuses some locations outright; from an isolate it has refused
-  // a Gemini model takes the via it would take with no Google key at all.
+  // Where Google refused this isolate, a Gemini model skips the Google key.
   it('routes a Gemini model to OpenRouter while Google refuses this location', async () => {
     const scope = createApiKeysMethods(db, teamId, userId);
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
     testEnv.GEMINI_API_KEY = 'platform-google';
-    markGoogleRegionBlocked('test');
+    markGoogleRegionBlocked('test', new Error('refused'));
     try {
       expect(
         await scope.resolveLlmKey('google/gemini-3.1-pro-preview')

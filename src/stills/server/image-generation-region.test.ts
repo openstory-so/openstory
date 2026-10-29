@@ -1,11 +1,4 @@
-/**
- * Google judges the caller's address, and a Worker — Workflows included —
- * runs in the colo nearest the user. A paid sequence from Hong Kong lost
- * every Nano Banana still to `400 User location is not supported for the API
- * use.` (19 in a row, 2026-10-28). The still must then be drawn on fal's Nano
- * Banana, as it would be with no Google key, and the isolate must remember so
- * the next still never asks Google.
- */
+// A Google location refusal redraws the still on fal, and the next still skips Google.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as tanstackAi from '@tanstack/ai';
@@ -139,9 +132,8 @@ describe('generateImageWithProvider when Google refuses the location', () => {
   });
 
   it('does not retry a refusal from an isolate already marked', async () => {
-    markGoogleRegionBlocked('earlier');
-    // The memo already steers to fal; a refusal now would come from fal's
-    // own Google-backed endpoint and is the failure the user sees.
+    markGoogleRegionBlocked('earlier', new Error('refused'));
+    // Already marked, so this refusal is the failure the user sees.
     mockGenerateImage.mockRejectedValue(REFUSAL);
 
     await expect(generateImageWithProvider(params)).rejects.toThrow(

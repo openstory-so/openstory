@@ -472,8 +472,7 @@ export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
 export async function submitStudioVideoJob(
   options: SubmitStudioVideoOptions
 ): Promise<StudioVideoJobSubmission> {
-  // Google refuses some locations before any job exists (`google-region.ts`);
-  // the second attempt resolves its via again and lands on fal.
+  // A Google location refusal re-runs once off Google (`google-region.ts`).
   return withGoogleRegionFallback('studio video submit', () =>
     submitStudioVideoJobOnce(options)
   );

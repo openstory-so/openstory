@@ -34,11 +34,12 @@ import {
   regionFallbackModel,
 } from '@/models/region-policy';
 import {
-  isGoogleRegionBlockedError,
+  claimGoogleRegionRetry,
   isGoogleRegionBlockedHere,
   isGoogleRegionBlockedMessage,
-  markGoogleRegionBlocked,
+  rethrowFailedGoogleRegionRetry,
 } from '@/models/google-region';
+import type { ResolvedLlmKey } from './db/api-keys';
 import { aiDebugLogger } from '@/platform/server/ai/ai-debug-logger';
 import { generateId } from '@/platform/id';
 import {
@@ -256,7 +257,7 @@ export type LLMRequestParams<T = unknown> = {
   sessionId?: string;
   responseSchema?: z.ZodType<T>;
   /** Resolved LLM key info — `via` decides endpoint routing + auth scheme. */
-  apiKey?: LlmKeyInfo;
+  apiKey?: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `apiKey`
    * was resolved for `model`; a via that carries it need not carry the
@@ -264,7 +265,7 @@ export type LLMRequestParams<T = unknown> = {
    * not a fallback), so callers that can resolve per-model pass this and the
    * retry asks again. Omitted: the retry reuses `apiKey`.
    */
-  resolveApiKey?: (model: TextModel) => Promise<LlmKeyInfo | undefined>;
+  resolveApiKey?: (model: TextModel) => Promise<ResolvedLlmKey | undefined>;
   /**
    * Enable OpenRouter's web-search server tool for this request. The model
    * decides when to search; OpenRouter runs the search server-side inside the
@@ -998,12 +999,7 @@ function formatRunErrorMessage(detail: RunErrorDetail): string {
   return `LLM stream error${suffix}: ${detail.message}${detailSuffix}`;
 }
 
-/**
- * Which region blocks the caller will retry after `throwNotedRunError`
- * throws: a model swap for an Anthropic block (#1259), a via swap for a
- * Google refusal (`google-region.ts`). Decides only the log level — a block
- * that will be retried is a warning, a terminal one an error.
- */
+/** Which region blocks the caller will retry; decides only warn vs error. */
 export type RegionRetries = { model: boolean; via: boolean };
 
 const NO_REGION_RETRY: RegionRetries = { model: false, via: false };
@@ -1045,6 +1041,11 @@ export function throwNotedRunError(
   throw new Error(message);
 }
 
+/** Who pays for a call: no key means `createAdapter` uses the platform's. */
+function payerOf(key: ResolvedLlmKey | undefined): ResolvedLlmKey['source'] {
+  return key?.source ?? 'platform';
+}
+
 export function callLLMStream<T>(
   params: LLMRequestParams<T> & { responseSchema: z.ZodType<T> }
 ): AsyncGenerator<StreamChunk<T>>;
@@ -1059,6 +1060,7 @@ export async function* callLLMStream<T>(
   // region-available model is safe — but only when nothing was yielded yet,
   // so a mid-stream failure can never replay content into the consumer.
   let yielded = false;
+  const googleBlockedAtStart = isGoogleRegionBlockedHere();
   try {
     for await (const chunk of callLLMStreamOnce(params, true)) {
       yielded = true;
@@ -1066,22 +1068,30 @@ export async function* callLLMStream<T>(
     }
     return;
   } catch (error) {
-    // Google refusing the location (`google-region.ts`) is a via block, not
-    // a model block: same model, key re-resolved (the resolvers now answer
-    // OpenRouter for it). A fixed Google key with no resolver is dropped so
-    // `createAdapter` falls back to the platform key the same way.
+    // Google location refusal: same model, key re-resolved off Google, never onto a different payer.
     if (
       !yielded &&
-      isGoogleRegionBlockedError(error) &&
-      !isGoogleRegionBlockedHere()
+      claimGoogleRegionRetry(
+        `model ${params.model}`,
+        error,
+        googleBlockedAtStart
+      )
     ) {
-      markGoogleRegionBlocked(`model ${params.model}`, error);
       const apiKey = params.resolveApiKey
         ? await params.resolveApiKey(params.model)
         : params.apiKey?.via === 'google'
           ? undefined
           : params.apiKey;
-      yield* callLLMStreamOnce({ ...params, apiKey });
+      if (payerOf(apiKey) !== payerOf(params.apiKey)) throw error;
+      try {
+        yield* callLLMStreamOnce({ ...params, apiKey });
+      } catch (retryError) {
+        rethrowFailedGoogleRegionRetry(
+          `model ${params.model}`,
+          error,
+          retryError
+        );
+      }
       return;
     }
     const message = error instanceof Error ? error.message : String(error);

@@ -5,6 +5,7 @@ import {
   isGoogleRegionBlockedHere,
   isGoogleRegionBlockedMessage,
   markGoogleRegionBlocked,
+  refuseGeminiOffRegion,
   resetGoogleRegionBlock,
   withGoogleRegionFallback,
 } from './google-region';
@@ -95,8 +96,7 @@ describe('withGoogleRegionFallback', () => {
     await expect(withGoogleRegionFallback('test', run)).resolves.toBe(
       'from fal'
     );
-    // The first attempt saw Google open; the second ran with the memo set,
-    // so a resolver inside it would have chosen the no-key via.
+    // The retry runs with the memo set, so its resolvers skip Google.
     expect(seen).toEqual([false, true]);
   });
 
@@ -109,6 +109,33 @@ describe('withGoogleRegionFallback', () => {
     );
     expect(run).toHaveBeenCalledTimes(1);
     expect(isGoogleRegionBlockedHere()).toBe(false);
+  });
+
+  it('retries a call that was in flight when a sibling set the mark', async () => {
+    const run = vi
+      .fn<() => Promise<string>>()
+      .mockImplementationOnce(async () => {
+        markGoogleRegionBlocked('sibling', REFUSAL);
+        throw REFUSAL;
+      })
+      .mockResolvedValueOnce('from fal');
+    await expect(withGoogleRegionFallback('test', run)).resolves.toBe(
+      'from fal'
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries every call of a fan-out refused at once', async () => {
+    let refusalsLeft = 3;
+    const run = async () => {
+      const onGoogle = !isGoogleRegionBlockedHere();
+      await Promise.resolve();
+      if (onGoogle && refusalsLeft-- > 0) throw REFUSAL;
+      return onGoogle ? 'google' : 'fal';
+    };
+    await expect(
+      Promise.all([1, 2, 3].map(() => withGoogleRegionFallback('test', run)))
+    ).resolves.toEqual(['fal', 'fal', 'fal']);
   });
 
   it('does not loop: a refusal while already marked is the error', async () => {
@@ -129,5 +156,26 @@ describe('withGoogleRegionFallback', () => {
       'content flagged'
     );
     expect(run).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('refuseGeminiOffRegion', () => {
+  it('marks the isolate and says the region is refused', async () => {
+    await expect(
+      refuseGeminiOffRegion('test', async () => {
+        throw REFUSAL;
+      })
+    ).rejects.toThrow("Gemini isn't available from this region.");
+    expect(isGoogleRegionBlockedHere()).toBe(true);
+  });
+
+  it('rethrows any other error untouched', async () => {
+    const other = new Error('429 quota');
+    await expect(
+      refuseGeminiOffRegion('test', async () => {
+        throw other;
+      })
+    ).rejects.toBe(other);
+    expect(isGoogleRegionBlockedHere()).toBe(false);
   });
 });

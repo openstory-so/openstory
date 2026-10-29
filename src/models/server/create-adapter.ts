@@ -86,8 +86,7 @@ export function getPlatformLlmKey(
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
     return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
   }
-  // Not from an isolate Google has refused (`google-region.ts`): there a
-  // Gemini model goes to OpenRouter, which carries the same models.
+  // Skipped where Google refused this isolate's location (`google-region.ts`).
   if (
     model &&
     nativeGeminiTextModel(model) &&

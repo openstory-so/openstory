@@ -19,8 +19,8 @@ import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
 import {
-  GEMINI_REGION_REFUSED_MESSAGE,
-  isGoogleRegionBlockedHere,
+  geminiUnavailableError,
+  refuseGeminiOffRegion,
 } from '@/models/google-region';
 import { getLogger } from '@/platform/logger';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
@@ -46,12 +46,8 @@ export async function watchClipForTeam(
   }
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL);
   if (llmKey.via !== 'google') {
-    // The Files API has no other via: a clip is watched by Gemini or not at
-    // all, so a Google refusal of this location is the end of it here.
-    throw new ValidationError(
-      isGoogleRegionBlockedHere()
-        ? GEMINI_REGION_REFUSED_MESSAGE
-        : 'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
+    throw geminiUnavailableError(
+      'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
   if (llmKey.source !== 'team') {
@@ -70,6 +66,18 @@ export async function watchClipForTeam(
     throw new ValidationError('That media is not a video.');
   }
 
+  return refuseGeminiOffRegion('watch clip', () =>
+    watchUploadedClip(scopedDb, input.question, llmKey, key, mimeType)
+  );
+}
+
+async function watchUploadedClip(
+  scopedDb: ScopedDb,
+  question: string,
+  llmKey: ResolvedLlmKey,
+  key: string,
+  mimeType: string
+): Promise<{ answer: string; model: string }> {
   const file = await uploadClipToGemini(key, mimeType, llmKey.key);
   try {
     const messages: ChatMessage[] = [
@@ -77,7 +85,7 @@ export async function watchClipForTeam(
       {
         role: 'user',
         content: [
-          { type: 'text', content: input.question },
+          { type: 'text', content: question },
           {
             type: 'video',
             source: { type: 'url', value: file.uri, mimeType: file.mimeType },

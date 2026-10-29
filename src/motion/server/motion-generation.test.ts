@@ -1111,10 +1111,7 @@ describe('Motion Service', () => {
       expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
     });
 
-    // Google judges the caller's address and Workers run next to the user,
-    // so a Hong Kong user is refused before any job exists. The clip then
-    // goes to fal's Omni Flash, as it would with no Google key — and the
-    // isolate remembers, so the next shot never asks Google.
+    // Refused before any job exists: resubmit on fal, and the next shot skips Google.
     it('resubmits to fal when Google refuses the location, then skips Google', async () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo
@@ -1164,10 +1161,9 @@ describe('Motion Service', () => {
     });
 
     it('does not retry a Google refusal from an isolate already marked', async () => {
-      // No resolver chose Google here (the memo was set), so a refusal is a
-      // real failure — never a loop.
+      // Marked before the call, so a refusal is the failure, never a loop.
       testEnv.GEMINI_API_KEY = 'platform-google';
-      markGoogleRegionBlocked('earlier');
+      markGoogleRegionBlocked('earlier', new Error('refused'));
       mockGenerateVideo.mockRejectedValue(
         new Error('400 User location is not supported for the API use.')
       );
@@ -1316,7 +1312,7 @@ describe('Motion Service', () => {
     it('still polls Google for a google-stamped job while new calls skip Google', async () => {
       // Poll MUST follow the stamp: the region memo steers only new calls.
       testEnv.GEMINI_API_KEY = 'platform-google';
-      markGoogleRegionBlocked('earlier');
+      markGoogleRegionBlocked('earlier', new Error('refused'));
       mockGetVideoJobStatus.mockResolvedValue({
         jobId: 'google-job',
         status: 'processing',

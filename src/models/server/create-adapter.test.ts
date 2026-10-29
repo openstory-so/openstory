@@ -479,7 +479,7 @@ describe('native Google routing', () => {
   it('sends a Gemini model to OpenRouter while Google refuses this location', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     testEnv.OPENROUTER_KEY = 'platform-or';
-    markGoogleRegionBlocked('test');
+    markGoogleRegionBlocked('test', new Error('refused'));
     try {
       expect(getPlatformLlmKey(GEMINI_MODEL)).toStrictEqual({
         key: 'platform-or',
