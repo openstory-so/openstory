@@ -19,6 +19,10 @@ import type { Database } from '@/platform/server/db/client';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { ResolvableProvider } from './api-keys';
 import { generateId } from '@/platform/id';
+import {
+  markGoogleRegionBlocked,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
 import { teamApiKeys, teams, user } from '@/platform/server/db/schema';
 import {
   afterAll,
@@ -751,6 +755,26 @@ describe('native Google key resolution', () => {
     expect(
       await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
     ).toMatchObject({ via: 'openrouter' });
+  });
+
+  // Where Google refused this isolate, a Gemini model skips the Google key.
+  it('routes a Gemini model to OpenRouter while Google refuses this location', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    markGoogleRegionBlocked('test', new Error('refused'));
+    try {
+      expect(
+        await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
+      ).toMatchObject({ key: 'platform-openrouter-key', via: 'openrouter' });
+      // Polling a job already stamped `google` still gets the key.
+      expect(await scope.resolveOptionalKey('google')).toMatchObject({
+        key: 'google-team',
+        source: 'team',
+      });
+    } finally {
+      resetGoogleRegionBlock();
+    }
   });
 });
 

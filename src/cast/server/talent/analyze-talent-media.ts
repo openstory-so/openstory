@@ -23,7 +23,11 @@ export type VisionBillingDb = {
   apiKeys: Pick<ScopedDb['apiKeys'], 'resolveLlmKey'>;
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'deductCredits'>;
 };
-import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
+import { InsufficientCreditsError } from '@/platform/errors';
+import {
+  geminiUnavailableError,
+  refuseGeminiOffRegion,
+} from '@/models/google-region';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import {
   deleteGeminiFile,
@@ -78,11 +82,26 @@ export async function analyzeTalentClipForTeam(input: {
 }): Promise<TalentVisionResult> {
   const llmKey = await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL);
   if (llmKey.via !== 'google') {
-    throw new ValidationError(
+    throw geminiUnavailableError(
       'Checking a clip for a real person needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
   await requireVisionCredits(input.scopedDb, llmKey);
+  return refuseGeminiOffRegion('talent clip check', () =>
+    checkUploadedClip(input, llmKey)
+  );
+}
+
+async function checkUploadedClip(
+  input: {
+    scopedDb: VisionBillingDb;
+    userId: string;
+    key: string;
+    mimeType: string;
+    idempotencyKey: string;
+  },
+  llmKey: ResolvedLlmKey
+): Promise<TalentVisionResult> {
   const file = await uploadClipToGemini(input.key, input.mimeType, llmKey.key);
   try {
     const result = await analyzeTalentClip({

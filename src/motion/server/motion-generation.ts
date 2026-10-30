@@ -19,6 +19,11 @@ import {
 } from '@/models/server/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
+import {
+  resolveGoogleKeyForNewCall,
+  resolveGoogleKeyForStampedJob,
+} from '@/models/server/google-key';
+import { withGoogleRegionFallback } from '@/models/google-region';
 import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
@@ -195,16 +200,6 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
-/** Undefined when the model isn't Omni Flash or no Google key exists — it
- *  then goes to fal as before. */
-async function resolveOptionalGoogleKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('google');
-  const platformKey = getEnv().GEMINI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
 /**
  * Can this model render a reference-only shot FOR THIS TEAM?
  *
@@ -241,22 +236,36 @@ export async function resolveMotionVia(
   modelKey: ImageToVideoModel,
   credentials?: CredentialScopedDb
 ): Promise<MediaVia> {
+  return (await resolveMotionRoute(modelKey, credentials)).via;
+}
+
+/** The via plus the native key it was chosen with, resolved once per submit. */
+async function resolveMotionRoute(
+  modelKey: ImageToVideoModel,
+  credentials: CredentialScopedDb | undefined
+): Promise<
+  | { via: 'xai'; xaiKey: ResolvedApiKey }
+  | { via: 'google'; googleKey: ResolvedApiKey }
+  | { via: Exclude<MediaVia, 'xai' | 'google'> }
+> {
   if (isNativeGrokVideoModel(modelKey)) {
     const xaiKey = await resolveOptionalXaiKey(credentials);
-    if (xaiKey) return 'xai';
+    if (xaiKey) return { via: 'xai', xaiKey };
   }
   if (isNativeGeminiVideoModel(modelKey)) {
-    const googleKey = await resolveOptionalGoogleKey(credentials);
-    if (googleKey) return 'google';
+    const googleKey = await resolveGoogleKeyForNewCall(credentials);
+    if (googleKey) return { via: 'google', googleKey };
   }
   if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
     const falKey = await resolveOptionalFalKey(credentials);
-    return claimBytePlusVia({
-      native: true,
-      usingOwnFalKey: falKey?.source === 'team',
-    });
+    return {
+      via: claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: falKey?.source === 'team',
+      }),
+    };
   }
-  return 'fal';
+  return { via: 'fal' };
 }
 
 /**
@@ -483,6 +492,15 @@ export function arkStillsToRegister(
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
+  // A Google location refusal re-runs once off Google (`google-region.ts`).
+  return withGoogleRegionFallback('motion submit', () =>
+    submitMotionJobOnce(options)
+  );
+}
+
+async function submitMotionJobOnce(
+  options: SubmitMotionOptions
+): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
   // One id for the submit and every poll of this job. A fresh id per attempt
   // keeps a content-flag re-roll from resuming the refused run.
@@ -492,15 +510,10 @@ export async function submitMotionJob(
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
   // Google-only) deploy must not reach it. BytePlus is platform-only (no
   // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
-  const via = await resolveMotionVia(modelKey, options.credentials);
-  const xaiKey =
-    via === 'xai'
-      ? await resolveOptionalXaiKey(options.credentials)
-      : undefined;
-  const googleKey =
-    via === 'google'
-      ? await resolveOptionalGoogleKey(options.credentials)
-      : undefined;
+  const route = await resolveMotionRoute(modelKey, options.credentials);
+  const { via } = route;
+  const xaiKey = route.via === 'xai' ? route.xaiKey : undefined;
+  const googleKey = route.via === 'google' ? route.googleKey : undefined;
 
   // A clip or voice line this model cannot use — it takes no reference of
   // that kind, or not one that long — is a refusal, not a degradation
@@ -835,7 +848,7 @@ export async function pollMotionJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(credentials);
+      const key = await resolveGoogleKeyForStampedJob(credentials);
       if (!key) {
         throw new Error(
           `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`

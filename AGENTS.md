@@ -80,6 +80,7 @@ Inside a product domain: root files are client-safe (catalogs, pure logic, zod);
 - Anonymous-first → upgrade to save work.
 - Team-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.
+- **Comments are one line, as terse as possible.** Rationale and history go in `docs/architecture/`, not the code.
 
 ## Setup
 
@@ -364,7 +365,7 @@ fal is the default **via** for every image / video / audio model. Catalog **vend
 Rules that hold for every via:
 
 - **Stamp `via` on the job; poll MUST follow the stamp** (a missing stamp means `'fal'`). Job ids are via-scoped.
-- **Never fall back between providers.** A job sent to Ark fails as an Ark error — no quiet hop to fal or to a public URL.
+- **Never fall back between providers.** A job sent to Ark fails as an Ark error — no quiet hop to fal or to a public URL. Not a hop: Google refusing the caller's location arrives before any job, so the call re-runs on the no-key via (`src/models/google-region.ts`; `media-vias.md` → Native Google). A job stamped `google` is still polled on Google.
 - **Native spend is unaudited.** xAI, Google, Ark, ElevenLabs and LLMTR bypass `model_pricing` and the #1069 fal reconcile; their prices are static cards or tables in code.
 - **Pass the via when pricing an LLM call:** `llmCostFromUsage(usage, model, llmKey.via)`. Omit it and LLMTR spend bills at the wrong rate or $0.
 - **E2E stays on the mocks.** Under `E2E_TEST` a native via is off unless its `*_BASE_URL` is also set, so a laptop key cannot bill replay.

@@ -25,6 +25,7 @@ import {
   llmtrTextModel,
 } from '@/models/llmtr';
 import type { TextModel } from '@/models/models';
+import { isGoogleRegionBlockedHere } from '@/models/google-region';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
@@ -85,7 +86,13 @@ export function getPlatformLlmKey(
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
     return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
   }
-  if (model && nativeGeminiTextModel(model) && env.GEMINI_API_KEY) {
+  // Skipped where Google refused this isolate's location (`google-region.ts`).
+  if (
+    model &&
+    nativeGeminiTextModel(model) &&
+    env.GEMINI_API_KEY &&
+    !isGoogleRegionBlockedHere()
+  ) {
     return { key: env.GEMINI_API_KEY, via: 'google', source: 'platform' };
   }
   if (env.OPENROUTER_KEY) {

@@ -12,6 +12,10 @@ import {
   mockGenerateVideo,
   mockGetVideoJobStatus,
 } from '@/motion/server/__mocks__/fal-client.mock';
+import {
+  markGoogleRegionBlocked,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
 
 vi.doMock('#db-client', () => ({
   getDb: () => ({
@@ -380,6 +384,34 @@ describe('submitStudioVideoJob', () => {
         }),
       })
     );
+  });
+
+  it('resubmits to fal when Google refuses the location', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo
+      .mockRejectedValueOnce(
+        new Error('400 User location is not supported for the API use.')
+      )
+      .mockResolvedValue({
+        jobId: 'fal-omni-after-refusal',
+        model: 'fal-ai/gemini-omni-1.1-flash',
+      });
+
+    try {
+      const result = await submitStudioVideoJob({
+        arkAssets: registeredAssets,
+        prompt: 'A red fox turns toward camera',
+        model: 'gemini_omni_flash',
+        duration: 5,
+      });
+
+      expect(result.via).toBe('fal');
+      expect(result.jobId).toBe('fal-omni-after-refusal');
+      expect(mockCreateGeminiVideo).toHaveBeenCalledTimes(1);
+      expect(mockGenerateVideo).toHaveBeenCalledTimes(2);
+    } finally {
+      resetGoogleRegionBlock();
+    }
   });
 
   it('falls back to fal Omni Flash T2V when no Google key exists', async () => {
@@ -820,6 +852,33 @@ describe('pollStudioVideoJob', () => {
     expect(result.status).toBe('completed');
     expect(mockCreateGeminiVideo).toHaveBeenCalled();
     expect(mockFalVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe('pollStudioVideoJob under a region block', () => {
+  it('still polls Google for a google-stamped job', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockCreateGeminiVideo.mockClear();
+    mockFalVideo.mockClear();
+    markGoogleRegionBlocked('earlier', new Error('refused'));
+    mockGetVideoJobStatus.mockResolvedValue({
+      jobId: 'google-job',
+      status: 'processing',
+    });
+
+    try {
+      const result = await pollStudioVideoJob({
+        jobId: 'google-job',
+        via: 'google',
+        endpointId: 'gemini-omni-1.1-flash',
+        threadId: 'thread-google',
+      });
+      expect(result.status).toBe('processing');
+      expect(mockCreateGeminiVideo).toHaveBeenCalled();
+      expect(mockFalVideo).not.toHaveBeenCalled();
+    } finally {
+      resetGoogleRegionBlock();
+    }
   });
 });
 

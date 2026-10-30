@@ -18,6 +18,10 @@ import {
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
+import {
+  geminiUnavailableError,
+  refuseGeminiOffRegion,
+} from '@/models/google-region';
 import { getLogger } from '@/platform/logger';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { storageObjectContentType } from '#storage';
@@ -42,7 +46,7 @@ export async function watchClipForTeam(
   }
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL);
   if (llmKey.via !== 'google') {
-    throw new ValidationError(
+    throw geminiUnavailableError(
       'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
@@ -62,6 +66,18 @@ export async function watchClipForTeam(
     throw new ValidationError('That media is not a video.');
   }
 
+  return refuseGeminiOffRegion('watch clip', () =>
+    watchUploadedClip(scopedDb, input.question, llmKey, key, mimeType)
+  );
+}
+
+async function watchUploadedClip(
+  scopedDb: ScopedDb,
+  question: string,
+  llmKey: ResolvedLlmKey,
+  key: string,
+  mimeType: string
+): Promise<{ answer: string; model: string }> {
   const file = await uploadClipToGemini(key, mimeType, llmKey.key);
   try {
     const messages: ChatMessage[] = [
@@ -69,7 +85,7 @@ export async function watchClipForTeam(
       {
         role: 'user',
         content: [
-          { type: 'text', content: input.question },
+          { type: 'text', content: question },
           {
             type: 'video',
             source: { type: 'url', value: file.uri, mimeType: file.mimeType },
