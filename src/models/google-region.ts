@@ -97,14 +97,11 @@ export async function refuseGeminiOffRegion<T>(
   label: string,
   run: () => Promise<T>
 ): Promise<T> {
-  const blockedAtStart = isGoogleRegionBlockedHere();
   try {
     return await run();
   } catch (error) {
-    const refused = isGoogleRegionBlockedError(error);
-    if (!refused && (blockedAtStart || !isGoogleRegionBlockedHere()))
-      throw error;
-    if (refused) markGoogleRegionBlocked(label, error);
+    if (!isGoogleRegionBlockedError(error)) throw error;
+    markGoogleRegionBlocked(label, error);
     throw new ValidationError(GEMINI_REGION_REFUSED_MESSAGE);
   }
 }

@@ -178,4 +178,14 @@ describe('refuseGeminiOffRegion', () => {
     ).rejects.toBe(other);
     expect(isGoogleRegionBlockedHere()).toBe(false);
   });
+
+  it('keeps its own error when a sibling marked the isolate mid-flight', async () => {
+    const other = new Error('503 unavailable');
+    await expect(
+      refuseGeminiOffRegion('test', async () => {
+        markGoogleRegionBlocked('sibling', REFUSAL);
+        throw other;
+      })
+    ).rejects.toBe(other);
+  });
 });
