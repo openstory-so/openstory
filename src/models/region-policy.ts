@@ -27,9 +27,16 @@
  * expose; the vision helpers used to be three more, which is how
  * `classifyUploadFn` (#1581, via talent vision) came to die on "This model is
  * not available in your region".
+ *
+ * Google's own geo-block (a via swap, not a model swap) lives in `google-region.ts`.
  */
 
 import type { TextModel } from './models';
+import {
+  claimGoogleRegionRetry,
+  isGoogleRegionBlockedHere,
+  rethrowFailedGoogleRegionRetry,
+} from './google-region';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'region-policy']);
@@ -113,14 +120,24 @@ export function isRegionBlockedModel(
 /**
  * Run an LLM call; on a region-block error, retry once with the
  * region-available fallback model. Any other error rethrows untouched.
+ * A Google location refusal re-runs the same model; `run` re-resolves its key off Google.
  */
 export async function withRegionFallback<T>(
   model: TextModel,
   run: (model: TextModel) => Promise<T>
 ): Promise<T> {
+  const googleBlockedAtStart = isGoogleRegionBlockedHere();
   try {
     return await run(model);
   } catch (error) {
+    const label = `model ${model}`;
+    if (claimGoogleRegionRetry(label, error, googleBlockedAtStart)) {
+      try {
+        return await run(model);
+      } catch (retryError) {
+        rethrowFailedGoogleRegionRetry(label, error, retryError);
+      }
+    }
     const message = error instanceof Error ? error.message : String(error);
     const fallback = isRegionBlockedLlmError(message)
       ? regionFallbackModel(model)

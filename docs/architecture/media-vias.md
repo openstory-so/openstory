@@ -98,6 +98,15 @@ Google won't fetch`data:`as a URI. Chat vision (motion prompts) and
 native image refs must also inline stored stills: Google's`fileData.fileUri`HTTP fetch (CDN / fal URLs) sits on a separate quota
 that 429s while the same bytes as`inlineData`succeed.`toVisionImageSource(..., { inline: true })` is that path.
 
+**Google refuses some locations.** Gemini judges the caller's address, and a Worker runs in the colo nearest the user, so Hong Kong and mainland China calls get `400 User location is not supported for the API use.`
+
+- `src/models/google-region.ts` marks the isolate for an hour on that refusal and re-runs the call once on the no-key via (OpenRouter for text, fal for Nano Banana and Omni Flash).
+- Every new-call key resolver skips Google while marked: `resolveLlmKey`, `getPlatformLlmKey`, `resolveGoogleKeyForNewCall`.
+- Retry points: `withRegionFallback`, `callLLMStream`, `generateImageWithProvider`, `submitMotionJob`, `submitStudioVideoJob`. The mark is read before the attempt, so a fan-out refused at once all retries.
+- A retry never changes who pays: a team's Google key is not swapped for the platform key.
+- Not a provider hop: the refusal arrives before any job, spend or via stamp. A job stamped `google` is still polled on Google (`resolveGoogleKeyForStampedJob`).
+- Watching a clip and the clip likeness check need the Files API, which has no other via: a refusal marks the isolate and says "Gemini isn't available from this region."
+
 ## Native Grok (xAI)
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of

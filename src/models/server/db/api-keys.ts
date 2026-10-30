@@ -18,6 +18,7 @@ import {
   isSeedSpeechConfigured,
 } from '@/models/server/seed-speech-config';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
+import { isGoogleRegionBlockedHere } from '@/models/google-region';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import {
   LLMTR_BASE_URL,
@@ -428,7 +429,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       if (xai) return { ...xai, via: 'xai' };
     }
 
-    if (model && nativeGeminiTextModel(model)) {
+    // Skipped where Google refused this isolate's location (`google-region.ts`).
+    if (model && nativeGeminiTextModel(model) && !isGoogleRegionBlockedHere()) {
       const google = await resolveOptionalKey('google');
       if (google) return { ...google, via: 'google' };
     }

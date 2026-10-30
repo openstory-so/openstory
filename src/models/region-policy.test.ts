@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isRegionBlockedLlmError,
   isRegionBlockedModel,
@@ -7,7 +7,16 @@ import {
   resolveModelForCountry,
   withRegionFallback,
 } from './region-policy';
+import {
+  isGoogleRegionBlockedHere,
+  markGoogleRegionBlocked,
+  resetGoogleRegionBlock,
+} from './google-region';
 import { analysisModelSupportsVision } from './models.config';
+
+afterEach(() => {
+  resetGoogleRegionBlock();
+});
 
 describe('isRegionBlockedLlmError', () => {
   it('matches the real production error string (#1259)', () => {
@@ -117,6 +126,37 @@ describe('withRegionFallback', () => {
     await expect(
       withRegionFallback(REGION_FALLBACK_MODEL, run)
     ).rejects.toThrow('not available in your region');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  // A Google refusal keeps the model and re-resolves the key off Google.
+  it('retries the SAME model after Google refuses the location', async () => {
+    const seen: boolean[] = [];
+    const run = vi.fn(async (_model: string) => {
+      seen.push(isGoogleRegionBlockedHere());
+      if (seen.length === 1) {
+        throw new Error('400 User location is not supported for the API use.');
+      }
+      return 'ok';
+    });
+    await expect(
+      withRegionFallback('google/gemini-3.8-flash', run)
+    ).resolves.toBe('ok');
+    expect(run).toHaveBeenNthCalledWith(1, 'google/gemini-3.8-flash');
+    expect(run).toHaveBeenNthCalledWith(2, 'google/gemini-3.8-flash');
+    expect(seen).toEqual([false, true]);
+  });
+
+  it('does not retry a Google refusal from an isolate already marked', async () => {
+    markGoogleRegionBlocked('earlier', new Error('refused'));
+    const run = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('400 User location is not supported for the API use.')
+      );
+    await expect(
+      withRegionFallback('google/gemini-3.8-flash', run)
+    ).rejects.toThrow('User location');
     expect(run).toHaveBeenCalledTimes(1);
   });
 });

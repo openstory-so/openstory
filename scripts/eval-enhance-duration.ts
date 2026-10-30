@@ -76,7 +76,7 @@ async function enhanceOnce(): Promise<string> {
     temperature: 0.7,
     reasoning: ENHANCE_REASONING,
     observationName: 'eval-enhance-duration',
-    apiKey: { key: openRouterKey, via: 'openrouter' },
+    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
   });
 }
 

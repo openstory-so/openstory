@@ -25,6 +25,8 @@ import {
   withBytePlusQuotaRetry,
   withLlmRateLimitRetry,
 } from '@/models/server/quota-retry';
+import { resolveGoogleKeyForNewCall } from '@/models/server/google-key';
+import { withGoogleRegionFallback } from '@/models/google-region';
 import { isNativeBytePlusImageModel } from '@/models/models';
 import type { MediaVia } from '@/models/via';
 import { generateId } from '@/platform/id';
@@ -116,45 +118,23 @@ export async function generateImageWithProvider(
     userId: options?.observability?.userId ?? options?.credentials?.userId,
   };
 
-  // Same order as video: native xAI first so an xAI-only deploy never
-  // hits resolveKey('fal'), then Google when the model is a Nano Banana
-  // and a Google key resolves, then BytePlus (platform Ark, vetoed for a
-  // BYOK fal team).
-  const xaiKey = isNativeGrokImageModel(params.model)
-    ? await resolveOptionalXaiKey(options?.credentials)
-    : undefined;
-  const googleKey = isNativeGeminiImageModel(params.model)
-    ? await resolveOptionalGoogleKey(options?.credentials)
-    : undefined;
-  let via: MediaVia;
-  if (xaiKey) {
-    via = 'xai';
-  } else if (googleKey) {
-    via = 'google';
-  } else if (
-    isNativeBytePlusImageModel(params.model) &&
-    isBytePlusConfigured()
-  ) {
-    const falKey = options?.credentials
-      ? await options.credentials.resolveOptionalKey('fal')
-      : getEnv().FAL_KEY
-        ? { key: getEnv().FAL_KEY, source: 'platform' as const }
-        : undefined;
-    via = claimBytePlusVia({
-      native: true,
-      usingOwnFalKey: falKey?.source === 'team',
-    });
-  } else {
-    via = 'fal';
-  }
-
+  // The via of the attempt in flight, for the failure span.
+  let via: MediaVia = 'fal';
   try {
-    const result = await generateImageInternal(
-      params,
-      options,
-      xaiKey,
-      googleKey,
-      via
+    // A Google location refusal re-runs once off Google (`google-region.ts`).
+    const result = await withGoogleRegionFallback(
+      'image generation',
+      async () => {
+        const route = await resolveImageVia(params.model, options?.credentials);
+        via = route.via;
+        return generateImageInternal(
+          params,
+          options,
+          route.xaiKey,
+          route.googleKey,
+          route.via
+        );
+      }
     );
     via = result.via;
     recordMediaGenerationSpan({
@@ -204,16 +184,39 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
-async function resolveOptionalGoogleKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  // Under E2E a native via is off unless its base URL points at the mock,
-  // so a laptop key cannot bill a test run or slip past the recorder.
-  const env = getEnv();
-  if (env.E2E_TEST === 'true' && !env.GEMINI_BASE_URL) return undefined;
-  if (credentials) return credentials.resolveOptionalKey('google');
-  const platformKey = getEnv().GEMINI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+/** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal team), fal. */
+async function resolveImageVia(
+  model: ImageGenerationParams['model'],
+  credentials: CredentialScopedDb | undefined
+): Promise<{
+  via: MediaVia;
+  xaiKey: ResolvedApiKey | undefined;
+  googleKey: ResolvedApiKey | undefined;
+}> {
+  const xaiKey = isNativeGrokImageModel(model)
+    ? await resolveOptionalXaiKey(credentials)
+    : undefined;
+  const googleKey = isNativeGeminiImageModel(model)
+    ? await resolveGoogleKeyForNewCall(credentials)
+    : undefined;
+  if (xaiKey) return { via: 'xai', xaiKey, googleKey };
+  if (googleKey) return { via: 'google', xaiKey, googleKey };
+  if (isNativeBytePlusImageModel(model) && isBytePlusConfigured()) {
+    const falKey = credentials
+      ? await credentials.resolveOptionalKey('fal')
+      : getEnv().FAL_KEY
+        ? { key: getEnv().FAL_KEY, source: 'platform' as const }
+        : undefined;
+    return {
+      via: claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: falKey?.source === 'team',
+      }),
+      xaiKey,
+      googleKey,
+    };
+  }
+  return { via: 'fal', xaiKey, googleKey };
 }
 
 async function generateImageInternal(

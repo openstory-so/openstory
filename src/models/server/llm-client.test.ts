@@ -4,6 +4,10 @@ import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
+import {
+  isGoogleRegionBlockedHere,
+  resetGoogleRegionBlock,
+} from '@/models/google-region';
 import { z } from 'zod';
 import { getLogger } from '@/platform/logger';
 import { getMaxOutputTokens } from '@/models/models.config';
@@ -482,6 +486,109 @@ describe('llm-client', () => {
       );
     });
 
+    it('keeps the model and drops the Google key when Google refuses the location', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: '400 User location is not supported for the API use.',
+              metadata: { tanstack: { model: 'gemini-3.8-flash' } },
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'via openrouter' };
+          })()
+        );
+
+      try {
+        const result = await callLLM({
+          model: 'google/gemini-3.8-flash',
+          messages: [{ role: 'user', content: 'test' }],
+          apiKey: { key: 'platform-google', via: 'google', source: 'platform' },
+        });
+
+        expect(result).toBe('via openrouter');
+        expect(errorLog).not.toHaveBeenCalled();
+        expect(mockChat).toHaveBeenCalledTimes(2);
+        // Same model, no key: createAdapter picks the platform's non-Google key.
+        expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+          2,
+          'google/gemini-3.8-flash',
+          undefined
+        );
+        expect(isGoogleRegionBlockedHere()).toBe(true);
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
+    it("does not move a team's Google key onto the platform key", async () => {
+      mockChat.mockReturnValueOnce(
+        (async function* () {
+          yield {
+            type: 'RUN_ERROR',
+            message: '400 User location is not supported for the API use.',
+          };
+        })()
+      );
+
+      try {
+        await expect(
+          callLLM({
+            model: 'google/gemini-3.8-flash',
+            messages: [{ role: 'user', content: 'test' }],
+            apiKey: { key: 'team-google', via: 'google', source: 'team' },
+          })
+        ).rejects.toThrow('User location is not supported');
+        expect(mockChat).toHaveBeenCalledTimes(1);
+        expect(isGoogleRegionBlockedHere()).toBe(true);
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
+    it('re-resolves the key for the same model when a resolver is given', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: '400 User location is not supported for the API use.',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+      const resolveApiKey = vi.fn(async () => ({
+        key: 'team-openrouter',
+        via: 'openrouter' as const,
+        source: 'team' as const,
+      }));
+
+      try {
+        await callLLM({
+          model: 'google/gemini-3.8-flash',
+          messages: [{ role: 'user', content: 'test' }],
+          apiKey: { key: 'team-google', via: 'google', source: 'team' },
+          resolveApiKey,
+        });
+        expect(resolveApiKey).toHaveBeenCalledWith('google/gemini-3.8-flash');
+        expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+          2,
+          'google/gemini-3.8-flash',
+          { key: 'team-openrouter', via: 'openrouter', source: 'team' }
+        );
+      } finally {
+        resetGoogleRegionBlock();
+      }
+    });
+
     it('logs a failed fallback at error level', async () => {
       mockChat.mockImplementation(() =>
         (async function* () {
@@ -549,13 +656,14 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'k',
         via: 'openrouter' as const,
+        source: 'team' as const,
       }));
 
       let terminal;
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-opus-5-fast',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'llmtr' },
+        apiKey: { key: 'k', via: 'llmtr', source: 'team' },
         resolveApiKey,
       })) {
         if (chunk.done) terminal = chunk;
@@ -579,7 +687,7 @@ describe('llm-client', () => {
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'openrouter' },
+        apiKey: { key: 'k', via: 'openrouter', source: 'team' },
       })) {
         if (chunk.done) terminal = chunk;
       }
@@ -1218,7 +1326,7 @@ describe('llm-client', () => {
           callLLMStream({
             model: 'z-ai/glm-5.3-flash',
             messages: [{ role: 'user', content: 'test' }],
-            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
           })
         );
 
@@ -1269,7 +1377,7 @@ describe('llm-client', () => {
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             webSearch: true,
-            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
           })
         );
 
@@ -1294,7 +1402,7 @@ describe('llm-client', () => {
             max_tokens: 300,
             temperature: 0.7,
             reasoning: { enabled: true, effort: 'low' },
-            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
           })
         );
 
@@ -1318,7 +1426,7 @@ describe('llm-client', () => {
             messages: [{ role: 'user', content: 'test' }],
             max_tokens: 300,
             temperature: 0.7,
-            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
           })
         );
 
