@@ -103,8 +103,7 @@ function OrganizationPanel() {
           <ul className="flex flex-col gap-3">
             {pending.map((invitation) => (
               <li key={invitation.id} className="text-sm">
-                {invitation.email}
-                {invitation.role ? ` · ${invitation.role}` : ''}
+                {invitation.email} · {invitation.role}
               </li>
             ))}
           </ul>

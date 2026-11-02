@@ -74,6 +74,14 @@ export const organizationRoles = {
   viewer,
 };
 
+const organizationRoleNames = ['owner', 'admin', 'member', 'viewer'] as const;
+
+function isOrganizationRole(
+  name: string
+): name is (typeof organizationRoleNames)[number] {
+  return organizationRoleNames.some((role) => role === name);
+}
+
 type OrganizationPermission = Parameters<typeof owner.authorize>[0];
 
 /** Pure role check. Does not read a session, so API keys and OAuth can use it. */
@@ -82,8 +90,8 @@ export function roleHasPermission(
   permissions: OrganizationPermission
 ): boolean {
   for (const name of role.split(',')) {
-    const known = organizationRoles[name as keyof typeof organizationRoles];
-    if (known?.authorize(permissions).success) return true;
+    if (!isOrganizationRole(name)) continue;
+    if (organizationRoles[name].authorize(permissions).success) return true;
   }
   return false;
 }
