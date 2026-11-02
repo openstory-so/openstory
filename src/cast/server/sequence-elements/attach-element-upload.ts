@@ -30,11 +30,15 @@ async function triggerElementVision(params: {
   imageUrl: string;
   filename: string;
   token: string;
-  teamId: string;
+  organizationId: string;
   userId: string;
 }): Promise<void> {
-  const { teamId, userId, ...element } = params;
-  const input: ElementVisionWorkflowInput = { userId, teamId, ...element };
+  const { organizationId, userId, ...element } = params;
+  const input: ElementVisionWorkflowInput = {
+    userId,
+    organizationId,
+    ...element,
+  };
   await triggerWorkflow('/element-vision', input);
 }
 
@@ -53,10 +57,10 @@ async function assertElementUploadAttachable(params: {
   scopedDb: ScopedDb;
   path: string;
   filename: string;
-  teamId: string;
+  organizationId: string;
 }): Promise<void> {
-  const { scopedDb, path, filename, teamId } = params;
-  if (!isValidElementStoragePath(path, teamId)) {
+  const { scopedDb, path, filename, organizationId } = params;
+  if (!isValidElementStoragePath(path, organizationId)) {
     throw new ValidationError(
       `Element "${filename}" could not be attached: its upload is outside this team's storage.`
     );
@@ -88,7 +92,7 @@ async function assertElementUploadAttachable(params: {
  */
 export async function attachElementUpload(params: {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   sequenceId: string;
   path: string;
@@ -99,9 +103,15 @@ export async function attachElementUpload(params: {
   /** Clip length read in the browser (#1559); an image sends none. */
   durationSeconds?: number | null;
 }): Promise<SequenceElement> {
-  const { scopedDb, teamId, userId, sequenceId, path, filename } = params;
+  const { scopedDb, organizationId, userId, sequenceId, path, filename } =
+    params;
 
-  await assertElementUploadAttachable({ scopedDb, path, filename, teamId });
+  await assertElementUploadAttachable({
+    scopedDb,
+    path,
+    filename,
+    organizationId,
+  });
 
   const imageUrl = elementImageUrlFromPath(path);
   const token = await scopedDb.sequenceElements.ensureUniqueToken(
@@ -151,7 +161,7 @@ export async function attachElementUpload(params: {
       imageUrl,
       filename: element.uploadedFilename,
       token: element.token,
-      teamId,
+      organizationId,
       userId,
     });
   } catch (err) {
@@ -176,17 +186,17 @@ export async function attachElementUpload(params: {
  */
 export async function assertDraftElementUploadsAttachable(params: {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   uploads: DraftElementUploadInput[];
 }): Promise<void> {
-  const { scopedDb, teamId, uploads } = params;
+  const { scopedDb, organizationId, uploads } = params;
   await Promise.all(
     uploads.map((upload) =>
       assertElementUploadAttachable({
         scopedDb,
         path: upload.tempPath,
         filename: upload.filename,
-        teamId,
+        organizationId,
       })
     )
   );
@@ -202,7 +212,7 @@ export async function assertDraftElementUploadsAttachable(params: {
  */
 export async function attachDraftElementUploads(params: {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   sequenceId: string;
   uploads: DraftElementUploadInput[];
@@ -263,7 +273,7 @@ function elementKindAgreed(
  */
 export async function replaceElementUpload(params: {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   sequenceId: string;
   elementId: string;
@@ -271,12 +281,12 @@ export async function replaceElementUpload(params: {
   filename: string;
   durationSeconds?: number | null;
 }): Promise<SequenceElement> {
-  const { scopedDb, teamId, sequenceId } = params;
+  const { scopedDb, organizationId, sequenceId } = params;
   await assertElementUploadAttachable({
     scopedDb,
     path: params.path,
     filename: params.filename,
-    teamId,
+    organizationId,
   });
 
   const element = await scopedDb.sequenceElements.getById(params.elementId);
@@ -317,7 +327,7 @@ export async function replaceElementUpload(params: {
       imageUrl,
       filename: updated.uploadedFilename,
       token: updated.token,
-      teamId,
+      organizationId,
       userId: params.userId,
     });
   } catch (err) {

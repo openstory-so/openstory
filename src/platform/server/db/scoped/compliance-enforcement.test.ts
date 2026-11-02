@@ -7,7 +7,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
-import { enforcementActions, teams, user } from '@/platform/server/db/schema';
+import {
+  enforcementActions,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { createComplianceReadMethods } from './compliance';
 
@@ -28,7 +32,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(enforcementActions);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   userA.id = generateId();
@@ -37,15 +41,15 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values([{ id: userA.id, name: userA.name, email: userA.email }]);
-  await db.insert(teams).values([teamA, teamB]);
+  await db.insert(organization).values([teamA, teamB]);
 });
 
 describe('listEnforcementFor', () => {
-  it('returns a user-level ban when queried with (userId, teamId)', async () => {
+  it('returns a user-level ban when queried with (userId, organizationId)', async () => {
     await db.insert(enforcementActions).values({
       id: generateId(),
       subjectUserId: userA.id,
-      subjectTeamId: null,
+      subjectOrganizationId: null,
       action: 'generation_suspended',
       reason: 'portrait_rights',
     });
@@ -62,7 +66,7 @@ describe('listEnforcementFor', () => {
     await db.insert(enforcementActions).values({
       id: generateId(),
       subjectUserId: null,
-      subjectTeamId: teamA.id,
+      subjectOrganizationId: teamA.id,
       action: 'account_suspended',
       reason: 'csam',
     });

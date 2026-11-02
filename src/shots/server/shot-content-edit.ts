@@ -49,7 +49,13 @@ function restoredPromptProvenance(row: {
 export async function restoreShotPromptVersion(
   context: Pick<
     ShotEditContext,
-    'scopedDb' | 'user' | 'teamId' | 'shot' | 'frame' | 'sequence' | 'scene'
+    | 'scopedDb'
+    | 'user'
+    | 'organizationId'
+    | 'shot'
+    | 'frame'
+    | 'sequence'
+    | 'scene'
   >,
   promptType: 'visual' | 'motion',
   versionId: string
@@ -136,7 +142,13 @@ export async function readShotSpec(
 export async function saveShotSpec(
   context: Pick<
     ShotEditContext,
-    'scopedDb' | 'user' | 'teamId' | 'shot' | 'frame' | 'sequence' | 'scene'
+    | 'scopedDb'
+    | 'user'
+    | 'organizationId'
+    | 'shot'
+    | 'frame'
+    | 'sequence'
+    | 'scene'
   >,
   edit: z.infer<typeof shotSpecEditSchema>,
   replace: { visual: boolean; motion: boolean }

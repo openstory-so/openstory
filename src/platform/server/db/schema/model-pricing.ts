@@ -88,7 +88,7 @@ export const modelPricing = snakeCase.table(
  * Written by `recordFalUsage` for every fal generation that reports
  * `unitsBilled`, including BYOK and unpriced ones (those write no transaction
  * row, so mining the ledger would miss them). Anonymous model telemetry:
- * deliberately no `teamId`, so no FK and no D1 cascade exposure. Pruned to
+ * deliberately no `organizationId`, so no FK and no D1 cascade exposure. Pruned to
  * the observation window by the cron.
  */
 export const modelUsageObservations = snakeCase.table(

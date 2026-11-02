@@ -108,7 +108,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(batchGenerateMotionInputSchema))
   .handler(async ({ data, context }) => {
-    const { sequence, teamId, user } = context;
+    const { sequence, organizationId, user } = context;
 
     // The eligibility filter and the per-shot `imageUrl` below read the anchor
     // frame's still (#989), so assemble each shot's view first.
@@ -464,7 +464,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
 
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
-          teamId,
+          organizationId,
           sequenceId: sequence.id,
           reservationId,
           includeMusic,

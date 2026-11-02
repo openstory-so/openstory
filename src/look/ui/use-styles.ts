@@ -20,7 +20,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 export const styleKeys = {
   all: ['styles'] as const,
   lists: () => [...styleKeys.all, 'list'] as const,
-  list: (teamId?: string) => [...styleKeys.lists(), teamId] as const,
+  list: (organizationId?: string) =>
+    [...styleKeys.lists(), organizationId] as const,
   public: () => publicStylesQueryKey,
   details: () => [...styleKeys.all, 'detail'] as const,
   detail: (id: string) => [...styleKeys.details(), id] as const,
@@ -37,9 +38,9 @@ export const styleKeys = {
 // Anonymous (logged-out) visitors get the public style catalogue so they can
 // compose a sequence before signing in; authenticated users get their team's
 // styles plus public ones (see usePublicOrTeamQuery for the session rules).
-export function useStyles(teamId?: string, enabled = true) {
+export function useStyles(organizationId?: string, enabled = true) {
   return usePublicOrTeamQuery<Style[]>({
-    teamKey: styleKeys.list(teamId),
+    teamKey: styleKeys.list(organizationId),
     publicKey: styleKeys.public(),
     teamFn: () => getStylesFn(),
     publicFn: () => getPublicStylesFn(),

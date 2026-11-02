@@ -292,7 +292,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       const wireClips = packedClip
         ? await step.do('cut-spanning-section', () =>
             cutSpanningSection(audioClips, {
-              teamId: input.teamId,
+              organizationId: input.organizationId,
               sequenceId,
               minDurationSeconds:
                 getMotionReferenceEndpoint(model)?.audioSeconds?.min,
@@ -1256,7 +1256,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   // several MB and will fail the 1 MiB step.do cap — park
                   // it in R2 before this result is checkpointed.
                   if (!videoUrlFitsWorkflowCheckpoint(url)) {
-                    if (!input.teamId || !input.sequenceId || !input.shotId) {
+                    if (
+                      !input.organizationId ||
+                      !input.sequenceId ||
+                      !input.shotId
+                    ) {
                       throw new Error(
                         'Native Gemini returned inline video bytes too large to checkpoint'
                       );
@@ -1269,7 +1273,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                         : undefined;
                     const stored = await uploadVideoToStorage({
                       videoUrl: url,
-                      teamId: input.teamId,
+                      organizationId: input.organizationId,
                       sequenceId: input.sequenceId,
                       shotId: input.shotId,
                       sequenceTitle: input.sequenceTitle ?? 'sequence',
@@ -1537,8 +1541,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const { shotId } = input;
     const storageResult = shotId
       ? await step.do('upload-to-storage', async () => {
-          if (!input.teamId || !input.sequenceId) {
-            throw new Error('Missing teamId or sequenceId for storage upload');
+          if (!input.organizationId || !input.sequenceId) {
+            throw new Error(
+              'Missing organizationId or sequenceId for storage upload'
+            );
           }
 
           const googleKey =
@@ -1547,7 +1553,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               : undefined;
           const result = await uploadVideoToStorage({
             videoUrl,
-            teamId: input.teamId,
+            organizationId: input.organizationId,
             sequenceId: input.sequenceId,
             shotId,
             sequenceTitle: input.sequenceTitle ?? 'sequence',
@@ -1570,7 +1576,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // Settle the spawn-time reservation against fal's billed cost. If this
     // run never reserved (BYOK / unpriced), deductWorkflowCredits falls back
     // to an atomic try-deduct.
-    if (actualCost > 0 && input.teamId && !gatedUsedOwnKey) {
+    if (actualCost > 0 && input.organizationId && !gatedUsedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
@@ -1651,12 +1657,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       // to be buffered whole to compute one; contentSha256 is unpopulated
       // until we hash the small kinds. The storage key and fal request id
       // carry the trace.
-      if (videoVersionId && input.teamId) {
+      if (videoVersionId && input.organizationId) {
         const provenanceVersionId = videoVersionId;
-        const provenanceTeamId = input.teamId;
+        const provenanceOrganizationId = input.organizationId;
         await step.do('record-provenance', async () => {
           await recordProvenance(scopedDb.provenance, {
-            teamId: provenanceTeamId,
+            organizationId: provenanceOrganizationId,
             userId: input.userId,
             assetKind: 'video_variant',
             assetId: provenanceVersionId,

@@ -224,7 +224,7 @@ type CharacterUpdate = Partial<
     | LegacyCharacterBibleColumn
     | LegacyCharacterSheetColumn
     | 'selectedBibleVersionId'
-    | 'teamId'
+    | 'organizationId'
   >
 >;
 
@@ -470,9 +470,9 @@ export const deleteCharactersStatements = (db: Database, where: SQL) => {
   ] as const;
 };
 
-export function createCharactersMethods(db: Database, teamId: string) {
-  const looks = createCharacterLooksMethods(db, teamId);
-  const inTeam = eq(characters.teamId, teamId);
+export function createCharactersMethods(db: Database, organizationId: string) {
+  const looks = createCharacterLooksMethods(db, organizationId);
+  const inTeam = eq(characters.organizationId, organizationId);
 
   /**
    * The team's characters as their sequences cast them, and the joins they
@@ -1026,7 +1026,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
     // A character an older worker wrote keeps its clothing on the legacy
     // bible column, which the version appended below no longer carries
     // (#2015): give it its default look first.
-    const defaultLook = await requireLook(db, teamId, existing.lookId);
+    const defaultLook = await requireLook(db, organizationId, existing.lookId);
     const { voiceDescription, standardClothing, ...bibleData } = data;
     // Appends a version and moves the pointer (#1600); an edit to a field
     // the sheet reads also revokes an in-flight sheet run's claim (#1113).
@@ -1142,7 +1142,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       await db.batch([
         db.insert(characters).values({
           id,
-          teamId,
+          organizationId,
           selectedBibleVersionId: versionId,
           legacyName: bible.name,
         }),
@@ -1217,7 +1217,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const [sequence] = await db
         .select({ id: sequences.id })
         .from(sequences)
-        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.organizationId, organizationId)
+          )
+        );
       if (!sequence) throw new NotFoundError('Sequence not found');
       const existing = await castOf(sequenceId, id);
       if (existing) {
@@ -1404,12 +1409,21 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // becomes a new character under the next free script id. Decided here,
       // on every call, so a snapshot that went stale mid-run cannot reach her.
       const held = found
-        ? await analysisMayNotRewrite(db, teamId, found.id, data.sequenceId)
+        ? await analysisMayNotRewrite(
+            db,
+            organizationId,
+            found.id,
+            data.sequenceId
+          )
         : false;
       if (found && held && !found.deletedAt) {
         // The references stage still marks her default look generating.
         if (data.sheetStatus !== undefined) {
-          const defaultLook = await requireLook(db, teamId, found.lookId);
+          const defaultLook = await requireLook(
+            db,
+            organizationId,
+            found.lookId
+          );
           await db
             .update(characterLooks)
             .set({ sheetStatus: data.sheetStatus, updatedAt: new Date() })
@@ -1453,7 +1467,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
       if (existing) {
         // An existing character with no look yet (an older worker's) gets its
         // default filled in first.
-        const defaultLook = await requireLook(db, teamId, existing.lookId);
+        const defaultLook = await requireLook(
+          db,
+          organizationId,
+          existing.lookId
+        );
         const now = new Date();
         const clothingWrite = await lookDefinitionWrite(
           db,
@@ -1531,7 +1549,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           db.insert(characters).values({
             ...row,
             id,
-            teamId,
+            organizationId,
             selectedBibleVersionId: versionId,
             legacyName: bible.name,
           }),
@@ -2221,7 +2239,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       sequenceId: string,
       id: string
     ): Promise<boolean> =>
-      await analysisMayNotRewrite(db, teamId, id, sequenceId),
+      await analysisMayNotRewrite(db, organizationId, id, sequenceId),
 
     /**
      * Whether any live sequence casts the character ({@link castElsewhere}).

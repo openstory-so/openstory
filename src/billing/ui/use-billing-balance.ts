@@ -72,7 +72,7 @@ export function useBillingBalance() {
     balance,
     posted,
     reserved,
-    teamId: query.data?.teamId,
+    organizationId: query.data?.organizationId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
     isLowBalance:
       balance !== null && balance > 0 && balance <= lowBalanceThreshold,

@@ -17,12 +17,17 @@ import { createTestDb } from '@/platform/server/db/test-d1';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import { sequences, styles, teams, user } from '@/platform/server/db/schema';
+import {
+  sequences,
+  styles,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import { createSequencesMethods } from './sequences';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 let styleId = '';
 
@@ -30,17 +35,19 @@ async function seed() {
   await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db.insert(user).values({ id: userId, name: 'U', email: 'u@e.com' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -71,7 +78,7 @@ beforeEach(async () => {
 
 describe('sequences.create persists the chosen settings', () => {
   it('writes generateStartFrames rather than falling back to the column default', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       title: 'Frame-based board',
       styleId,
@@ -88,7 +95,7 @@ describe('sequences.create persists the chosen settings', () => {
   });
 
   it('defaults to off when the caller omits it', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       title: 'Normal',
       styleId,
@@ -98,7 +105,7 @@ describe('sequences.create persists the chosen settings', () => {
   });
 
   it('carries every generation setting through, not just some', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       title: 'Everything',
       styleId,
@@ -133,7 +140,7 @@ describe('sequences.create persists the chosen settings', () => {
 
 describe('sequences.update persists continue generation flags', () => {
   it('writes generateStartFrames and generateVoices chosen on continue', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
       title: 'Stopped after references',

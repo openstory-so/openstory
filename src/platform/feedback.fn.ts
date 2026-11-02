@@ -49,7 +49,7 @@ export const submitFeedbackFn = createServerFn({ method: 'POST' })
       to: CONTACT_EMAIL,
       userName: user?.name ?? 'Anonymous visitor',
       userEmail: userEmail || 'not provided',
-      teamId: team?.teamId ?? '—',
+      organizationId: team?.organizationId ?? '—',
       message: data.message,
     });
 
@@ -57,7 +57,7 @@ export const submitFeedbackFn = createServerFn({ method: 'POST' })
       distinctId: user?.id ?? 'anonymous',
       event: 'feedback_submitted',
       properties: {
-        teamId: team?.teamId ?? null,
+        organizationId: team?.organizationId ?? null,
         userEmail: userEmail || null,
         anonymous: !user,
         emailSent: result.success,

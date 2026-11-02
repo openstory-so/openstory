@@ -16,7 +16,7 @@ const useCasesUpdateSchema = z.array(z.string()).optional();
 const sampleVideosSchema = z.array(StyleSampleVideoSchema).nullish();
 
 // Columns the client must never set. usageCount is server-managed (popularity
-// ranking), id/teamId/createdBy/createdAt/updatedAt are injected by the scoped
+// ranking), id/organizationId/createdBy/createdAt/updatedAt are injected by the scoped
 // layer, and public/template flags, version, and sortOrder are
 // admin/migration-only.
 // Exported so the scoped-db write methods can exclude the same columns at
@@ -24,7 +24,7 @@ const sampleVideosSchema = z.array(StyleSampleVideoSchema).nullish();
 // in all three places at once.
 export const SERVER_MANAGED_STYLE_COLUMNS = {
   id: true,
-  teamId: true,
+  organizationId: true,
   createdBy: true,
   createdAt: true,
   updatedAt: true,

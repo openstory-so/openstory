@@ -8,7 +8,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 export const giftTokens = snakeCase.table(
   'gift_tokens',
@@ -45,9 +45,9 @@ export const giftTokenRedemptions = snakeCase.table(
     giftTokenId: text()
       .notNull()
       .references(() => giftTokens.id, { onDelete: 'cascade' }),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: text().references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -58,10 +58,10 @@ export const giftTokenRedemptions = snakeCase.table(
   (table) => [
     uniqueIndex('idx_gift_token_redemptions_token_team').on(
       table.giftTokenId,
-      table.teamId
+      table.organizationId
     ),
     index('idx_gift_token_redemptions_token').on(table.giftTokenId),
-    index('idx_gift_token_redemptions_team').on(table.teamId),
+    index('idx_gift_token_redemptions_team').on(table.organizationId),
   ]
 );
 

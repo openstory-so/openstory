@@ -500,7 +500,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     {
       read: 'sequences.getForUser',
       bucket: 'EXISTENCE-GUARD',
-      why: 'Throws if the sequence was deleted (or moved teams) since the trigger; on the failure path, checks whether the child already wrote a more specific error.',
+      why: 'Throws if the sequence was deleted (or moved organization) since the trigger; on the failure path, checks whether the child already wrote a more specific error.',
     },
   ],
   'studio-generation-workflow.ts': [

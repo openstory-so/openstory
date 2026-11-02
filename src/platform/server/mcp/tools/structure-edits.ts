@@ -92,7 +92,7 @@ const createSequenceTool = openstoryTool({
     const result = await runOneShotCreate(input, {
       scopedDb,
       user: { id: userId },
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       request,
     });
     const sequences = result.sequences.map(({ id, status, workflowRunId }) => ({
@@ -200,7 +200,7 @@ const regenerateStoryboardTool = openstoryTool({
     const { entries } = await createSequences(regenerateInput(source, change), {
       scopedDb,
       user: { id: userId },
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       notify: false,
     });
     const [created] = entries;

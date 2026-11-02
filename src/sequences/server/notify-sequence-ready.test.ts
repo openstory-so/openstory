@@ -26,7 +26,7 @@ function makeScopedDb(opts: { claim: boolean }) {
   const getBalance = vi.fn(async () => usdToMicros(6.4));
   const getForUser = vi.fn(async () => ({ title: 'The Long Walk' }));
   const stub = {
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequences: { claimReadyEmailSend, releaseReadyEmailSend },
     liveRead: {
       sequences: { getForUser },

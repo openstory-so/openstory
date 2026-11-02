@@ -22,7 +22,7 @@ import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
   generatedAssets,
-  teams,
+  organization,
   uploadAttestations,
   user,
 } from '@/platform/server/db/schema';
@@ -56,7 +56,7 @@ vi.doMock('@/platform/realtime', () => ({
     emit: vi.fn().mockResolvedValue(undefined),
     history: async () => [],
   }),
-  billingChannelId: (teamId: string) => `billing:${teamId}`,
+  billingChannelId: (organizationId: string) => `billing:${organizationId}`,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
@@ -117,7 +117,7 @@ const USER_ID = 'user-1';
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db.insert(organization).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -400,7 +400,7 @@ describe('createStudioAssets', () => {
       '/studio',
       expect.objectContaining({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
         reservationId: 'res-studio-1',
         ownsReservation: true,
         input: expect.objectContaining({
@@ -1364,7 +1364,9 @@ describe('upload rights gate (#1581)', () => {
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
     const otherTeam = generateId();
-    await db.insert(teams).values([{ id: otherTeam, name: 'O', slug: 'o' }]);
+    await db
+      .insert(organization)
+      .values([{ id: otherTeam, name: 'O', slug: 'o' }]);
     const url = 'https://example.com/anyone.jpg';
 
     await recordLikenessFinding(

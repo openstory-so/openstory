@@ -116,7 +116,7 @@ export async function prepareUpdateStale(args: {
  */
 export async function launchUpdateStale(input: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   plan: UpdateStalePlan;
   runKey: string;
@@ -125,7 +125,7 @@ export async function launchUpdateStale(input: {
     '/update-stale-shots',
     {
       userId: input.userId,
-      teamId: input.teamId,
+      organizationId: input.organizationId,
       sequenceId: input.sequenceId,
       plan: input.plan,
     },

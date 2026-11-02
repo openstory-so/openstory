@@ -143,7 +143,7 @@ export async function drawSheetPortrait(args: {
     const stored = await storeGeneratedPng(result.imageUrls[0], bucket, path);
     try {
       await recordProvenance(scopedDb.provenance, {
-        teamId: scopedDb.teamId,
+        organizationId: scopedDb.organizationId,
         userId: args.userId,
         assetKind: kind === 'character' ? 'character_sheet' : 'location_sheet',
         assetId: args.subjectId,

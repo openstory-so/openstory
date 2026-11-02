@@ -25,7 +25,7 @@ import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
   generatedAssets,
-  teams,
+  organization,
   user,
   type GeneratedAssetInput,
 } from '@/platform/server/db/schema';
@@ -75,7 +75,7 @@ const USER_ID = 'user-1';
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db.insert(organization).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -220,7 +220,7 @@ describe('createGeneratedAsset', () => {
     expect(rows).toHaveLength(1);
     const row = rows[0];
     expect(row?.id).toBe(result.id);
-    expect(row?.teamId).toBe(TEAM_ID);
+    expect(row?.organizationId).toBe(TEAM_ID);
     expect(row?.userId).toBe(USER_ID);
     expect(row?.provider).toBe('fal');
     expect(row?.status).toBe('queued');
@@ -231,7 +231,7 @@ describe('createGeneratedAsset', () => {
       '/asset',
       {
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
         assetId: result.id,
         endpointId: 'fal-ai/flux-1/dev',
         activity: 'image',

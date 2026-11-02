@@ -123,7 +123,7 @@ async function makeEvent(
 ): Promise<Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>> {
   const fields = {
     userId: 'u1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequenceId: 'seq-1',
     characterDbId: 'char-1',
     lookId: 'look-1',

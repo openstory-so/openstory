@@ -37,7 +37,7 @@ const { chargeSheetPortrait, drawSheetPortrait } =
   await import('./sheet-portrait');
 
 const scopedDb = asStub<WorkflowScopedDb>({
-  teamId: 'team-1',
+  organizationId: 'team-1',
   provenance: {},
   credentials: { userId: 'user-1' },
   billing: {

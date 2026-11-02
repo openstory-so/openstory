@@ -24,7 +24,7 @@ const DOUBLE_DELIVERY_WINDOW_MS = 2 * 60 * 1000;
 
 type CompleteOAuthParams = {
   /** Team resolved from the authenticated session on the callback request. */
-  teamId: string;
+  organizationId: string;
   /** Authorization code from OpenRouter's redirect. */
   code: string;
   /** CSRF `state` query param echoed back via the callback URL. */
@@ -44,7 +44,7 @@ type CompleteOAuthParams = {
  */
 export async function completeOpenRouterOAuth(
   {
-    teamId,
+    organizationId,
     code,
     csrfState,
     secureCookies,
@@ -58,7 +58,7 @@ export async function completeOpenRouterOAuth(
     throw new Error('OAuth session expired or not found');
   }
 
-  if (state.teamId !== teamId) {
+  if (state.organizationId !== organizationId) {
     throw new Error('OAuth state does not match the active team');
   }
 

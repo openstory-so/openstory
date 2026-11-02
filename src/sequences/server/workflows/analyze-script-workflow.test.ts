@@ -204,7 +204,7 @@ function makeEvent(
 ): Readonly<WorkflowEvent<AnalyzeScriptWorkflowInput>> {
   const payload: AnalyzeScriptWorkflowInput = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     includeMusic: true,
     sequenceId: 'seq_1',
     script: 'INT. HALLWAY — NIGHT',

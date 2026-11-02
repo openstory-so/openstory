@@ -277,7 +277,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
   }, [sequences, styleNameById]);
 
   // Team-scoped divergence flags so own-data rows show a "variants available"
-  // dot. In support mode rows belong to other teams, so the flag is irrelevant.
+  // dot. In support mode rows belong to other organizations, so the flag is irrelevant.
   const { data: divergentByTeam } = useTeamDivergentSequenceVariants(
     !supportMode && loadShots && sequences.length > 0
   );

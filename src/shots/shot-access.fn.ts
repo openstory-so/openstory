@@ -2,7 +2,7 @@
  * Shot access middleware (#1489). Lives in the shots domain because it
  * resolves the shot's scene script — a domain read `platform/middleware.fn.ts`
  * may not make. Builds on `sequenceAccessMiddleware`, which already loaded
- * the sequence and re-scoped the db for a system admin crossing teams, so
+ * the sequence and re-scoped the db for a system admin crossing organization, so
  * this one never mints a scoped db itself.
  */
 import {

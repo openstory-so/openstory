@@ -118,7 +118,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 't1',
+      organizationId: 't1',
       ...(withParent ? { _parent: PARENT_HINT } : {}),
       ...extra,
     },
@@ -190,7 +190,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
         ...makeEvent(false),
         payload: {
           userId: 'u1',
-          teamId: 't1',
+          organizationId: 't1',
           characterBible: [
             {
               characterId: 'c1',
@@ -204,11 +204,41 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
     );
     expect(seen).toEqual({
       userId: 'u1',
-      teamId: 't1',
+      organizationId: 't1',
       characterBible: [
         { characterId: 'c1', looks: [{ ...look, styling: 'scar' }] },
       ],
     });
+  });
+
+  test('a run queued with teamId (#813) reads it as organizationId', async () => {
+    let seen: string | undefined;
+    class TestWorkflow extends OpenStoryWorkflowEntrypoint<TestPayload> {
+      protected override readonly failureLabel = 'Test run';
+
+      protected override runImpl(
+        event: Readonly<WorkflowEvent<TestPayload>>
+      ): Promise<unknown> {
+        seen = event.payload.organizationId;
+        return Promise.resolve('ok');
+      }
+    }
+    type Ctor = ConstructorParameters<typeof TestWorkflow>;
+    const workflow = new TestWorkflow(
+      asStub<Ctor[0]>(undefined),
+      asStub<Ctor[1]>({})
+    );
+    await workflow.run(
+      {
+        ...makeEvent(false),
+        payload: asStub<TestPayload>({
+          userId: 'u1',
+          teamId: 'legacy-team',
+        }),
+      },
+      makeStep()
+    );
+    expect(seen).toBe('legacy-team');
   });
 
   test.each([ENGINE_ABORT, DO_RESET])(

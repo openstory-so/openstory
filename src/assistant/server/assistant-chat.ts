@@ -106,7 +106,7 @@ const MAX_TURNS = 24;
 export type AssistantCaller = {
   scopedDb: ScopedDb;
   user: User;
-  teamId: string;
+  organizationId: string;
   teamName: string;
   origin: string;
   request: Request;
@@ -169,7 +169,7 @@ export function toolContext(caller: AssistantCaller): OpenStoryMcpContext {
   return {
     caller: {
       user: caller.user,
-      teamId: caller.teamId,
+      organizationId: caller.organizationId,
       teamName: caller.teamName,
     },
     origin: caller.origin,
@@ -220,7 +220,7 @@ function billingMiddleware(
   usedOwnKey: boolean,
   runId: string
 ): ChatMiddleware[] {
-  const chargeKey = `assistant:${caller.teamId}:${generateId()}`;
+  const chargeKey = `assistant:${caller.organizationId}:${generateId()}`;
   let iteration = 0;
   const charge = async (usage: TokenUsage) => {
     if (usedOwnKey) return;
@@ -232,7 +232,7 @@ function billingMiddleware(
       reportMissingBillingCost({
         source: 'assistant-chat',
         modelId: model,
-        teamId: caller.teamId,
+        organizationId: caller.organizationId,
         metadata: { usage, via, runId, iteration },
       });
       return;
@@ -245,7 +245,7 @@ function billingMiddleware(
       });
     } catch (error) {
       logger.error('assistant charge failed', {
-        teamId: caller.teamId,
+        organizationId: caller.organizationId,
         runId,
         iteration,
         cost,
@@ -299,7 +299,7 @@ export async function handleAssistantChat(
   // middleware checked access, this checks generation before any credit.
   await requireGenerationAllowed({
     userId: caller.user.id,
-    teamId: caller.teamId,
+    organizationId: caller.organizationId,
   });
   await requireCredits(scopedDb, estimateLLMCost(2), {
     providers: ['openrouter'],

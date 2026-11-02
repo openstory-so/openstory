@@ -228,9 +228,9 @@ describe('createScopedDb', () => {
     dbChain = wireDbChain();
   });
 
-  it('exposes teamId and userId', () => {
+  it('exposes organizationId and userId', () => {
     const db = createScopedDb(TEAM_ID, USER_ID);
-    expect(db.teamId).toBe(TEAM_ID);
+    expect(db.organizationId).toBe(TEAM_ID);
     expect(db.userId).toBe(USER_ID);
   });
 
@@ -265,7 +265,7 @@ describe('createScopedDb', () => {
     });
 
     it('getById() delegates to sub-module', async () => {
-      const sentinel = { id: 'seq_1', teamId: TEAM_ID };
+      const sentinel = { id: 'seq_1', organizationId: TEAM_ID };
       mockSequencesGetById.mockResolvedValue(sentinel);
 
       const db = createScopedDb(TEAM_ID, USER_ID);

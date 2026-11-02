@@ -34,13 +34,13 @@ import { locationBibleColumns } from './bible-versions';
 
 export function createLocationSheetVariantsMethods(
   db: Database,
-  teamId: string
+  organizationId: string
 ) {
   /** The row belongs to one of this team's locations. */
-  const ofTeam = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.team_id = ${teamId})`;
+  const ofTeam = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.organization_id = ${organizationId})`;
   const ofLocation = (locationId: string) =>
     and(eq(locationSheetVariants.locationId, locationId), ofTeam);
-  const inTeam = eq(locations.teamId, teamId);
+  const inTeam = eq(locations.organizationId, organizationId);
 
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
@@ -341,7 +341,7 @@ export function createLocationSheetVariantsMethods(
      * {@link landLocationReference}.
      */
     promoteIfPending: (args: Parameters<typeof landLocationReference>[2]) =>
-      landLocationReference(db, teamId, args),
+      landLocationReference(db, organizationId, args),
 
     /**
      * Idempotent on (location, model, inputHash) within the divergent partial

@@ -5,8 +5,8 @@ import {
 
 /**
  * Folder a *draft* element upload lands in: bucket-relative
- * `<teamId>/uploads/<uploadId>.<ext>`, i.e. R2 key
- * `elements/<teamId>/uploads/<uploadId>.<ext>`.
+ * `<organizationId>/uploads/<uploadId>.<ext>`, i.e. R2 key
+ * `elements/<organizationId>/uploads/<uploadId>.<ext>`.
  *
  * It is a permanent key, not a staging area (#1471). One draft upload can be
  * claimed by N sequences — creation fans out one sequence per selected
@@ -23,16 +23,16 @@ export const DRAFT_ELEMENT_UPLOAD_PREFIX = 'uploads';
 
 /**
  * Sequence-element storage paths must live exactly under
- * `elements/<teamId>/`. `startsWith` alone accepts traversal artifacts like
- * `elements/<myTeamId>/../<otherTeamId>/x` — R2 stores keys literally so the
+ * `elements/<organizationId>/`. `startsWith` alone accepts traversal artifacts like
+ * `elements/<myOrganizationId>/../<otherOrganizationId>/x` — R2 stores keys literally so the
  * practical blast radius is small, but rejecting `..` and `//` segments closes
  * the namespace boundary explicitly.
  */
 export function isValidElementStoragePath(
   path: string,
-  teamId: string
+  organizationId: string
 ): boolean {
-  const prefix = `elements/${teamId}/`;
+  const prefix = `elements/${organizationId}/`;
   if (!path.startsWith(prefix)) return false;
   const rest = path.slice(prefix.length);
   if (rest.length === 0) return false;

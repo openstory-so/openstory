@@ -126,7 +126,7 @@ export async function listLibraryResources(
 ) {
   const page = await readPage(
     input,
-    [scopedDb.teamId, kind, parentId],
+    [scopedDb.organizationId, kind, parentId],
     pageRows(await libraryRows(scopedDb, kind, parentId))
   );
   return {

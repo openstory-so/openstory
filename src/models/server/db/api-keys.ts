@@ -89,7 +89,7 @@ type CachedKeyLookup =
       invalidReason: string | null;
     };
 
-export function createApiKeysReadMethods(db: Database, teamId: string) {
+export function createApiKeysReadMethods(db: Database, organizationId: string) {
   // Per-scope memoization of the `team_api_keys` row lookup. A ScopedDb is
   // built fresh per workflow run / request, so this cache lives exactly one
   // run — there is no cross-run staleness (issue #864). Without it, `resolveKey`
@@ -126,7 +126,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         createdAt: teamApiKeys.createdAt,
       })
       .from(teamApiKeys)
-      .where(eq(teamApiKeys.teamId, teamId));
+      .where(eq(teamApiKeys.organizationId, organizationId));
 
     return rows;
   }
@@ -137,7 +137,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       .from(teamApiKeys)
       .where(
         and(
-          eq(teamApiKeys.teamId, teamId),
+          eq(teamApiKeys.organizationId, organizationId),
           eq(teamApiKeys.provider, provider),
           eq(teamApiKeys.isActive, true)
         )
@@ -157,7 +157,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       .from(teamApiKeys)
       .where(
         and(
-          eq(teamApiKeys.teamId, teamId),
+          eq(teamApiKeys.organizationId, organizationId),
           eq(teamApiKeys.provider, provider),
           eq(teamApiKeys.isActive, true),
           eq(teamApiKeys.isInvalid, false)
@@ -174,7 +174,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       .from(teamApiKeys)
       .where(
         and(
-          eq(teamApiKeys.teamId, teamId),
+          eq(teamApiKeys.organizationId, organizationId),
           eq(teamApiKeys.provider, provider),
           eq(teamApiKeys.isActive, true),
           eq(teamApiKeys.isInvalid, true)
@@ -218,7 +218,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       .from(teamApiKeys)
       .where(
         and(
-          eq(teamApiKeys.teamId, teamId),
+          eq(teamApiKeys.organizationId, organizationId),
           eq(teamApiKeys.provider, provider),
           eq(teamApiKeys.isActive, true)
         )
@@ -244,7 +244,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       // every generation path and is the first to fail under burst (#864).
       logger.error('team_api_keys read failed', {
         provider,
-        teamId,
+        organizationId,
         err: serializeError(err),
       });
       throw err;
@@ -275,7 +275,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
           : 'Could not decrypt stored key';
       logger.error('Decryption failed, marking key invalid', {
         provider,
-        teamId,
+        organizationId,
         error: err,
       });
       await db
@@ -288,7 +288,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         })
         .where(
           and(
-            eq(teamApiKeys.teamId, teamId),
+            eq(teamApiKeys.organizationId, organizationId),
             eq(teamApiKeys.provider, provider)
           )
         );
@@ -365,7 +365,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         fallback
           ? 'Falling back to platform key'
           : 'Team API key marked invalid; no platform key',
-        { provider, teamId, reason }
+        { provider, organizationId, reason }
       );
       return fallback;
     }
@@ -485,7 +485,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     if (fallbackReason) {
       logger.warn('Falling back to platform key', {
         provider: platform.via,
-        teamId,
+        organizationId,
         reason: fallbackReason,
       });
     }
@@ -623,10 +623,10 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
 
 export function createApiKeysMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
-  const readMethods = createApiKeysReadMethods(db, teamId);
+  const readMethods = createApiKeysReadMethods(db, organizationId);
 
   const markKeyInvalid = async (
     provider: ApiKeyProvider,
@@ -641,7 +641,10 @@ export function createApiKeysMethods(
         updatedAt: new Date(),
       })
       .where(
-        and(eq(teamApiKeys.teamId, teamId), eq(teamApiKeys.provider, provider))
+        and(
+          eq(teamApiKeys.organizationId, organizationId),
+          eq(teamApiKeys.provider, provider)
+        )
       );
     readMethods.invalidateResolveKeyCache(provider);
   };
@@ -656,7 +659,10 @@ export function createApiKeysMethods(
         updatedAt: new Date(),
       })
       .where(
-        and(eq(teamApiKeys.teamId, teamId), eq(teamApiKeys.provider, provider))
+        and(
+          eq(teamApiKeys.organizationId, organizationId),
+          eq(teamApiKeys.provider, provider)
+        )
       );
     readMethods.invalidateResolveKeyCache(provider);
   };
@@ -673,7 +679,7 @@ export function createApiKeysMethods(
       .from(teamApiKeys)
       .where(
         and(
-          eq(teamApiKeys.teamId, teamId),
+          eq(teamApiKeys.organizationId, organizationId),
           eq(teamApiKeys.provider, provider),
           eq(teamApiKeys.isActive, true)
         )
@@ -729,7 +735,7 @@ export function createApiKeysMethods(
         .delete(teamApiKeys)
         .where(
           and(
-            eq(teamApiKeys.teamId, teamId),
+            eq(teamApiKeys.organizationId, organizationId),
             eq(teamApiKeys.provider, params.provider)
           )
         );
@@ -737,7 +743,7 @@ export function createApiKeysMethods(
       const [row] = await db
         .insert(teamApiKeys)
         .values({
-          teamId,
+          organizationId,
           provider: params.provider,
           encryptedKey: encrypted.encryptedKey,
           keyIv: encrypted.keyIv,
@@ -756,7 +762,7 @@ export function createApiKeysMethods(
 
       if (!row) {
         throw new Error(
-          `saveKey: insert returned no row for team ${teamId}, provider ${params.provider}`
+          `saveKey: insert returned no row for team ${organizationId}, provider ${params.provider}`
         );
       }
 
@@ -781,7 +787,7 @@ export function createApiKeysMethods(
         .delete(teamApiKeys)
         .where(
           and(
-            eq(teamApiKeys.teamId, teamId),
+            eq(teamApiKeys.organizationId, organizationId),
             eq(teamApiKeys.provider, provider)
           )
         );

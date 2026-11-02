@@ -43,7 +43,7 @@ export const castElsewhere = (
  */
 export const analysisMayNotRewrite = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   characterId: string,
   sequenceId: string
 ): Promise<boolean> => {
@@ -52,7 +52,12 @@ export const analysisMayNotRewrite = async (
       shared: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${characterId} AND (o.sequence_id != ${sequenceId} OR o.attached))`,
     })
     .from(characters)
-    .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
+    .where(
+      and(
+        eq(characters.id, characterId),
+        eq(characters.organizationId, organizationId)
+      )
+    );
   if (!row) throw new NotFoundError(`Character ${characterId} not found`);
   return Boolean(row.shared);
 };
@@ -117,7 +122,7 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
  */
 export const charactersOnlyIn = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string
 ): Promise<SQL> => {
   const rows = await db
@@ -127,7 +132,7 @@ export const charactersOnlyIn = async (
     .where(
       and(
         eq(sequenceCast.sequenceId, sequenceId),
-        eq(characters.teamId, teamId),
+        eq(characters.organizationId, organizationId),
         // An attached character is the team's, whoever else casts it (#2065).
         eq(sequenceCast.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`

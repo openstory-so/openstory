@@ -141,7 +141,7 @@ export const deleteStyleFn = createServerFn({ method: 'POST' })
       throw new NotFoundError('Style not found');
     }
 
-    await requireTeamAdminAccess(context.user.id, style.teamId);
+    await requireTeamAdminAccess(context.user.id, style.organizationId);
 
     await context.scopedDb.styles.delete(data.styleId);
 

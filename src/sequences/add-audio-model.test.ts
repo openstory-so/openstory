@@ -33,7 +33,7 @@ function makeContext(canAfford = false) {
     user: { id: 'u1' },
     sequence: {
       id: 'seq_1',
-      teamId: 't1',
+      organizationId: 't1',
       musicPrompt: 'ambient synths',
       musicTags: 'ambient',
     },

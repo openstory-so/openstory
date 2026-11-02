@@ -102,7 +102,7 @@ const NOW = new Date('2026-06-07T00:00:00.000Z');
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
     id: 'seq_1',
-    teamId: 't1',
+    organizationId: 't1',
     title: 'A sequence',
     script: 'INT. LAB — NIGHT',
     status: 'failed',
@@ -449,7 +449,7 @@ function makeContext(
   // minimal ScopedDb stub exposing only what executeSmartRetry touches
   const scopedDb = asStub<ScopedDb>(stub);
   return {
-    context: { sequence, user: { id: 'u1' }, teamId: 't1', scopedDb },
+    context: { sequence, user: { id: 'u1' }, organizationId: 't1', scopedDb },
     scopedDb,
     updateStatus,
     listBySequence,
@@ -592,7 +592,7 @@ describe('executeSmartRetry — full retry fallback', () => {
       scopedDb,
       expect.objectContaining({
         sequenceId: 'seq_1',
-        teamId: 't1',
+        organizationId: 't1',
         reservationId: undefined,
       })
     );

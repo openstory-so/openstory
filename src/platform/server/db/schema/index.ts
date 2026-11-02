@@ -24,7 +24,13 @@ import {
   verification,
 } from './auth';
 
-import { teamInvitations, teamMembers, teams } from './teams';
+import {
+  invitation,
+  member,
+  teamInvitations,
+  teamMembers,
+  organization,
+} from './organization';
 
 import { sequences } from './sequences';
 
@@ -149,8 +155,8 @@ export {
 
 export type { User } from './auth';
 
-// Teams
-export { teamInvitations, teamMembers, teams };
+// Organization (tenant) + Better Auth member/invitation (#813)
+export { invitation, member, teamInvitations, teamMembers, organization };
 
 // Sequences
 export { sequences };
@@ -534,8 +540,10 @@ export const schema = {
   oauthRefreshToken,
   oauthResource,
 
-  // Teams
-  teams,
+  // Organization
+  organization,
+  member,
+  invitation,
   teamMembers,
   teamInvitations,
 

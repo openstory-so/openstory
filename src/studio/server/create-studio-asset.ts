@@ -444,7 +444,7 @@ export async function createStudioAssets(
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
   });
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
   // (#1581); library stills passed the same gate when they were saved. One
@@ -528,7 +528,7 @@ export async function createStudioAssets(
 
           const workflowInput: StudioGenerationWorkflowInput = {
             userId: scopedDb.userId,
-            teamId: scopedDb.teamId,
+            organizationId: scopedDb.organizationId,
             assetId: row.id,
             reservationId,
             ownsReservation: true,
@@ -582,7 +582,7 @@ export async function createStudioAssets(
     distinctId: scopedDb.userId,
     event: 'studio_generation_started',
     properties: {
-      team_id: scopedDb.teamId,
+      team_id: scopedDb.organizationId,
       activity: input.activity,
       model: input.activity === 'image' ? input.imageModel : input.videoModel,
       model_name: modelName,

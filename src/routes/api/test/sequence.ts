@@ -9,7 +9,7 @@ import {
 import { testOnlyGuard } from './route';
 
 const CreateSequenceSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
   userId: z.string(),
   title: z.string().optional(),
 });
@@ -23,18 +23,22 @@ export const Route = createFileRoute('/api/test/sequence')({
          * POST /api/test/sequence
          */
         POST: async ({ request }) => {
-          const { teamId, userId, title } = CreateSequenceSchema.parse(
+          const { organizationId, userId, title } = CreateSequenceSchema.parse(
             await request.json()
           );
 
-          if (!teamId || !userId) {
+          if (!organizationId || !userId) {
             return Response.json(
-              { error: 'teamId and userId are required' },
+              { error: 'organizationId and userId are required' },
               { status: 400 }
             );
           }
 
-          const created = await createTestSequence(teamId, userId, title);
+          const created = await createTestSequence(
+            organizationId,
+            userId,
+            title
+          );
           return Response.json(created);
         },
 
@@ -44,19 +48,19 @@ export const Route = createFileRoute('/api/test/sequence')({
         DELETE: async ({ request }) => {
           const body = z
             .object({
-              teamId: z.string().optional(),
+              organizationId: z.string().optional(),
               sequenceId: z.string().optional(),
               styleId: z.string().optional(),
             })
             .parse(await request.json());
 
-          if (body.teamId) {
-            await cleanupTestSequences(body.teamId);
+          if (body.organizationId) {
+            await cleanupTestSequences(body.organizationId);
           } else if (body.sequenceId && body.styleId) {
             await cleanupSequenceById(body.sequenceId, body.styleId);
           } else {
             return Response.json(
-              { error: 'teamId or (sequenceId + styleId) required' },
+              { error: 'organizationId or (sequenceId + styleId) required' },
               { status: 400 }
             );
           }

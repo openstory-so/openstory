@@ -49,7 +49,7 @@ describe('exchangeDeviceCode', () => {
     deviceToken.mockResolvedValueOnce({ access_token: 'sess-token' });
     findSession.mockResolvedValueOnce({ user: { id: 'u1' }, session: {} });
     resolveUserTeam.mockResolvedValueOnce({
-      teamId: 't1',
+      organizationId: 't1',
       teamName: 'Team One',
     });
     createApiKey.mockResolvedValueOnce({ key: 'osk_secret' });

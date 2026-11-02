@@ -73,7 +73,7 @@ describe('generateMusic native ElevenLabs', () => {
     const result = await generateMusic({
       prompt: 'lo-fi beat',
       duration: 61,
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       credentials: {
         userId: 'user_1',

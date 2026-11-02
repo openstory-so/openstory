@@ -152,7 +152,10 @@ describe('createOAuthProviderPlugins', () => {
 
   it('bills a grant to the user default team and stamps it on the token', async () => {
     envState.VITE_APP_URL = 'https://openstory.so';
-    resolveUserTeam.mockResolvedValue({ teamId: 'team_1', teamName: 'T' });
+    resolveUserTeam.mockResolvedValue({
+      organizationId: 'team_1',
+      teamName: 'T',
+    });
     const options = providerOptions();
 
     const referenceId = await options.postLogin?.consentReferenceId({
@@ -161,7 +164,16 @@ describe('createOAuthProviderPlugins', () => {
       scopes: [],
     });
     expect(referenceId).toBe('team_1');
-    expect(resolveUserTeam).toHaveBeenCalledWith('user_1');
+    expect(resolveUserTeam).toHaveBeenCalledWith('user_1', null);
+
+    resolveUserTeam.mockClear();
+    const activeReferenceId = await options.postLogin?.consentReferenceId({
+      user,
+      session: { ...session, activeOrganizationId: 'org_active' },
+      scopes: [],
+    });
+    expect(activeReferenceId).toBe('team_1');
+    expect(resolveUserTeam).toHaveBeenCalledWith('user_1', 'org_active');
 
     expect(
       await options.customAccessTokenClaims?.({

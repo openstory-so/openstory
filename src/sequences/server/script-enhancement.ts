@@ -116,7 +116,7 @@ export async function prepareBilling(
  */
 export async function* streamScriptEnhancement(
   data: EnhanceScriptInput,
-  ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
+  ctx: { scopedDb: ScopedDb; userId: string; organizationId: string }
 ): AsyncGenerator<EnhanceChunk> {
   const model =
     data.analysisModel && isValidAnalysisModelId(data.analysisModel)
@@ -192,7 +192,7 @@ export async function* streamScriptEnhancement(
         logger.error('Script enhancement: failed to load element image', {
           token: el.token,
           imageUrl: el.imageUrl,
-          teamId: ctx.teamId,
+          organizationId: ctx.organizationId,
           userId: ctx.userId,
           error: cause instanceof Error ? cause.message : String(cause),
         });
@@ -240,7 +240,7 @@ export async function* streamScriptEnhancement(
       userId: ctx.userId,
       apiKey: llmKey,
       metadata: {
-        teamId: ctx.teamId,
+        organizationId: ctx.organizationId,
         elementCount: elements.length,
         targetDuration: targetSeconds,
         aspectRatio: data.aspectRatio,
@@ -276,7 +276,7 @@ export async function* streamScriptEnhancement(
 export const enhanceScriptToString = createServerOnlyFn(
   async (
     data: EnhanceScriptInput,
-    ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
+    ctx: { scopedDb: ScopedDb; userId: string; organizationId: string }
   ): Promise<string> => {
     let enhanced = '';
     for await (const chunk of streamScriptEnhancement(data, ctx)) {

@@ -269,12 +269,12 @@ export async function returnToLibraryList(
  * Use for tests that create entities via UI and need inline cleanup.
  */
 export async function cleanupLocationByName(
-  teamId: string,
+  organizationId: string,
   name: string
 ): Promise<void> {
   await fetch('http://localhost:3020/api/test/location', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId, name }),
+    body: JSON.stringify({ organizationId, name }),
   });
 }

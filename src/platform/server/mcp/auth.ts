@@ -41,7 +41,7 @@ type McpAuthKind = 'oauth' | 'api_key';
 /** Identity tools (whoami) need; extra on AuthInfo carries this, not secrets. */
 export type McpCallerIdentity = {
   user: User;
-  teamId: string;
+  organizationId: string;
   teamName: string;
 };
 
@@ -74,20 +74,20 @@ async function resolveTeamContext(
   user: User,
   oauth: OAuthAccessToken | null
 ): Promise<McpAuthContext | Response> {
-  const team = oauth?.teamId
-    ? await getUserTeamMembership(user.id, oauth.teamId)
+  const team = oauth?.organizationId
+    ? await getUserTeamMembership(user.id, oauth.organizationId)
     : await resolveUserTeam(user.id);
 
   if (!team) {
     return mcpJsonRpcError(
       403,
-      oauth?.teamId
+      oauth?.organizationId
         ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
         : 'No team is associated with this account.'
     );
   }
 
-  const compliance = await loadComplianceState(user.id, team.teamId);
+  const compliance = await loadComplianceState(user.id, team.organizationId);
   if (!compliance.enforcement.canAccess) {
     return mcpJsonRpcError(
       403,
@@ -99,7 +99,7 @@ async function resolveTeamContext(
   const kind: McpAuthKind = oauth ? 'oauth' : 'api_key';
   return {
     user,
-    teamId: team.teamId,
+    organizationId: team.organizationId,
     teamName: team.teamName,
     session: null,
     oauth,

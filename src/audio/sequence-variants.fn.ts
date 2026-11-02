@@ -51,7 +51,7 @@ export const getTeamDivergentSequenceVariantsFn = createServerFn({
   .middleware([authWithTeamMiddleware])
   .handler(async ({ context }) => {
     return context.scopedDb.sequenceVariants.listDivergentByTeam(
-      context.teamId
+      context.organizationId
     );
   });
 

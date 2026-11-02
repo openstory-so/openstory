@@ -65,7 +65,7 @@ describe('assertTeamUserUploadAttachable', () => {
       assertTeamUserUploadAttachable({
         url: '/r2/talent/team-1/uploads/a.png',
         bucket: STORAGE_BUCKETS.TALENT,
-        teamId: 'team-1',
+        organizationId: 'team-1',
       })
     ).resolves.toEqual({
       url: '/r2/talent/team-1/uploads/a.png',
@@ -83,7 +83,7 @@ describe('assertTeamUserUploadAttachable', () => {
       assertTeamUserUploadAttachable({
         url: '/r2/talent/team-1/uploads/gone.png',
         bucket: STORAGE_BUCKETS.TALENT,
-        teamId: 'team-1',
+        organizationId: 'team-1',
       })
     ).rejects.toThrow(/no longer available/);
   });
@@ -93,7 +93,7 @@ describe('assertTeamUserUploadAttachable', () => {
       assertTeamUserUploadAttachable({
         url: '/r2/talent/team-1/tal-1/a.png',
         bucket: STORAGE_BUCKETS.TALENT,
-        teamId: 'team-1',
+        organizationId: 'team-1',
       })
     ).rejects.toThrow('Invalid storage path');
     expect(fileExists).not.toHaveBeenCalled();

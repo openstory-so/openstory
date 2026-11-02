@@ -1,16 +1,19 @@
 /**
  * Scoped Database Context
- * Factory that returns team-scoped query methods, auto-injecting teamId.
+ * Factory that returns team-scoped query methods, auto-injecting organizationId.
  * Sub-modules in ./scoped/ contain domain-specific methods.
  * Raw `getDb` readers are allowlisted in `.oxlintrc.json` and pinned by
  * `db-access-allowlist.test.ts`; everything team-scoped goes through here.
  */
 
 import { getDb } from '#db-client';
+import { generateId } from '@/platform/id';
 import type { Sequence, User } from '@/platform/server/db/schema';
 import {
+  member,
   teamMembers,
-  teams,
+  organization,
+  session,
   deviceCode,
   oauthAccessToken,
   oauthClient,
@@ -19,7 +22,7 @@ import {
   sequences,
   user,
 } from '@/platform/server/db/schema';
-import type { TeamMemberRole } from '@/platform/server/db/schema/teams';
+import type { TeamMemberRole } from '@/platform/server/db/schema/organization';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
@@ -178,61 +181,146 @@ export async function revokeOAuthGrantTokens(
     );
 }
 
-/**
- * Resolve a user's default team (highest-role team).
- * Module-level function for bootstrap before scopedDb exists.
- */
-export async function resolveUserTeam(
-  userId: string
-): Promise<{ teamId: string; role: TeamMemberRole; teamName: string } | null> {
-  const db = getDb();
-  const [result] = await db
-    .select({
-      teamId: teamMembers.teamId,
-      role: teamMembers.role,
-      teamName: teams.name,
-      joinedAt: teamMembers.joinedAt,
-    })
-    .from(teamMembers)
-    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .where(eq(teamMembers.userId, userId))
-    .orderBy(
-      sql`CASE
-        WHEN ${teamMembers.role} = 'owner' THEN 1
-        WHEN ${teamMembers.role} = 'admin' THEN 2
-        WHEN ${teamMembers.role} = 'member' THEN 3
-        WHEN ${teamMembers.role} = 'viewer' THEN 4
-        ELSE 5
-      END`
-    )
-    .limit(1);
+type ResolvedOrganization = {
+  organizationId: string;
+  role: TeamMemberRole;
+  teamName: string;
+};
 
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-  return result ?? null;
+const roleRank = sql`CASE
+  WHEN ${member.role} = 'owner' THEN 1
+  WHEN ${member.role} = 'admin' THEN 2
+  WHEN ${member.role} = 'member' THEN 3
+  WHEN ${member.role} = 'viewer' THEN 4
+  ELSE 5
+END`;
+
+function asMemberRole(role: string): TeamMemberRole {
+  if (
+    role === 'owner' ||
+    role === 'admin' ||
+    role === 'member' ||
+    role === 'viewer'
+  ) {
+    return role;
+  }
+  throw new Error(`Unknown organization role "${role}"`);
 }
 
 /**
- * Check if a user is a member of a specific team and return their role.
- * Module-level function — does not require a scopedDb instance.
+ * Copy `team_members` rows that are not on `member` yet. A user with exactly
+ * one membership reuses their user id as `member.id` (SQL cannot mint a ULID).
+ * Anyone with more than one gets `generateId()` here.
+ */
+async function syncLegacyMemberships(
+  db: ReturnType<typeof getDb>,
+  userId: string
+): Promise<void> {
+  const legacy = await db
+    .select({
+      organizationId: teamMembers.organizationId,
+      role: teamMembers.role,
+      joinedAt: teamMembers.joinedAt,
+    })
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId));
+  if (legacy.length === 0) return;
+
+  const current = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId));
+  const have = new Set(current.map((row) => row.organizationId));
+  const missing = legacy.filter((row) => !have.has(row.organizationId));
+  if (missing.length === 0) return;
+
+  const soleMembership = legacy.length === 1;
+  await db
+    .insert(member)
+    .values(
+      missing.map((row) => ({
+        id: soleMembership ? userId : generateId(),
+        organizationId: row.organizationId,
+        userId,
+        role: row.role,
+        createdAt: row.joinedAt,
+      }))
+    )
+    .onConflictDoNothing();
+}
+
+async function readMembership(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  organizationId?: string
+): Promise<ResolvedOrganization | null> {
+  const filters = [eq(member.userId, userId)];
+  if (organizationId) filters.push(eq(member.organizationId, organizationId));
+  const [result] = await db
+    .select({
+      organizationId: member.organizationId,
+      role: member.role,
+      teamName: organization.name,
+    })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(and(...filters))
+    .orderBy(roleRank)
+    .limit(1);
+  if (!result) return null;
+  return { ...result, role: asMemberRole(result.role) };
+}
+
+/**
+ * The organization this user acts as. `activeOrganizationId` wins when it is
+ * one they still belong to; otherwise the highest role, which is what a
+ * session with no active organization did before #813.
+ */
+export async function resolveUserTeam(
+  userId: string,
+  activeOrganizationId?: string | null
+): Promise<ResolvedOrganization | null> {
+  const db = getDb();
+  await syncLegacyMemberships(db, userId);
+  if (activeOrganizationId) {
+    const active = await readMembership(db, userId, activeOrganizationId);
+    if (active) return active;
+  }
+  return readMembership(db, userId);
+}
+
+/**
+ * Membership of one organization, or null. Copies a legacy `team_members`
+ * row onto `member` first.
  */
 export async function getUserTeamMembership(
   userId: string,
-  teamId: string
-): Promise<{ teamId: string; role: TeamMemberRole; teamName: string } | null> {
+  organizationId: string
+): Promise<ResolvedOrganization | null> {
   const db = getDb();
-  const [result] = await db
-    .select({
-      teamId: teamMembers.teamId,
-      role: teamMembers.role,
-      teamName: teams.name,
-    })
-    .from(teamMembers)
-    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.teamId, teamId)))
-    .limit(1);
+  await syncLegacyMemberships(db, userId);
+  return readMembership(db, userId, organizationId);
+}
 
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-  return result ?? null;
+const stampedActiveOrganization = new Set<string>();
+
+/**
+ * Write the resolved organization onto a real session row, once per isolate.
+ * The cookie cache can still say null for five minutes; the next request
+ * resolves the same way and does not write again.
+ */
+export async function rememberActiveOrganization(
+  sessionId: string | undefined,
+  currentActiveOrganizationId: string | null | undefined,
+  organizationId: string
+): Promise<void> {
+  if (!sessionId || currentActiveOrganizationId === organizationId) return;
+  if (stampedActiveOrganization.has(sessionId)) return;
+  stampedActiveOrganization.add(sessionId);
+  await getDb()
+    .update(session)
+    .set({ activeOrganizationId: organizationId })
+    .where(eq(session.id, sessionId));
 }
 
 /**
@@ -266,10 +354,10 @@ export async function getSequenceByIdUnscoped(
 }
 
 /**
- * Create a user's default team with them as owner. The one place the
+ * Create a user's default organization with them as owner. The one place the
  * sign-up bootstrap SQL lives: the Better Auth `user.create` hook and
- * `ensureUserAndTeam` both call it, so neither touches `teams` /
- * `team_members` directly.
+ * `ensureUserAndTeam` both call it. The membership id is the user id because
+ * this is their only membership.
  */
 export async function createDefaultTeam(input: {
   userId: string;
@@ -277,17 +365,21 @@ export async function createDefaultTeam(input: {
 }) {
   const db = getDb();
   const [team] = await db
-    .insert(teams)
+    .insert(organization)
     .values({ name: input.teamName, slug: `team-${input.userId.slice(0, 8)}` })
     .returning();
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
   if (!team) {
-    throw new Error(`Failed to create default team for user ${input.userId}`);
+    throw new Error(
+      `Failed to create default organization for user ${input.userId}`
+    );
   }
-  await db.insert(teamMembers).values({
-    teamId: team.id,
+  await db.insert(member).values({
+    id: input.userId,
+    organizationId: team.id,
     userId: input.userId,
     role: 'owner',
+    createdAt: new Date(),
   });
   return team;
 }
@@ -315,7 +407,9 @@ export async function ensureUserAndTeam(authUser: {
   email?: string | null;
 }): Promise<{
   success: boolean;
-  data?: User & { teamMembers?: Array<{ teamId: string; role: string }> };
+  data?: User & {
+    teamMembers?: Array<{ organizationId: string; role: string }>;
+  };
   error?: string;
 }> {
   try {
@@ -326,10 +420,11 @@ export async function ensureUserAndTeam(authUser: {
     });
 
     if (foundUser) {
+      await syncLegacyMemberships(db, authUser.id);
       const memberships = await db
-        .select({ teamId: teamMembers.teamId, role: teamMembers.role })
-        .from(teamMembers)
-        .where(eq(teamMembers.userId, authUser.id));
+        .select({ organizationId: member.organizationId, role: member.role })
+        .from(member)
+        .where(eq(member.userId, authUser.id));
 
       if (memberships.length > 0) {
         return {
@@ -351,8 +446,8 @@ export async function ensureUserAndTeam(authUser: {
     const team = await createDefaultTeam({
       userId: authUser.id,
       teamName: authUser.name
-        ? `${authUser.name}'s Team`
-        : `Anonymous Team ${authUser.id.slice(0, 8)}`,
+        ? `${authUser.name}'s Organization`
+        : `Anonymous Organization ${authUser.id.slice(0, 8)}`,
     });
 
     const createdUser = await db.query.user.findFirst({
@@ -365,7 +460,7 @@ export async function ensureUserAndTeam(authUser: {
       success: true,
       data: {
         ...createdUser,
-        teamMembers: [{ teamId: team.id, role: 'owner' }],
+        teamMembers: [{ organizationId: team.id, role: 'owner' }],
       },
     };
   } catch (error) {
@@ -380,20 +475,20 @@ export async function ensureUserAndTeam(authUser: {
 /**
  * Full scoped DB — requires userId for write operations that auto-inject audit fields.
  */
-export function createScopedDb(teamId: string, userId: string) {
+export function createScopedDb(organizationId: string, userId: string) {
   const db = getDb();
-  const reads = createProductionReadMethods(db, teamId);
+  const reads = createProductionReadMethods(db, organizationId);
 
   return {
-    teamId,
+    organizationId,
     userId,
 
-    sequences: createSequencesMethods(db, teamId, userId),
+    sequences: createSequencesMethods(db, organizationId, userId),
     sequence: (sequenceId: string) => createSequenceMethods(db, sequenceId),
 
-    styles: createStylesMethods(db, teamId, userId),
-    locations: createLocationsMethods(db, teamId),
-    library: createLibraryMethods(db, teamId),
+    styles: createStylesMethods(db, organizationId, userId),
+    locations: createLocationsMethods(db, organizationId),
+    library: createLibraryMethods(db, organizationId),
 
     scenes: { ...createScenesMethods(db), ...reads.scenes },
     sceneScriptVersions: createSceneScriptVersionsMethods(db),
@@ -414,22 +509,28 @@ export function createScopedDb(teamId: string, userId: string) {
     frameVariants: createFrameVariantsMethods(db),
     framePromptVersions: createFramePromptVersionsMethods(db),
     sequenceEvents: createSequenceEventsMethods(db),
-    characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
-    characterLooks: createCharacterLooksMethods(db, teamId),
-    locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
+    characterSheetVariants: createCharacterSheetVariantsMethods(
+      db,
+      organizationId
+    ),
+    characterLooks: createCharacterLooksMethods(db, organizationId),
+    locationSheetVariants: createLocationSheetVariantsMethods(
+      db,
+      organizationId
+    ),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
-    stitches: createStitchesMethods(db, teamId, userId),
+    stitches: createStitchesMethods(db, organizationId, userId),
     // In-app assistant threads and their persistence stores (#2155).
-    assistant: createAssistantMethods(db, teamId, userId),
+    assistant: createAssistantMethods(db, organizationId, userId),
 
-    characters: createCharactersMethods(db, teamId),
+    characters: createCharactersMethods(db, organizationId),
     sequenceElements: createSequenceElementsMethods(db),
 
     // Direct model access (#458) — flat team-scoped runs of arbitrary fal
     // endpoints, decoupled from the sequence graph.
-    generatedAssets: createGeneratedAssetsMethods(db, teamId, userId),
+    generatedAssets: createGeneratedAssetsMethods(db, organizationId, userId),
 
     // Platform-global pricing telemetry (#1069) — not team-scoped.
     modelUsage: createModelUsageMethods(db),
@@ -439,17 +540,17 @@ export function createScopedDb(teamId: string, userId: string) {
     // nothing to scope. Policy lives in `@/models/server/byteplus-asset-pool`.
     bytePlusAssets: createBytePlusAssetsMethods(db),
 
-    billing: createBillingMethods(db, teamId, userId),
-    apiKeys: createApiKeysMethods(db, teamId, userId),
-    teamManagement: createTeamManagementMethods(db, teamId, userId),
-    search: createSearchMethods(db, teamId),
+    billing: createBillingMethods(db, organizationId, userId),
+    apiKeys: createApiKeysMethods(db, organizationId, userId),
+    teamManagement: createTeamManagementMethods(db, organizationId, userId),
+    search: createSearchMethods(db, organizationId),
 
     // Compliance (#1180). `provenance` is its own domain rather than a member
     // of `compliance` because workflows must reach it and the workflow write
     // surface only strips read methods at the top level — see the comment on
     // createProvenanceMethods.
-    provenance: createProvenanceMethods(db, teamId, userId),
-    compliance: createComplianceMethods(db, teamId, userId),
+    provenance: createProvenanceMethods(db, organizationId, userId),
+    compliance: createComplianceMethods(db, organizationId, userId),
   };
 }
 
@@ -477,10 +578,10 @@ export function createSystemAdminScopedDb() {
  */
 export async function loadComplianceRecords(
   userId: string,
-  teamId?: string | null
+  organizationId?: string | null
 ) {
   const reads = createComplianceReadMethods(getDb());
-  const enforcement = await reads.listEnforcementFor(userId, teamId);
+  const enforcement = await reads.listEnforcementFor(userId, organizationId);
   return { enforcement };
 }
 

@@ -74,8 +74,8 @@ import {
   shots,
   shotPromptVersions,
   styles,
-  teamMembers,
-  teams,
+  member,
+  organization,
   renderSegments,
   videoVariants,
   sequenceExports,
@@ -100,7 +100,7 @@ import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let sequenceId: string;
 let sceneId: string;
 let shotId: string;
@@ -112,7 +112,7 @@ let videoId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
 /** A character as analysis writes it: bible version, cast link, default look. */
 const castCharacter = (character: NewCharacter) =>
-  createScopedDb(teamId, actorId).characters.create(character, {
+  createScopedDb(organizationId, actorId).characters.create(character, {
     source: 'analysis',
     createdBy: null,
   });
@@ -212,7 +212,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', undefined);
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
   shotId = generateId();
@@ -220,11 +220,13 @@ beforeEach(async () => {
   segmentId = generateId();
   imageId = generateId();
   videoId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   const styleId = generateId();
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 'Noir',
     config: {
       mood: 'neutral',
@@ -238,7 +240,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'Test sequence',
     styleId,
     status: 'completed',
@@ -323,7 +325,7 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values({ id: actorId, name: 'Actor', email: `${actorId}@test.invalid` });
-  scopedDb = createScopedDb(teamId, actorId);
+  scopedDb = createScopedDb(organizationId, actorId);
   queries.length = 0;
 });
 
@@ -377,9 +379,12 @@ describe('entity identity and team ownership', () => {
       .from(sequences)
       .where(eq(sequences.id, sequenceId));
     if (!seq) throw new Error('fixture');
-    await db
-      .insert(sequences)
-      .values({ id: other, teamId, title: 'Other', styleId: seq.styleId });
+    await db.insert(sequences).values({
+      id: other,
+      organizationId,
+      title: 'Other',
+      styleId: seq.styleId,
+    });
     for (const [name, args] of [
       ['get_scene', { sceneId }],
       ['get_shot', { shotId }],
@@ -807,7 +812,7 @@ describe('complete production reads', () => {
     });
     await db.insert(locations).values({
       id: locationId,
-      teamId,
+      organizationId,
       legacyName: 'Office',
       legacyDescription: 'Bright office',
       legacyConsistencyTag: 'office',
@@ -965,9 +970,12 @@ describe('complete production reads', () => {
     const other = generateId();
     const sequence = await scopedDb.sequences.getById(sequenceId);
     if (!sequence) throw new Error('fixture');
-    await db
-      .insert(sequences)
-      .values({ id: other, teamId, title: 'Other', styleId: sequence.styleId });
+    await db.insert(sequences).values({
+      id: other,
+      organizationId,
+      title: 'Other',
+      styleId: sequence.styleId,
+    });
     for (const [name, args] of reads().filter(
       ([, args]) => Object.keys(args).length > 0
     )) {
@@ -1286,7 +1294,7 @@ describe('complete production reads', () => {
     const unlinked = generateId();
     await db
       .insert(locations)
-      .values({ id: unlinked, teamId, legacyName: 'Pier' });
+      .values({ id: unlinked, organizationId, legacyName: 'Pier' });
     await db.insert(locationSheetVariants).values({
       id: unlinked,
       locationId: unlinked,
@@ -1555,7 +1563,7 @@ describe('Studio, Gallery and library reads', () => {
   let audioId: string;
   let vfxId: string;
   let galleryStyleId: string;
-  let foreignTeamId: string;
+  let foreignOrganizationId: string;
   const listResult = z.object({
     items: z.array(z.object({ id: z.string() })),
     nextCursor: z.string().nullable(),
@@ -1583,14 +1591,16 @@ describe('Studio, Gallery and library reads', () => {
     audioId = generateId();
     vfxId = generateId();
     galleryStyleId = generateId();
-    foreignTeamId = generateId();
-    await db
-      .insert(teams)
-      .values({ id: foreignTeamId, name: 'Foreign', slug: foreignTeamId });
+    foreignOrganizationId = generateId();
+    await db.insert(organization).values({
+      id: foreignOrganizationId,
+      name: 'Foreign',
+      slug: foreignOrganizationId,
+    });
     // One of the team's locations, used by no sequence (#1695).
     await db.insert(locations).values({
       id: libraryLocationId,
-      teamId,
+      organizationId,
       legacyName: 'Studio lot',
     });
     // An uploaded photo: what the `location_sheet` kind reads.
@@ -1614,7 +1624,7 @@ describe('Studio, Gallery and library reads', () => {
       .values({ id: userId, name: 'User', email: `${userId}@test.invalid` });
     await db.insert(generatedAssets).values({
       id: assetId,
-      teamId,
+      organizationId,
       userId,
       source: 'studio',
       provider: 'fal',
@@ -1627,17 +1637,20 @@ describe('Studio, Gallery and library reads', () => {
       isFavorite: true,
       costMicros: 500,
     });
-    await db
-      .insert(audio)
-      .values({ id: audioId, teamId, name: 'Music', fileUrl: '/r2/music.mp3' });
-    await db.insert(vfx).values({ id: vfxId, teamId, name: 'Rain' });
+    await db.insert(audio).values({
+      id: audioId,
+      organizationId,
+      name: 'Music',
+      fileUrl: '/r2/music.mp3',
+    });
+    await db.insert(vfx).values({ id: vfxId, organizationId, name: 'Rain' });
     const sequenceStyle = await scopedDb.sequences.getById(sequenceId);
     if (!sequenceStyle?.styleId) throw new Error('Missing fixture style');
     const sourceStyle = await scopedDb.styles.getById(sequenceStyle.styleId);
     if (!sourceStyle) throw new Error('Missing fixture style');
     await db.insert(styles).values({
       id: galleryStyleId,
-      teamId: foreignTeamId,
+      organizationId: foreignOrganizationId,
       name: 'Cinematic Noir',
       config: sourceStyle.config,
       isPublic: true,
@@ -1696,7 +1709,7 @@ describe('Studio, Gallery and library reads', () => {
         'path',
         'imagePath',
         'storagePath',
-        'teamId',
+        'organizationId',
         'createdBy',
       ])
         expect(detail).not.toHaveProperty(key);
@@ -1714,7 +1727,7 @@ describe('Studio, Gallery and library reads', () => {
     expect(queries.some((q) => /^(insert|update|delete)/i.test(q))).toBe(false);
   });
   it('rejects private foreign parents and every descendant; a location is never public', async () => {
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     for (const [name, id] of [
       ['get_library_location', libraryLocationId],
       ['get_generated_asset', assetId],
@@ -1788,7 +1801,7 @@ describe('Studio, Gallery and library reads', () => {
       rendering: '3D animated, Pixar-like',
       sequences: [{ id: sequenceId }],
     });
-    expect(detail).not.toHaveProperty('teamId');
+    expect(detail).not.toHaveProperty('organizationId');
     // Deleted from the team: gone from both reads.
     await scopedDb.locations.softDeleteForTeam(libraryLocationId);
     expect(
@@ -1803,7 +1816,7 @@ describe('Studio, Gallery and library reads', () => {
   it('does not expose private or sequence-bound styles through Gallery or direct IDs', async () => {
     const ownStyleId = (await scopedDb.sequences.getById(sequenceId))?.styleId;
     if (!ownStyleId) throw new Error('Missing style');
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect((await call('get_style', { id: ownStyleId })).isError).toBe(true);
     expect(
       listResult.parse(await data('list_styles', {})).items.map((x) => x.id)
@@ -1833,7 +1846,7 @@ describe('Studio, Gallery and library reads', () => {
     if (!gallery) throw new Error('Missing gallery style');
     await db.insert(styles).values({
       id: generateId(),
-      teamId,
+      organizationId,
       name: 'Second',
       description: 'x'.repeat(50000),
       config: gallery.config,
@@ -1849,11 +1862,11 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_library_locations', { cursor: first.nextCursor }))
         .isError
     ).toBe(true);
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(
       (await call('list_styles', { cursor: first.nextCursor })).isError
     ).toBe(true);
-    scopedDb = createScopedDb(teamId, generateId());
+    scopedDb = createScopedDb(organizationId, generateId());
     await db.insert(locationReferencePhotos).values({
       id: generateId(),
       locationId: libraryLocationId,
@@ -1947,7 +1960,7 @@ describe('Studio, Gallery and library reads', () => {
     ).toBe(true);
 
     // Another team sees none of them, and cannot use this team's cursor.
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(page.parse(await data('list_library_characters', {})).items).toEqual(
       []
     );
@@ -1955,7 +1968,7 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_library_characters', { cursor: first.nextCursor }))
         .isError
     ).toBe(true);
-    scopedDb = createScopedDb(teamId, generateId());
+    scopedDb = createScopedDb(organizationId, generateId());
   });
   it('binds asset cursors to all filters and windows long input without truncation', async () => {
     const asset = await scopedDb.generatedAssets.getById(assetId);
@@ -2032,7 +2045,7 @@ describe('Studio, Gallery and library reads', () => {
     const otherLocation = generateId();
     await db
       .insert(locations)
-      .values({ id: otherLocation, teamId, legacyName: 'Other' });
+      .values({ id: otherLocation, organizationId, legacyName: 'Other' });
     for (const [kind, id] of [
       ['location_sheet', locationSheetId],
       ['location_sheet_version', locationVersionId],
@@ -2067,13 +2080,13 @@ describe('Studio, Gallery and library reads', () => {
     await data('list_studio_uploads', { limit: 1, cursor: first.nextCursor });
     expect(listFilesPage).toHaveBeenLastCalledWith(
       'talent',
-      `${teamId}/uploads`,
+      `${organizationId}/uploads`,
       {
         limit: 1,
         cursor: 'r2-next',
       }
     );
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(
       (await call('list_studio_uploads', { cursor: first.nextCursor })).isError
     ).toBe(true);
@@ -2241,7 +2254,7 @@ describe('update_scene (#1459)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -2534,7 +2547,7 @@ describe('structure edits (#1979)', () => {
     if (!fixture) throw new Error('Missing fixture sequence');
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: fixture.styleId,
       status: 'completed',
@@ -2926,7 +2939,7 @@ describe('cast and music edits (#1979)', () => {
     if (!fixture) throw new Error('Missing fixture sequence');
     await db
       .insert(sequences)
-      .values({ id, teamId, title: 'Other', styleId: fixture.styleId });
+      .values({ id, organizationId, title: 'Other', styleId: fixture.styleId });
     return id;
   }
 
@@ -2941,7 +2954,7 @@ describe('cast and music edits (#1979)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -3000,7 +3013,7 @@ describe('cast and music edits (#1979)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -3271,11 +3284,11 @@ describe('cast and music edits (#1979)', () => {
       { look: drawing.id, statement: LIKENESS_CLEARED_V1, real: false },
     ];
     for (const { look, statement, real } of sheets) {
-      const url = `/r2/characters/${teamId}/uploads/${look}.png`;
+      const url = `/r2/characters/${organizationId}/uploads/${look}.png`;
       await scopedDb.characterSheetVariants.applyConvergent({
         lookId: look,
         url,
-        storagePath: `characters/${teamId}/uploads/${look}.png`,
+        storagePath: `characters/${organizationId}/uploads/${look}.png`,
         inputHash: null,
         model: USER_UPLOAD_MODEL,
       });
@@ -3347,7 +3360,7 @@ describe('cast and music edits (#1979)', () => {
     const sequenceA = generateId();
     await db.insert(sequences).values({
       id: sequenceA,
-      teamId,
+      organizationId,
       title: 'A',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -3941,13 +3954,13 @@ describe('generation and uploads (#1979)', () => {
     await db
       .update(credits)
       .set({ balance: 100_000_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(
       await data('generate_shot_image', { sequenceId, shotId })
     ).toMatchObject({ shotId, workflowRunId: 'run-1', alreadyInFlight: false });
     expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId, teamId }),
+      expect.objectContaining({ shotId, organizationId }),
       expect.anything()
     );
     expect(
@@ -4044,7 +4057,7 @@ describe('generation and uploads (#1979)', () => {
     expect(stored.rights).toBe('cleared');
     expect(stored.upload).toMatch(
       new RegExp(
-        `^/r2/thumbnails/teams/${teamId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
+        `^/r2/thumbnails/teams/${organizationId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
       )
     );
     const set = z
@@ -4099,7 +4112,7 @@ describe('generation and uploads (#1979)', () => {
       .where(eq(stitches.id, result.id));
     // Stored through storeUpload's checks, so the row is born published.
     expect(row?.publishedAt).not.toBeNull();
-    const prefix = `/r2/stitches/${teamId}/${result.id}/`;
+    const prefix = `/r2/stitches/${organizationId}/${result.id}/`;
     const clip = row?.cut.clips[0];
     if (!clip || !('imageUrl' in clip)) throw new Error('expected a still');
     expect(clip.imageUrl).toMatch(new RegExp(`^${prefix}\\w+\\.png$`));
@@ -4321,9 +4334,9 @@ describe('Studio create and edit (#1985)', () => {
   async function fund() {
     await db
       .insert(credits)
-      .values({ teamId, balance: 100_000_000 })
+      .values({ organizationId, balance: 100_000_000 })
       .onConflictDoUpdate({
-        target: credits.teamId,
+        target: credits.organizationId,
         set: { balance: 100_000_000 },
       });
   }
@@ -4334,7 +4347,7 @@ describe('Studio create and edit (#1985)', () => {
     const id = generateId();
     await db.insert(generatedAssets).values({
       id,
-      teamId,
+      organizationId,
       userId: actorId,
       source: 'studio',
       provider: 'fal',
@@ -4365,7 +4378,7 @@ describe('Studio create and edit (#1985)', () => {
       })
     );
     expect(stored.upload).toMatch(
-      new RegExp(`^/r2/talent/${teamId}/uploads/\\w+\\.png$`)
+      new RegExp(`^/r2/talent/${organizationId}/uploads/\\w+\\.png$`)
     );
     const args = {
       activity: 'image',
@@ -4385,7 +4398,7 @@ describe('Studio create and edit (#1985)', () => {
     expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
       '/studio',
       expect.objectContaining({
-        teamId,
+        organizationId,
         input: expect.objectContaining({ referenceImages: [stored.upload] }),
       }),
       expect.anything()
@@ -4484,12 +4497,12 @@ describe('Studio create and edit (#1985)', () => {
     );
     const otherTeam = generateId();
     await db
-      .insert(teams)
+      .insert(organization)
       .values({ id: otherTeam, name: 'O', slug: otherTeam });
     const foreign = generateId();
     await db.insert(generatedAssets).values({
       id: foreign,
-      teamId: otherTeam,
+      organizationId: otherTeam,
       userId: actorId,
       source: 'studio',
       provider: 'fal',
@@ -4604,7 +4617,7 @@ describe('production-context resources (#1462)', () => {
       {
         caller: {
           user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
-          teamId,
+          organizationId,
           teamName: 'T',
         },
         origin: 'https://openstory.test',
@@ -4724,7 +4737,7 @@ describe('production-context resources (#1462)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -4770,7 +4783,7 @@ describe('official MCP client transport (#1463)', () => {
   ) {
     const auth = asStub<McpAuthContext>({
       user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
-      teamId,
+      organizationId,
       teamName: 'T',
       kind: scopes ? 'oauth' : 'api_key',
       keyHint: 'osk_…test',
@@ -5099,9 +5112,13 @@ describe('library styles', () => {
     expect((await call('delete_style', { styleId: created.id })).isError).toBe(
       true
     );
-    await db
-      .insert(teamMembers)
-      .values({ teamId, userId: actorId, role: 'admin' });
+    await db.insert(member).values({
+      id: generateId(),
+      organizationId,
+      userId: actorId,
+      role: 'admin',
+      createdAt: new Date(),
+    });
     expect(await data('delete_style', { styleId: created.id })).toEqual({
       styleId: created.id,
     });

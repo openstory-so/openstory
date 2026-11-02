@@ -11,7 +11,7 @@ import { ScriptView } from './script-view';
 // Mock sequence for edit mode stories
 const mockSequence: Sequence = {
   id: 'demo-sequence-123',
-  teamId: 'demo-team',
+  organizationId: 'demo-team',
   title: 'Demo Video Sequence',
   script: `INT. OFFICE - DAY
 
@@ -111,7 +111,7 @@ const meta: Meta<typeof ScriptView> = {
     ),
   ],
   argTypes: {
-    teamId: {
+    organizationId: {
       description: 'The ID of the team to create the sequence for',
       control: 'text',
     },
@@ -135,7 +135,7 @@ type Story = StoryObj<typeof ScriptView>;
 
 export const Default: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-team',
   },
   parameters: {
     docs: {
@@ -149,7 +149,7 @@ export const Default: Story = {
 
 export const EditMode: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-team',
     sequence: mockSequence,
   },
   parameters: {
@@ -164,7 +164,7 @@ export const EditMode: Story = {
 
 export const Loading: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-team',
     sequence: mockSequence,
     loading: true,
   },

@@ -12,7 +12,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 export function createStitchesMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
@@ -30,7 +30,7 @@ export function createStitchesMethods(
         .insert(stitches)
         .values({
           id: input.id,
-          teamId,
+          organizationId,
           userId,
           cut: input.cut,
           publishedAt: input.publishedAt,
@@ -45,7 +45,9 @@ export function createStitchesMethods(
       const rows = await db
         .select()
         .from(stitches)
-        .where(and(eq(stitches.id, id), eq(stitches.teamId, teamId)))
+        .where(
+          and(eq(stitches.id, id), eq(stitches.organizationId, organizationId))
+        )
         .limit(1);
       return rows[0] ?? null;
     },
@@ -58,7 +60,7 @@ export function createStitchesMethods(
         .where(
           and(
             eq(stitches.id, id),
-            eq(stitches.teamId, teamId),
+            eq(stitches.organizationId, organizationId),
             isNull(stitches.publishedAt)
           )
         )

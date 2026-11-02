@@ -26,7 +26,7 @@ export type ProcessedImage = { url: string; path: string };
 export async function attachLocationReferenceImages(
   scopedDb: ScopedDb,
   uploadUrls: string[],
-  teamId: string
+  organizationId: string
 ): Promise<ProcessedImage[]> {
   await requireUploadRights(scopedDb, uploadUrls);
   const results: ProcessedImage[] = [];
@@ -36,7 +36,7 @@ export async function attachLocationReferenceImages(
       await assertTeamUserUploadAttachable({
         url,
         bucket: STORAGE_BUCKETS.LOCATIONS,
-        teamId,
+        organizationId,
       })
     );
   }
@@ -50,7 +50,7 @@ export async function attachLocationReferenceImages(
  */
 export async function triggerTeamLocationSheet(
   scopedDb: ScopedDb,
-  ctx: { userId: string; teamId: string; locationId: string }
+  ctx: { userId: string; organizationId: string; locationId: string }
 ): Promise<string> {
   const { workflowRunId } = await regenerateLocationSheet(
     scopedDb,
@@ -75,13 +75,13 @@ export async function createTeamLocation(
     /** User-upload URLs in the LOCATIONS bucket (`uploads/`); not moved. */
     photoUrls: string[];
   },
-  ctx: { userId: string; teamId: string; triggerSheet: boolean }
+  ctx: { userId: string; organizationId: string; triggerSheet: boolean }
 ): Promise<LocationWithReference> {
   // Gated before anything is written: a refused photo makes no location.
   const photos = await attachLocationReferenceImages(
     scopedDb,
     input.photoUrls,
-    ctx.teamId
+    ctx.organizationId
   );
   const location = await scopedDb.locations.createForTeam(
     {
@@ -97,7 +97,7 @@ export async function createTeamLocation(
   try {
     await triggerTeamLocationSheet(scopedDb, {
       userId: ctx.userId,
-      teamId: ctx.teamId,
+      organizationId: ctx.organizationId,
       locationId: location.id,
     });
   } catch (error) {

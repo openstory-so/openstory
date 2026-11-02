@@ -20,8 +20,8 @@ export const sequenceVariantKeys = {
   all: ['sequence-variants'] as const,
   divergentMusic: (sequenceId: string) =>
     ['sequence-divergent-music', sequenceId] as const,
-  divergentByTeam: (teamId?: string) =>
-    ['sequence-divergent-by-team', teamId ?? null] as const,
+  divergentByTeam: (organizationId?: string) =>
+    ['sequence-divergent-by-team', organizationId ?? null] as const,
 };
 
 // ── Read hooks ─────────────────────────────────────────────────────────────

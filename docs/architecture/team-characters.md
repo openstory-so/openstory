@@ -353,7 +353,7 @@ delete that forgets a child fails instead of taking rows with it.
   - The ids are named, not re-read from `releasedAt`, because a release does
     not always stamp it (a voice that takes no slot, an unconfigured or
     refused key). Re-reading would refuse those deletes for good.
-- Deleting a team is refused while it has characters (`characters.team_id`,
+- Deleting an organization is refused while it has characters (`characters.organization_id`,
   no action).
 
 ## Migrations

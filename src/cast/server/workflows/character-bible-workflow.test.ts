@@ -142,7 +142,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq-1',
       characterBible,
       generateVoices: opts.generateVoices ?? false,

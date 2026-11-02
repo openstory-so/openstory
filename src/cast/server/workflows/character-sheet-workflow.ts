@@ -188,7 +188,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // no sequence (#2017): it stores under the team and reports on the
     // character's own channel.
     const characterDbId = input.characterDbId;
-    const teamId = input.teamId;
+    const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channel = getGenerationChannel(
       castChannelId(sequenceId, characterDbId)
@@ -216,7 +216,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         storeGeneratedPng(
           result.imageUrls[0],
           STORAGE_BUCKETS.CHARACTERS,
-          `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${generateId()}.png`
+          `${organizationId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${generateId()}.png`
         ),
       onRetry: async (retry) => {
         await channel.emit('generation.character-sheet:progress', {
@@ -263,7 +263,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // double-insert.
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         assetKind: 'character_sheet',
         assetId: characterDbId,
@@ -305,7 +305,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       await triggerSheetPortrait(
         {
           userId: input.userId,
-          teamId,
+          organizationId,
           sequenceId: sequenceId ?? undefined,
           subject: {
             kind: 'character',
@@ -314,11 +314,11 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           },
           versionId: reconcileOutcome.versionId,
           sheetUrl: storageResult.url,
-          storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
+          storageDir: `${organizationId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
         },
         await scopedDb.liveRead.compliance.listEnforcementFor(
           input.userId,
-          teamId
+          organizationId
         )
       );
     });

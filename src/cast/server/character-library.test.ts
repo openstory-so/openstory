@@ -22,7 +22,7 @@ import {
   sequenceCast,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -61,21 +61,21 @@ vi.mock('@/models/server/elevenlabs-config', () => ({
 let VOICE = '';
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 let styleId = '';
 
-const chars = () => createCharactersMethods(db, teamId);
+const chars = () => createCharactersMethods(db, organizationId);
 // The surface `deleteTeamCharacter` and the release touch.
 const scoped = () =>
   asStub<ScopedDb>({
     characters: chars(),
-    characterLooks: createCharacterLooksMethods(db, teamId),
+    characterLooks: createCharacterLooksMethods(db, organizationId),
   });
 
 async function newSequence(title: string) {
   const id = generateId();
-  await db.insert(sequences).values({ id, teamId, title, styleId });
+  await db.insert(sequences).values({ id, organizationId, title, styleId });
   return id;
 }
 
@@ -119,7 +119,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mockDelete.mockResolvedValue(undefined);
   VOICE = `voice-${generateId()}`;
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   mockGetVoice.mockResolvedValue({
     voiceId: VOICE,
@@ -128,14 +128,16 @@ beforeEach(async () => {
     previewUrl: null,
     isPremade: false,
   });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@x.test` });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',

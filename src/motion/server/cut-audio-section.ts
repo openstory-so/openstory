@@ -39,7 +39,7 @@ export type CutAudioSectionInput = {
   /** `<bucket>/<path>` of the whole speech (`dialogue_speeches.storageKey`). */
   storageKey: string;
   speechId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   fromSeconds: number;
   /** Already tail-trimmed (`shot_dialogue_sections.toSeconds`). */
@@ -59,7 +59,7 @@ export async function cutAudioSection(
   input: CutAudioSectionInput
 ): Promise<CutAudioSection> {
   const ms = (seconds: number) => Math.round(seconds * 1000);
-  const path = `${input.teamId}/${input.sequenceId}/dialogue-sections/${input.speechId}_${ms(input.fromSeconds)}_${ms(input.toSeconds)}_${ms(input.minDurationSeconds ?? 0)}.wav`;
+  const path = `${input.organizationId}/${input.sequenceId}/dialogue-sections/${input.speechId}_${ms(input.fromSeconds)}_${ms(input.toSeconds)}_${ms(input.minDurationSeconds ?? 0)}.wav`;
 
   const probe = await readStorageObject(input.storageKey, {
     offset: 0,
@@ -188,7 +188,7 @@ function composeWav(
 export async function cutSpanningSection(
   clips: readonly MotionAudioClip[],
   input: {
-    teamId: string;
+    organizationId: string;
     sequenceId: string;
     minDurationSeconds?: number;
     getSection: (id: string) => Promise<{
@@ -224,7 +224,7 @@ export async function cutSpanningSection(
     const cut = await cutAudioSection({
       storageKey: head.speech.storageKey,
       speechId,
-      teamId: input.teamId,
+      organizationId: input.organizationId,
       sequenceId: input.sequenceId,
       fromSeconds: head.fromSeconds,
       toSeconds: tail.toSeconds,

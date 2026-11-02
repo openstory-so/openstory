@@ -203,7 +203,7 @@ const BIBLES_RESULT = {
 
 const INPUT: SceneSplitWorkflowInput = {
   userId: 'u1',
-  teamId: 't1',
+  organizationId: 't1',
   sequenceId: 'seq_1',
   script: SCRIPT,
   modelId: 'anthropic/claude-sonnet-5.5',

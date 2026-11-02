@@ -109,11 +109,11 @@ export const PUBLISH_REQUEST_ID_RE = /^openstory-[0-9a-f]{32}$/;
  * (which tracks it when the server's reply is lost).
  */
 export async function derivePublishRequestId(
-  input: PublishInput & { teamId: string }
+  input: PublishInput & { organizationId: string }
 ): Promise<string> {
   const hex = await sha256Hex({
     v: 1,
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     exportId: input.exportId,
     profile: input.profile,
     platforms: [...input.platforms].sort(),

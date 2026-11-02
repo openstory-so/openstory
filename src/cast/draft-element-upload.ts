@@ -14,7 +14,7 @@ import { z } from 'zod';
  * the shape ever has to change.
  */
 export const draftElementUploadSchema = z.object({
-  /** Bucket-prefixed R2 key, `elements/<teamId>/…`. Validated server-side. */
+  /** Bucket-prefixed R2 key, `elements/<organizationId>/…`. Validated server-side. */
   tempPath: z.string().min(1),
   /**
    * Display URL for the draft grid, and what the script enhancer looks at.

@@ -9,7 +9,7 @@
  * that has not finished, and whether a slot is a churning start frame or a
  * cast sheet every shot binds.
  *
- * Platform-global telemetry-shaped state, not team data: no `teamId`, no
+ * Platform-global telemetry-shaped state, not team data: no `organizationId`, no
  * scoping — the same shape as `modelUsage`. Policy (how many slots, how long
  * a lease lasts) lives in `src/models/server/byteplus-asset-pool.ts` and arrives as
  * arguments, so this module knows nothing about BytePlus tiers.

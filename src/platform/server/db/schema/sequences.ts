@@ -12,7 +12,7 @@ import { user } from './auth';
 // NOTE: shots imported in index.ts to avoid circular dependency
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
-import { teams } from './teams';
+import { organization } from './organization';
 import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoredStyleConfig } from '@/look/style-config';
 
@@ -45,9 +45,9 @@ export const sequences = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     title: text({ length: 500 }).notNull(),
     script: text(),
     // used to track the status of the sequence
@@ -216,7 +216,7 @@ export const sequences = snakeCase.table(
     index('idx_sequences_created_at').on(table.createdAt),
     index('idx_sequences_status').on(table.status),
     index('idx_sequences_style_id').on(table.styleId),
-    index('idx_sequences_team_id').on(table.teamId),
+    index('idx_sequences_team_id').on(table.organizationId),
   ]
 );
 

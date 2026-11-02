@@ -282,7 +282,7 @@ export function landCharacterSheet(
 /** Land a location reference run's result: {@link landSheetVersion}. */
 export function landLocationReference(
   db: Database,
-  teamId: string,
+  organizationId: string,
   args: LandArgs<LocationSheetInputHash> & { locationId: string }
 ): Promise<SheetLanding> {
   const { locationId, versionId } = args;
@@ -293,7 +293,7 @@ export function landLocationReference(
     {
       entity: `Location ${locationId}`,
       parent: locations,
-      isParent: sql`${eq(locations.id, locationId)} and ${eq(locations.teamId, teamId)}`,
+      isParent: sql`${eq(locations.id, locationId)} and ${eq(locations.organizationId, organizationId)}`,
       selected: locations.selectedReferenceVersionId,
       claim: locations.pendingPromoteReferenceVersionId,
       isGenerating: eq(locations.referenceStatus, 'generating'),

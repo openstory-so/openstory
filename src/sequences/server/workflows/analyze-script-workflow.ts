@@ -212,7 +212,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       childId: `scene-split:${sequenceId ?? 'no-seq'}`,
       childPayload: {
         userId: input.userId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         sequenceId,
         reservationId: input.reservationId,
         promptName: 'phase/scene-splitting-boundaries-chat',
@@ -263,7 +263,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       childPayload: {
         sequenceId,
         userId: input.userId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         reservationId: input.reservationId,
         analysisModelId,
         suggestedLocationIds,

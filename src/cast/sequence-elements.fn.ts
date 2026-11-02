@@ -39,7 +39,7 @@ import {
 // Presign upload — drafts go under the user's default team's `uploads/`
 // folder, a permanent sequence-agnostic key that attach points rows at without
 // moving anything (#1471). Persisted uploads (existing sequence) must use the
-// *sequence's* teamId in the path so the attach check passes for users whose
+// *sequence's* organizationId in the path so the attach check passes for users whose
 // default team differs from the sequence's team (multi-team members and system
 // admins).
 // ============================================================================
@@ -51,7 +51,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
+    const storagePath = `${context.organizationId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,
@@ -74,7 +74,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/${data.sequenceId}/${uploadId}.${ext}`;
+    const storagePath = `${context.organizationId}/${data.sequenceId}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,
@@ -188,7 +188,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
     elementKindOrThrow(data.filename);
     return await attachElementUpload({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       sequenceId: data.sequenceId,
       path: data.path,
@@ -355,7 +355,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => ({
     element: await replaceElementUpload({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       sequenceId: context.sequence.id,
       elementId: data.elementId,

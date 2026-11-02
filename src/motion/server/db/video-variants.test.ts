@@ -29,7 +29,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
   videoVariants,
   type NewVideoVariant,
@@ -58,21 +58,23 @@ async function seed() {
   await db.delete(scenes);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  const teamId = generateId();
+  const organizationId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
   shotId = generateId();
   segmentId = generateId();
 
   await db.insert(user).values([{ id: ACTOR, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: teamId, name: 'T', slug: 't' }]);
+  await db
+    .insert(organization)
+    .values([{ id: organizationId, name: 'T', slug: 't' }]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -88,7 +90,9 @@ async function seed() {
   if (!style) throw new Error('seed: style insert returned nothing');
   await db
     .insert(sequences)
-    .values([{ id: sequenceId, teamId, title: 'S', styleId: style.id }]);
+    .values([
+      { id: sequenceId, organizationId, title: 'S', styleId: style.id },
+    ]);
   await db
     .insert(scenes)
     .values([{ id: dbSceneId(sceneId), sequenceId, orderIndex: 0 }]);
@@ -111,7 +115,7 @@ async function seed() {
  * to prove the sequence-scoped reads don't leak across sequences.
  */
 async function seedSecondSequence() {
-  const [team] = await db.select().from(teams);
+  const [team] = await db.select().from(organization);
   const [style] = await db.select().from(styles);
   if (!team || !style) throw new Error('seed: seed() must run first');
 
@@ -123,7 +127,7 @@ async function seedSecondSequence() {
   await db.insert(sequences).values([
     {
       id: otherSequenceId,
-      teamId: team.id,
+      organizationId: team.id,
       title: 'Other',
       styleId: style.id,
     },

@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
           const gen = await buildEnhanceGenerator(input, {
             scopedDb: context.scopedDb,
             user: context.user,
-            teamId: context.teamId,
+            organizationId: context.organizationId,
           });
 
           // Pull the first chunk here (inside runApiV1Handler) so setup failures

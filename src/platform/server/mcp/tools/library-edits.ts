@@ -73,7 +73,7 @@ const deleteStyleTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const style = await scopedDb.styles.getById(input.styleId);
     if (!style) throw new NotFoundError('Style not found');
-    await requireTeamAdminAccess(userId, style.teamId);
+    await requireTeamAdminAccess(userId, style.organizationId);
     await scopedDb.styles.delete(style.id);
     return {
       data: { styleId: style.id },

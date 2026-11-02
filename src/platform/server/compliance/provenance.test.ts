@@ -70,7 +70,7 @@ describe('recordProvenance', () => {
     const trace = await recordProvenance(
       { record },
       {
-        teamId: 'team_1',
+        organizationId: 'team_1',
         assetKind: 'frame_variant',
         assetId: 'asset_1',
         provider: 'fal',
@@ -90,7 +90,7 @@ describe('recordProvenance', () => {
       recordProvenance(
         { record: vi.fn().mockResolvedValue(undefined) },
         {
-          teamId: 'team_1',
+          organizationId: 'team_1',
           assetKind: 'frame_variant',
           assetId: 'asset_1',
           provider: 'fal',
@@ -105,7 +105,7 @@ describe('recordProvenance', () => {
       recordProvenance(
         { record: vi.fn().mockRejectedValue(new Error('d1 down')) },
         {
-          teamId: 'team_1',
+          organizationId: 'team_1',
           assetKind: 'frame_variant',
           assetId: 'asset_1',
           provider: 'fal',

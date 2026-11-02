@@ -78,7 +78,7 @@ export const decideDeviceGrantFn = createServerFn({ method: 'POST' })
     }
     logger[error ? 'warn' : 'info']('device grant decided', {
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       approve: data.approve,
       error,
     });

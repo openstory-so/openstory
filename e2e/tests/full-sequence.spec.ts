@@ -131,11 +131,11 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
-    scarlett = await createScarlettCharacter(testUser.teamId);
+    scarlett = await createScarlettCharacter(testUser.organizationId);
     // Locations belong to the team (#1695), so the one the recorded
     // location match names is made for this test's own team.
-    testLocation = await createSunlitLoftLocation(testUser.teamId);
-    styleId = await createTestStyle(testUser.teamId);
+    testLocation = await createSunlitLoftLocation(testUser.organizationId);
+    styleId = await createTestStyle(testUser.organizationId);
   });
 
   testWithUser.afterEach(async () => {

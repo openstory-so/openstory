@@ -28,7 +28,7 @@ function context() {
       resolveLlmKey: vi.fn(async () => ({ source: 'team', via: 'openrouter' })),
     },
   });
-  return { scopedDb, userId: 'u1', teamId: 't1' };
+  return { scopedDb, userId: 'u1', organizationId: 't1' };
 }
 
 beforeEach(() => {

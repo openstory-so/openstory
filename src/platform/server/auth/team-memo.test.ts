@@ -19,7 +19,7 @@ vi.doMock(
 );
 const { resolveTeamAndCompliance } = await import('./team-memo');
 
-const team = { teamId: 'team-1' };
+const team = { organizationId: 'team-1' };
 const compliance = { enforcement: { canAccess: true } };
 
 beforeEach(() => {
@@ -66,5 +66,13 @@ describe('resolveTeamAndCompliance (#2082)', () => {
       compliance,
     });
     expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not share a memo entry across active organizations', async () => {
+    await resolveTeamAndCompliance('u-active', 'GET', 'org-a');
+    await resolveTeamAndCompliance('u-active', 'GET', 'org-b');
+    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+    expect(resolveUserTeam).toHaveBeenNthCalledWith(1, 'u-active', 'org-a');
+    expect(resolveUserTeam).toHaveBeenNthCalledWith(2, 'u-active', 'org-b');
   });
 });

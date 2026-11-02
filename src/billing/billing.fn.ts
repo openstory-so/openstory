@@ -3,11 +3,9 @@
  * Balance, checkout, transactions, and auto-top-up
  */
 
-import {
-  requireTeamAdminAccess,
-  requireTeamMemberAccess,
-} from '@/platform/server/auth/action-utils';
-import { hasMinimumRole } from '@/platform/server/auth/constants';
+import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { roleHasPermission } from '@/platform/auth/organization-access';
+import { getUserRole } from '@/platform/server/auth/permissions';
 import {
   createCheckoutSession,
   createSetupCheckoutSession,
@@ -63,7 +61,7 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
 
     const { url } = await createCheckoutSession({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       amountUsd: data.amountUsd,
       userId: context.user.id,
       userEmail: context.user.email,
@@ -83,12 +81,12 @@ export const createSetupCheckoutSessionFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireTeamAdminAccess(context.user.id, context.organizationId);
 
     const appUrl = getServerAppUrl(getRequest());
     return createSetupCheckoutSession({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       userEmail: context.user.email,
       successUrl: `${appUrl}/credits?card_saved=true`,
@@ -115,7 +113,7 @@ export const reportCheckoutCanceledFn = createServerFn({ method: 'POST' })
       const stripe = getStripeOrThrow();
       const session = await stripe.checkout.sessions.retrieve(data.sessionId);
       captureCheckoutCanceledFromSession(session, {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userId: context.user.id,
       });
     } catch (err) {
@@ -159,11 +157,11 @@ export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
     }> => {
       if (!isStripeEnabled()) return { canManage: false, paymentMethods: [] };
 
-      const role = await requireTeamMemberAccess(
-        context.user.id,
-        context.teamId
-      );
-      if (!hasMinimumRole(role, 'admin')) {
+      const role = await getUserRole(context.user.id, context.organizationId);
+      if (!role) {
+        throw new Error('Access denied: not a member of this organization');
+      }
+      if (!roleHasPermission(role, { billing: ['update'] })) {
         return { canManage: false, paymentMethods: [] };
       }
 
@@ -236,7 +234,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireTeamAdminAccess(context.user.id, context.organizationId);
 
     const settings = await context.scopedDb.billing.getBillingSettings();
     if (!settings.stripeCustomerId) {
@@ -260,7 +258,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
     }
 
     const amountMicros = usdToMicros(data.amountUsd);
-    const idempotencyKey = `purchase:${context.teamId}:${data.requestId}`;
+    const idempotencyKey = `purchase:${context.organizationId}:${data.requestId}`;
 
     let paymentIntent;
     try {
@@ -276,7 +274,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
           // userId is required by stripeWebhookMiddleware — without it the
           // reconciling payment_intent.succeeded webhook is rejected with 400.
           metadata: {
-            teamId: context.teamId,
+            organizationId: context.organizationId,
             userId: context.user.id,
             type: 'credit_top_up_direct',
             amountUsd: String(data.amountUsd),
@@ -295,7 +293,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       if (err instanceof Stripe.errors.StripeCardError) {
         captureSavedCardStripeError(err, {
           distinctId: context.user.id,
-          teamId: context.teamId,
+          organizationId: context.organizationId,
           amountUsd: data.amountUsd,
           surface: data.surface,
         });
@@ -306,7 +304,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
 
     captureCheckoutOpened({
       distinctId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       amountUsd: data.amountUsd,
       method: 'saved_card',
       stripePaymentIntentId: paymentIntent.id,
@@ -318,7 +316,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       // user it failed would be wrong — when they do, payment_intent.succeeded
       // fires and the webhook grants the credits.
       logger.warn('Direct purchase intent not immediately successful', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         status: paymentIntent.status,
         stripePaymentIntentId: paymentIntent.id,
       });
@@ -329,7 +327,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       ) {
         captureCheckoutFailed({
           distinctId: context.user.id,
-          teamId: context.teamId,
+          organizationId: context.organizationId,
           amountUsd: data.amountUsd,
           method: 'saved_card',
           stripePaymentIntentId: paymentIntent.id,
@@ -373,7 +371,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       // The card is already charged. Everything needed to reconcile by hand
       // goes in this log; the webhook retries the grant with the same key.
       logger.error('Charged the customer but failed to credit the wallet', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userId: context.user.id,
         amountMicros,
         idempotencyKey,
@@ -387,7 +385,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       distinctId: context.user.id,
       event: 'credits_added',
       properties: {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         amount_usd: data.amountUsd,
         stripe_payment_intent_id: paymentIntent.id,
         source: 'direct_purchase',
@@ -419,7 +417,7 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
     ]);
 
     return {
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       balance: microsToUsd(funds.balance),
       availableUsd: microsToUsd(funds.available),
       reservedUsd: microsToUsd(funds.reserved),
@@ -460,7 +458,7 @@ export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
       to: FOUNDER_EMAIL,
       userName: context.user.name,
       userEmail: context.user.email,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       balanceDisplay,
       message,
     });
@@ -471,7 +469,7 @@ export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
       distinctId: context.user.id,
       event: 'founder_credits_requested',
       properties: {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userEmail: context.user.email,
         balance: balanceDisplay,
         emailSent: result.success,
@@ -585,7 +583,7 @@ export const updateAutoTopUpFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireTeamAdminAccess(context.user.id, context.organizationId);
 
     if (data.enabled && !(await teamHasSavedCard(context.scopedDb))) {
       throw new ValidationError('Add a card first');

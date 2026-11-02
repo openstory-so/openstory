@@ -79,7 +79,7 @@ export async function regenerateCharacterSheet(
   const payload = await buildRegenerateCharacterSheetPayload({
     scopedDb,
     userId: actor.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequence,
     character,
     lookId: data.lookId,
@@ -243,7 +243,7 @@ export async function regenerateLocationSheet(
   const payload = await buildRegenerateLocationSheetPayload({
     scopedDb,
     userId: actor.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequence,
     location,
     imageModel: data.imageModel,
@@ -367,7 +367,7 @@ export async function recastLocation(
     locationDbId: location.id,
     locationName: location.name,
     sequenceId: sequence.id,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     userId: actor.userId,
     imageModel,
     aspectRatio: sequence.aspectRatio,

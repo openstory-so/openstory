@@ -3,7 +3,7 @@
  *
  * Three factories, split by who is allowed to call them:
  *
- *  - `createComplianceMethods(db, teamId, userId)` — team-scoped. What a normal
+ *  - `createComplianceMethods(db, organizationId, userId)` — team-scoped. What a normal
  *    request may do: record provenance for its own generations, attest to its
  *    own uploads, file a report.
  *  - `createComplianceReadMethods(db)` — unscoped enforcement reads for the
@@ -40,7 +40,7 @@ import type {
   UploadAttestation,
   AttestationSubjectType,
 } from '@/platform/server/db/schema/compliance';
-import { teams, user } from '@/platform/server/db/schema';
+import { organization, user } from '@/platform/server/db/schema';
 import { ValidationError } from '@/platform/errors';
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
@@ -75,12 +75,12 @@ function intakePriority(reason: ContentReportReason): number {
  */
 export function createProvenanceMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
     /**
-     * Insert one provenance row. `teamId` is injected from scope, but a row may
+     * Insert one provenance row. `organizationId` is injected from scope, but a row may
      * legitimately carry a different `userId` (a workflow triggered by one
      * member producing an asset in a shared team), so the caller's value wins
      * when supplied.
@@ -93,7 +93,7 @@ export function createProvenanceMethods(
         .values({
           ...row,
           id: row.id ?? generateId(),
-          teamId,
+          organizationId,
           userId: row.userId ?? userId,
         })
         .returning({ id: contentProvenance.id });
@@ -104,7 +104,7 @@ export function createProvenanceMethods(
 
 export function createComplianceMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
@@ -125,7 +125,7 @@ export function createComplianceMethods(
           .values({
             id: generateId(),
             userId,
-            teamId,
+            organizationId,
             subjectType: input.subjectType,
             subjectId: input.subjectId,
             statementVersion: input.statementVersion,
@@ -153,7 +153,7 @@ export function createComplianceMethods(
             .from(uploadAttestations)
             .where(
               and(
-                eq(uploadAttestations.teamId, teamId),
+                eq(uploadAttestations.organizationId, organizationId),
                 eq(uploadAttestations.subjectType, subjectType),
                 eq(uploadAttestations.subjectId, subjectId)
               )
@@ -185,7 +185,7 @@ export function createComplianceMethods(
               .from(uploadAttestations)
               .where(
                 and(
-                  eq(uploadAttestations.teamId, teamId),
+                  eq(uploadAttestations.organizationId, organizationId),
                   eq(uploadAttestations.subjectType, subjectType),
                   inArray(
                     uploadAttestations.subjectId,
@@ -211,11 +211,11 @@ export function createComplianceMethods(
      */
     async listEnforcementFor(
       subjectUserId: string,
-      subjectTeamId?: string | null
+      subjectOrganizationId?: string | null
     ): Promise<EnforcementAction[]> {
       return createComplianceReadMethods(db).listEnforcementFor(
         subjectUserId,
-        subjectTeamId
+        subjectOrganizationId
       );
     },
 
@@ -260,12 +260,12 @@ export function createComplianceReadMethods(db: Database) {
      */
     async listEnforcementFor(
       subjectUserId: string,
-      subjectTeamId?: string | null
+      subjectOrganizationId?: string | null
     ): Promise<EnforcementAction[]> {
-      const subjectMatch = subjectTeamId
+      const subjectMatch = subjectOrganizationId
         ? or(
             eq(enforcementActions.subjectUserId, subjectUserId),
-            eq(enforcementActions.subjectTeamId, subjectTeamId)
+            eq(enforcementActions.subjectOrganizationId, subjectOrganizationId)
           )
         : eq(enforcementActions.subjectUserId, subjectUserId);
 
@@ -374,7 +374,7 @@ export type ProvenanceLookupRow = {
   usedReferenceImages: boolean;
   referenceImageCount: number;
   createdAt: Date;
-  teamId: string;
+  organizationId: string;
   teamName: string | null;
   userId: string | null;
   userEmail: string | null;
@@ -382,11 +382,11 @@ export type ProvenanceLookupRow = {
 };
 
 export function createModerationMethods(db: Database) {
-  // Three joins onto `user`/`teams` from one row, so each needs its own alias —
+  // Three joins onto `user`/`organization` from one row, so each needs its own alias —
   // same pattern as the admin support queries.
   const reporterUser = alias(user, 'reporter_user');
   const subjectUser = alias(user, 'subject_user');
-  const subjectTeam = alias(teams, 'subject_team');
+  const subjectTeam = alias(organization, 'subject_team');
 
   async function listReports(opts?: {
     statuses?: ContentReportStatus[];
@@ -407,7 +407,10 @@ export function createModerationMethods(db: Database) {
         eq(contentReports.reporterUserId, reporterUser.id)
       )
       .leftJoin(subjectUser, eq(contentReports.subjectUserId, subjectUser.id))
-      .leftJoin(subjectTeam, eq(contentReports.subjectTeamId, subjectTeam.id))
+      .leftJoin(
+        subjectTeam,
+        eq(contentReports.subjectOrganizationId, subjectTeam.id)
+      )
       .where(
         statuses?.length ? inArray(contentReports.status, statuses) : undefined
       )
@@ -448,13 +451,13 @@ export function createModerationMethods(db: Database) {
    */
   async function attributeReport(input: {
     reportId: string;
-    subjectTeamId?: string | null;
+    subjectOrganizationId?: string | null;
     subjectUserId?: string | null;
   }): Promise<void> {
     await db
       .update(contentReports)
       .set({
-        subjectTeamId: input.subjectTeamId ?? null,
+        subjectOrganizationId: input.subjectOrganizationId ?? null,
         subjectUserId: input.subjectUserId ?? null,
         updatedAt: new Date(),
       })
@@ -481,7 +484,7 @@ export function createModerationMethods(db: Database) {
 
   async function applyEnforcement(input: {
     subjectUserId?: string | null;
-    subjectTeamId?: string | null;
+    subjectOrganizationId?: string | null;
     action: EnforcementActionType;
     reason: ContentReportReason;
     notes?: string | null;
@@ -490,7 +493,7 @@ export function createModerationMethods(db: Database) {
     appliedBySystem?: string | null;
     expiresAt?: Date | null;
   }): Promise<EnforcementAction> {
-    if (!input.subjectUserId && !input.subjectTeamId) {
+    if (!input.subjectUserId && !input.subjectOrganizationId) {
       throw new ValidationError(
         'An enforcement action needs a subject user or team'
       );
@@ -500,7 +503,7 @@ export function createModerationMethods(db: Database) {
       .values({
         id: generateId(),
         subjectUserId: input.subjectUserId ?? null,
-        subjectTeamId: input.subjectTeamId ?? null,
+        subjectOrganizationId: input.subjectOrganizationId ?? null,
         action: input.action,
         reason: input.reason,
         notes: input.notes ?? null,
@@ -541,16 +544,16 @@ export function createModerationMethods(db: Database) {
 
   async function listEnforcement(opts?: {
     subjectUserId?: string;
-    subjectTeamId?: string;
+    subjectOrganizationId?: string;
     limit?: number;
   }): Promise<EnforcementAction[]> {
-    const { subjectUserId, subjectTeamId, limit = 100 } = opts ?? {};
+    const { subjectUserId, subjectOrganizationId, limit = 100 } = opts ?? {};
     const filters = [
       subjectUserId
         ? eq(enforcementActions.subjectUserId, subjectUserId)
         : undefined,
-      subjectTeamId
-        ? eq(enforcementActions.subjectTeamId, subjectTeamId)
+      subjectOrganizationId
+        ? eq(enforcementActions.subjectOrganizationId, subjectOrganizationId)
         : undefined,
     ].filter((clause) => clause !== undefined);
 
@@ -596,12 +599,15 @@ export function createModerationMethods(db: Database) {
     const rows = await db
       .select({
         provenance: contentProvenance,
-        teamName: teams.name,
+        teamName: organization.name,
         userEmail: user.email,
         userName: user.name,
       })
       .from(contentProvenance)
-      .leftJoin(teams, eq(contentProvenance.teamId, teams.id))
+      .leftJoin(
+        organization,
+        eq(contentProvenance.organizationId, organization.id)
+      )
       .leftJoin(user, eq(contentProvenance.userId, user.id))
       .where(or(...filters))
       .orderBy(desc(contentProvenance.createdAt))
@@ -618,26 +624,26 @@ export function createModerationMethods(db: Database) {
 
   /** Everything an account generated in a window — enforcement evidence. */
   async function listProvenanceForTeam(
-    subjectTeamId: string,
+    subjectOrganizationId: string,
     opts?: { limit?: number }
   ) {
     return db
       .select()
       .from(contentProvenance)
-      .where(eq(contentProvenance.teamId, subjectTeamId))
+      .where(eq(contentProvenance.organizationId, subjectOrganizationId))
       .orderBy(desc(contentProvenance.createdAt))
       .limit(opts?.limit ?? 100);
   }
 
   /** Attestations an account made — the portrait-rights evidence trail. */
   async function listAttestationsForTeam(
-    subjectTeamId: string,
+    subjectOrganizationId: string,
     opts?: { limit?: number }
   ): Promise<UploadAttestation[]> {
     return db
       .select()
       .from(uploadAttestations)
-      .where(eq(uploadAttestations.teamId, subjectTeamId))
+      .where(eq(uploadAttestations.organizationId, subjectOrganizationId))
       .orderBy(desc(uploadAttestations.attestedAt), desc(uploadAttestations.id))
       .limit(opts?.limit ?? 100);
   }

@@ -3,8 +3,8 @@
  *
  * Rows are flat, team-scoped runs of arbitrary fal endpoints. They accumulate
  * (no primary/variant split, no selection pointer): the list IS the asset
- * library. Every read filters on the injected `teamId`; writes inject
- * `teamId`/`userId` so callers can't cross team boundaries.
+ * library. Every read filters on the injected `organizationId`; writes inject
+ * `organizationId`/`userId` so callers can't cross team boundaries.
  *
  * Status lifecycle: `queued` (row reserved by the server fn) → `running`
  * (workflow picked it up) → `completed` (outputs uploaded to R2) / `failed`.
@@ -39,17 +39,17 @@ const DEFAULT_LIST_LIMIT = 50;
 
 export function createGeneratedAssetsMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
-    /** Reserve a run row (status `queued`); teamId/userId auto-injected. */
+    /** Reserve a run row (status `queued`); organizationId/userId auto-injected. */
     insert: async (
-      input: Omit<NewGeneratedAsset, 'teamId' | 'userId'>
+      input: Omit<NewGeneratedAsset, 'organizationId' | 'userId'>
     ): Promise<GeneratedAsset> => {
       const [row] = await db
         .insert(generatedAssets)
-        .values({ ...input, teamId, userId })
+        .values({ ...input, organizationId, userId })
         .returning();
       if (!row) throw new Error('Failed to insert generated asset');
       return row;
@@ -61,7 +61,9 @@ export function createGeneratedAssetsMethods(
     ): Promise<{ assets: GeneratedAsset[]; nextCursor: string | null }> => {
       const limit = options.limit ?? DEFAULT_LIST_LIMIT;
       const order = options.order ?? 'newest';
-      const conditions: SQL[] = [eq(generatedAssets.teamId, teamId)];
+      const conditions: SQL[] = [
+        eq(generatedAssets.organizationId, organizationId),
+      ];
       if (options.activity) {
         conditions.push(eq(generatedAssets.activity, options.activity));
       }
@@ -105,7 +107,10 @@ export function createGeneratedAssetsMethods(
         .select()
         .from(generatedAssets)
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .limit(1);
       return rows[0] ?? null;
@@ -119,7 +124,10 @@ export function createGeneratedAssetsMethods(
         .update(generatedAssets)
         .set({ workflowRunId, updatedAt: new Date() })
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
@@ -130,7 +138,10 @@ export function createGeneratedAssetsMethods(
         .update(generatedAssets)
         .set({ status: 'running', updatedAt: new Date() })
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
@@ -161,7 +172,10 @@ export function createGeneratedAssetsMethods(
           updatedAt: new Date(),
         })
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
@@ -182,7 +196,10 @@ export function createGeneratedAssetsMethods(
           updatedAt: new Date(),
         })
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
@@ -193,7 +210,10 @@ export function createGeneratedAssetsMethods(
         .update(generatedAssets)
         .set({ isFavorite, updatedAt: new Date() })
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
@@ -203,7 +223,10 @@ export function createGeneratedAssetsMethods(
       const deleted = await db
         .delete(generatedAssets)
         .where(
-          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+          and(
+            eq(generatedAssets.id, id),
+            eq(generatedAssets.organizationId, organizationId)
+          )
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(deleted, id);

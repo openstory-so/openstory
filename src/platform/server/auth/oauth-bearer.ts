@@ -26,7 +26,7 @@ const logger = getLogger(['openstory', 'auth', 'oauth-bearer']);
 export type OAuthAccessToken = {
   userId: string;
   /** The team stamped at consent; null when consent had no `referenceId`. */
-  teamId: string | null;
+  organizationId: string | null;
   clientId: string | null;
   scopes: readonly string[];
   audience: readonly string[];
@@ -167,7 +167,7 @@ export async function verifyOAuthAccessToken(
   const { sub, aud, scope, client_id, team_id, jti } = claims.data;
   return {
     userId: sub,
-    teamId: team_id ?? null,
+    organizationId: team_id ?? null,
     clientId: client_id ?? null,
     scopes: scope ? scope.split(' ').filter(Boolean) : [],
     audience: Array.isArray(aud) ? aud : [aud],

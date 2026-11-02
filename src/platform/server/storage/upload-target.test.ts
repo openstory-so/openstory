@@ -24,8 +24,11 @@ function request(path: string): Request {
 
 beforeEach(() => {
   getUserTeamMembership.mockReset();
-  getUserTeamMembership.mockImplementation((_userId: string, teamId: string) =>
-    Promise.resolve(teamId === TEAM ? { teamId, role: 'member' } : null)
+  getUserTeamMembership.mockImplementation(
+    (_userId: string, organizationId: string) =>
+      Promise.resolve(
+        organizationId === TEAM ? { organizationId, role: 'member' } : null
+      )
   );
   isSystemAdmin.mockReset();
   isSystemAdmin.mockReturnValue(false);
@@ -122,7 +125,7 @@ describe('resolveUploadTarget', () => {
     expect(resolved.ok).toBe(true);
   });
 
-  it('reads the owner segment from a bare `<teamId>/…` path', async () => {
+  it('reads the owner segment from a bare `<organizationId>/…` path', async () => {
     const resolved = await resolveUploadTarget(
       request(`${TEAM}/talent/portrait.png`),
       USER

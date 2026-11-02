@@ -40,14 +40,17 @@ type StylesListOptions = {
   orderBy?: 'popular' | 'sortOrder';
 };
 
-function boundRowsOwnedBy(teamId: string) {
-  return or(isNull(styles.sequenceId), eq(styles.teamId, teamId));
+function boundRowsOwnedBy(organizationId: string) {
+  return or(
+    isNull(styles.sequenceId),
+    eq(styles.organizationId, organizationId)
+  );
 }
 
 /** The team's library: own + public rows, never a sequence-bound one. */
-function libraryVisibleTo(teamId: string) {
+function libraryVisibleTo(organizationId: string) {
   return and(
-    or(eq(styles.teamId, teamId), eq(styles.isPublic, true)),
+    or(eq(styles.organizationId, organizationId), eq(styles.isPublic, true)),
     isNull(styles.sequenceId)
   );
 }
@@ -60,7 +63,7 @@ function libraryVisibleTo(teamId: string) {
  * account. Enforced here (no DB constraint can express "unique across this team
  * ∪ all public") on create + rename. `excludeId` skips the row being renamed.
  *
- * This guards against the future where teams can author styles; public styles
+ * This guards against the future where organizations can author styles; public styles
  * are seeded with already-unique names.
  *
  * Sequence-bound (automatic) styles are outside the library, so they neither
@@ -68,7 +71,7 @@ function libraryVisibleTo(teamId: string) {
  */
 async function assertSlugAvailable(
   db: Database,
-  teamId: string,
+  organizationId: string,
   name: string,
   excludeId?: string
 ): Promise<void> {
@@ -78,7 +81,7 @@ async function assertSlugAvailable(
     .from(styles)
     .where(
       and(
-        libraryVisibleTo(teamId),
+        libraryVisibleTo(organizationId),
         excludeId ? ne(styles.id, excludeId) : undefined
       )
     );
@@ -93,7 +96,7 @@ async function assertSlugAvailable(
   }
 }
 
-function createStylesReadMethods(db: Database, teamId: string) {
+function createStylesReadMethods(db: Database, organizationId: string) {
   return {
     list: async (options: StylesListOptions = {}): Promise<Style[]> => {
       const orderBy = options.orderBy ?? 'sortOrder';
@@ -104,7 +107,7 @@ function createStylesReadMethods(db: Database, teamId: string) {
       return await db
         .select()
         .from(styles)
-        .where(libraryVisibleTo(teamId))
+        .where(libraryVisibleTo(organizationId))
         .orderBy(...order);
     },
 
@@ -114,7 +117,10 @@ function createStylesReadMethods(db: Database, teamId: string) {
         .select()
         .from(styles)
         .where(
-          and(eq(styles.sequenceId, sequenceId), eq(styles.teamId, teamId))
+          and(
+            eq(styles.sequenceId, sequenceId),
+            eq(styles.organizationId, organizationId)
+          )
         )
         .limit(1);
       return result[0] ?? null;
@@ -128,7 +134,7 @@ function createStylesReadMethods(db: Database, teamId: string) {
       const result = await db
         .select()
         .from(styles)
-        .where(and(eq(styles.id, styleId), boundRowsOwnedBy(teamId)))
+        .where(and(eq(styles.id, styleId), boundRowsOwnedBy(organizationId)))
         .limit(1);
       return result[0] ?? null;
     },
@@ -153,7 +159,9 @@ function createStylesReadMethods(db: Database, teamId: string) {
           db
             .select()
             .from(styles)
-            .where(and(inArray(styles.id, batch), boundRowsOwnedBy(teamId)))
+            .where(
+              and(inArray(styles.id, batch), boundRowsOwnedBy(organizationId))
+            )
         )
       );
       return results.flat();
@@ -180,11 +188,11 @@ export function createPublicStylesReadMethods(db: Database) {
 
 export function createStylesMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
-    ...createStylesReadMethods(db, teamId),
+    ...createStylesReadMethods(db, organizationId),
 
     // Server-managed columns (isPublic, isTemplate, usageCount, …) are
     // excluded from the parameter type AND scrubbed at runtime: the type
@@ -194,18 +202,18 @@ export function createStylesMethods(
     create: async (
       data: Omit<NewStyle, ServerManagedStyleColumn>
     ): Promise<Style> => {
-      await assertSlugAvailable(db, teamId, data.name);
+      await assertSlugAvailable(db, organizationId, data.name);
       const result = await db
         .insert(styles)
         .values({
           ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
-          teamId,
+          organizationId,
           createdBy: userId,
         })
         .returning();
       const style = result[0];
       if (!style) {
-        throw new Error(`Failed to create Style for team ${teamId}`);
+        throw new Error(`Failed to create Style for team ${organizationId}`);
       }
       return style;
     },
@@ -215,12 +223,14 @@ export function createStylesMethods(
       data: Partial<Omit<Style, ServerManagedStyleColumn>>
     ): Promise<Style | undefined> => {
       if (data.name !== undefined) {
-        await assertSlugAvailable(db, teamId, data.name, styleId);
+        await assertSlugAvailable(db, organizationId, data.name, styleId);
       }
       const result = await db
         .update(styles)
         .set(stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS))
-        .where(and(eq(styles.id, styleId), eq(styles.teamId, teamId)))
+        .where(
+          and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
+        )
         .returning();
       return Array.isArray(result) ? result[0] : undefined;
     },
@@ -228,7 +238,9 @@ export function createStylesMethods(
     delete: async (styleId: string): Promise<void> => {
       await db
         .delete(styles)
-        .where(and(eq(styles.id, styleId), eq(styles.teamId, teamId)));
+        .where(
+          and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
+        );
     },
 
     /**
@@ -247,7 +259,7 @@ export function createStylesMethods(
         .values({
           ...params.draft,
           sequenceId: params.sequenceId,
-          teamId,
+          organizationId,
           createdBy: userId,
         })
         .returning();
@@ -277,7 +289,7 @@ export function createStylesMethods(
           and(
             eq(styles.id, params.styleId),
             eq(styles.sequenceId, params.sequenceId),
-            eq(styles.teamId, teamId)
+            eq(styles.organizationId, organizationId)
           )
         )
         .returning({ id: styles.id });
@@ -294,7 +306,7 @@ export function createStylesMethods(
       name: string;
       previewUrl: string | null;
     }): Promise<Style> => {
-      await assertSlugAvailable(db, teamId, params.name);
+      await assertSlugAvailable(db, organizationId, params.name);
       const rows = await db
         .update(styles)
         .set({
@@ -306,7 +318,7 @@ export function createStylesMethods(
         .where(
           and(
             eq(styles.id, params.styleId),
-            eq(styles.teamId, teamId),
+            eq(styles.organizationId, organizationId),
             isNotNull(styles.sequenceId)
           )
         )

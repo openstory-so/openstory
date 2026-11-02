@@ -32,10 +32,10 @@ export type ComplianceState = {
  */
 export async function loadComplianceState(
   userId: string,
-  teamId?: string | null,
+  organizationId?: string | null,
   now: Date = new Date()
 ): Promise<ComplianceState> {
-  const { enforcement } = await loadComplianceRecords(userId, teamId);
+  const { enforcement } = await loadComplianceRecords(userId, organizationId);
   return {
     enforcement: resolveEnforcementState(enforcement, now),
   };
@@ -44,9 +44,9 @@ export async function loadComplianceState(
 /** Throw unless the account may run this generation. */
 export async function requireGenerationAllowed(opts: {
   userId: string;
-  teamId: string;
+  organizationId: string;
 }): Promise<void> {
-  const state = await loadComplianceState(opts.userId, opts.teamId);
+  const state = await loadComplianceState(opts.userId, opts.organizationId);
   assertCanGenerate(state.enforcement);
 }
 

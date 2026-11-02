@@ -48,7 +48,7 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
     // matched like any other: nothing waits for it. A location deleted from
     // the team is left out of the read.
     const referenceRows =
-      suggestedLocationIds?.length && input.teamId
+      suggestedLocationIds?.length && input.organizationId
         ? await step.do('read-picked-locations', async () =>
             scopedDb.liveRead.locations.getCurrentByIds(suggestedLocationIds)
           )

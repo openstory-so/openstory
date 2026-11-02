@@ -66,18 +66,18 @@ export function uploadExtensionList(surface: UploadMediaSurface): string {
 /**
  * Parse a finalize-time media URL back to its bucket-relative `storagePath`
  * (the form the variant tables store), enforcing the team namespace: the key
- * must live exactly under `<bucket>/teams/<teamId>/` with no empty or `..`
+ * must live exactly under `<bucket>/teams/<organizationId>/` with no empty or `..`
  * segments (same boundary as `isValidElementStoragePath`). Returns null when
  * the URL is not a stored `/r2/` URL or escapes the namespace.
  */
 export function parseUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
-  teamId: string
+  organizationId: string
 ): string | null {
   const key = r2KeyFromUrl(publicUrl);
   if (key === null) return null;
-  const prefix = `${bucket}/teams/${teamId}/`;
+  const prefix = `${bucket}/teams/${organizationId}/`;
   if (!key.startsWith(prefix)) return null;
   const rest = key.slice(prefix.length);
   if (rest.length === 0) return null;

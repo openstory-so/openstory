@@ -70,7 +70,7 @@ export const listStudioUploadsFn = createServerFn({ method: 'GET' })
   .handler(async ({ context }) => {
     const files = await listFiles(
       STORAGE_BUCKETS.TALENT,
-      `${context.teamId}/${TEAM_USER_UPLOAD_PREFIX}`,
+      `${context.organizationId}/${TEAM_USER_UPLOAD_PREFIX}`,
       { limit: 1000 }
     );
     return files
@@ -95,7 +95,7 @@ export const presignStudioUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     return getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,
-      teamUserUploadStoragePath(context.teamId, generateId(), ext),
+      teamUserUploadStoragePath(context.organizationId, generateId(), ext),
       getMimeTypeFromExtension(ext)
     );
   });

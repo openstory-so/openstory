@@ -87,7 +87,7 @@ const { cutAudioSection, cutSpanningSection } =
 const base = {
   storageKey: 'audio/team-1/seq-1/dialogue-recordings/rec-1.wav',
   speechId: 'rec-1',
-  teamId: 'team-1',
+  organizationId: 'team-1',
   sequenceId: 'seq-1',
 };
 
@@ -319,7 +319,7 @@ describe('cutSpanningSection (#1794)', () => {
   it('sends one longer section, from the first member start to the last member end', async () => {
     const joined = await cutSpanningSection(
       [clip('a', 'rec-1', 7.43), clip('b', 'rec-1', 2.96)],
-      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+      { organizationId: 'team-1', sequenceId: 'seq-1', getSection }
     );
 
     expect(joined).toHaveLength(1);
@@ -338,7 +338,7 @@ describe('cutSpanningSection (#1794)', () => {
     });
     const joined = await cutSpanningSection(
       [legacy('a', 7.43), legacy('b', 2.96)],
-      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+      { organizationId: 'team-1', sequenceId: 'seq-1', getSection }
     );
 
     expect(joined).toHaveLength(1);
@@ -352,7 +352,7 @@ describe('cutSpanningSection (#1794)', () => {
     for (const clips of [apart, unknown]) {
       expect(
         await cutSpanningSection(clips, {
-          teamId: 'team-1',
+          organizationId: 'team-1',
           sequenceId: 'seq-1',
           getSection,
         })

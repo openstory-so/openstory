@@ -94,7 +94,11 @@ export const createTeamLocationFn = createServerFn({ method: 'POST' })
       await createTeamLocation(
         context.scopedDb,
         { ...data, description: data.description || null },
-        { userId: context.user.id, teamId: context.teamId, triggerSheet: true }
+        {
+          userId: context.user.id,
+          organizationId: context.organizationId,
+          triggerSheet: true,
+        }
       )
   );
 
@@ -148,7 +152,7 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
     // likeness ledger, then points a photo row at this key.
     return getSignedUploadUrl(
       STORAGE_BUCKETS.LOCATIONS,
-      teamUserUploadStoragePath(context.teamId, generateId(), ext),
+      teamUserUploadStoragePath(context.organizationId, generateId(), ext),
       getMimeTypeFromExtension(ext)
     );
   });
@@ -167,7 +171,7 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
     const photos = await attachLocationReferenceImages(
       context.scopedDb,
       [data.publicUrl],
-      context.teamId
+      context.organizationId
     );
     await context.scopedDb.locations.addPhotos(data.locationId, photos);
     return { success: true };

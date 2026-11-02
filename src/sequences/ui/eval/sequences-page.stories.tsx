@@ -13,7 +13,7 @@ import { EvalView } from './eval-view';
 
 const baseSequence: Sequence = {
   id: 'demo-sequence-123',
-  teamId: 'demo-team',
+  organizationId: 'demo-team',
   title: 'Demo Video Sequence',
   script: `INT. OFFICE - DAY
 
@@ -115,7 +115,7 @@ function createPreviewClient() {
     client.setQueryData(key, data, { updatedAt: Date.now() + 86400000 });
   seed(['session'], {
     user: { id: 'demo-user' },
-    session: { activeTeamId: 'demo-team' },
+    session: { activeOrganizationId: 'demo-team' },
   });
   seed(['system-admin-status'], {
     isAdmin: true,

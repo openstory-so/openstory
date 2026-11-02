@@ -166,7 +166,7 @@ const BOB = character({
 const BEACH = asStub<SequenceLocationWithReference>({
   id: 'l-beach',
   // The team's (#1695); `seq` reads it through its link.
-  teamId: 'team-1',
+  organizationId: 'team-1',
   linkId: 'link-beach-seq',
   attached: false,
   sequenceId: 'seq',
@@ -1316,7 +1316,7 @@ const CAST_BASE: CastWorld = {
 function castDb(world: CastWorld) {
   return asStub<ScopedDb>({
     userId: 'user-1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequences: { getById: () => Promise.resolve(world.sequence) },
     characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
     // The same location through any sequence's link, or from none.
@@ -1339,7 +1339,7 @@ async function stampSheets(): Promise<CastWorld> {
   const context = {
     scopedDb: castDb(CAST_BASE),
     userId: 'user-1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequence: CAST_BASE.sequence,
   };
   const [sheet, reference] = await Promise.all([
@@ -1566,7 +1566,7 @@ describe('staleness matrix — reference sheets', () => {
       buildRegenerateCharacterSheetPayload({
         scopedDb: db(row),
         userId: 'user-1',
-        teamId: 'team-1',
+        organizationId: 'team-1',
         sequence: CAST_BASE.sequence,
         character: row,
         lookId,
@@ -1656,7 +1656,7 @@ describe('staleness matrix — reference sheets', () => {
     const { snapshotInputHash } = await buildRegenerateCharacterSheetPayload({
       scopedDb: db(GALA),
       userId: 'user-1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequence: stamped.sequence,
       character: aliceWith(GALA),
       lookId: GALA.id,
@@ -2063,7 +2063,7 @@ describe('stamp == verify', () => {
     // and no photos (analysis made the place here, #1695).
     const stamp = await computeLocationSheetHashFromDto({
       userId: 'user-1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq',
       locationDbId: 'l-beach',
       bibleVersionId: null,

@@ -18,7 +18,7 @@ import type { Database } from './client';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
 import type { createD1HttpClient } from './client-d1-http';
 import { generateId } from '@/platform/id';
-import { appMetadata, styles, teams } from '@/platform/server/db/schema';
+import { appMetadata, styles, organization } from '@/platform/server/db/schema';
 
 export type SeedDb =
   | ReturnType<typeof drizzleD1>
@@ -74,7 +74,7 @@ async function computeSeedHash(): Promise<string> {
  * After a template-changing deploy the hash goes stale in every colo at
  * once, so multiple isolates can reach the sync concurrently. Updates race
  * safely (by-name, idempotent) but brand-new templates have no unique index
- * on (teamId, name), so two racing inserts would duplicate. The lock row
+ * on (organizationId, name), so two racing inserts would duplicate. The lock row
  * makes exactly one isolate run the sync; losers skip and serve with the
  * previous templates until it lands. Stale locks (isolate died mid-sync)
  * are stolen after this TTL.
@@ -191,20 +191,20 @@ async function syncSystemTemplates(
   // 1. Find or create system team
   let [systemTeam]: { id: string }[] = await db
     .select()
-    .from(teams)
-    .where(eq(teams.slug, SYSTEM_TEAM_SLUG));
+    .from(organization)
+    .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
 
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB query returns undefined when no rows match
   if (!systemTeam) {
-    const teamId = generateId();
-    await db.insert(teams).values({
-      id: teamId,
+    const organizationId = generateId();
+    await db.insert(organization).values({
+      id: organizationId,
       name: 'System Templates',
       slug: SYSTEM_TEAM_SLUG,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    systemTeam = { id: teamId };
+    systemTeam = { id: organizationId };
     log(`System team created with ID: ${systemTeam.id}`);
   }
 
@@ -212,7 +212,7 @@ async function syncSystemTemplates(
   const existingTemplates = await db
     .select()
     .from(styles)
-    .where(eq(styles.teamId, systemTeam.id));
+    .where(eq(styles.organizationId, systemTeam.id));
 
   const existingByName = new Map(existingTemplates.map((t) => [t.name, t]));
 
@@ -264,7 +264,7 @@ async function syncSystemTemplates(
     } else {
       await db.insert(styles).values({
         ...template,
-        teamId: systemTeam.id,
+        organizationId: systemTeam.id,
         createdBy: null,
       });
       insertedCount++;

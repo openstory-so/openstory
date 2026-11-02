@@ -22,7 +22,7 @@ import type { CharacterSheetDraft } from '@/cast/server/workflows/sheet-snapshot
 type SheetPayloadParams = {
   scopedDb: ScopedDb;
   userId: string;
-  teamId: string;
+  organizationId: string;
   /**
    * The sequence the sheet is drawn from, for its image model and the run's
    * channel; null from the Characters page (#2017), where the model is the
@@ -75,7 +75,7 @@ export async function buildCharacterSheetDraft(
   /** The selected sheet version's `model`; null when there is no sheet. */
   liveVersionModel: string | null;
 }> {
-  const { scopedDb, userId, teamId, sequence } = params;
+  const { scopedDb, userId, organizationId, sequence } = params;
   const look = await requireCharacterLook(
     scopedDb,
     params.character,
@@ -99,7 +99,7 @@ export async function buildCharacterSheetDraft(
 
   const draft: CharacterSheetDraft = {
     userId,
-    teamId,
+    organizationId,
     sequenceId: sequence?.id ?? null,
     characterDbId: character.id,
     lookId: look.id,

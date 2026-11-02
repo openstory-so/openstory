@@ -53,7 +53,7 @@ describe('computeStyleConfigHash', () => {
 describe('character-sheet hash', () => {
   const baseInput: SheetPayload<CharacterSheetWorkflowInput> = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     sequenceId: 's1',
     characterDbId: 'c1',
     lookId: 'c1',
@@ -241,7 +241,7 @@ describe('character-sheet hash', () => {
 describe('location-sheet hash', () => {
   const baseInput: SheetPayload<LocationSheetWorkflowInput> = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     sequenceId: 's1',
     locationDbId: 'loc1',
     bibleVersionId: null,

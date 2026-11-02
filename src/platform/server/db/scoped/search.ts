@@ -49,7 +49,7 @@ import { excerpt, type SearchHit, type SearchKind } from '@/platform/search';
 
 type Text = string | null | undefined;
 
-export function createSearchMethods(db: Database, teamId: string) {
+export function createSearchMethods(db: Database, organizationId: string) {
   return {
     find: async (query: string, limit: number): Promise<SearchHit[]> => {
       // `instr`, not LIKE: D1 caps a LIKE pattern at 50 bytes, and `instr`
@@ -73,7 +73,7 @@ export function createSearchMethods(db: Database, teamId: string) {
       });
 
       const liveSequence = and(
-        eq(sequences.teamId, teamId),
+        eq(sequences.organizationId, organizationId),
         ne(sequences.status, 'archived')
       );
       const sequenceRef = {
@@ -225,7 +225,7 @@ export function createSearchMethods(db: Database, teamId: string) {
         )
         .where(
           and(
-            eq(characters.teamId, teamId),
+            eq(characters.organizationId, organizationId),
             isNull(characters.deletedAt),
             any(characterTexts)
           )
@@ -284,7 +284,7 @@ export function createSearchMethods(db: Database, teamId: string) {
         .leftJoin(locationBibleVersions, locationBibleJoin)
         .where(
           and(
-            eq(locations.teamId, teamId),
+            eq(locations.organizationId, organizationId),
             liveSequence,
             isNull(locations.deletedAt),
             any(locationTexts)
@@ -305,7 +305,7 @@ export function createSearchMethods(db: Database, teamId: string) {
         .leftJoin(locationBibleVersions, locationBibleJoin)
         .where(
           and(
-            eq(locations.teamId, teamId),
+            eq(locations.organizationId, organizationId),
             isNull(locations.deletedAt),
             any(locationTexts),
             notExists(
@@ -333,7 +333,7 @@ export function createSearchMethods(db: Database, teamId: string) {
           .from(generatedAssets)
           .where(
             and(
-              eq(generatedAssets.teamId, teamId),
+              eq(generatedAssets.organizationId, organizationId),
               eq(generatedAssets.source, 'studio'),
               eq(generatedAssets.activity, activity),
               has(prompt)

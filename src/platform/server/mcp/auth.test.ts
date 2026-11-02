@@ -39,10 +39,10 @@ const { authenticateMcpRequest } = await import('./auth');
 
 const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
-const team = { teamId: 'team_1', teamName: 'Ada', role: 'owner' };
+const team = { organizationId: 'team_1', teamName: 'Ada', role: 'owner' };
 const oauth = {
   userId: 'user_1',
-  teamId: 'team_1',
+  organizationId: 'team_1',
   clientId: 'c1',
   scopes: ['sequences:read'],
   audience: ['https://openstory.test/mcp'],
@@ -93,7 +93,7 @@ describe('authenticateMcpRequest', () => {
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('api_key');
     expect(ctx.user.id).toBe('user_1');
-    expect(ctx.teamId).toBe('team_1');
+    expect(ctx.organizationId).toBe('team_1');
     expect(ctx.keyHint).toBe('osk_…XXXX');
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
   });
@@ -109,7 +109,7 @@ describe('authenticateMcpRequest', () => {
     expect(ctx).not.toBeInstanceOf(Response);
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('oauth');
-    expect(ctx.teamId).toBe('team_1');
+    expect(ctx.organizationId).toBe('team_1');
     expect(ctx.keyHint).toBe('jwt:jti_1');
     expect(verifyOAuthAccessToken).toHaveBeenCalledWith(
       jwt,

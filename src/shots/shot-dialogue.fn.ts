@@ -277,13 +277,13 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
     return releaseReservationOnThrow(scopedDb, reservationId, async () => {
       const uploaded = await uploadFile(
         STORAGE_BUCKETS.AUDIO,
-        `${sequence.teamId}/${sequence.id}/dialogue-takes/${generateId()}.wav`,
+        `${sequence.organizationId}/${sequence.id}/dialogue-takes/${generateId()}.wav`,
         take,
         { contentType: 'audio/wav' }
       );
       const input: DialogueTakeWorkflowInput = {
         userId: user.id,
-        teamId: sequence.teamId,
+        organizationId: sequence.organizationId,
         sequenceId: sequence.id,
         shotId: shot.id,
         reservationId,

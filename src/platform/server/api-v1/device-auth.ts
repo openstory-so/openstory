@@ -129,6 +129,6 @@ export async function exchangeDeviceCode(
   return {
     status: 'approved',
     apiKey: created.key,
-    team: { id: team.teamId, name: team.teamName },
+    team: { id: team.organizationId, name: team.teamName },
   };
 }

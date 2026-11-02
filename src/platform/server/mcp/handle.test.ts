@@ -43,7 +43,7 @@ const auth = {
     image: null,
     status: 'active',
   },
-  teamId: 'team_1',
+  organizationId: 'team_1',
   teamName: "Ada's Team",
   session: null,
   oauth: null,

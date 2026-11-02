@@ -11,7 +11,7 @@
  * still/clip cost after `deductWorkflowCredits`.
  *
  * FKs deliberately use `onDelete: 'restrict'` — never CASCADE — because
- * `teams` / `user` are long-lived parent tables (see the D1 table-rebuild
+ * `organization` / `user` are long-lived parent tables (see the D1 table-rebuild
  * trap in AGENTS.md).
  */
 
@@ -20,7 +20,7 @@ import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import type { MediaVia } from '@/models/via';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 /** A JSON-serializable value — no `unknown` escape hatch. */
 export type JsonValue =
@@ -72,9 +72,9 @@ export const generatedAssets = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'restrict' }),
@@ -117,16 +117,16 @@ export const generatedAssets = snakeCase.table(
   },
   (table) => [
     // Team-scoped newest-first listing: order by id (ULID ≈ creation time).
-    index('idx_generated_assets_team').on(table.teamId, table.id),
+    index('idx_generated_assets_team').on(table.organizationId, table.id),
     // Per-endpoint "recent runs" list on the model detail page.
     index('idx_generated_assets_team_endpoint').on(
-      table.teamId,
+      table.organizationId,
       table.endpointId,
       table.id
     ),
     // Studio library: team + source (catalog vs studio) + recency.
     index('idx_generated_assets_team_source').on(
-      table.teamId,
+      table.organizationId,
       table.source,
       table.id
     ),

@@ -43,7 +43,7 @@ function makePng(width: number, height: number): Uint8Array {
 }
 
 const ids = {
-  teamId: 'team_1',
+  organizationId: 'team_1',
   sequenceId: 'seq_1',
   shotId: 'shot_1',
 };

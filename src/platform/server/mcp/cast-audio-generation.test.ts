@@ -35,7 +35,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
@@ -69,7 +69,7 @@ const server = createMCPServer({
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let sequenceId: string;
 let shotId: string;
 let frameId: string;
@@ -77,7 +77,7 @@ let actorId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
 /** A character as analysis writes it: bible version, cast link, default look. */
 const castCharacter = (character: NewCharacter) =>
-  createScopedDb(teamId, actorId).characters.create(character, {
+  createScopedDb(organizationId, actorId).characters.create(character, {
     source: 'analysis',
     createdBy: null,
   });
@@ -152,17 +152,19 @@ afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.mocked(triggerWorkflow).mockClear();
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   shotId = generateId();
   frameId = generateId();
   actorId = generateId();
   const sceneId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   const styleId = generateId();
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 'Noir',
     config: {
       mood: 'neutral',
@@ -176,7 +178,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     styleId,
     title: 'Test sequence',
     status: 'completed',
@@ -195,7 +197,7 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values({ id: actorId, name: 'Actor', email: `${actorId}@test.invalid` });
-  scopedDb = createScopedDb(teamId, actorId);
+  scopedDb = createScopedDb(organizationId, actorId);
 });
 
 describe('music', () => {
@@ -308,7 +310,7 @@ describe('cast', () => {
     const id = generateId();
     await db.insert(locations).values({
       id,
-      teamId,
+      organizationId,
       legacyName: name,
       referenceStatus: sheet ? 'completed' : 'pending',
     });
@@ -385,12 +387,14 @@ describe('cast', () => {
     await use(locationId, 'loc_001');
     const foreignTeam = generateId();
     await db
-      .insert(teams)
+      .insert(organization)
       .values({ id: foreignTeam, name: 'Foreign', slug: foreignTeam });
     const foreign = generateId();
-    await db
-      .insert(locations)
-      .values({ id: foreign, teamId: foreignTeam, legacyName: 'Vault' });
+    await db.insert(locations).values({
+      id: foreign,
+      organizationId: foreignTeam,
+      legacyName: 'Vault',
+    });
     expect(
       await call('recast_location', {
         sequenceId,
@@ -422,7 +426,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     if (!seq) throw new Error('seed sequence missing');
     await db.insert(sequences).values({
       id,
-      teamId,
+      organizationId,
       styleId: seq.styleId,
       title,
       status: 'completed',
@@ -450,7 +454,7 @@ describe('a character that must be a person is stored as one, on every path (#20
    * own bible write is the caller's to make or leave out.
    */
   const uploadRealPhoto = async (characterId: string) => {
-    const url = `/r2/characters/${teamId}/uploads/${generateId()}.png`;
+    const url = `/r2/characters/${organizationId}/uploads/${generateId()}.png`;
     const { version } = await scopedDb.characterSheetVariants.applyConvergent({
       lookId: characterId,
       url,

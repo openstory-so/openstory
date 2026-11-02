@@ -79,7 +79,7 @@ export const createPublicApiKeyFn = createServerFn({ method: 'POST' })
 
       logger.info('public api key created', {
         userId: context.user.id,
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         keyId: created.id,
       });
 
@@ -120,7 +120,7 @@ export const revokePublicApiKeyFn = createServerFn({ method: 'POST' })
 
     logger.info('public api key revoked', {
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       keyId: data.keyId,
     });
 

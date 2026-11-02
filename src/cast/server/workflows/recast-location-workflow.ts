@@ -68,7 +68,7 @@ async function buildRegeneratePayload(
 
   return {
     userId: input.userId,
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     sequenceId,
     shotIds: input.shotSnapshots.map((s) => s.shotId),
     triggerKind: 'location' as const,

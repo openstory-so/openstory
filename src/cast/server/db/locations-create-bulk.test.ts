@@ -26,7 +26,7 @@ import {
   sequenceLocationLinks,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
@@ -35,8 +35,8 @@ import type { AnalysedLocation } from './locations';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
-let otherTeamId = '';
+let organizationId = '';
+let otherOrganizationId = '';
 let actorId = '';
 let sequenceId = '';
 let secondSequenceId = '';
@@ -57,23 +57,23 @@ beforeEach(async () => {
   await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
-  otherTeamId = generateId();
+  organizationId = generateId();
+  otherOrganizationId = generateId();
   actorId = generateId();
   sequenceId = generateId();
   secondSequenceId = generateId();
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
-  await db.insert(teams).values([
-    { id: teamId, name: 'T', slug: 't' },
-    { id: otherTeamId, name: 'O', slug: 'o' },
+  await db.insert(organization).values([
+    { id: organizationId, name: 'T', slug: 't' },
+    { id: otherOrganizationId, name: 'O', slug: 'o' },
   ]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -88,12 +88,12 @@ beforeEach(async () => {
     .returning();
   if (!style) throw new Error('test setup: style insert returned nothing');
   await db.insert(sequences).values([
-    { id: sequenceId, teamId, title: 'One', styleId: style.id },
-    { id: secondSequenceId, teamId, title: 'Two', styleId: style.id },
+    { id: sequenceId, organizationId, title: 'One', styleId: style.id },
+    { id: secondSequenceId, organizationId, title: 'Two', styleId: style.id },
   ]);
 });
 
-const locs = () => createLocationsMethods(db, teamId);
+const locs = () => createLocationsMethods(db, organizationId);
 
 /** One entry of an analysis pass over `sequenceId`. */
 function entry(
@@ -169,7 +169,7 @@ describe('createBulk', () => {
       }),
     ]);
     expect(created).toMatchObject({
-      teamId,
+      organizationId,
       sequenceId,
       locationId: 'loc_001',
       attached: false,
@@ -230,7 +230,7 @@ describe('createBulk', () => {
 
   it("refuses another team's sequence", async () => {
     await expect(
-      createLocationsMethods(db, otherTeamId).createBulk(
+      createLocationsMethods(db, otherOrganizationId).createBulk(
         [entry('loc_001')],
         analysis
       )
@@ -557,7 +557,10 @@ describe('createBulk with an entry bound to a team location', () => {
   });
 
   it("refuses another team's location, and one deleted from the team", async () => {
-    const theirs = await createLocationsMethods(db, otherTeamId).createForTeam(
+    const theirs = await createLocationsMethods(
+      db,
+      otherOrganizationId
+    ).createForTeam(
       { name: 'Their Yard', rendering: PHOTOREAL_RENDERING },
       { createdBy: actorId }
     );

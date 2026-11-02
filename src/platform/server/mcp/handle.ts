@@ -142,7 +142,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
   if (limited) {
     logger.warn('MCP JWT rate limited', {
       userId: auth.user.id,
-      teamId: auth.teamId,
+      organizationId: auth.organizationId,
     });
     return withCors(limited, origin);
   }
@@ -163,7 +163,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
     request.headers.get('mcp-protocol-version') ?? fields.protocolVersion;
   const reqLogger = logger.with({
     userId: auth.user.id,
-    teamId: auth.teamId,
+    organizationId: auth.organizationId,
     keyHint: auth.keyHint,
     authKind: auth.kind,
     method,

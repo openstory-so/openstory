@@ -42,7 +42,7 @@ export async function gateStoryboardRenders(opts: {
       sequenceId: opts.sequenceId,
     });
     reportReservationShort({
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       sequenceId: opts.sequenceId,
       neededMicros: remainingWork,
       remainingMicros: ZERO_MICROS,
@@ -67,7 +67,7 @@ export async function gateStoryboardRenders(opts: {
   if (grown.ok) return { spawnRenders: true };
 
   reportReservationShort({
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequenceId: opts.sequenceId,
     neededMicros: extra,
     remainingMicros: peek.remaining,

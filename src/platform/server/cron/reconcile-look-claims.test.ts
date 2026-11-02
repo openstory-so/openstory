@@ -12,7 +12,7 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { reconcileLookSheetClaimsPass } from './reconcile-all';
 
@@ -22,7 +22,7 @@ let db: Database;
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
-  await db.insert(teams).values({ id: TEAM_ID, name: 'T', slug: 't' });
+  await db.insert(organization).values({ id: TEAM_ID, name: 'T', slug: 't' });
 });
 afterAll(() => closeDb());
 beforeEach(async () => {
@@ -36,7 +36,7 @@ async function look(id: string, claim: string | null, ageMs: number) {
   // A bare character row: the pass reads only the look and its sheets.
   await db.insert(characters).values({
     id,
-    teamId: TEAM_ID,
+    organizationId: TEAM_ID,
     legacyName: 'unused',
     selectedBibleVersionId: id,
   });

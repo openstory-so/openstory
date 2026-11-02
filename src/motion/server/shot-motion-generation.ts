@@ -89,7 +89,7 @@ export async function generateShotMotion(
   context: ShotEditContext,
   data: z.infer<typeof generateMotionSchema>
 ) {
-  const { shot, frame, sequence, teamId } = context;
+  const { shot, frame, sequence, organizationId } = context;
 
   // Explicit empty/whitespace override is refused before still/model
   // guards so a stale tab gets the same sentence as the disabled button.
@@ -563,7 +563,7 @@ export async function generateShotMotion(
       );
       const workflowInput: BatchMotionMusicWorkflowInput = {
         userId: context.user.id,
-        teamId,
+        organizationId,
         sequenceId: sequence.id,
         reservationId,
         includeMusic: false,

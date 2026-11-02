@@ -213,7 +213,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
   ): Promise<UpdateStaleShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
-    const { userId, teamId, sequenceId, plan: payloadPlan } = input;
+    const { userId, organizationId, sequenceId, plan: payloadPlan } = input;
     if (!sequenceId) {
       throw new WorkflowValidationError('Sequence ID is required');
     }
@@ -925,13 +925,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const enforcement =
             await scopedDb.liveRead.compliance.listEnforcementFor(
               userId,
-              teamId
+              organizationId
             );
           await triggerWorkflow<ShotVariantWorkflowInput>(
             '/variant-image',
             {
               userId,
-              teamId,
+              organizationId,
               sequenceId,
               shotId: target.shotId,
               frameId: imageInput.frameId,
@@ -1354,7 +1354,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
             childPayload: {
               userId,
-              teamId,
+              organizationId,
               sequenceId,
               reservationId: input.reservationId,
               scenes: dialogueSpeech.scenes,
@@ -1590,7 +1590,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     childId: `shot-spec-rewrite:${sequenceId}:${target.shotId}`,
                     childPayload: {
                       userId,
-                      teamId,
+                      organizationId,
                       sequenceId,
                       shotId: target.shotId,
                       frameId: target.frameId,
@@ -1893,7 +1893,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 childId: `music-prompt:${sequenceId}`,
                 childPayload: {
                   userId,
-                  teamId,
+                  organizationId,
                   sequenceId,
                   sceneSummaries: music.sceneSummaries,
                   analysisModelId: music.analysisModelId,
@@ -1950,7 +1950,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   childId: `music:${sequenceId}${suffix}`,
                   childPayload: {
                     userId,
-                    teamId,
+                    organizationId,
                     sequenceId,
                     prompt,
                     tags,
@@ -2033,7 +2033,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       ? [
           ...buildMotionRender({
             userId,
-            teamId,
+            organizationId,
             sequenceId,
             reservationId: input.reservationId,
             shots: renderShots
@@ -2045,7 +2045,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }),
           ...buildMotionRender({
             userId,
-            teamId,
+            organizationId,
             sequenceId,
             reservationId: input.reservationId,
             shots: renderShots.filter((shot) => leftoverGrok.has(shot.shotId)),
@@ -2053,7 +2053,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         ]
       : buildMotionRender({
           userId,
-          teamId,
+          organizationId,
           sequenceId,
           reservationId: input.reservationId,
           shots: renderShots,

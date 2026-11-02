@@ -14,7 +14,11 @@ import {
   PORTRAIT_RIGHTS_V1,
   statementHash,
 } from '@/platform/compliance/attestations';
-import { teams, uploadAttestations, user } from '@/platform/server/db/schema';
+import {
+  organization,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { createComplianceMethods } from './compliance';
 
@@ -34,7 +38,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(uploadAttestations);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   owner.id = generateId();
@@ -42,7 +46,7 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values([{ id: owner.id, name: owner.name, email: owner.email }]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([team]);
 });
 
 describe('listForSubject', () => {
@@ -55,7 +59,7 @@ describe('listForSubject', () => {
 
     const base = {
       userId: owner.id,
-      teamId: team.id,
+      organizationId: team.id,
       subjectType: 'uploaded_image' as const,
       subjectId,
       attestedAt,

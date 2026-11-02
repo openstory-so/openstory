@@ -24,7 +24,7 @@ import { getServerAppUrl } from '@/platform/server/env/environment';
 // ============================================================================
 
 const initiateOAuthInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 /**
@@ -41,7 +41,7 @@ export const initiateOpenRouterOAuthFn = createServerFn({ method: 'POST' })
 
     const { url, state } = await buildAuthorizationUrl(
       callbackUrl,
-      context.teamId,
+      context.organizationId,
       context.user.id
     );
 

@@ -80,7 +80,7 @@ function makeScopedDb(claimId: string | null) {
 
 const input: DialogueTakeWorkflowInput = {
   userId: 'user-1',
-  teamId: 'team-1',
+  organizationId: 'team-1',
   sequenceId: 'seq-1',
   shotId: 'shot-1',
   reservationId: 'res-1',

@@ -15,7 +15,7 @@ import { resolveSceneForShotFromDb } from './scene-script';
 /** The sequence fields `getWithSequence` selects. */
 type ShotSequence = {
   id: string;
-  teamId: string;
+  organizationId: string;
   title: string;
   /** Narrow, not `string`: staleness defers while the sequence is
    * 'processing' (#1121), and that check must not be a string compare. */
@@ -46,7 +46,7 @@ export type ShotTarget = {
 export type ShotEditContext = ShotTarget & {
   scopedDb: ScopedDb;
   user: Pick<User, 'id'>;
-  teamId: string;
+  organizationId: string;
 };
 
 /**

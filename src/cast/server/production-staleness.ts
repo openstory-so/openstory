@@ -99,7 +99,7 @@ export async function locationSheetStaleness(args: {
     scopedDb,
     sequence,
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     location,
     preloaded: rows,
   });
@@ -195,7 +195,7 @@ export async function lookSheetStaleness(args: {
         scopedDb,
         sequence,
         userId: scopedDb.userId,
-        teamId: scopedDb.teamId,
+        organizationId: scopedDb.organizationId,
         character: owner,
         lookId: character.lookId,
       },

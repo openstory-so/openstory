@@ -263,7 +263,7 @@ async function fetchSafeImage(
 }
 
 export type IngestedImage = {
-  /** Bucket-relative key, `<teamId>/<prefix>/<id>.<ext>`. */
+  /** Bucket-relative key, `<organizationId>/<prefix>/<id>.<ext>`. */
   storagePath: string;
   /** Public URL of the uploaded object. */
   publicUrl: string;
@@ -297,7 +297,7 @@ export type IngestPrefix = 'temp' | 'uploads';
 export async function ingestImageToBucket(
   url: string,
   bucket: StorageBucket,
-  teamId: string,
+  organizationId: string,
   pathPrefix: IngestPrefix,
   source?: ImageFetchSource
 ): Promise<IngestedImage> {
@@ -305,7 +305,7 @@ export async function ingestImageToBucket(
     url,
     source?.label ?? DEFAULT_IMAGE_LABEL
   );
-  const storagePath = `${teamId}/${pathPrefix}/${generateId()}.${extension}`;
+  const storagePath = `${organizationId}/${pathPrefix}/${generateId()}.${extension}`;
   await uploadFile(bucket, storagePath, bytes, { contentType });
   return {
     storagePath,

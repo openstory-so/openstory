@@ -38,7 +38,7 @@ const logger = getLogger(['openstory', 'api-v1']);
 export type EnhanceContext = {
   scopedDb: ScopedDb;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
 };
 
 /**
@@ -97,7 +97,7 @@ export async function buildEnhanceGenerator(
   return streamScriptEnhancement(data, {
     scopedDb: ctx.scopedDb,
     userId: ctx.user.id,
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
   });
 }
 

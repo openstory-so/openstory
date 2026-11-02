@@ -18,7 +18,7 @@ const serverManagedPayload = {
   id: 'attacker-chosen-id',
   isPublic: true,
   isTemplate: true,
-  teamId: 'other-team',
+  organizationId: 'other-team',
   createdBy: 'other-user',
   createdAt: new Date(0),
   updatedAt: new Date(0),

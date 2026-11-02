@@ -96,7 +96,7 @@ export const callMcpReadToolFn = createServerFn({ method: 'POST' })
     const caller: AssistantCaller = {
       scopedDb: context.scopedDb,
       user: context.user,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       teamName: await context.scopedDb.assistant.teamName(),
       origin: new URL(request.url).origin,
       request,

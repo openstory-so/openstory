@@ -59,7 +59,7 @@ const { runOneShotCreate } = await import('./create');
 function makeStyle(): Style {
   return {
     id: 'style-1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
@@ -120,7 +120,7 @@ describe('runOneShotCreate', () => {
 
   const ctx = {
     user: { id: 'user-1' },
-    teamId: 'team-1',
+    organizationId: 'team-1',
     request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
     scopedDb: asStub<ScopedDb>({
       styles: { list: async () => [makeStyle()] },
@@ -421,7 +421,7 @@ describe('runOneShotCreate', () => {
         rendering: 'Photoreal live action',
         photoUrls: [expect.stringContaining('/r2/locations/team-1/uploads/')],
       },
-      { userId: 'user-1', teamId: 'team-1', triggerSheet: false },
+      { userId: 'user-1', organizationId: 'team-1', triggerSheet: false },
     ]);
     expect(mocks.createTeamLocation.mock.calls[1]?.[1]).toEqual(
       expect.objectContaining({ rendering: '3D animated, Pixar-like' })
@@ -441,7 +441,7 @@ describe('runOneShotCreate', () => {
     expect(mocks.triggerTeamLocationSheet).toHaveBeenCalledTimes(2);
     expect(mocks.triggerTeamLocationSheet).toHaveBeenCalledWith(
       expect.anything(),
-      { userId: 'user-1', teamId: 'team-1', locationId: 'loc-Pier' }
+      { userId: 'user-1', organizationId: 'team-1', locationId: 'loc-Pier' }
     );
     expect(locationDelete).not.toHaveBeenCalled();
   });

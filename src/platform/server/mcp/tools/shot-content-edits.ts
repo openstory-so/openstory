@@ -67,7 +67,12 @@ export async function shotEdit(
   ) {
     throw new NotFoundError('Shot not found in this sequence.');
   }
-  return { ...target, scopedDb, user: { id: userId }, teamId: scopedDb.teamId };
+  return {
+    ...target,
+    scopedDb,
+    user: { id: userId },
+    organizationId: scopedDb.organizationId,
+  };
 }
 
 const specVerdict = z

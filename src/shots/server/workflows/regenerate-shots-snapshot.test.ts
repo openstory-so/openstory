@@ -74,7 +74,7 @@ function makeCharacter(
     styling: null,
     // Cast in its sequence (#2017).
     castId: 'cast-1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     firstMentionLine: null,

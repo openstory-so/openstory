@@ -56,7 +56,7 @@ export const attestUploadsFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     for (const claim of data.attestations) {
-      requireCheckable(claim.url, context.teamId);
+      requireCheckable(claim.url, context.organizationId);
     }
     await attestUploads(context.scopedDb, data.attestations, requestContext());
     return { attested: data.attestations.length };

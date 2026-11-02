@@ -228,7 +228,7 @@ export async function selectShotDialogueSection(
   const cut = await cutAudioSection({
     storageKey: section.speech.storageKey,
     speechId: section.speechId,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
     fromSeconds: section.fromSeconds,
     toSeconds: section.toSeconds,
@@ -374,7 +374,7 @@ export async function regenerateShotDialogue(
   return releaseReservationOnThrow(scopedDb, reservationId, async () => {
     const input: DialogueAudioWorkflowInput = {
       userId: user.id,
-      teamId: sequence.teamId,
+      organizationId: sequence.organizationId,
       sequenceId: sequence.id,
       reservationId,
       ownsReservation: true,

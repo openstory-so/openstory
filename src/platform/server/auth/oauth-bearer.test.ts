@@ -95,7 +95,7 @@ describe('verifyOAuthAccessToken', () => {
     const verified = await verifyOAuthAccessToken(token, API_AUDIENCE);
     expect(verified).toEqual({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       clientId: 'c1',
       scopes: ['sequences:read', 'generate'],
       audience: [API_AUDIENCE],
@@ -160,7 +160,7 @@ describe('verifyOAuthAccessToken', () => {
 
   it('tolerates a missing team claim', async () => {
     const verified = await verifyOAuthAccessToken(await mint({}), API_AUDIENCE);
-    expect(verified?.teamId).toBeNull();
+    expect(verified?.organizationId).toBeNull();
   });
 });
 

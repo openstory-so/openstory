@@ -27,6 +27,7 @@ import {
   createSystemAdminScopedDb,
   getSequenceByIdUnscoped,
   getUserTeamMembership,
+  rememberActiveOrganization,
   type ScopedDb,
 } from '@/platform/server/db/scoped';
 import {
@@ -58,7 +59,7 @@ export type AuthContext = {
 };
 
 export type TeamContext = AuthContext & {
-  teamId: string;
+  organizationId: string;
   scopedDb: ScopedDb;
 };
 
@@ -252,26 +253,37 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         }
       }
 
-      const resolved = oauth?.teamId
+      const activeOrganizationId =
+        principal.session?.session.activeOrganizationId;
+      const resolved = oauth?.organizationId
         ? null
-        : await resolveTeamAndCompliance(principal.user.id, request.method);
-      const team = oauth?.teamId
-        ? await getUserTeamMembership(principal.user.id, oauth.teamId)
+        : await resolveTeamAndCompliance(
+            principal.user.id,
+            request.method,
+            activeOrganizationId
+          );
+      const team = oauth?.organizationId
+        ? await getUserTeamMembership(principal.user.id, oauth.organizationId)
         : resolved?.team;
 
       if (!team) {
         throw authErrorResponse(
           403,
           'NO_TEAM',
-          oauth?.teamId
-            ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
-            : 'No team is associated with this account.'
+          oauth?.organizationId
+            ? 'This token was issued for an organization you no longer belong to. Re-authorize the app.'
+            : 'No organization is associated with this account.'
         );
       }
+      await rememberActiveOrganization(
+        principal.session?.session.id,
+        activeOrganizationId,
+        team.organizationId
+      );
 
       const compliance =
         resolved?.compliance ??
-        (await loadComplianceState(principal.user.id, team.teamId));
+        (await loadComplianceState(principal.user.id, team.organizationId));
       if (!compliance.enforcement.canAccess) {
         throw authErrorResponse(
           403,
@@ -294,8 +306,8 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
           user: principal.user,
           session: principal.session,
           oauth: principal.oauth,
-          teamId: team.teamId,
-          scopedDb: createScopedDb(team.teamId, principal.user.id),
+          organizationId: team.organizationId,
+          scopedDb: createScopedDb(team.organizationId, principal.user.id),
         },
       });
     } finally {
@@ -353,14 +365,21 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
     const request = getRequest();
+    const activeOrganizationId = context.session.session.activeOrganizationId;
     const { team, compliance } = await resolveTeamAndCompliance(
       context.user.id,
-      request.method
+      request.method,
+      activeOrganizationId
     );
 
     if (!team || !compliance) {
-      throw new Error('No team found for user');
+      throw new Error('No organization found for user');
     }
+    await rememberActiveOrganization(
+      context.session.session.id,
+      activeOrganizationId,
+      team.organizationId
+    );
 
     if (!compliance.enforcement.canAccess) {
       throw new AccountRestrictedError(
@@ -383,8 +402,8 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
 
     return next({
       context: {
-        teamId: team.teamId,
-        scopedDb: createScopedDb(team.teamId, context.user.id),
+        organizationId: team.organizationId,
+        scopedDb: createScopedDb(team.organizationId, context.user.id),
       },
     });
   });
@@ -395,7 +414,7 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
 
 /**
  * System admin middleware - requires ADMIN_EMAILS env var match
- * Extends authWithTeamMiddleware so context includes teamId
+ * Extends authWithTeamMiddleware so context includes organizationId
  */
 export const systemAdminMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
@@ -435,11 +454,15 @@ export const castAccessMiddleware = createMiddleware({ type: 'function' })
   .server(async ({ next, context, data }) => {
     const loaded: {
       sequence: Sequence | null;
-      teamId: string;
+      organizationId: string;
       scopedDb: ScopedDb;
     } =
       data.sequenceId === null
-        ? { sequence: null, teamId: context.teamId, scopedDb: context.scopedDb }
+        ? {
+            sequence: null,
+            organizationId: context.organizationId,
+            scopedDb: context.scopedDb,
+          }
         : await loadSequence(context, data.sequenceId);
     return next({ context: loaded });
   });
@@ -448,48 +471,48 @@ export const castAccessMiddleware = createMiddleware({ type: 'function' })
 async function loadSequence(
   context: {
     scopedDb: ScopedDb;
-    teamId: string;
+    organizationId: string;
     user: { id: string; email: string };
   },
   sequenceId: string
 ) {
   let sequence = await context.scopedDb.sequences.getById(sequenceId);
-  let { teamId, scopedDb } = context;
+  let { organizationId, scopedDb } = context;
 
   if (!sequence && isSystemAdmin(context.user.email)) {
     sequence = await getSequenceByIdUnscoped(sequenceId);
     if (sequence) {
-      teamId = sequence.teamId;
-      scopedDb = createScopedDb(sequence.teamId, context.user.id);
+      organizationId = sequence.organizationId;
+      scopedDb = createScopedDb(sequence.organizationId, context.user.id);
     }
   }
 
   if (!sequence) {
     throw new NotFoundError('Sequence not found');
   }
-  return { sequence, teamId, scopedDb };
+  return { sequence, organizationId, scopedDb };
 }
 
 /**
  * Team member access middleware
  * Verifies user has access to the specified team
- * Requires teamId in input data
+ * Requires organizationId in input data
  */
 export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    if (data.teamId !== context.teamId) {
-      await requireTeamMemberAccess(context.user.id, data.teamId);
+    if (data.organizationId !== context.organizationId) {
+      await requireTeamMemberAccess(context.user.id, data.organizationId);
     }
 
     return next({
       context: {
-        teamId: data.teamId,
+        organizationId: data.organizationId,
         scopedDb:
-          data.teamId === context.teamId
+          data.organizationId === context.organizationId
             ? context.scopedDb
-            : createScopedDb(data.teamId, context.user.id),
+            : createScopedDb(data.organizationId, context.user.id),
       },
     });
   });
@@ -497,21 +520,21 @@ export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
 /**
  * Team admin access middleware
  * Verifies user has admin access to the specified team
- * Requires teamId in input data
+ * Requires organizationId in input data
  */
 export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    await requireTeamAdminAccess(context.user.id, data.teamId);
+    await requireTeamAdminAccess(context.user.id, data.organizationId);
 
     return next({
       context: {
-        teamId: data.teamId,
+        organizationId: data.organizationId,
         scopedDb:
-          data.teamId === context.teamId
+          data.organizationId === context.organizationId
             ? context.scopedDb
-            : createScopedDb(data.teamId, context.user.id),
+            : createScopedDb(data.organizationId, context.user.id),
       },
     });
   });
@@ -519,21 +542,21 @@ export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
 /**
  * Team owner access middleware
  * Verifies user has owner access to the specified team
- * Requires teamId in input data
+ * Requires organizationId in input data
  */
 export const teamOwnerAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    await requireTeamOwnerAccess(context.user.id, data.teamId);
+    await requireTeamOwnerAccess(context.user.id, data.organizationId);
 
     return next({
       context: {
-        teamId: data.teamId,
+        organizationId: data.organizationId,
         scopedDb:
-          data.teamId === context.teamId
+          data.organizationId === context.organizationId
             ? context.scopedDb
-            : createScopedDb(data.teamId, context.user.id),
+            : createScopedDb(data.organizationId, context.user.id),
       },
     });
   });

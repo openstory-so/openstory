@@ -70,7 +70,13 @@ const SERVER_ONLY = [
 // browser build resolves it to a runtime shim with no baked-in secrets.
 
 /** Client-side entry points of packages whose root is server-only. */
-const CLIENT_SAFE = ['better-auth/client', 'better-auth/react'];
+const CLIENT_SAFE = [
+  'better-auth/client',
+  'better-auth/react',
+  // The organization client and server share this access-control DSL.
+  'better-auth/plugins/access',
+  'better-auth/plugins/organization/access',
+];
 
 function isClientRootFile(file: string): boolean {
   const rel = file.replace(`${SRC}/`, '');

@@ -8,7 +8,7 @@ const deleteOAuthConsent = vi.fn();
 const oauth2Consent = vi.fn();
 const authHandler = vi.fn();
 const revokeOAuthGrantTokens = vi.fn();
-const resolveUserTeam = vi.fn();
+const getUserTeamMembership = vi.fn();
 
 vi.doMock('./config', () => ({
   getAuth: () => ({
@@ -22,7 +22,7 @@ vi.doMock('./config', () => ({
   }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  resolveUserTeam,
+  getUserTeamMembership,
   revokeOAuthGrantTokens,
 }));
 
@@ -48,8 +48,11 @@ beforeEach(() => {
   oauth2Consent.mockReset();
   authHandler.mockReset();
   revokeOAuthGrantTokens.mockReset();
-  resolveUserTeam.mockReset();
-  resolveUserTeam.mockResolvedValue({ teamId: 'team_1', teamName: 'T' });
+  getUserTeamMembership.mockReset();
+  getUserTeamMembership.mockResolvedValue({
+    organizationId: 'team_1',
+    teamName: 'T',
+  });
 });
 
 describe('toClientSummary', () => {
@@ -67,12 +70,14 @@ describe('loadOAuthConsentContext', () => {
     );
     const result = await loadOAuthConsentContext({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       clientId: 'gone',
       scope: '',
       headers: new Headers(),
     });
     expect(result.client).toBeNull();
+    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
+    expect(result.team).toEqual({ id: 'team_1', name: 'T' });
   });
 
   it('rethrows non-404 client lookup errors', async () => {
@@ -82,7 +87,7 @@ describe('loadOAuthConsentContext', () => {
     await expect(
       loadOAuthConsentContext({
         userId: 'user_1',
-        teamId: 'team_1',
+        organizationId: 'team_1',
         clientId: 'c1',
         scope: '',
         headers: new Headers(),
@@ -193,7 +198,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin }),
@@ -209,7 +214,7 @@ describe('decideOAuthConsent', () => {
     );
     await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
       headers: new Headers({ origin }),
@@ -230,7 +235,7 @@ describe('decideOAuthConsent', () => {
     );
     await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({
@@ -256,7 +261,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin }),
@@ -272,7 +277,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin: 'http://localhost:3002' }),
@@ -289,7 +294,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       accept: true,
       oauthQuery: signedQuery,
       headers: new Headers({ origin }),
@@ -310,7 +315,7 @@ describe('decideOAuthConsent', () => {
     await expect(
       decideOAuthConsent({
         userId: 'user_1',
-        teamId: 'team_1',
+        organizationId: 'team_1',
         accept: true,
         oauthQuery: 'client_id=c1',
         headers: new Headers({ origin }),

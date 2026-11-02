@@ -14,8 +14,8 @@ import {
   generatedAssets,
   sequences,
   styles,
-  teamMembers,
-  teams,
+  member,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
@@ -36,7 +36,7 @@ const styleConfig = {
 
 // One team (owner "Tanner") whose sequences all have a NULL creator, plus an
 // unrelated team, so we can assert both "found by member email" and "other
-// teams excluded".
+// organization excluded".
 const ids = {
   tannerUser: '',
   tannerTeammate: '',
@@ -59,8 +59,8 @@ async function seed() {
   await db.delete(generatedAssets);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teamMembers);
-  await db.delete(teams);
+  await db.delete(member);
+  await db.delete(organization);
   await db.delete(user);
 
   ids.tannerUser = generateId();
@@ -86,20 +86,47 @@ async function seed() {
     },
     { id: ids.otherUser, name: 'Someone Else', email: 'other@example.com' },
   ]);
-  await db.insert(teams).values([
+  await db.insert(organization).values([
     { id: ids.tannerTeam, name: 'Tanner', slug: 'tanner' },
     { id: ids.otherTeam, name: 'Other', slug: 'other' },
   ]);
-  await db.insert(teamMembers).values([
-    { teamId: ids.tannerTeam, userId: ids.tannerUser, role: 'owner' },
-    { teamId: ids.tannerTeam, userId: ids.tannerTeammate, role: 'member' },
-    { teamId: ids.otherTeam, userId: ids.otherUser, role: 'owner' },
+  const joined = new Date();
+  await db.insert(member).values([
+    {
+      id: ids.tannerUser,
+      organizationId: ids.tannerTeam,
+      userId: ids.tannerUser,
+      role: 'owner',
+      createdAt: joined,
+    },
+    {
+      id: ids.tannerTeammate,
+      organizationId: ids.tannerTeam,
+      userId: ids.tannerTeammate,
+      role: 'member',
+      createdAt: joined,
+    },
+    {
+      id: ids.otherUser,
+      organizationId: ids.otherTeam,
+      userId: ids.otherUser,
+      role: 'owner',
+      createdAt: joined,
+    },
   ]);
   const [tannerStyle, otherStyle] = await db
     .insert(styles)
     .values([
-      { teamId: ids.tannerTeam, name: 'tanner-style', config: styleConfig },
-      { teamId: ids.otherTeam, name: 'other-style', config: styleConfig },
+      {
+        organizationId: ids.tannerTeam,
+        name: 'tanner-style',
+        config: styleConfig,
+      },
+      {
+        organizationId: ids.otherTeam,
+        name: 'other-style',
+        config: styleConfig,
+      },
     ])
     .returning();
   if (!tannerStyle || !otherStyle) {
@@ -112,21 +139,21 @@ async function seed() {
   await db.insert(sequences).values([
     {
       id: ids.liveSeq,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       title: 'Hidden Divide',
       styleId: ids.tannerStyle,
       status: 'completed',
     },
     {
       id: ids.archivedSeq,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       title: 'Old Teaser',
       styleId: ids.tannerStyle,
       status: 'archived',
     },
     {
       id: ids.otherSeq,
-      teamId: ids.otherTeam,
+      organizationId: ids.otherTeam,
       title: 'Unrelated',
       styleId: ids.otherStyle,
       status: 'completed',
@@ -136,7 +163,7 @@ async function seed() {
   await db.insert(generatedAssets).values([
     {
       id: ids.tannerImage,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -148,7 +175,7 @@ async function seed() {
     },
     {
       id: ids.tannerTeammateImage,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       userId: ids.tannerTeammate,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -160,7 +187,7 @@ async function seed() {
     },
     {
       id: ids.tannerVideo,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/kling-video',
@@ -172,7 +199,7 @@ async function seed() {
     },
     {
       id: ids.tannerCatalog,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerTeam,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -184,7 +211,7 @@ async function seed() {
     },
     {
       id: ids.otherImage,
-      teamId: ids.otherTeam,
+      organizationId: ids.otherTeam,
       userId: ids.otherUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -219,7 +246,7 @@ describe('createAdminMethods.getAllSequences', () => {
     expect(rows.map((r) => r.id)).toEqual([ids.liveSeq]);
   });
 
-  it('excludes archived sequences and other teams', async () => {
+  it('excludes archived sequences and other organizations', async () => {
     const admin = createAdminMethods(db);
     const rows = await admin.getAllSequences({ search: 'tanner' });
 
@@ -237,7 +264,7 @@ describe('createAdminMethods.getAllSequences', () => {
 });
 
 describe('createAdminMethods.getAllStudioAssets', () => {
-  it('lists every studio asset across teams when unfiltered', async () => {
+  it('lists every studio asset across organizations when unfiltered', async () => {
     const admin = createAdminMethods(db);
     const { assets, nextCursor } = await admin.getAllStudioAssets();
 
@@ -271,7 +298,7 @@ describe('createAdminMethods.getAllStudioAssets', () => {
     ).toBe('teammate@example.com');
   });
 
-  it('excludes catalog runs, other teams, and the other activity', async () => {
+  it('excludes catalog runs, other organizations, and the other activity', async () => {
     const admin = createAdminMethods(db);
     const { assets } = await admin.getAllStudioAssets({
       activity: 'video',

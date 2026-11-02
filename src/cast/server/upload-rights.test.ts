@@ -16,7 +16,11 @@ import {
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
-import { teams, uploadAttestations, user } from '@/platform/server/db/schema';
+import {
+  organization,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import { sha256Hex } from '@/platform/compliance/hash';
 import {
   LIKENESS_CLEARED_V1,
@@ -62,7 +66,7 @@ function verdict(subjectKind: 'human' | 'animated' | 'other') {
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db.insert(organization).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -94,7 +98,7 @@ describe('classifyUpload', () => {
     );
     expect(await db.select().from(uploadAttestations)).toMatchObject([
       {
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
         userId: USER_ID,
         subjectType: 'uploaded_image',
         subjectId: await sha256Hex(url),
@@ -286,7 +290,7 @@ describe('attestUploads', () => {
 
     const base = {
       userId: USER_ID,
-      teamId: TEAM_ID,
+      organizationId: TEAM_ID,
       subjectType: 'uploaded_image' as const,
       subjectId,
       attestedAt,

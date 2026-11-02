@@ -111,7 +111,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
-    const { assetId, teamId, userId } = event.payload;
+    const { assetId, organizationId, userId } = event.payload;
     const { imageModel } = input;
     const imageSize = aspectRatioToImageSize(input.aspectRatio);
 
@@ -152,7 +152,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       }
       const upload = await uploadStudioImage({
         imageUrl: generatedImageUrl,
-        teamId,
+        organizationId,
         assetId,
       });
       return { upload, metadata: result.metadata, via: result.via };
@@ -192,7 +192,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId,
+        organizationId,
         userId,
         assetKind: 'generated_asset',
         assetId,
@@ -224,7 +224,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
-    const { assetId, teamId, userId } = event.payload;
+    const { assetId, organizationId, userId } = event.payload;
     const { videoModel } = input;
 
     let videoUrl = '';
@@ -366,7 +366,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
                         : undefined;
                     const stored = await uploadStudioVideo({
                       videoUrl: url,
-                      teamId,
+                      organizationId,
                       assetId,
                       googleApiKey: googleKey?.key,
                     });
@@ -522,7 +522,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       try {
         return await uploadStudioVideo({
           videoUrl,
-          teamId,
+          organizationId,
           assetId,
           googleApiKey: googleKey?.key,
         });
@@ -585,7 +585,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId,
+        organizationId,
         userId,
         assetKind: 'generated_asset',
         assetId,
@@ -633,7 +633,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     await step.do('notify-content-feed', async () => {
       captureStudioGenerationCompleted({
         distinctId: event.payload.userId,
-        teamId: event.payload.teamId,
+        organizationId: event.payload.organizationId,
         assetId: event.payload.assetId,
         activity: input.activity,
         model: input.activity === 'image' ? input.imageModel : input.videoModel,

@@ -18,7 +18,7 @@ import type { ModelMessage, TokenUsage } from '@tanstack/ai';
 import type { InterruptRecord, RunStatus } from '@tanstack/ai-persistence';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 export const assistantThreads = snakeCase.table(
   'assistant_threads',
@@ -28,9 +28,9 @@ export const assistantThreads = snakeCase.table(
       .primaryKey()
       .notNull(),
     // No cascade (AGENTS.md, D1 table-rebuild trap): cleanup is app code.
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'restrict' }),
@@ -45,7 +45,7 @@ export const assistantThreads = snakeCase.table(
   },
   (table) => [
     index('idx_assistant_threads_team_user').on(
-      table.teamId,
+      table.organizationId,
       table.userId,
       table.updatedAt
     ),

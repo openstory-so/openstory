@@ -241,7 +241,7 @@ export async function resolveLocationIds(
  * request stays fast.
  */
 export async function ingestElements(
-  teamId: string,
+  organizationId: string,
   elements: ApiCreateSequenceInput['elements']
 ): Promise<DraftElementUploadInput[]> {
   if (!elements || elements.length === 0) return [];
@@ -251,7 +251,7 @@ export async function ingestElements(
       const { storagePath, publicUrl, extension } = await ingestImageToBucket(
         el.url,
         STORAGE_BUCKETS.ELEMENTS,
-        teamId,
+        organizationId,
         DRAFT_ELEMENT_UPLOAD_PREFIX,
         {
           label: el.token

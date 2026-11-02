@@ -55,7 +55,7 @@ function attachDrafts(
 ) {
   return attachDraftElementUploads({
     scopedDb: makeScopedDb(),
-    teamId: 'team-1',
+    organizationId: 'team-1',
     userId: 'user-1',
     sequenceId,
     uploads,
@@ -157,7 +157,7 @@ describe('attachElementUpload', () => {
       '/element-vision',
       expect.objectContaining({
         imageUrl: '/r2/elements/team-1/uploads/up-1.png',
-        teamId: 'team-1',
+        organizationId: 'team-1',
         userId: 'user-1',
       })
     );
@@ -169,7 +169,7 @@ describe('attachElementUpload', () => {
     await expect(
       attachElementUpload({
         scopedDb: makeScopedDb(),
-        teamId: 'team-1',
+        organizationId: 'team-1',
         userId: 'user-1',
         sequenceId: 'seq-1',
         path: 'elements/team-1/seq-1/el-1.png',
@@ -201,7 +201,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     await expect(
       assertDraftElementUploadsAttachable({
         scopedDb: makeScopedDb(),
-        teamId: 'team-1',
+        organizationId: 'team-1',
         uploads: [
           makeUpload(),
           makeUpload({ tempPath: 'elements/team-1/uploads/gone.png' }),
@@ -218,7 +218,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     await expect(
       assertDraftElementUploadsAttachable({
         scopedDb: makeScopedDb(),
-        teamId: 'team-1',
+        organizationId: 'team-1',
         uploads: [makeUpload()],
       })
     ).rejects.toThrow('not checked');
@@ -229,7 +229,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     mockRequireRights.mockClear();
     await assertDraftElementUploadsAttachable({
       scopedDb: makeScopedDb(),
-      teamId: 'team-1',
+      organizationId: 'team-1',
       uploads: [
         makeUpload({
           tempPath: 'elements/team-1/uploads/walk.mp4',
@@ -244,7 +244,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     mockRequireRights.mockClear();
     await assertDraftElementUploadsAttachable({
       scopedDb: makeScopedDb(),
-      teamId: 'team-1',
+      organizationId: 'team-1',
       uploads: [
         makeUpload({
           tempPath: 'elements/team-1/uploads/line.mp3',
@@ -261,7 +261,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     await expect(
       assertDraftElementUploadsAttachable({
         scopedDb: makeScopedDb(),
-        teamId: 'team-1',
+        organizationId: 'team-1',
         uploads: [
           makeUpload({
             tempPath: 'elements/team-1/uploads/still.png',

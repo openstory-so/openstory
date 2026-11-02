@@ -42,7 +42,7 @@ export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
   .handler(async ({ data, context }): Promise<OAuthConsentContext> =>
     loadOAuthConsentContext({
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       clientId: data.clientId,
       scope: data.scope,
       redirectUri: data.redirectUri,
@@ -66,7 +66,7 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }): Promise<{ url: string }> =>
     decideOAuthConsent({
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       accept: data.accept,
       oauthQuery: data.oauthQuery,
       headers: getRequestHeaders(),

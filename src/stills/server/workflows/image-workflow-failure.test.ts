@@ -69,7 +69,7 @@ function fail(
 ) {
   const payload: ImageWorkflowInput = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     variantOnly: false,
     sequenceId: 'seq_1',
     prompt: 'p',

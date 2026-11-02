@@ -18,7 +18,7 @@ const providerSchema = z.enum(API_KEY_PROVIDERS);
 // ============================================================================
 
 const listApiKeysInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 /**
@@ -36,7 +36,7 @@ export const listApiKeysFn = createServerFn({ method: 'GET' })
 // ============================================================================
 
 const saveApiKeyInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
   provider: providerSchema,
   apiKey: z.string().min(1, 'API key is required'),
 });
@@ -72,7 +72,7 @@ export const saveApiKeyFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 const deleteApiKeyInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
   provider: providerSchema,
 });
 
@@ -92,7 +92,7 @@ export const deleteApiKeyFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 const checkApiKeyStatusInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 /**
@@ -127,7 +127,7 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
 // ============================================================================
 
 const revalidateApiKeyInputSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
   provider: providerSchema,
 });
 

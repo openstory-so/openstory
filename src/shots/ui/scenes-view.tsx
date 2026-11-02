@@ -1854,7 +1854,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                         publish={
                           sequence
                             ? {
-                                teamId: sequence.teamId,
+                                organizationId: sequence.organizationId,
                                 sequenceId: sequence.id,
                                 defaultTitle: sequence.title,
                               }

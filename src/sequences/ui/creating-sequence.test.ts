@@ -14,7 +14,7 @@ const sessionStorageMock = {
 
 const INPUT: Omit<CreatingSequence, 'parkedAt'> = {
   payload: {
-    teamId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    organizationId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
     script: 'INT. LAUNDROMAT - NIGHT. A courier waits.',
     styleId: '01ARZ3NDEKTSV4RRFFQ69G5FB0',
     aspectRatio: '9:16',

@@ -34,7 +34,7 @@ test.describe('Characters page', () => {
   test.beforeEach(async ({ testUser }) => {
     const suffix = crypto.randomUUID().slice(0, 8);
     sequence = await createTestSequence(
-      testUser.teamId,
+      testUser.organizationId,
       testUser.id,
       `E2E Characters ${suffix}`
     );
@@ -97,7 +97,7 @@ test.describe('Characters page', () => {
     testUser,
   }) => {
     const other = await createTestSequence(
-      testUser.teamId,
+      testUser.organizationId,
       testUser.id,
       `E2E Second ${crypto.randomUUID().slice(0, 8)}`
     );

@@ -10,6 +10,7 @@ import { IS_PRODUCTION_DEPLOYMENT } from '@/platform/flags';
 import { env as workerEnv } from 'cloudflare:workers';
 import { AbuseReportEmail } from './abuse-report-email';
 import { FeedbackEmail } from './feedback-email';
+import { OrganizationInvitationEmail } from './organization-invitation-email';
 import { OtpEmail } from './otp-email';
 import { renderEmail } from './render-email';
 import { getLogger } from '@/platform/logger';
@@ -116,6 +117,27 @@ export async function sendOtpEmail(
   });
 }
 
+/** Invite to an organization (#813). The link is the invitation id. */
+export async function sendOrganizationInvitationEmail(params: {
+  to: string;
+  organizationName: string;
+  inviterName: string;
+  acceptUrl: string;
+}): Promise<{ success: boolean; error?: string }> {
+  return sendEmail({
+    to: params.to,
+    subject: `Join ${params.organizationName}`,
+    body: (
+      <OrganizationInvitationEmail
+        appName={getAppName()}
+        organizationName={params.organizationName}
+        inviterName={params.inviterName}
+        acceptUrl={params.acceptUrl}
+      />
+    ),
+  });
+}
+
 /** Queue watcher for `/report` intake. Lands on `ABUSE_REPORT_NOTIFY_EMAIL`. */
 export async function sendAbuseReportNotifyEmail(params: {
   to: string;
@@ -144,7 +166,7 @@ export async function sendFeedbackEmail(params: {
   to: string;
   userName: string;
   userEmail: string;
-  teamId: string;
+  organizationId: string;
   message: string;
 }): Promise<{ success: boolean; error?: string }> {
   return sendEmail({
@@ -155,7 +177,7 @@ export async function sendFeedbackEmail(params: {
         appName={getAppName()}
         userName={params.userName}
         userEmail={params.userEmail}
-        teamId={params.teamId}
+        organizationId={params.organizationId}
         message={params.message}
       />
     ),

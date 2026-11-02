@@ -23,7 +23,7 @@ import {
   markGoogleRegionBlocked,
   resetGoogleRegionBlock,
 } from '@/models/google-region';
-import { teamApiKeys, teams, user } from '@/platform/server/db/schema';
+import { teamApiKeys, organization, user } from '@/platform/server/db/schema';
 import {
   afterAll,
   beforeAll,
@@ -78,7 +78,7 @@ const { createApiKeysMethods, createApiKeysReadMethods } =
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 /**
@@ -100,12 +100,14 @@ function countingDb(): { db: Database; selects: () => number } {
 
 async function seed() {
   await db.delete(teamApiKeys);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: `t-${teamId}` });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: `t-${organizationId}` });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
@@ -132,13 +134,13 @@ beforeEach(async () => {
 
 describe('resolveKey memoization (issue #864)', () => {
   it('reads team_api_keys once across repeated resolveKey calls in one scope', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-team-123',
     });
 
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     const r1 = await scope.resolveKey('openrouter');
     const r2 = await scope.resolveKey('openrouter');
@@ -151,13 +153,13 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('decrypts per call and never caches the plaintext key', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-secret',
     });
 
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     decryptSpy.mockClear();
     await scope.resolveKey('openrouter');
@@ -171,13 +173,13 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('collapses concurrent in-flight resolves to a single read', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-team-concurrent',
     });
 
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     const [r1, r2, r3] = await Promise.all([
       scope.resolveKey('openrouter'),
@@ -192,12 +194,12 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('caches each provider independently (one read per provider)', async () => {
-    const writeScope = createApiKeysMethods(db, teamId, userId);
+    const writeScope = createApiKeysMethods(db, organizationId, userId);
     await writeScope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
     await writeScope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
 
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     await scope.resolveKey('openrouter');
     await scope.resolveKey('fal');
@@ -209,7 +211,7 @@ describe('resolveKey memoization (issue #864)', () => {
 
   it('memoizes the platform fallback when the team has no key', async () => {
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     const r1 = await scope.resolveKey('fal');
     const r2 = await scope.resolveKey('fal');
@@ -220,25 +222,28 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('re-reads in a fresh scope (cache lifetime is one scope)', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-team-456',
     });
 
     const first = countingDb();
-    await createApiKeysReadMethods(first.db, teamId).resolveKey('openrouter');
+    await createApiKeysReadMethods(first.db, organizationId).resolveKey(
+      'openrouter'
+    );
     expect(first.selects()).toBe(1);
 
     const second = countingDb();
-    const r = await createApiKeysReadMethods(second.db, teamId).resolveKey(
-      'openrouter'
-    );
+    const r = await createApiKeysReadMethods(
+      second.db,
+      organizationId
+    ).resolveKey('openrouter');
     expect(r).toEqual({ key: 'sk-team-456', source: 'team' });
     expect(second.selects()).toBe(1);
   });
 
   it('re-reads after a key is rotated within the same scope', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
 
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-v1' });
     const r1 = await scope.resolveKey('openrouter');
@@ -252,7 +257,7 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('re-reads after the key is deleted within the same scope', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
 
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-del' });
     expect(await scope.resolveKey('openrouter')).toEqual({
@@ -268,7 +273,7 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('falls back to the platform key when the team key is marked invalid', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-bad' });
     await scope.markKeyInvalid('openrouter', 'rejected by provider');
 
@@ -280,7 +285,7 @@ describe('resolveKey memoization (issue #864)', () => {
   });
 
   it('does not cache a failed resolve, so a retry can re-read', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-team-xyz',
     });
@@ -306,7 +311,7 @@ describe('resolveKey memoization (issue #864)', () => {
       },
     });
 
-    const scope = createApiKeysReadMethods(flakyDb, teamId);
+    const scope = createApiKeysReadMethods(flakyDb, organizationId);
 
     await expect(scope.resolveKey('openrouter')).rejects.toThrow(
       'D1 overloaded'
@@ -319,7 +324,7 @@ describe('resolveKey memoization (issue #864)', () => {
 
 describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   it('prefers the team OpenRouter key when present', async () => {
-    const writeScope = createApiKeysMethods(db, teamId, userId);
+    const writeScope = createApiKeysMethods(db, organizationId, userId);
     await writeScope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
     await writeScope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
 
@@ -331,7 +336,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('routes through fal when the team only has a fal key', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-only' });
 
     expect(await scope.resolveLlmKey()).toEqual({
@@ -342,7 +347,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('falls back to the platform OpenRouter key when the team has no keys', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     // toStrictEqual: `fallbackReason` must really be absent/undefined —
     // toEqual would treat `{ fallbackReason: 'x' }` as matching too few keys.
@@ -355,7 +360,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('skips an invalid team OpenRouter key and uses the fal key instead', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or-bad' });
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-good' });
     await scope.markKeyInvalid('openrouter', 'rejected by provider');
@@ -368,7 +373,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('falls back to platform with the skip reason when both team keys are invalid', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or-bad' });
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-bad' });
     await scope.markKeyInvalid('openrouter', 'openrouter rejected');
@@ -384,7 +389,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
 
   it('routes the platform fallback through fal when OPENROUTER_KEY is unset', async () => {
     testEnv.OPENROUTER_KEY = undefined;
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(await scope.resolveLlmKey()).toStrictEqual({
       key: 'platform-fal-key',
@@ -395,7 +400,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('falls back to platform with the reason when a fal-only team key is invalid', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-bad' });
     await scope.markKeyInvalid('fal', 'fal rejected');
 
@@ -410,7 +415,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('skips an undecryptable OpenRouter key, marks it invalid, and uses the fal key', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
 
@@ -432,7 +437,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('falls back to platform with the decrypt-failure reason for a fal-only key', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-corrupt' });
 
     decryptSpy.mockRejectedValueOnce(new Error('bad auth tag'));
@@ -446,7 +451,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('skips the doomed decrypt on later calls in the same scope', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal-corrupt' });
 
     decryptSpy.mockRejectedValueOnce(new Error('bad auth tag'));
@@ -463,7 +468,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   it('throws when neither platform key is configured', async () => {
     testEnv.OPENROUTER_KEY = undefined;
     testEnv.FAL_KEY = undefined;
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     await expect(scope.resolveLlmKey()).rejects.toThrow(
       'No platform LLM key available'
@@ -471,13 +476,13 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
   });
 
   it('shares the per-provider row cache with resolveKey (one read per provider)', async () => {
-    await createApiKeysMethods(db, teamId, userId).saveKey({
+    await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'fal',
       apiKey: 'sk-fal-cache',
     });
 
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     await scope.resolveLlmKey();
     await scope.resolveLlmKey();
@@ -493,7 +498,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   const NOT_CARRIED = 'anthropic/claude-opus-5-fast';
 
   it('prefers a team LLMTR key over the team OpenRouter key for a carried model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
 
@@ -506,7 +511,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('leaves a model LLMTR does not carry on the team OpenRouter key', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
 
@@ -518,7 +523,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('ignores an LLMTR key when the caller cannot name the model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
 
@@ -530,7 +535,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('routes Grok to team LLMTR when there is no xAI key', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
     expect(await scope.resolveLlmKey('x-ai/grok-4.20')).toEqual({
@@ -542,7 +547,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
 
   it('keeps Google ahead of LLMTR for Gemini models', async () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
     expect(await scope.resolveLlmKey('google/gemini-3.1-pro-preview')).toEqual({
@@ -554,7 +559,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
 
   it('keeps xAI ahead of LLMTR for Grok models', async () => {
     testEnv.XAI_API_KEY = 'platform-xai';
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
     expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toEqual({
@@ -565,7 +570,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('skips an invalid team LLMTR key and reports the reason on the fallback', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-bad' });
     await scope.markKeyInvalid('llmtr', 'llmtr rejected');
 
@@ -580,7 +585,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('falls back to a working team fal key when the LLMTR key is invalid', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-bad' });
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
     await scope.markKeyInvalid('llmtr', 'llmtr rejected');
@@ -597,7 +602,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   it('does not fall back to a platform LLMTR key when OpenRouter and fal are unset', async () => {
     testEnv.OPENROUTER_KEY = undefined;
     testEnv.FAL_KEY = undefined;
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     await expect(scope.resolveLlmKey(CARRIED)).rejects.toThrow(
       /No platform LLM key available \(set OPENROUTER_KEY or FAL_KEY\)/
@@ -605,7 +610,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
   });
 
   it('throws from resolveKey when there is no team LLMTR key', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     await expect(scope.resolveKey('llmtr')).rejects.toThrow(
       /No API key available for provider: llmtr/
@@ -615,7 +620,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
 
 describe('hasUsableKey (billing gates must not count invalid keys)', () => {
   it('is false for an invalid-flagged key that hasKey still reports', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
 
     expect(await scope.hasUsableKey('fal')).toBe(true);
@@ -632,14 +637,14 @@ describe('hasUsableKey (billing gates must not count invalid keys)', () => {
   });
 
   it('is false when no key exists', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     expect(await scope.hasUsableKey('openrouter')).toBe(false);
   });
 });
 
 describe('native xAI key resolution (issue #1167)', () => {
   it('prefers a team xAI key for a Grok model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
@@ -651,7 +656,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   });
 
   it('leaves non-Grok models on OpenRouter even with an xAI key stored', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
@@ -661,7 +666,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   });
 
   it('keeps the pre-#1167 behaviour when the caller names no model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
     expect(await scope.resolveLlmKey()).toMatchObject({ via: 'openrouter' });
@@ -669,7 +674,7 @@ describe('native xAI key resolution (issue #1167)', () => {
 
   it('falls back to the platform XAI_API_KEY when the team has none', async () => {
     testEnv.XAI_API_KEY = 'platform-xai';
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-xai',
@@ -679,7 +684,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   });
 
   it('falls through to OpenRouter for a Grok model with no xAI key anywhere', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-openrouter-key',
@@ -688,7 +693,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   });
 
   it('skips an xAI key flagged invalid rather than sending it', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
     await scope.markKeyInvalid('xai', 'revoked');
 
@@ -700,7 +705,7 @@ describe('native xAI key resolution (issue #1167)', () => {
 
 describe('native Google key resolution', () => {
   it('prefers a team Google key for a Gemini model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
 
@@ -714,7 +719,7 @@ describe('native Google key resolution', () => {
   });
 
   it('leaves non-Gemini models on OpenRouter even with a Google key stored', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
 
@@ -725,7 +730,7 @@ describe('native Google key resolution', () => {
 
   it('falls back to the platform GEMINI_API_KEY when the team has none', async () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(
       await scope.resolveLlmKey('google/gemini-3-flash-preview')
@@ -737,7 +742,7 @@ describe('native Google key resolution', () => {
   });
 
   it('falls through to OpenRouter for a Gemini model with no Google key anywhere', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(
       await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
@@ -748,7 +753,7 @@ describe('native Google key resolution', () => {
   });
 
   it('skips a Google key flagged invalid rather than sending it', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
     await scope.markKeyInvalid('google', 'revoked');
 
@@ -759,7 +764,7 @@ describe('native Google key resolution', () => {
 
   // Where Google refused this isolate, a Gemini model skips the Google key.
   it('routes a Gemini model to OpenRouter while Google refuses this location', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
     testEnv.GEMINI_API_KEY = 'platform-google';
     markGoogleRegionBlocked('test', new Error('refused'));
@@ -783,7 +788,7 @@ describe('resolveOptionalKey', () => {
     // Native-provider routing (#1216) asks "is there a key?" and falls
     // through to fal when there isn't. `resolveKey` throws there.
     testEnv.FAL_KEY = undefined;
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
 
     expect(await scope.resolveOptionalKey('fal')).toBeUndefined();
     await expect(scope.resolveKey('fal')).rejects.toThrow(
@@ -792,7 +797,7 @@ describe('resolveOptionalKey', () => {
   });
 
   it('returns undefined for xai when neither team nor platform key exists', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     expect(await scope.resolveOptionalKey('xai')).toBeUndefined();
     await expect(scope.resolveKey('xai')).rejects.toThrow(
       /No API key available/
@@ -800,7 +805,7 @@ describe('resolveOptionalKey', () => {
   });
 
   it('returns the platform key when one exists', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     expect(await scope.resolveOptionalKey('fal')).toEqual({
       key: 'platform-fal-key',
       source: 'platform',
@@ -812,7 +817,7 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
   it('returns the platform key without reading team_api_keys', async () => {
     testEnv.ELEVENLABS_API_KEY = 'el-platform';
     const { db: cdb, selects } = countingDb();
-    const scope = createApiKeysReadMethods(cdb, teamId);
+    const scope = createApiKeysReadMethods(cdb, organizationId);
 
     const provider: ResolvableProvider = 'elevenlabs';
     expect(await scope.resolveKey(provider)).toEqual({
@@ -824,13 +829,13 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
 
   it('never returns source: team — designed voices live on the platform account', async () => {
     testEnv.ELEVENLABS_API_KEY = 'el-platform';
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     const resolved = await scope.resolveOptionalKey('elevenlabs');
     expect(resolved?.source).toBe('platform');
   });
 
   it('throws from resolveKey when the platform key is missing', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     expect(await scope.resolveOptionalKey('elevenlabs')).toBeUndefined();
     await expect(scope.resolveKey('elevenlabs')).rejects.toThrow(
       /No API key available for provider: elevenlabs/
@@ -840,7 +845,7 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
   it('stays unresolved under E2E_TEST unless a mock host is wired', async () => {
     testEnv.ELEVENLABS_API_KEY = 'el-platform';
     testEnv.E2E_TEST = 'true';
-    const scope = createApiKeysReadMethods(db, teamId);
+    const scope = createApiKeysReadMethods(db, organizationId);
     expect(await scope.resolveOptionalKey('elevenlabs')).toBeUndefined();
 
     testEnv.ELEVENLABS_BASE_URL = 'http://localhost:4010';
@@ -853,11 +858,11 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
 
 describe('upload_post (social publishing, #1267)', () => {
   it('resolves only the team key — there is no platform fallback', async () => {
-    const read = createApiKeysReadMethods(db, teamId);
+    const read = createApiKeysReadMethods(db, organizationId);
     expect(await read.resolveOptionalKey('upload_post')).toBeUndefined();
     expect(await read.hasUsableKey('upload_post')).toBe(false);
 
-    const scope = createApiKeysMethods(db, teamId, userId);
+    const scope = createApiKeysMethods(db, organizationId, userId);
     await scope.saveKey({ provider: 'upload_post', apiKey: 'up-team' });
 
     expect(await scope.resolveOptionalKey('upload_post')).toEqual({
@@ -874,7 +879,7 @@ describe('upload_post (social publishing, #1267)', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     try {
-      const scope = createApiKeysReadMethods(db, teamId);
+      const scope = createApiKeysReadMethods(db, organizationId);
       expect(await scope.validateKey('upload_post', 'good')).toEqual({
         valid: true,
       });
@@ -896,7 +901,7 @@ describe('upload_post (social publishing, #1267)', () => {
       vi.fn(async () => new Response('', { status: 503 }))
     );
     try {
-      const scope = createApiKeysReadMethods(db, teamId);
+      const scope = createApiKeysReadMethods(db, organizationId);
       await expect(scope.validateKey('upload_post', 'good')).rejects.toThrow(
         /unavailable \(503\)/
       );

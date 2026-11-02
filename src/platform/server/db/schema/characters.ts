@@ -9,7 +9,7 @@ import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
-import { teams } from './teams';
+import { organization } from './organization';
 
 const SHEET_STATUSES = [
   'pending',
@@ -52,9 +52,9 @@ export const characters = snakeCase.table(
       .primaryKey()
       .notNull(),
     // The team that owns the character (#2017).
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id),
+      .references(() => organization.id),
     // Unread since #2065: every team character is listed and attachable.
     // Dropped in a follow-up (a native drop, no rebuild).
     legacyInLibrary: integer('in_library', { mode: 'boolean' })
@@ -135,7 +135,7 @@ export const characters = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_characters_team').on(table.teamId)]
+  (table) => [index('idx_characters_team').on(table.organizationId)]
 );
 
 // Type exports
@@ -300,7 +300,7 @@ export type NewCharacter = Omit<
   | 'deletedAt'
   | 'selectedBibleVersionId'
   // The scoped module's own team.
-  | 'teamId'
+  | 'organizationId'
 > &
   // The sequence that casts it, and how (#2017).
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &

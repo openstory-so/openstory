@@ -13,7 +13,7 @@ function asset(
 ): GeneratedAsset {
   return {
     id: '01STUDIOASSET000000000000',
-    teamId: 'team',
+    organizationId: 'team',
     userId: 'user',
     provider: 'fal',
     endpointId: 'fal-ai/example',

@@ -14,14 +14,14 @@ const logger = getLogger(['openstory', 'emails', 'auto-top-up-failed']);
 export async function notifyAutoTopUpFailed(opts: {
   /** The team owner's address (`scopedDb.teamManagement.getOwnerEmail`); null = no owner row. */
   to: string | null;
-  teamId: string;
+  organizationId: string;
   userId: string;
   balanceMicros: Microdollars;
 }): Promise<void> {
   const { to } = opts;
   if (!to) {
     logger.warn('No billing contact for declined auto top-up', {
-      teamId: opts.teamId,
+      organizationId: opts.organizationId,
     });
     return;
   }
@@ -39,6 +39,6 @@ export async function notifyAutoTopUpFailed(opts: {
   captureProductEvent({
     distinctId: opts.userId,
     event: 'auto_top_up_failed_email_sent',
-    properties: { team_id: opts.teamId },
+    properties: { team_id: opts.organizationId },
   });
 }

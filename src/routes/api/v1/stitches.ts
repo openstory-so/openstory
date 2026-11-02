@@ -3,7 +3,7 @@
  *
  * The body is the CLI's cut.json, with every media URL a bundle name
  * (`media/<n>.<ext>`). The row stores the cut with those names rewritten to
- * team storage under `stitches/<teamId>/<id>/`, unpublished. The response
+ * team storage under `stitches/<organizationId>/<id>/`, unpublished. The response
  * carries the templated upload link the CLI PUTs each file to (the ordinary
  * `/api/storage/upload`, which checks the team on the path) and the publish
  * link it POSTs last, which checks the files and the images and makes the
@@ -41,11 +41,11 @@ export const Route = createFileRoute('/api/v1/stitches')({
             );
           }
           const { cut } = bodySchema.parse(body);
-          const { teamId } = context;
+          const { organizationId } = context;
           const id = generateId();
           const stitch = await context.scopedDb.stitches.create({
             id,
-            cut: storedStitchCut(cut, teamId, id),
+            cut: storedStitchCut(cut, organizationId, id),
             publishedAt: null,
           });
           const url = new URL(`/stitch/${stitch.id}`, request.url).href;
@@ -55,7 +55,7 @@ export const Route = createFileRoute('/api/v1/stitches')({
               {
                 page: getLink(url, 'The public player page for this cut'),
                 upload: {
-                  href: stitchUploadHref(teamId, stitch.id),
+                  href: stitchUploadHref(organizationId, stitch.id),
                   method: 'PUT',
                   templated: true,
                   title:

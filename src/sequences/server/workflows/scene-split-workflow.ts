@@ -270,12 +270,12 @@ async function triggerPreviewImage({
   try {
     const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
       input.userId,
-      input.teamId
+      input.organizationId
     );
     await triggerShotPreview(
       {
         userId: input.userId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         sequenceId,
         shotId: shot.id,
         frameId: shot.frameId,

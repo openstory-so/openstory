@@ -24,24 +24,28 @@ const teamMemo = new Map<
 
 export async function resolveTeamAndCompliance(
   userId: string,
-  method: string
+  method: string,
+  activeOrganizationId?: string | null
 ): Promise<ResolvedTeam> {
   const now = Date.now();
-  const hit = method === 'GET' ? teamMemo.get(userId) : undefined;
+  const memoKey = `${userId}:${activeOrganizationId ?? ''}`;
+  const hit = method === 'GET' ? teamMemo.get(memoKey) : undefined;
   if (hit && hit.until > now) return hit.value;
   // ponytail: prune on insert; a per-user entry for the whole isolate life
   // would otherwise grow with every user it ever answered.
   for (const [key, entry] of teamMemo)
     if (entry.until <= now) teamMemo.delete(key);
   const value = (async () => {
-    const team = await resolveUserTeam(userId);
+    const team = await resolveUserTeam(userId, activeOrganizationId);
     return {
       team,
-      compliance: team ? await loadComplianceState(userId, team.teamId) : null,
+      compliance: team
+        ? await loadComplianceState(userId, team.organizationId)
+        : null,
     };
   })();
-  teamMemo.set(userId, { until: now + TEAM_MEMO_TTL_MS, value });
+  teamMemo.set(memoKey, { until: now + TEAM_MEMO_TTL_MS, value });
   // A failed read is not kept: the next call reads again.
-  value.catch(() => teamMemo.delete(userId));
+  value.catch(() => teamMemo.delete(memoKey));
   return value;
 }

@@ -50,7 +50,7 @@ export const handlers = [
         },
         isAuthenticated: true,
         isAnonymous: false,
-        teamId: 'demo-team',
+        organizationId: 'demo-team',
         teamRole: 'owner',
         teamName: 'Demo Team',
       },

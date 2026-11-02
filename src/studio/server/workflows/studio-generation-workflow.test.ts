@@ -160,7 +160,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       reservationId: 'res-studio-1',
       ownsReservation: true,
@@ -232,7 +232,7 @@ describe('StudioGenerationWorkflow image', () => {
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       activity: 'image',
       model: 'gpt_image_2',
@@ -309,7 +309,7 @@ describe('StudioGenerationWorkflow video', () => {
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       activity: 'video',
       model: 'seedance_v2',

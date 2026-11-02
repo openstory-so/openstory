@@ -67,11 +67,13 @@ export function ApiKeySettings(props: ApiKeySettingsProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  if (!profile?.teamId) {
+  if (!profile?.organizationId) {
     return <ApiKeySettingsLoading />;
   }
 
-  return <ApiKeySettingsContent teamId={profile.teamId} {...props} />;
+  return (
+    <ApiKeySettingsContent organizationId={profile.organizationId} {...props} />
+  );
 }
 
 function ApiKeySettingsLoading() {
@@ -91,10 +93,10 @@ function ApiKeySettingsLoading() {
 const RETURN_KEY = 'openstory:billing-return';
 
 function ApiKeySettingsContent({
-  teamId,
+  organizationId,
   success,
   error: urlError,
-}: ApiKeySettingsProps & { teamId: string }) {
+}: ApiKeySettingsProps & { organizationId: string }) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
   const [error, setError] = useState<string | null>(null);
@@ -102,14 +104,14 @@ function ApiKeySettingsContent({
   const hasShownToastRef = useRef(false);
 
   const { data: apiKeys, isLoading: keysLoading } = useQuery({
-    queryKey: ['apiKeys', teamId],
-    queryFn: () => listApiKeysFn({ data: { teamId } }),
+    queryKey: ['apiKeys', organizationId],
+    queryFn: () => listApiKeysFn({ data: { organizationId } }),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: keyStatus, isLoading: statusLoading } = useQuery({
-    queryKey: ['apiKeyStatus', teamId],
-    queryFn: () => checkApiKeyStatusFn({ data: { teamId } }),
+    queryKey: ['apiKeyStatus', organizationId],
+    queryFn: () => checkApiKeyStatusFn({ data: { organizationId } }),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -137,12 +139,16 @@ function ApiKeySettingsContent({
   }, [keyStatus, navigate]);
 
   const invalidateKeys = () => {
-    void queryClient.invalidateQueries({ queryKey: ['apiKeys', teamId] });
-    void queryClient.invalidateQueries({ queryKey: ['apiKeyStatus', teamId] });
+    void queryClient.invalidateQueries({
+      queryKey: ['apiKeys', organizationId],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ['apiKeyStatus', organizationId],
+    });
     void queryClient.invalidateQueries({ queryKey: [...BILLING_GATE_KEY] });
     // The Download menu's "Publish to social…" follows the Upload-Post key.
     void queryClient.invalidateQueries({
-      queryKey: ['social-publishing', teamId],
+      queryKey: ['social-publishing', organizationId],
     });
   };
 
@@ -153,7 +159,7 @@ function ApiKeySettingsContent({
     }: {
       provider: ManualProvider;
       apiKey: string;
-    }) => saveApiKeyFn({ data: { teamId, provider, apiKey } }),
+    }) => saveApiKeyFn({ data: { organizationId, provider, apiKey } }),
     onSuccess: (_, { provider }) => {
       invalidateKeys();
       setError(null);
@@ -166,7 +172,7 @@ function ApiKeySettingsContent({
 
   const deleteMutation = useMutation({
     mutationFn: (provider: ApiKeyProviderId) =>
-      deleteApiKeyFn({ data: { teamId, provider } }),
+      deleteApiKeyFn({ data: { organizationId, provider } }),
     onSuccess: (_, provider) => {
       invalidateKeys();
       setError(null);
@@ -178,7 +184,7 @@ function ApiKeySettingsContent({
   });
 
   const oauthMutation = useMutation({
-    mutationFn: () => initiateOpenRouterOAuthFn({ data: { teamId } }),
+    mutationFn: () => initiateOpenRouterOAuthFn({ data: { organizationId } }),
     onSuccess: (data) => {
       posthog.capture('openrouter_oauth_started');
       window.location.href = data.authUrl;
@@ -190,7 +196,7 @@ function ApiKeySettingsContent({
 
   const revalidateMutation = useMutation({
     mutationFn: (provider: ApiKeyProviderId) =>
-      revalidateApiKeyFn({ data: { teamId, provider } }),
+      revalidateApiKeyFn({ data: { organizationId, provider } }),
     onSuccess: (result, provider) => {
       // Only announce recovery — a key that was already valid (e.g. just
       // connected via OAuth) shouldn't toast "valid again" on page mount.

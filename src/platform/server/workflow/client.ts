@@ -74,12 +74,12 @@ const RUNS_UNDER_E2E = new Set(['upload-check']);
  */
 async function assertTriggerAllowed(
   urlPath: string,
-  body: { userId: string; teamId: string },
+  body: { userId: string; organizationId: string },
   enforcementRows?: readonly EnforcementRow[]
 ): Promise<void> {
   const enforcement =
     enforcementRows ??
-    (await loadComplianceRecords(body.userId, body.teamId)).enforcement;
+    (await loadComplianceRecords(body.userId, body.organizationId)).enforcement;
   const state = resolveEnforcementState(enforcement);
   const key = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
   if (WRITE_ONLY_TRIGGERS.has(key)) {
@@ -100,7 +100,7 @@ async function assertTriggerAllowed(
  * value to make a trigger idempotent.
  */
 export async function triggerWorkflow<
-  T extends { userId: string; teamId: string },
+  T extends { userId: string; organizationId: string },
 >(
   urlPath: string,
   body: T,
@@ -115,7 +115,7 @@ export async function triggerWorkflow<
  * a claim for this payload hands it back on reuse (#1113).
  */
 export async function triggerWorkflowRun<
-  T extends { userId: string; teamId: string },
+  T extends { userId: string; organizationId: string },
 >(
   urlPath: string,
   body: T,
@@ -135,7 +135,7 @@ export async function triggerWorkflowRun<
   });
 
   // Enforcement backstop (#1180). Every generation in the app funnels through
-  // here, and the payload carries `userId`/`teamId` by contract — so this is the
+  // here, and the payload carries `userId`/`organizationId` by contract — so this is the
   // one place a restricted account cannot start durable work.
   await assertTriggerAllowed(urlPath, body, options?.enforcement);
 

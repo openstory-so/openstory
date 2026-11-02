@@ -317,7 +317,7 @@ export const enhanceScriptStreamFn = createServerFn({ method: 'POST' })
     yield* streamScriptEnhancement(data, {
       scopedDb: context.scopedDb,
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
     });
   });
 
@@ -519,7 +519,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
     // (silently dropping all output would hide it).
     if (result.recommendations.length > 0 && recommendations.length === 0) {
       logger.warn('Style recommendation: all model picks were unusable', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         returned: result.recommendations.length,
         catalogSize: styles.length,
       });

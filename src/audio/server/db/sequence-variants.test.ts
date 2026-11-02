@@ -13,7 +13,7 @@ import {
   sequenceMusicVariants,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
@@ -32,7 +32,7 @@ async function seed() {
   await db.delete(sequenceMusicVariants);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   team.id = generateId();
@@ -40,11 +40,11 @@ async function seed() {
   sequenceId = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([team]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId: team.id,
+      organizationId: team.id,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -58,11 +58,14 @@ async function seed() {
     })
     .returning();
   if (!style) throw new Error('test setup: style insert returned nothing');
-  await db
-    .insert(sequences)
-    .values([
-      { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
-    ]);
+  await db.insert(sequences).values([
+    {
+      id: sequenceId,
+      organizationId: team.id,
+      title: 'S',
+      styleId: style.id,
+    },
+  ]);
 }
 
 beforeAll(async () => {
@@ -455,16 +458,16 @@ describe('listDivergentByTeam', () => {
     const methods = createSequenceVariantsMethods(db);
 
     // Build a second team with its own sequence sharing the same style.
-    const otherTeamId = generateId();
-    await db.insert(teams).values({
-      id: otherTeamId,
+    const otherOrganizationId = generateId();
+    await db.insert(organization).values({
+      id: otherOrganizationId,
       name: 'Other',
       slug: 'other',
     });
     const [otherStyle] = await db
       .insert(styles)
       .values({
-        teamId: otherTeamId,
+        organizationId: otherOrganizationId,
         name: 'default',
         config: {
           mood: 'neutral',
@@ -482,7 +485,7 @@ describe('listDivergentByTeam', () => {
     const otherSequenceId = generateId();
     await db.insert(sequences).values({
       id: otherSequenceId,
-      teamId: otherTeamId,
+      organizationId: otherOrganizationId,
       title: 'Other',
       styleId: otherStyle.id,
     });
@@ -493,12 +496,12 @@ describe('listDivergentByTeam', () => {
     const [seedStyle] = await db
       .select()
       .from(styles)
-      .where(eq(styles.teamId, team.id));
+      .where(eq(styles.organizationId, team.id));
     if (!seedStyle)
       throw new Error('test setup: seedStyle lookup returned nothing');
     await db.insert(sequences).values({
       id: secondSeedSequenceId,
-      teamId: team.id,
+      organizationId: team.id,
       title: 'S2',
       styleId: seedStyle.id,
     });

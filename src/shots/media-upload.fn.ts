@@ -84,7 +84,7 @@ function signedUpload(
 
 // ---------------------------------------------------------------------------
 // Presign — one per media surface; all write under the caller team's prefix
-// (`teams/<teamId>/…`), which `resolveUploadTarget` enforces at PUT time.
+// (`teams/<organizationId>/…`), which `resolveUploadTarget` enforces at PUT time.
 // ---------------------------------------------------------------------------
 
 const shotPresignInput = z.object({
@@ -100,7 +100,7 @@ export const presignFrameImageUploadFn = createServerFn({ method: 'POST' })
     // Same directory generated stills land in (uploadImageToStorage).
     return signedUpload(
       STORAGE_BUCKETS.THUMBNAILS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      `teams/${context.organizationId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
       data.filename,
       'image'
     );
@@ -112,7 +112,7 @@ export const presignShotVideoUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.VIDEOS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      `teams/${context.organizationId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
       data.filename,
       'video'
     );
@@ -128,7 +128,7 @@ export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.AUDIO,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/music/${generateId()}`,
+      `teams/${context.organizationId}/sequences/${context.sequence.id}/music/${generateId()}`,
       data.filename,
       'audio'
     );
@@ -196,8 +196,8 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
     return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
       context.sequence
-        ? `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`
-        : `teams/${context.teamId}/characters/${data.characterId}/${generateId()}`,
+        ? `teams/${context.organizationId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`
+        : `teams/${context.organizationId}/characters/${data.characterId}/${generateId()}`,
       data.filename,
       'image'
     );
@@ -236,8 +236,8 @@ export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
     return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
       context.sequence
-        ? `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`
-        : `teams/${context.teamId}/locations/${data.locationDbId}/${generateId()}`,
+        ? `teams/${context.organizationId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`
+        : `teams/${context.organizationId}/locations/${data.locationDbId}/${generateId()}`,
       data.filename,
       'image'
     );

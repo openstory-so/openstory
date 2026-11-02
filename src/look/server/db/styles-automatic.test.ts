@@ -6,7 +6,12 @@ import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import { sequences, styles, teams, user } from '@/platform/server/db/schema';
+import {
+  sequences,
+  styles,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 import { createPublicStylesReadMethods, createStylesMethods } from './styles';
 import { placeholderAutoStyleDraft } from '@/look/auto-style';
@@ -16,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 beforeAll(async () => {
@@ -31,14 +36,16 @@ beforeEach(async () => {
   await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: 'u@example.com' });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
 });
 
 const derived = () => ({
@@ -53,7 +60,7 @@ async function seedLibraryStyle(name: string, isPublic = false) {
   const [row] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name,
       config: placeholderAutoStyleDraft().config,
       isPublic,
@@ -64,8 +71,8 @@ async function seedLibraryStyle(name: string, isPublic = false) {
 }
 
 async function createAutoSequence() {
-  const stylesDb = createStylesMethods(db, teamId, userId);
-  const sequencesDb = createSequencesMethods(db, teamId, userId);
+  const stylesDb = createStylesMethods(db, organizationId, userId);
+  const sequencesDb = createSequencesMethods(db, organizationId, userId);
   const sequenceId = generateId();
   const style = await stylesDb.createForSequence({
     sequenceId,
@@ -161,7 +168,7 @@ describe('automatic styles', () => {
     expect(
       (await otherTeam.listByIds([style.id, library.id])).map((s) => s.id)
     ).toEqual([library.id]);
-    const own = createStylesMethods(db, teamId, userId);
+    const own = createStylesMethods(db, organizationId, userId);
     expect(await own.getById(style.id)).toMatchObject({ id: style.id });
   });
 
@@ -231,7 +238,7 @@ describe('automatic styles', () => {
 
   it('promoteToLibrary rejects a row that is already in the library', async () => {
     const library = await seedLibraryStyle('Noir');
-    const stylesDb = createStylesMethods(db, teamId, userId);
+    const stylesDb = createStylesMethods(db, organizationId, userId);
     await expect(
       stylesDb.promoteToLibrary({
         styleId: library.id,

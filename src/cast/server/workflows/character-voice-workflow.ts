@@ -261,7 +261,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.teamId}/${sequenceId ?? 'team'}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${input.organizationId}/${sequenceId ?? 'team'}/${characterDbId}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,
@@ -470,7 +470,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     await step.do('record-provenance', async () => {
       if (!asset.path) return;
       await recordProvenance(scopedDb.provenance, {
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         assetKind: 'character_voice',
         assetId: input.characterDbId,

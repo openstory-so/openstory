@@ -31,10 +31,11 @@
  * - `src/routes/oauth/consent-start.ts` packs the signed consent query so
  *   TanStack cannot collapse repeated `ba_param`, then 302s to
  *   `src/routes/_app/oauth/consent.tsx` + `src/platform/oauth-consent.fn.ts`.
- * - At consent the grant is stamped with the user's default team
- *   (`consentReferenceId` → `resolveUserTeam`); there is no picker yet.
- *   `/api/v1` uses `team_id` when present, otherwise the same default-team
- *   lookup as an `osk_` key.
+ * - At consent the grant is stamped with the session's active organization,
+ *   or the highest-role membership when the session has none
+ *   (`consentReferenceId` → `resolveUserTeam`). There is no picker yet. The
+ *   JWT claim stays `team_id`. `/api/v1` uses `team_id` when present,
+ *   otherwise the same lookup as an `osk_` key.
  */
 
 import { getEnv } from '#env';
@@ -295,15 +296,22 @@ export function createOAuthProviderPlugins() {
       // endpoint is throttled per IP in the auth catch-all route.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
-      // Consents (and therefore tokens) are keyed by the team they bill to.
-      // `shouldRedirect` is a hook for a future team picker; today the grant
-      // goes to the user's default team, exactly like an `osk_` key.
+      // Consents (and therefore tokens) are keyed by the organization they
+      // bill to. The session's active organization wins; otherwise the
+      // highest role, the same fallback as an `osk_` key. The JWT claim
+      // stays `team_id`.
       postLogin: {
         page: OAUTH_CONSENT_START_PATH,
         shouldRedirect: () => false,
-        consentReferenceId: async ({ user }) => {
-          const team = await resolveUserTeam(user.id);
-          return team?.teamId;
+        consentReferenceId: async ({ user, session }) => {
+          const activeOrganizationId = session.activeOrganizationId;
+          const team = await resolveUserTeam(
+            user.id,
+            typeof activeOrganizationId === 'string'
+              ? activeOrganizationId
+              : null
+          );
+          return team?.organizationId;
         },
       },
       customAccessTokenClaims: ({ referenceId }) =>

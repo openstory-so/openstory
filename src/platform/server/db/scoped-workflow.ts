@@ -61,7 +61,7 @@ type WritesOnly<T> = Omit<T, ReadMethodName<Extract<keyof T, string>>>;
 
 /**
  * Every domain with its reads stripped. Callable members (`scopedDb.sequence(id)`)
- * and scalars (`teamId`, `userId`) pass through as-is — `Omit` on a function
+ * and scalars (`organizationId`, `userId`) pass through as-is — `Omit` on a function
  * type would drop its call signature.
  */
 type WorkflowDomains = {
@@ -94,7 +94,7 @@ type GenerationProvider = Exclude<
   'upload_post'
 >;
 
-type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
+type WorkflowCredentials = Pick<ScopedDb, 'organizationId' | 'userId'> &
   Pick<ApiKeys, 'resolveLlmKey'> & {
     resolveKey: (
       provider: GenerationProvider
@@ -146,7 +146,7 @@ type WorkflowClaims = {
  * Each domain is a `Pick` off the real `ScopedDb`, so signatures stay in
  * lockstep with the query modules and no method is hand-written.
  */
-type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
+type WorkflowLiveReads = Pick<ScopedDb, 'organizationId' | 'userId'> & {
   /** Whether the team owns a usable key — the BYOK half of a charge gate. */
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
   /**
@@ -269,7 +269,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
     // WorkflowScopedDb never depends on that domain being present — which
     // matters for the partial `createScopedDb` stubs the workflow tests use.
     credentials: {
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       userId: scopedDb.userId,
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
       resolveOptionalKey: (provider) =>

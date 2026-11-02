@@ -40,7 +40,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
       analysisModelId,
       sequenceId,
       userId,
-      teamId,
+      organizationId,
     } = input;
 
     const sceneSummaries = musicSceneSummariesFromAnalysis(
@@ -57,7 +57,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
       childId: `music-prompt:${sequenceId}`,
       childPayload: {
         userId,
-        teamId,
+        organizationId,
         sequenceId,
         reservationId: input.reservationId,
         sceneSummaries,

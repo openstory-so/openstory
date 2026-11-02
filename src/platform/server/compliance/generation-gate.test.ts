@@ -20,7 +20,7 @@ function enforcementRow(
   return {
     id: 'enf_1',
     subjectUserId: USER_ID,
-    subjectTeamId: null,
+    subjectOrganizationId: null,
     action: 'generation_suspended',
     reason: 'portrait_rights',
     notes: null,
@@ -52,7 +52,7 @@ describe('requireGenerationAllowed', () => {
     await expect(
       requireGenerationAllowed({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
       })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
@@ -65,7 +65,7 @@ describe('requireGenerationAllowed', () => {
     await expect(
       requireGenerationAllowed({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
       })
     ).resolves.toBeUndefined();
   });

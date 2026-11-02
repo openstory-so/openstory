@@ -40,7 +40,7 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/image', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/image', { userId: USER_ID, organizationId: TEAM_ID })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
 
@@ -51,7 +51,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/sequence-export', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/sequence-export', {
+        userId: USER_ID,
+        organizationId: TEAM_ID,
+      })
     ).resolves.toMatch(/^mock-/);
   });
 
@@ -62,7 +65,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/sequence-export', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/sequence-export', {
+        userId: USER_ID,
+        organizationId: TEAM_ID,
+      })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
 
@@ -73,7 +79,7 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/image', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/image', { userId: USER_ID, organizationId: TEAM_ID })
     ).resolves.toMatch(/^mock-/);
   });
 
@@ -81,7 +87,7 @@ describe('triggerWorkflow enforcement backstop', () => {
     await expect(
       triggerWorkflow(
         '/image',
-        { userId: USER_ID, teamId: TEAM_ID },
+        { userId: USER_ID, organizationId: TEAM_ID },
         { enforcement: [row('generation_suspended')] }
       )
     ).rejects.toBeInstanceOf(AccountRestrictedError);

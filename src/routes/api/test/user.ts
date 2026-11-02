@@ -5,7 +5,7 @@ import { testOnlyGuard } from './route';
 
 const DeleteUserSchema = z.object({
   userId: z.string(),
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 export const Route = createFileRoute('/api/test/user')({
@@ -32,18 +32,18 @@ export const Route = createFileRoute('/api/test/user')({
          * DELETE /api/test/user
          */
         DELETE: async ({ request }) => {
-          const { userId, teamId } = DeleteUserSchema.parse(
+          const { userId, organizationId } = DeleteUserSchema.parse(
             await request.json()
           );
 
-          if (!userId || !teamId) {
+          if (!userId || !organizationId) {
             return Response.json(
-              { error: 'userId and teamId are required' },
+              { error: 'userId and organizationId are required' },
               { status: 400 }
             );
           }
 
-          await cleanupTestUser(userId, teamId);
+          await cleanupTestUser(userId, organizationId);
           return Response.json({ success: true });
         },
       }),

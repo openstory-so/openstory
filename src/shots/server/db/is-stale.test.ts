@@ -17,7 +17,7 @@ import {
   locations,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
@@ -37,7 +37,7 @@ async function seed() {
   await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   team.id = generateId();
@@ -45,11 +45,11 @@ async function seed() {
   sequenceId = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([team]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId: team.id,
+      organizationId: team.id,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -63,11 +63,14 @@ async function seed() {
     })
     .returning();
   if (!style) throw new Error('test setup: style insert returned nothing');
-  await db
-    .insert(sequences)
-    .values([
-      { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
-    ]);
+  await db.insert(sequences).values([
+    {
+      id: sequenceId,
+      organizationId: team.id,
+      title: 'S',
+      styleId: style.id,
+    },
+  ]);
 }
 
 beforeAll(async () => {
@@ -128,7 +131,7 @@ describe('location_sheet_variants.input_hash', () => {
   it('defaults to null and persists when set', async () => {
     const [loc] = await db
       .insert(locations)
-      .values({ teamId: team.id, legacyName: 'L' })
+      .values({ organizationId: team.id, legacyName: 'L' })
       .returning();
     if (!loc) throw new Error('test setup: location insert returned nothing');
     const [sheet] = await db

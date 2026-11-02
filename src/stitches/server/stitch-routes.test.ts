@@ -30,7 +30,7 @@ const postPublish = z
   .parse(PublishRoute.options.server?.handlers).POST;
 
 const context = {
-  teamId: 'TEAM',
+  organizationId: 'TEAM',
   user: { id: 'USER', email: 'u@example.com' },
   scopedDb: { stitches: { create } },
 };
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   create.mockImplementation(async (input) => ({
     ...input,
-    teamId: 'TEAM',
+    organizationId: 'TEAM',
     userId: 'USER',
     createdAt: new Date('2026-10-19T00:00:00Z'),
   }));

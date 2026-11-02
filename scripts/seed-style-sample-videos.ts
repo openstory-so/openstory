@@ -22,7 +22,7 @@
  * (swap --remote for --local against the dev DB). Output path overridable with
  * --out=<path>.
  */
-import { styles, teams } from '@/platform/server/db/schema';
+import { styles, organization } from '@/platform/server/db/schema';
 import type { StyleSampleVideo } from '@/platform/server/db/schema/libraries';
 import { buildSampleVideos } from '@/look/server/sample-videos';
 import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
@@ -106,14 +106,14 @@ function sqlString(value: string): string {
  */
 function generateSql(planned: PlannedStyle[]): string {
   const stylesTable = getTableConfig(styles).name;
-  const teamsTable = getTableConfig(teams).name;
+  const teamsTable = getTableConfig(organization).name;
   const col = {
     sampleVideos: styles.sampleVideos.name,
     updatedAt: styles.updatedAt.name,
     name: styles.name.name,
-    teamId: styles.teamId.name,
-    teamsId: teams.id.name,
-    teamsSlug: teams.slug.name,
+    organizationId: styles.organizationId.name,
+    teamsId: organization.id.name,
+    teamsSlug: organization.slug.name,
   };
   // `updatedAt` is integer({ mode: 'timestamp' }) → seconds since epoch.
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -126,7 +126,7 @@ function generateSql(planned: PlannedStyle[]): string {
       `"${col.sampleVideos}" = ${sqlString(json)}, ` +
       `"${col.updatedAt}" = ${nowSeconds} ` +
       `WHERE "${col.name}" = ${sqlString(name)} ` +
-      `AND "${col.teamId}" = ${teamFilter};`
+      `AND "${col.organizationId}" = ${teamFilter};`
     );
   });
 
@@ -214,8 +214,8 @@ async function run(
   try {
     const [systemTeam]: { id: string }[] = await db
       .select()
-      .from(teams)
-      .where(eq(teams.slug, SYSTEM_TEAM_SLUG));
+      .from(organization)
+      .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
     if (!systemTeam) {
       throw new Error(
         `System team '${SYSTEM_TEAM_SLUG}' not found — run db:seed first.`
@@ -225,7 +225,7 @@ async function run(
     const existing = await db
       .select()
       .from(styles)
-      .where(eq(styles.teamId, systemTeam.id));
+      .where(eq(styles.organizationId, systemTeam.id));
     const existingByName = new Map(existing.map((s) => [s.name, s]));
 
     let updated = 0;

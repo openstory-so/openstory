@@ -246,7 +246,7 @@ function DurationFitHint({
 }
 
 export const ScriptView: FC<{
-  teamId?: string;
+  organizationId?: string;
   sequence?: Sequence;
   flat?: boolean;
   /** Extra classes merged onto the outer card — e.g. a height bound on the
@@ -279,7 +279,7 @@ export const ScriptView: FC<{
    */
   allowScriptEdit?: boolean;
 }> = ({
-  teamId,
+  organizationId,
   sequence,
   loading = false,
   flat,
@@ -1047,7 +1047,7 @@ export const ScriptView: FC<{
     // so dashboard + public API both feed #product-alerts once.
     const payload = {
       title: undefined,
-      teamId,
+      organizationId,
       script: script ?? baseScript ?? '',
       styleId: styleId || sequence?.styleId || undefined,
       aspectRatio,

@@ -141,7 +141,7 @@ export function selectEligibleVideoShots(
  * sequence's music on failure — the regression this helper exists to prevent.
  */
 export function buildAddAudioMusicInput(args: {
-  baseCtx: { userId: string; teamId: string; sequenceId: string };
+  baseCtx: { userId: string; organizationId: string; sequenceId: string };
   prompt: string;
   tags: string;
   durationSeconds: number;
@@ -174,7 +174,7 @@ export async function addModelToSequence(
   const { variantType, model } = data;
   const baseCtx = {
     userId: user.id,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
   };
 
@@ -629,7 +629,7 @@ export async function addModelToSequence(
       scene: resolveSceneForShot(f, imageSceneContext).scene,
       model,
       userId: user.id,
-      teamId: sequence.teamId,
+      organizationId: sequence.organizationId,
       sequenceId: sequence.id,
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,

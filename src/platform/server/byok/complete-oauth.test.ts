@@ -27,7 +27,7 @@ const TEAM_ID = '01JTEAM00000000000000000000';
 const USER_ID = '01JUSER00000000000000000000';
 
 const validState: OAuthState = {
-  teamId: TEAM_ID,
+  organizationId: TEAM_ID,
   userId: USER_ID,
   codeVerifier: 'verifier-abc123',
   csrfState: 'csrf-nonce-xyz789',
@@ -85,7 +85,7 @@ describe('completeOpenRouterOAuth', () => {
 
     await completeOpenRouterOAuth(
       {
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
         code: 'auth-code',
         csrfState: validState.csrfState,
         secureCookies: true,
@@ -111,7 +111,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: TEAM_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
@@ -129,7 +129,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: TEAM_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
@@ -142,14 +142,14 @@ describe('completeOpenRouterOAuth', () => {
   it('throws when the state belongs to a different team', async () => {
     await setStateCookie({
       ...validState,
-      teamId: '01JOTHERTEAM000000000000000',
+      organizationId: '01JOTHERTEAM000000000000000',
     });
     const { scopedDb } = makeScopedDb();
 
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: TEAM_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
@@ -167,7 +167,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: TEAM_ID,
           code: 'auth-code',
           csrfState: null,
           secureCookies: true,
@@ -179,7 +179,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: TEAM_ID,
           code: 'auth-code',
           csrfState: 'wrong-nonce',
           secureCookies: true,
@@ -196,7 +196,7 @@ describe('completeOpenRouterOAuth', () => {
 
     await completeOpenRouterOAuth(
       {
-        teamId: TEAM_ID,
+        organizationId: TEAM_ID,
         code: 'auth-code',
         csrfState: validState.csrfState,
         secureCookies: false,
@@ -219,7 +219,7 @@ describe('completeOpenRouterOAuth', () => {
       await expect(
         completeOpenRouterOAuth(
           {
-            teamId: TEAM_ID,
+            organizationId: TEAM_ID,
             code: 'auth-code',
             csrfState: validState.csrfState,
             secureCookies: true,
@@ -247,7 +247,7 @@ describe('completeOpenRouterOAuth', () => {
         await expect(
           completeOpenRouterOAuth(
             {
-              teamId: TEAM_ID,
+              organizationId: TEAM_ID,
               code: 'auth-code',
               csrfState: validState.csrfState,
               secureCookies: true,
@@ -271,7 +271,7 @@ describe('completeOpenRouterOAuth', () => {
       await expect(
         completeOpenRouterOAuth(
           {
-            teamId: TEAM_ID,
+            organizationId: TEAM_ID,
             code: 'auth-code',
             csrfState: validState.csrfState,
             secureCookies: true,

@@ -627,7 +627,12 @@ const setMusicFromUploadTool = openstoryTool({
   run: async ({ upload, sequenceId: id }, { scopedDb, userId }) => {
     const sequence = await productionAccess(scopedDb).sequence(id);
     const result = await setSequenceMusicFromUpload(
-      { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
+      {
+        scopedDb,
+        user: { id: userId },
+        organizationId: scopedDb.organizationId,
+        sequence,
+      },
       { publicUrl: storedUpload(upload) }
     );
     return {
@@ -663,7 +668,12 @@ const setCharacterSheetFromUploadTool = openstoryTool({
       character.sequenceId
     );
     await setCharacterSheetFromUpload(
-      { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
+      {
+        scopedDb,
+        user: { id: userId },
+        organizationId: scopedDb.organizationId,
+        sequence,
+      },
       {
         characterId: character.id,
         lookId: input.lookId ?? character.id,
@@ -698,7 +708,12 @@ const setLocationSheetFromUploadTool = openstoryTool({
       location.sequenceId
     );
     await setLocationSheetFromUpload(
-      { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
+      {
+        scopedDb,
+        user: { id: userId },
+        organizationId: scopedDb.organizationId,
+        sequence,
+      },
       { locationDbId: location.id, publicUrl: storedUpload(input.upload) }
     );
     return {
@@ -744,7 +759,7 @@ const addElementTool = openstoryTool({
     );
     const element = await attachElementUpload({
       scopedDb,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       userId,
       sequenceId: sequence.id,
       ...elementUpload(input.upload, input.name),
@@ -780,7 +795,7 @@ const replaceElementTool = openstoryTool({
     );
     const updated = await replaceElementUpload({
       scopedDb,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       userId,
       sequenceId: element.sequenceId,
       elementId: element.id,

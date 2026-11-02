@@ -355,7 +355,7 @@ export function triggerContinue(
   scopedDb: ScopedDb,
   input: {
     userId: string;
-    teamId: string;
+    organizationId: string;
     sequence: Pick<Sequence, 'id' | 'imageModel' | 'videoModel' | 'musicModel'>;
     plan: UpdateStalePlan;
     stopAt: GenerationStage;
@@ -366,7 +366,7 @@ export function triggerContinue(
   const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
   return triggerStoryboard(scopedDb, {
     userId: input.userId,
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     sequenceId: sequence.id,
     resume: true,
     plan: input.plan,

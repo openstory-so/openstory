@@ -55,9 +55,9 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     scopedDb: WorkflowScopedDb
   ): Promise<void> {
     const input = event.payload;
-    const { sequenceId, teamId, userId } = input;
+    const { sequenceId, organizationId, userId } = input;
 
-    if (!sequenceId || !teamId || !userId) {
+    if (!sequenceId || !organizationId || !userId) {
       throw new WorkflowValidationError(
         'Sequence ID, team ID, and user ID are required'
       );
@@ -81,7 +81,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     await step.do('verify-clear-and-start-processing', async () => {
       logger.info('[StoryboardWorkflow:cf] Input received:', {
         sequenceId: input.sequenceId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         autoGenerateMotion: input.autoGenerateMotion,
         stopAt: input.stopAt,
@@ -89,7 +89,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       });
       validateSequenceAuth(input);
 
-      // Throws if the sequence was deleted (or moved teams) since the trigger.
+      // Throws if the sequence was deleted (or moved organization) since the trigger.
       await scopedDb.liveRead.sequences.getForUser({ sequenceId });
 
       if (!input.resume) {
@@ -135,7 +135,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
             // upload outage drops the poster rather than failing the run.
             const upload = await uploadPosterToStorage({
               imageUrl: generatedPosterUrl,
-              teamId,
+              organizationId,
               sequenceId,
             });
             return { url: upload.url, metadata: result.metadata };
@@ -197,7 +197,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         childId: `analyze-script:${sequenceId}`,
         childPayload: {
           userId: input.userId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId,
           reservationId: input.reservationId,
           script,
@@ -297,7 +297,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         childId: `continue:${sequenceId}:${event.instanceId}`,
         childPayload: {
           userId: input.userId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId,
           reservationId: input.reservationId,
           plan,

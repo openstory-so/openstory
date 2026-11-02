@@ -56,7 +56,7 @@ describe('createCheckoutSession', () => {
 
     await createCheckoutSession({
       scopedDb: makeScopedDb(),
-      teamId: 'team_1',
+      organizationId: 'team_1',
       amountUsd: 100,
       userId: 'user_1',
       userEmail: 'test@example.com',
@@ -87,7 +87,7 @@ describe('createCheckoutSession', () => {
       distinctId: 'user_1',
       event: 'checkout_opened',
       properties: expect.objectContaining({
-        teamId: 'team_1',
+        organizationId: 'team_1',
         amount_usd: 100,
         method: 'checkout',
         stripe_checkout_session_id: 'cs_1',
@@ -105,7 +105,7 @@ describe('createCheckoutSession', () => {
     });
     await createCheckoutSession({
       scopedDb: makeScopedDb(),
-      teamId: 'team_1',
+      organizationId: 'team_1',
       amountUsd: 10,
       userId: 'user_1',
       userEmail: 'test@example.com',
@@ -132,7 +132,7 @@ describe('createCheckoutSession', () => {
 
     await createSetupCheckoutSession({
       scopedDb: makeScopedDb(),
-      teamId: 'team_1',
+      organizationId: 'team_1',
       userId: 'user_1',
       userEmail: 'test@example.com',
       successUrl: 'https://app/credits',
@@ -143,7 +143,7 @@ describe('createCheckoutSession', () => {
     expect(session.mode).toBe('setup');
     expect(session.line_items).toBeUndefined();
     expect(session.metadata).toEqual({
-      teamId: 'team_1',
+      organizationId: 'team_1',
       userId: 'user_1',
       type: 'save_card',
     });

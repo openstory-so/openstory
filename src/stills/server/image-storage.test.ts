@@ -64,7 +64,7 @@ describe('uploadPosterToStorage', () => {
 
     const result = await uploadPosterToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/poster.png',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
     });
 
@@ -86,7 +86,7 @@ describe('uploadPosterToStorage', () => {
 
     const result = await uploadPosterToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/poster',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
     });
 
@@ -103,7 +103,7 @@ describe('uploadPosterToStorage', () => {
     await expect(
       uploadPosterToStorage({
         imageUrl: 'https://v3.fal.media/files/b/abc/poster.png',
-        teamId: 'team_1',
+        organizationId: 'team_1',
         sequenceId: 'seq_1',
       })
     ).rejects.toThrow('Failed to download image: 404 NoSuchKey');
@@ -117,7 +117,7 @@ describe('uploadImageToStorage', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/shot.png',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -141,7 +141,7 @@ describe('content-type precedence', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/upscaled',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -160,7 +160,7 @@ describe('content-type precedence', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/upscaled.jpg',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -173,7 +173,7 @@ describe('content-type precedence', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/frame.webp',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -186,7 +186,7 @@ describe('content-type precedence', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/upscaled',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -205,7 +205,7 @@ describe('content-type precedence', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: 'https://v3.fal.media/files/b/abc/frame.png',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -231,7 +231,7 @@ describe('inline and stored sources', () => {
 
     const result = await uploadImageToStorage({
       imageUrl: dataUri,
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       shotId: 'shot_1',
     });
@@ -247,7 +247,7 @@ describe('inline and stored sources', () => {
     await expect(
       uploadImageToStorage({
         imageUrl: 'https://v3.fal.media/files/b/abc/shot.png',
-        teamId: 'team_1',
+        organizationId: 'team_1',
         sequenceId: 'seq_1',
         shotId: 'shot_1',
       })

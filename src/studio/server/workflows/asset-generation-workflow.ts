@@ -225,7 +225,8 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
-    const { assetId, endpointId, activity, input, teamId } = event.payload;
+    const { assetId, endpointId, activity, input, organizationId } =
+      event.payload;
 
     await step.do('set-running', async () => {
       await scopedDb.generatedAssets.markRunning(assetId);
@@ -325,7 +326,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         const extension = outputExtension(ref.url, knownContentType);
         const contentType =
           knownContentType ?? getMimeTypeFromExtension(extension);
-        const path = `teams/${teamId}/assets/${assetId}/output-${index}.${extension}`;
+        const path = `teams/${organizationId}/assets/${assetId}/output-${index}.${extension}`;
         const result = await uploadResponse(
           response,
           ACTIVITY_BUCKETS[activity],
@@ -355,7 +356,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     await step.do('record-provenance', async () => {
       for (const [index, storageKey] of storageKeys.entries()) {
         await recordProvenance(scopedDb.provenance, {
-          teamId,
+          organizationId,
           userId: event.payload.userId,
           assetKind: 'generated_asset',
           // Suffixed so multiple outputs of one run don't collide on assetId

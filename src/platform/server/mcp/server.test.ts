@@ -25,7 +25,7 @@ const user = {
 
 const auth = {
   user,
-  teamId: 'team_1',
+  organizationId: 'team_1',
   teamName: "Ada's Team",
   session: null,
   oauth: null,
@@ -647,7 +647,7 @@ describe('production tool authorization', () => {
         {
           ...auth,
           kind,
-          teamId: 'team_2',
+          organizationId: 'team_2',
           scopes: kind === 'oauth' ? ['sequences:read'] : [],
         }
       );
@@ -1142,7 +1142,7 @@ describe('withToolViews passthrough', () => {
 describe('tool argument and result shapes', () => {
   it('takes scalars sent as strings and drops undefined result fields', async () => {
     vi.spyOn(dbModule, 'createScopedDb').mockReturnValue(
-      asStub<ScopedDb>({ teamId: 'team_1' })
+      asStub<ScopedDb>({ organizationId: 'team_1' })
     );
     const create = vi.spyOn(createModule, 'runOneShotCreate').mockResolvedValue(
       asStub<createModule.OneShotResult>({

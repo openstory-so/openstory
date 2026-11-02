@@ -34,7 +34,7 @@ const { bumpStylePopularity } = await import('./bump-style-popularity');
 const baseArgs = {
   styleId: 'style_01',
   sequenceIds: ['seq_01'],
-  teamId: 'team_01',
+  organizationId: 'team_01',
   userId: 'user_01',
 };
 
@@ -68,7 +68,7 @@ describe('bumpStylePopularity', () => {
       properties: {
         styleId: 'style_01',
         sequenceIds: ['seq_01'],
-        teamId: 'team_01',
+        organizationId: 'team_01',
       },
     });
   });
@@ -101,7 +101,7 @@ describe('bumpStylePopularity', () => {
       'incrementUsage failed',
       expect.objectContaining({
         styleId: 'style_01',
-        teamId: 'team_01',
+        organizationId: 'team_01',
         userId: 'user_01',
         sequenceCount: 1,
         err,

@@ -21,7 +21,7 @@ describe('captureStudioGenerationCompleted', () => {
     captureProductEvent.mockClear();
     captureStudioGenerationCompleted({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       activity: 'image',
       model: 'gpt_image_2',
@@ -53,7 +53,7 @@ describe('captureStudioGenerationCompleted', () => {
     captureProductEvent.mockClear();
     captureStudioGenerationCompleted({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       activity: 'video',
       model: 'seedance_v2',
@@ -87,7 +87,7 @@ describe('captureStudioGenerationCompleted', () => {
     const prompt = 'x'.repeat(300);
     captureStudioGenerationCompleted({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       assetId: 'asset-1',
       activity: 'image',
       model: 'gpt_image_2',
@@ -112,7 +112,7 @@ describe('captureSequenceContentReady', () => {
     captureProductEvent.mockClear();
     captureSequenceContentReady({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq_1',
       title: 'The Long Walk',
       watchUrl: 'https://openstory.so/sequences/seq_1/scenes',
@@ -137,7 +137,7 @@ describe('captureSequenceContentReady', () => {
     captureProductEvent.mockClear();
     captureSequenceContentReady({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq_1',
       title: 'Untitled Sequence',
       watchUrl: 'https://openstory.so/sequences/seq_1/scenes',

@@ -16,11 +16,11 @@ export const Route = createFileRoute('/api/storage/upload')({
         try {
           const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
-          const { bucket, path, contentType, teamId } = resolved.target;
+          const { bucket, path, contentType, organizationId } = resolved.target;
           await requireUploadCheckAllowed({
             bucket,
             contentType,
-            teamId,
+            organizationId,
             userId: context.user.id,
           });
 
@@ -72,7 +72,7 @@ export const Route = createFileRoute('/api/storage/upload')({
             bucket,
             path,
             contentType,
-            teamId,
+            organizationId,
             userId: context.user.id,
             request,
           });

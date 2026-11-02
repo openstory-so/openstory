@@ -141,7 +141,7 @@ export async function startExport(
   scopedDb: ScopedDb,
   input: {
     userId: string;
-    teamId: string;
+    organizationId: string;
     sequenceId: string;
     cut: ExportCut;
     refuseOtherCut?: boolean;
@@ -177,7 +177,7 @@ export async function startExport(
   // row the stale sweep above can reconcile. `created: false` means a
   // concurrent start won the one-processing-row race — coalesce onto its row
   // rather than starting a second workflow.
-  const path = `teams/${input.teamId}/sequences/${sequenceId}/exports/${generateId().slice(-8)}${EXPORT_FILENAME_SUFFIX}`;
+  const path = `teams/${input.organizationId}/sequences/${sequenceId}/exports/${generateId().slice(-8)}${EXPORT_FILENAME_SUFFIX}`;
   const { row, created } = await scopedDb.sequenceExports.createProcessing({
     sequenceId,
     url: getPublicUrl(STORAGE_BUCKETS.VIDEOS, path),
@@ -192,7 +192,7 @@ export async function startExport(
       'sequence-export',
       {
         userId: input.userId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         sequenceId,
         exportId: row.id,
         storagePath: path,

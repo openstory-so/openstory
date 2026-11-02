@@ -58,14 +58,14 @@ async function requireUploadPostKey(
 
 export const getSocialPublishingFn = createServerFn({ method: 'GET' })
   .middleware([teamMemberAccessMiddleware])
-  .validator(zodValidator(z.object({ teamId: ulidSchema })))
+  .validator(zodValidator(z.object({ organizationId: ulidSchema })))
   .handler(async ({ context }) => ({
     enabled: await context.scopedDb.apiKeys.hasUsableKey('upload_post'),
   }));
 
 export const listSocialProfilesFn = createServerFn({ method: 'GET' })
   .middleware([teamMemberAccessMiddleware])
-  .validator(zodValidator(z.object({ teamId: ulidSchema })))
+  .validator(zodValidator(z.object({ organizationId: ulidSchema })))
   .handler(async ({ context }) => {
     const apiKey = await requireUploadPostKey(context.scopedDb.apiKeys);
     return listUploadPostProfiles(apiKey);
@@ -83,7 +83,7 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
       // A system admin opening another team's sequence gets that team's
       // scopedDb (and key). Reading is an admin power; posting on the team's
       // own social accounts is not.
-      await requireTeamMemberAccess(context.user.id, sequence.teamId);
+      await requireTeamMemberAccess(context.user.id, sequence.organizationId);
       const apiKey = await requireUploadPostKey(scopedDb.apiKeys);
       const exportRow = await scopedDb.sequenceExports.getById(data.exportId);
       assertPublishableExport(exportRow, sequence.id);
@@ -96,13 +96,13 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
       assertPublicVideoUrl(videoUrl);
       const requestId = await derivePublishRequestId({
         ...data,
-        teamId: sequence.teamId,
+        organizationId: sequence.organizationId,
       });
       prepared = { apiKey, videoUrl, requestId };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.info('Publish refused before sending', {
-        teamId: sequence.teamId,
+        organizationId: sequence.organizationId,
         exportId: data.exportId,
         message,
       });
@@ -122,7 +122,7 @@ export const getSocialPublishStatusFn = createServerFn({ method: 'GET' })
   .validator(
     zodValidator(
       z.object({
-        teamId: ulidSchema,
+        organizationId: ulidSchema,
         requestId: z.string().regex(PUBLISH_REQUEST_ID_RE),
       })
     )

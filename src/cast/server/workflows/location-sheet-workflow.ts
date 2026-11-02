@@ -112,10 +112,10 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     // inside the generating step (#1645). A run from no sequence (#1695)
     // stores under the team and reports on the location's own channel.
     const locationDbId = input.locationDbId;
-    const teamId = input.teamId;
+    const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channelId = locationChannelId(sequenceId, locationDbId);
-    const storageDir = `${teamId}/${sequenceId ?? 'team'}/${locationDbId}`;
+    const storageDir = `${organizationId}/${sequenceId ?? 'team'}/${locationDbId}`;
 
     // Step 2: Generate the location reference image — reseeds on a content
     // flag, then one softened prompt (#1293). The upload rides the same step:
@@ -184,7 +184,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId,
+        organizationId,
         userId: input.userId,
         assetKind: 'location_sheet',
         assetId: locationDbId,
@@ -256,7 +256,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       await triggerSheetPortrait(
         {
           userId: input.userId,
-          teamId,
+          organizationId,
           sequenceId: sequenceId ?? undefined,
           subject: { kind: 'location', locationId: locationDbId },
           versionId: reconcileOutcome.versionId,
@@ -265,7 +265,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         },
         await scopedDb.liveRead.compliance.listEnforcementFor(
           input.userId,
-          teamId
+          organizationId
         )
       );
     });
@@ -331,7 +331,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const input = event.payload;
 
     // Mark location reference as failed — through the claim (#1113).
-    if (input.locationDbId && input.teamId) {
+    if (input.locationDbId && input.organizationId) {
       await scopedDb.locations.failReferenceClaim(
         input.locationDbId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim

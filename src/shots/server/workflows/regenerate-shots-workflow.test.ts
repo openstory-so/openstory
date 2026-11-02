@@ -64,7 +64,7 @@ function makeEvent(): Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>> {
   return {
     payload: {
       userId: 'u1',
-      teamId: 't1',
+      organizationId: 't1',
       sequenceId: 'seq_1',
       shotIds: ['shot-1'],
       triggerKind: 'character',

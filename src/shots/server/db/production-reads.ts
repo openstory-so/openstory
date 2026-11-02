@@ -60,10 +60,13 @@ function decode(input: PageOptions, kind: Cursor['kind']) {
   }
 }
 
-export function createProductionReadMethods(db: Database, teamId: string) {
+export function createProductionReadMethods(
+  db: Database,
+  organizationId: string
+) {
   const activeShots = (sequenceId: string) =>
     and(
-      eq(sequences.teamId, teamId),
+      eq(sequences.organizationId, organizationId),
       eq(shots.sequenceId, sequenceId),
       isNull(shots.deletedAt),
       // Keep legacy scene-less shots visible, but never a shot under a deleted/wrong-sequence scene.
@@ -83,7 +86,7 @@ export function createProductionReadMethods(db: Database, teamId: string) {
         .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
         .where(
           and(
-            eq(sequences.teamId, teamId),
+            eq(sequences.organizationId, organizationId),
             isNull(shots.deletedAt),
             or(
               isNull(shots.sceneId),
@@ -183,7 +186,7 @@ export function createProductionReadMethods(db: Database, teamId: string) {
       .leftJoin(sceneScriptVersions, joinSelectedScript)
       .where(
         and(
-          eq(sequences.teamId, teamId),
+          eq(sequences.organizationId, organizationId),
           eq(scenes.sequenceId, input.sequenceId),
           isNull(scenes.deletedAt),
           cursor

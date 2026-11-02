@@ -8,13 +8,13 @@ import { z } from 'zod';
 export type TestLocation = {
   id: string;
   name: string;
-  teamId: string;
+  organizationId: string;
   referenceImageUrl: string;
 };
 
 const createdSchema = z.object({
   id: z.string(),
-  teamId: z.string(),
+  organizationId: z.string(),
   name: z.string(),
   referenceImageUrl: z.string(),
 });
@@ -33,10 +33,10 @@ async function postLocation(body: Record<string, string>) {
 
 /** A team location with a placeholder sheet. */
 export async function createTestLocation(
-  teamId: string,
+  organizationId: string,
   name: string
 ): Promise<TestLocation> {
-  return await postLocation({ teamId, name });
+  return await postLocation({ organizationId, name });
 }
 
 /**
@@ -45,9 +45,9 @@ export async function createTestLocation(
  * with a real R2 sheet the workflows can read.
  */
 export async function createSunlitLoftLocation(
-  teamId: string
+  organizationId: string
 ): Promise<TestLocation> {
-  return await postLocation({ teamId, preset: 'sunlit-loft' });
+  return await postLocation({ organizationId, preset: 'sunlit-loft' });
 }
 
 /**

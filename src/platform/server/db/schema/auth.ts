@@ -41,6 +41,9 @@ export const session = snakeCase.table(
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    // Better Auth organization plugin. No FK: the plugin leaves it optional
+    // and a deleted organization must not rebuild `session` (#612).
+    activeOrganizationId: text(),
   },
   (table) => [index('session_userId_idx').on(table.userId)]
 );

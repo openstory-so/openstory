@@ -103,14 +103,16 @@ export const Route = createFileRoute('/api/example/$id')({
       POST: async ({ params, request, context }) => {
         try {
           const input = schema.parse(await request.json());
-          const { user, teamId } = context;
+          const { user, organizationId } = context;
 
-          const record = await db.insert(table).values({ ...input, teamId });
+          const record = await db
+            .insert(table)
+            .values({ ...input, organizationId });
 
           // Trigger a durable workflow (see Workflow Pattern below)
           const workflowRunId = await triggerWorkflow('/image', {
             userId: user.id,
-            teamId,
+            organizationId,
             ...input,
           });
 
@@ -128,7 +130,7 @@ export const Route = createFileRoute('/api/example/$id')({
 });
 ```
 
-Steps: 1) validate input · 2) auth via `authWithTeamRequestMiddleware` (user/teamId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
+Steps: 1) validate input · 2) auth via `authWithTeamRequestMiddleware` (user/organizationId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
 
 ## Workflow Pattern
 
@@ -147,7 +149,7 @@ the QStash-era `label` / `retries` / `retryDelay` were no-ops and are gone
 ```typescript
 const workflowRunId = await triggerWorkflow('/image', {
   userId,
-  teamId,
+  organizationId,
   prompt,
   ...params,
 });
@@ -168,7 +170,7 @@ and must be wired in four places (a test in
    binding so the sequence chip can status a child whose instance id has no
    trigger key (`continue:…`, `element-sheets:…`).
 
-The base class validates `userId`/`teamId` on the payload, builds a
+The base class validates `userId`/`organizationId` on the payload (a run queued before #813 may still say `teamId`; the base reads that too), builds a
 `ScopedDb`, and sanitizes/handles failures. Subclasses implement
 `runImpl(event, step, scopedDb)`, run steps via
 `step.do('step-name', async () => { ... })` (durable, auto-retried), and write
@@ -439,7 +441,7 @@ This destroyed `team_members`, `session`, `account`, and `passkey` in production
 
    Prove it before merging, on a copy of production and on a scratch remote D1. What has been run for the worked example: `wrangler d1 migrations apply --local` on local data and on a copy of production, the PR-preview path on an empty remote D1, and on 2026-10-07 `migrations apply --remote` on a throwaway remote D1 loaded with a production export (188,226 rows; all eight character tables identical in count, no foreign key violations, both files recorded). Still local only: the out-of-order control, the guard stopping file 2 when file 1 has not run. Details: `docs/architecture/team-characters.md` § Migrations.
 
-3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `teams`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code.
+3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `organization`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code. The Better Auth `member` and `invitation` rows cascade from `organization` and `user` because that is what the plugin's generated schema does, and it matches the existing `team_members` foreign keys.
 
 **Loading a D1 export.** A whole `wrangler d1 export` file does not load back: a child's rows come before its parent table exists (`no such table`). Export twice, `--no-data` then `--no-schema`, and load the schema file first. On **local** D1 the data file then loads as it is. On **remote** D1 it still fails with a foreign key error: the remote import is evidently not one transaction, so the pragma at the top of the file does not cover it. Put the rows in parent-table-first order before loading (no table in this schema references itself or forms a loop, so such an order exists; `scripts/reorder-d1-dump.ts` does the reordering, but its table list is an old snapshot and it stops on a table it does not know, so regenerate the list first). Verified 2026-10-07 on local D1 and on a remote D1 with a production export.
 
@@ -487,7 +489,7 @@ See `src/ui/` and any domain's `ui/` for the house pattern.
 - Services/utils: co-located (`service.test.ts`).
 - Focus: business logic, not React components.
 - DB: a test that needs a database calls `createTestDb()` (`src/platform/server/db/test-d1.ts`): in-process SQLite behind the D1 API, so it answers like D1 (no `rowsAffected`, at most 100 bound variables per query, foreign keys always on, no `BEGIN`). Never build a libsql client in a test. Code that calls `getDb()` gets it via `vi.doMock('#db-client', …)`. ULID primary keys.
-- Workflows: mock workflow context + AI calls; pass auth (userId/teamId) through context.
+- Workflows: mock workflow context + AI calls; pass auth (userId/organizationId) through context.
 - `vitest.config.ts` is **self-contained** — it does not extend `vite.config.ts`, because the Cloudflare Vite plugin rejects the SSR-externals shape Vitest injects.
 
 **Module-mocking pattern** (preserves the runtime-ordered semantics bun:test's `mock.module` had — `vi.doMock` is NOT hoisted, so dynamic-import the target after mocking):

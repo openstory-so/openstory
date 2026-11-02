@@ -4,7 +4,7 @@ import { createTestStyle } from '@/platform/server/test/seed';
 import { testOnlyGuard } from './route';
 
 const CreateStyleSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 export const Route = createFileRoute('/api/test/style')({
@@ -13,15 +13,17 @@ export const Route = createFileRoute('/api/test/style')({
     handlers: ({ createHandlers }) =>
       createHandlers({
         POST: async ({ request }) => {
-          const { teamId } = CreateStyleSchema.parse(await request.json());
-          if (!teamId) {
+          const { organizationId } = CreateStyleSchema.parse(
+            await request.json()
+          );
+          if (!organizationId) {
             return Response.json(
-              { error: 'teamId is required' },
+              { error: 'organizationId is required' },
               { status: 400 }
             );
           }
 
-          const style = await createTestStyle(teamId);
+          const style = await createTestStyle(organizationId);
           return Response.json(style);
         },
       }),

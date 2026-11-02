@@ -218,7 +218,7 @@ export async function generateMusic(
 
   const baseInput = {
     userId: actor.userId,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
     duration: data.duration ?? totalDuration,
     model: data.model && isValidAudioModel(data.model) ? data.model : undefined,
@@ -316,7 +316,7 @@ export async function rewriteMusicPrompt(
     '/music-prompt',
     {
       userId: actor.userId,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       sequenceId: sequence.id,
       sceneSummaries,
       analysisModelId,

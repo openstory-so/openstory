@@ -5,20 +5,32 @@
 
 import { and, asc, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
+import { generateId } from '@/platform/id';
 import { INVITATION_CONFIG } from '@/platform/server/auth/constants';
 import type { TeamRole } from '@/platform/server/auth/permissions';
 import { getUserRole } from '@/platform/server/auth/permissions';
-import {
-  teamInvitations,
-  teamMembers,
-  user,
-} from '@/platform/server/db/schema';
+import { member, teamInvitations, user } from '@/platform/server/db/schema';
 import { ValidationError } from '@/platform/errors';
 import crypto from 'node:crypto';
 
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'db', 'team-management']);
+
+async function findMembership(
+  db: Database,
+  organizationId: string,
+  userId: string
+) {
+  const [row] = await db
+    .select({ userId: member.userId })
+    .from(member)
+    .where(
+      and(eq(member.organizationId, organizationId), eq(member.userId, userId))
+    )
+    .limit(1);
+  return row;
+}
 
 type TeamMember = {
   userId: string;
@@ -31,7 +43,7 @@ type TeamMember = {
 
 type TeamInvitation = {
   id: string;
-  teamId: string;
+  organizationId: string;
   email: string;
   role: string;
   invitedBy: string;
@@ -49,7 +61,7 @@ type AcceptInvitationParams = {
 /**
  * Read-only team management methods + acceptInvitation (needed by invitation flow).
  */
-function createTeamManagementReadMethods(db: Database, teamId: string) {
+function createTeamManagementReadMethods(db: Database, organizationId: string) {
   /**
    * Billing contact = the team owner, not whichever member tripped the
    * debit — they may not be the one holding the card (#1499).
@@ -57,9 +69,11 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
   async function getOwnerEmail(): Promise<string | null> {
     const [row] = await db
       .select({ email: user.email })
-      .from(teamMembers)
-      .innerJoin(user, eq(teamMembers.userId, user.id))
-      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, 'owner')))
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
+      .where(
+        and(eq(member.organizationId, organizationId), eq(member.role, 'owner'))
+      )
       .limit(1);
     return row?.email ?? null;
   }
@@ -67,17 +81,17 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
   async function getMembers(): Promise<TeamMember[]> {
     const members: TeamMember[] = await db
       .select({
-        userId: teamMembers.userId,
+        userId: member.userId,
         email: user.email,
         name: user.name,
         image: user.image,
-        role: teamMembers.role,
-        joinedAt: teamMembers.joinedAt,
+        role: member.role,
+        joinedAt: member.createdAt,
       })
-      .from(teamMembers)
-      .innerJoin(user, eq(teamMembers.userId, user.id))
-      .where(eq(teamMembers.teamId, teamId))
-      .orderBy(asc(teamMembers.joinedAt));
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
+      .where(eq(member.organizationId, organizationId))
+      .orderBy(asc(member.createdAt));
 
     return members.map((m) => ({
       userId: m.userId,
@@ -96,12 +110,12 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
   async function getMemberEmail(memberUserId: string): Promise<string | null> {
     const [row] = await db
       .select({ email: user.email })
-      .from(teamMembers)
-      .innerJoin(user, eq(teamMembers.userId, user.id))
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
       .where(
         and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.userId, memberUserId)
+          eq(member.organizationId, organizationId),
+          eq(member.userId, memberUserId)
         )
       )
       .limit(1);
@@ -112,7 +126,7 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
     const invitations: Omit<TeamInvitation, 'token'>[] = await db
       .select({
         id: teamInvitations.id,
-        teamId: teamInvitations.teamId,
+        organizationId: teamInvitations.organizationId,
         email: teamInvitations.email,
         role: teamInvitations.role,
         invitedBy: teamInvitations.invitedBy,
@@ -122,12 +136,12 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
         acceptedAt: teamInvitations.acceptedAt,
       })
       .from(teamInvitations)
-      .where(eq(teamInvitations.teamId, teamId))
+      .where(eq(teamInvitations.organizationId, organizationId))
       .orderBy(asc(teamInvitations.createdAt));
 
     return invitations.map((inv) => ({
       id: inv.id,
-      teamId: inv.teamId,
+      organizationId: inv.organizationId,
       email: inv.email,
       role: inv.role,
       invitedBy: inv.invitedBy,
@@ -140,7 +154,7 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
 
   /**
    * Accept a team invitation.
-   * On ReadOnly because invitation flow has no user session with a known teamId.
+   * On ReadOnly because invitation flow has no user session with a known organizationId.
    */
   async function acceptInvitation(
     params: AcceptInvitationParams
@@ -166,19 +180,24 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
       throw new ValidationError('Invitation has expired');
     }
 
-    const existingMember = await db.query.teamMembers.findFirst({
-      where: { teamId: invitation.teamId, userId: params.userId },
-      columns: { userId: true },
-    });
+    const existingMember = await findMembership(
+      db,
+      invitation.organizationId,
+      params.userId
+    );
 
     if (existingMember) {
-      throw new ValidationError('You are already a member of this team');
+      throw new ValidationError(
+        'You are already a member of this organization'
+      );
     }
 
-    await db.insert(teamMembers).values({
-      teamId: invitation.teamId,
+    await db.insert(member).values({
+      id: generateId(),
+      organizationId: invitation.organizationId,
       userId: params.userId,
       role: invitation.role,
+      createdAt: new Date(),
     });
 
     try {
@@ -193,7 +212,7 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
       logger.error('Failed to update invitation status:', { err: error });
     }
 
-    return invitation.teamId;
+    return invitation.organizationId;
   }
 
   return {
@@ -210,10 +229,10 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
  */
 export function createTeamManagementMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
-  const read = createTeamManagementReadMethods(db, teamId);
+  const read = createTeamManagementReadMethods(db, organizationId);
 
   async function createInvitation(params: {
     email: string;
@@ -225,18 +244,19 @@ export function createTeamManagementMethods(
     });
 
     if (existingAuthUser) {
-      const existingMember = await db.query.teamMembers.findFirst({
-        where: { teamId, userId: existingAuthUser.id },
-        columns: { userId: true },
-      });
+      const existingMember = await findMembership(
+        db,
+        organizationId,
+        existingAuthUser.id
+      );
 
       if (existingMember) {
-        throw new ValidationError('User is already a team member');
+        throw new ValidationError('User is already in this organization');
       }
     }
 
     const existingInvitation = await db.query.teamInvitations.findFirst({
-      where: { teamId, email: params.email, status: 'pending' },
+      where: { organizationId, email: params.email, status: 'pending' },
       columns: { id: true },
     });
 
@@ -257,7 +277,7 @@ export function createTeamManagementMethods(
     const [invitation] = await db
       .insert(teamInvitations)
       .values({
-        teamId,
+        organizationId,
         email: params.email,
         role: params.role,
         invitedBy: userId,
@@ -277,7 +297,7 @@ export function createTeamManagementMethods(
 
     return {
       id: invitation.id,
-      teamId: invitation.teamId,
+      organizationId: invitation.organizationId,
       email: invitation.email,
       role: invitation.role,
       invitedBy: invitation.invitedBy,
@@ -290,24 +310,26 @@ export function createTeamManagementMethods(
 
   async function removeMember(targetUserId: string): Promise<void> {
     if (userId === targetUserId) {
-      throw new ValidationError('You cannot remove yourself from the team');
+      throw new ValidationError(
+        'You cannot remove yourself from the organization'
+      );
     }
 
-    const targetRole = await getUserRole(targetUserId, teamId);
+    const targetRole = await getUserRole(targetUserId, organizationId);
     if (!targetRole) {
-      throw new ValidationError('User is not a member of this team');
+      throw new ValidationError('User is not a member of this organization');
     }
 
     if (targetRole === 'owner') {
-      throw new ValidationError('Cannot remove the team owner');
+      throw new ValidationError('Cannot remove the organization owner');
     }
 
     await db
-      .delete(teamMembers)
+      .delete(member)
       .where(
         and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.userId, targetUserId)
+          eq(member.organizationId, organizationId),
+          eq(member.userId, targetUserId)
         )
       );
   }
@@ -320,9 +342,9 @@ export function createTeamManagementMethods(
       throw new ValidationError('You cannot change your own role');
     }
 
-    const currentRole = await getUserRole(targetUserId, teamId);
+    const currentRole = await getUserRole(targetUserId, organizationId);
     if (!currentRole) {
-      throw new ValidationError('User is not a member of this team');
+      throw new ValidationError('User is not a member of this organization');
     }
 
     if (currentRole === 'owner') {
@@ -332,12 +354,12 @@ export function createTeamManagementMethods(
     }
 
     await db
-      .update(teamMembers)
+      .update(member)
       .set({ role: newRole })
       .where(
         and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.userId, targetUserId)
+          eq(member.organizationId, organizationId),
+          eq(member.userId, targetUserId)
         )
       );
   }

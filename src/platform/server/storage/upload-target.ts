@@ -26,7 +26,7 @@ type UploadTarget = {
   path: string;
   contentType: string;
   /** The team the path's owner segment names; the caller is a member. */
-  teamId: string;
+  organizationId: string;
 };
 
 type Resolved =
@@ -62,10 +62,10 @@ export async function resolveUploadTarget(
   const validBucket = bucketByName.get(bucket);
   if (!validBucket) return fail(`Invalid bucket: ${bucket}`, 400);
 
-  // Anchor the team-scope check. A bare substring test (`path.includes(teamId)`)
+  // Anchor the team-scope check. A bare substring test (`path.includes(organizationId)`)
   // is bypassable: an attacker could put their own team id in the filename and
   // still write into another team's prefix (e.g.
-  // `teams/<victim>/…/<myTeamId>.mp4`). Instead read the team id from the
+  // `teams/<victim>/…/<myOrganizationId>.mp4`). Instead read the team id from the
   // *leading owner segment* — segment 0, or segment 1 when the path is under a
   // `teams/` prefix (exports use `teams/<id>/…`; talent/location/element use
   // `<id>/…`) — reject traversal / empty segments, and require membership.
@@ -111,6 +111,11 @@ export async function resolveUploadTarget(
 
   return {
     ok: true,
-    target: { bucket: validBucket, path, contentType, teamId: ownerSegment },
+    target: {
+      bucket: validBucket,
+      path,
+      contentType,
+      organizationId: ownerSegment,
+    },
   };
 }

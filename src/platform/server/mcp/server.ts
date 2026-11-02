@@ -83,7 +83,7 @@ const whoami = toolDefinition({
       email: caller.user.email,
       name: caller.user.name,
     },
-    team: { id: caller.teamId, name: caller.teamName },
+    team: { id: caller.organizationId, name: caller.teamName },
   };
 });
 
@@ -162,14 +162,18 @@ function mcpToolContext(
 ): OpenStoryMcpContext {
   const origin = new URL(request.url).origin;
   return {
-    caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
+    caller: {
+      user: auth.user,
+      organizationId: auth.organizationId,
+      teamName: auth.teamName,
+    },
     origin,
     scoped: (scope) => {
       if (auth.kind === 'oauth' && !auth.scopes.includes(scope)) {
         throw new InsufficientScopeError(scope);
       }
       return {
-        scopedDb: createScopedDb(auth.teamId, auth.user.id),
+        scopedDb: createScopedDb(auth.organizationId, auth.user.id),
         origin,
         userId: auth.user.id,
         request: {

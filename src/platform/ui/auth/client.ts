@@ -9,7 +9,12 @@ import {
   emailOTPClient,
   inferAdditionalFields,
   lastLoginMethodClient,
+  organizationClient,
 } from 'better-auth/client/plugins';
+import {
+  organizationAc,
+  organizationRoles,
+} from '@/platform/auth/organization-access';
 import { createAuthClient } from 'better-auth/react';
 import { getQueryClient } from '@/ui/query-client';
 import {
@@ -58,6 +63,11 @@ export const authClient = createAuthClient({
     inferAdditionalFields<Auth>(),
     lastLoginMethodClient({
       cookieName: lastUsedLoginMethodCookieName(cookiePrefix),
+    }),
+    organizationClient({
+      ac: organizationAc,
+      roles: organizationRoles,
+      teams: { enabled: false },
     }),
   ],
 });

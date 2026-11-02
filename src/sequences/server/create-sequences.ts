@@ -86,7 +86,7 @@ export async function resolveStyleSource(
   if (styleId === AUTO_STYLE_ID) {
     return { kind: 'pending', draft: placeholderAutoStyleDraft() };
   }
-  // `getById` hides other teams' bound rows, so reaching the clone branch
+  // `getById` hides other organizations' bound rows, so reaching the clone branch
   // means the source is ours.
   const style = await scopedDb.styles.getById(styleId);
   if (!style) {
@@ -114,7 +114,7 @@ export async function resolveStyleSource(
 export type CreateSequencesContext = {
   scopedDb: ScopedDb;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
   /**
    * When false, the storyboard run skips the ready email (#1276). `/api/v1`
    * callers poll; dashboard creates leave this undefined (send).
@@ -136,10 +136,10 @@ export const createSequences = createServerOnlyFn(
     context: CreateSequencesContext
   ): Promise<CreateSequencesResult> => {
     // The scoped DB IS the authorization boundary: middleware resolved the
-    // caller's team and built `context.scopedDb`/`context.teamId` for it, so
-    // every write below is already team-authorized. (The old `data.teamId`
+    // caller's team and built `context.scopedDb`/`context.organizationId` for it, so
+    // every write below is already team-authorized. (The old `data.organizationId`
     // override was vestigial — writes always went through the scoped db anyway.)
-    const teamId = context.teamId;
+    const organizationId = context.organizationId;
 
     const {
       script,
@@ -204,7 +204,7 @@ export const createSequences = createServerOnlyFn(
       }
     }
 
-    // Verify source sequence access (scoped read returns null for other teams)
+    // Verify source sequence access (scoped read returns null for other organizations)
     if (sourceSequenceId) {
       const source = await context.scopedDb.sequences.getById(sourceSequenceId);
       if (!source) {
@@ -295,7 +295,7 @@ export const createSequences = createServerOnlyFn(
     if (elementUploads && elementUploads.length > 0) {
       await assertDraftElementUploadsAttachable({
         scopedDb: context.scopedDb,
-        teamId,
+        organizationId,
         uploads: elementUploads,
       });
     }
@@ -411,7 +411,7 @@ export const createSequences = createServerOnlyFn(
             if (elementUploads && elementUploads.length > 0) {
               await attachDraftElementUploads({
                 scopedDb: context.scopedDb,
-                teamId,
+                organizationId,
                 userId: context.user.id,
                 sequenceId: sequence.id,
                 uploads: elementUploads,
@@ -422,7 +422,7 @@ export const createSequences = createServerOnlyFn(
             if (sourceSequenceId) {
               await copySequenceElements({
                 scopedDb: context.scopedDb,
-                teamId,
+                organizationId,
                 userId: context.user.id,
                 sourceSequenceId,
                 targetSequenceId: sequence.id,
@@ -431,7 +431,7 @@ export const createSequences = createServerOnlyFn(
 
             const workflowInput: StoryboardTriggerInput = {
               userId: context.user.id,
-              teamId,
+              organizationId,
               sequenceId: sequence.id,
               reservationId,
               notify: context.notify,
@@ -471,7 +471,7 @@ export const createSequences = createServerOnlyFn(
         scopedDb: context.scopedDb,
         styleId,
         sequenceIds,
-        teamId,
+        organizationId,
         userId: context.user.id,
       });
     }
@@ -481,7 +481,7 @@ export const createSequences = createServerOnlyFn(
       distinctId: context.user.id,
       event: 'sequence_generated',
       properties: {
-        team_id: teamId,
+        team_id: organizationId,
         style_id: styleId,
         automatic_style: styleSource.kind !== 'library',
         aspect_ratio: aspectRatio,

@@ -12,7 +12,10 @@ import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status'
 import { useUser } from '@/platform/ui/use-user';
 import { authClient } from '@/platform/ui/auth/client';
 import { rememberLastPage } from '@/platform/ui/auth/last-page';
-import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
+import {
+  sessionQueryOptions,
+  useAuthSession,
+} from '@/platform/ui/auth/session-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -29,6 +32,7 @@ import { useState } from 'react';
 export function UserSidebarFooter() {
   const { data: user, isLoading } = useUser();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const resumeHref = useRouterState({
@@ -97,7 +101,7 @@ export function UserSidebarFooter() {
 
   return (
     <SidebarMenuItem>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton
             size="lg"
@@ -143,6 +147,8 @@ export function UserSidebarFooter() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <OrganizationSwitchList open={menuOpen} />
+          <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link to="/settings">
               <Settings className="mr-2 h-4 w-4" />
@@ -167,6 +173,84 @@ export function UserSidebarFooter() {
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
+  );
+}
+
+function OrganizationSwitchList({ open }: { open: boolean }) {
+  const { data: session } = useAuthSession();
+  const activeId = session?.session.activeOrganizationId ?? null;
+  const [error, setError] = useState<string | null>(null);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const organizations = useQuery({
+    queryKey: ['organization', 'list'],
+    enabled: open,
+    queryFn: async () => {
+      const result = await authClient.organization.list();
+      if (result.error || result.data == null) {
+        throw new Error(
+          result.error?.message ?? 'Could not load organizations'
+        );
+      }
+      return result.data;
+    },
+  });
+
+  if (!open) return null;
+  if (organizations.isPending) {
+    return (
+      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+        Loading organizations…
+      </DropdownMenuLabel>
+    );
+  }
+  if (organizations.isError) {
+    return (
+      <DropdownMenuLabel className="text-xs font-normal text-destructive">
+        {organizations.error.message}
+      </DropdownMenuLabel>
+    );
+  }
+  const rows = organizations.data;
+  if (rows.length === 0) return null;
+  if (rows.length === 1) {
+    return <DropdownMenuLabel>{rows[0]?.name}</DropdownMenuLabel>;
+  }
+
+  return (
+    <>
+      {rows.map((organization) => (
+        <DropdownMenuItem
+          key={organization.id}
+          disabled={switchingId !== null || organization.id === activeId}
+          onSelect={(event) => {
+            event.preventDefault();
+            setSwitchingId(organization.id);
+            setError(null);
+            void authClient.organization
+              .setActive({ organizationId: organization.id })
+              .then((result) => {
+                if (result.error) {
+                  setError(
+                    result.error.message ?? 'Could not switch organization'
+                  );
+                }
+              })
+              .finally(() => setSwitchingId(null));
+          }}
+        >
+          {switchingId === organization.id
+            ? 'Switching…'
+            : organization.id === activeId
+              ? `${organization.name} (current)`
+              : organization.name}
+        </DropdownMenuItem>
+      ))}
+      {error ? (
+        <DropdownMenuLabel className="text-xs font-normal text-destructive">
+          {error}
+        </DropdownMenuLabel>
+      ) : null}
+    </>
   );
 }
 

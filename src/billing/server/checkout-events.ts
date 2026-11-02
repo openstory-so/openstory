@@ -41,7 +41,7 @@ const CARD_DECLINED_CODES = new Set([
 
 type CheckoutCaptureBase = {
   distinctId: string;
-  teamId: string;
+  organizationId: string;
   amountUsd: number;
   method: CheckoutMethod;
   stripeCheckoutSessionId?: string;
@@ -103,7 +103,7 @@ function checkoutProperties(
   input: CheckoutCaptureBase
 ): Record<string, unknown> {
   return {
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     amount_usd: input.amountUsd,
     method: input.method,
     ...(input.stripeCheckoutSessionId
@@ -170,7 +170,7 @@ export function captureCheckoutFailed(
 
 function baseFromMetadata(
   metadata: Stripe.Metadata | null | undefined,
-  ctx: { teamId: string; userId: string },
+  ctx: { organizationId: string; userId: string },
   ids: { sessionId?: string; paymentIntentId?: string }
 ): CheckoutCaptureBase | null {
   const type = metadata?.type;
@@ -181,7 +181,7 @@ function baseFromMetadata(
   if (amountUsd === undefined) return null;
   return {
     distinctId: ctx.userId,
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
     amountUsd,
     method,
     ...(ids.sessionId ? { stripeCheckoutSessionId: ids.sessionId } : {}),
@@ -198,7 +198,7 @@ function baseFromMetadata(
  */
 export function captureCheckoutAnalyticsForStripeEvent(
   event: Stripe.Event,
-  ctx: { teamId: string; userId: string }
+  ctx: { organizationId: string; userId: string }
 ): void {
   switch (event.type) {
     case 'checkout.session.completed': {
@@ -271,10 +271,13 @@ export function captureCheckoutCanceledFromSession(
     metadata?: Stripe.Metadata | null;
     status?: string | null;
   },
-  ctx: { teamId: string; userId: string }
+  ctx: { organizationId: string; userId: string }
 ): void {
   if (session.payment_status === 'paid') return;
-  if (session.metadata?.teamId && session.metadata.teamId !== ctx.teamId) {
+  if (
+    session.metadata?.organizationId &&
+    session.metadata.organizationId !== ctx.organizationId
+  ) {
     return;
   }
   const base = baseFromMetadata(session.metadata, ctx, {
@@ -296,7 +299,7 @@ export function captureSavedCardStripeError(
   },
   ctx: {
     distinctId: string;
-    teamId: string;
+    organizationId: string;
     amountUsd: number;
     surface?: string;
   }
@@ -304,7 +307,7 @@ export function captureSavedCardStripeError(
   const paymentIntentId = stripeId(err.payment_intent);
   const base: CheckoutCaptureBase = {
     distinctId: ctx.distinctId,
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
     amountUsd: ctx.amountUsd,
     method: 'saved_card',
     ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),

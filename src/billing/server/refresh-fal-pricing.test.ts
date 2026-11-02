@@ -51,7 +51,7 @@ import {
 import {
   modelPricing,
   modelPricingHistory,
-  teams,
+  organization,
   transactions,
 } from '@/platform/server/db/schema';
 import { modelUsageObservations } from '@/platform/server/db/schema/model-pricing';
@@ -815,7 +815,7 @@ describe('computeLedgerObservedUnits', () => {
 
   beforeEach(async () => {
     await db
-      .insert(teams)
+      .insert(organization)
       .values({ id: 'team-1', name: 't', slug: 'team-1-slug' })
       .onConflictDoNothing();
     await db.delete(transactions);
@@ -825,7 +825,7 @@ describe('computeLedgerObservedUnits', () => {
   test('reads unitsBilled from transaction metadata when observations are empty', async () => {
     await db.insert(transactions).values({
       id: 'tx-1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       type: 'credit_usage',
       amount: -200_000,
       balanceAfter: 0,
@@ -852,7 +852,7 @@ describe('computeLedgerObservedUnits', () => {
     });
     await db.insert(transactions).values({
       id: 'tx-1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       type: 'credit_usage',
       amount: -200_000,
       balanceAfter: 0,

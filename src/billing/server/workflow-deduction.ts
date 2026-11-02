@@ -1,5 +1,5 @@
 /**
- * Workflow credit deduction. Skips BYOK teams; warns and skips (rather than
+ * Workflow credit deduction. Skips BYOK organization; warns and skips (rather than
  * throwing) on insufficient credits, since the work is already done.
  *
  * When the payload carries a `reservationId` (run envelope, #1310), capture
@@ -69,7 +69,7 @@ function skipDeduction(
     `${prefix} Insufficient credits (cost: $${microsToUsd(opts.costMicros).toFixed(4)}), skipping deduction`
   );
   reportSkippedDeduction({
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     workflowName: opts.workflowName,
     description: opts.description,
     costMicros: opts.costMicros,
@@ -103,7 +103,7 @@ export async function deductWorkflowCredits(
       workflowName: opts.workflowName,
       description: opts.description,
       metadata: opts.metadata,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
     });
     return;
   }
@@ -204,7 +204,7 @@ export async function recordFalUsage(
   scopedDb: WorkflowScopedDb | undefined,
   usage: FalUsage
 ): Promise<void> {
-  // Observations are platform-global telemetry with no teamId (see
+  // Observations are platform-global telemetry with no organizationId (see
   // model_usage_observations), but the write still needs a db handle.
   if (!scopedDb) return;
   // Native xAI / Google / Ark / ElevenLabs units are a different

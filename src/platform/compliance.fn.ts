@@ -23,6 +23,9 @@ export const getComplianceStatusFn = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const team = await resolveUserTeam(context.user.id);
-    const state = await loadComplianceState(context.user.id, team?.teamId);
+    const state = await loadComplianceState(
+      context.user.id,
+      team?.organizationId
+    );
     return summarizeCompliance(state);
   });

@@ -53,7 +53,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const createdCharacters = await step.do(
       'create-character-records',
       async () => {
-        if (!input.sequenceId || !input.userId || !input.teamId) {
+        if (!input.sequenceId || !input.userId || !input.organizationId) {
           return [];
         }
 
@@ -180,7 +180,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
       const unclaimedFields: SheetPayload<CharacterSheetWorkflowInput> = {
         userId: input.userId,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         sequenceId: input.sequenceId,
         reservationId: input.reservationId,
         characterDbId,
@@ -299,7 +299,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           }
           const childPayload: CharacterVoiceWorkflowInput = {
             userId: input.userId,
-            teamId: input.teamId,
+            organizationId: input.organizationId,
             sequenceId,
             reservationId: input.reservationId,
             characterDbId: row.id,

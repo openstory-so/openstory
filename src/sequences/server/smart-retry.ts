@@ -125,7 +125,7 @@ function getSceneCharacterReferenceImages(
 export type SmartRetryContext = {
   sequence: Sequence;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
   scopedDb: ScopedDb;
 };
 
@@ -169,7 +169,7 @@ export async function executeSmartRetry(
   context: SmartRetryContext,
   options: SmartRetryOptions = {}
 ) {
-  const { sequence, user, teamId } = context;
+  const { sequence, user, organizationId } = context;
   const { dryRun = false, runKey } = options;
   // Not `options.onLaunched?.(trigger())`: an absent callback would skip the trigger.
   const launched = async (workflowRunId: string) => {
@@ -179,7 +179,9 @@ export async function executeSmartRetry(
    * Trigger under this call's key. A reused run owns its own hold, so the one
    * taken for this call is released: the work is already paid for once.
    */
-  const triggerKeyed = async <T extends { userId: string; teamId: string }>(
+  const triggerKeyed = async <
+    T extends { userId: string; organizationId: string },
+  >(
     path: string,
     body: T,
     suffix: string,
@@ -351,7 +353,7 @@ export async function executeSmartRetry(
       () =>
         triggerStoryboard(context.scopedDb, {
           userId: user.id,
-          teamId,
+          organizationId,
           sequenceId: sequence.id,
           reservationId,
           options: {
@@ -472,7 +474,7 @@ export async function executeSmartRetry(
       const workflowInput: ImageWorkflowInput = {
         userId: user.id,
         variantOnly: false,
-        teamId,
+        organizationId,
         reservationId,
         ownsReservation: true,
         prompt,
@@ -643,7 +645,7 @@ export async function executeSmartRetry(
             : undefined;
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
-          teamId,
+          organizationId,
           reservationId,
           ownsReservation: true,
           sequenceId: sequence.id,
@@ -706,7 +708,7 @@ export async function executeSmartRetry(
       if (variantId) {
         const musicInput: MusicWorkflowInput = {
           userId: user.id,
-          teamId,
+          organizationId,
           sequenceId: sequence.id,
           reservationId,
           ownsReservation: true,
@@ -766,7 +768,7 @@ export async function executeSmartRetry(
       // Generate music prompt
       const musicPromptInput: MusicPromptWorkflowInput = {
         userId: user.id,
-        teamId,
+        organizationId,
         sequenceId: sequence.id,
         sceneSummaries: scenes,
         analysisModelId:

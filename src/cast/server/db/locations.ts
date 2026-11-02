@@ -265,7 +265,7 @@ export const deleteLocationLinksStatements = (db: Database, where: SQL) =>
  */
 export const locationsOnlyIn = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string
 ): Promise<SQL> => {
   const rows = await db
@@ -275,7 +275,7 @@ export const locationsOnlyIn = async (
     .where(
       and(
         eq(sequenceLocationLinks.sequenceId, sequenceId),
-        eq(locations.teamId, teamId),
+        eq(locations.organizationId, organizationId),
         eq(sequenceLocationLinks.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${sequenceLocationLinks.locationId} AND o.sequence_id != ${sequenceId})`
       )
@@ -285,8 +285,8 @@ export const locationsOnlyIn = async (
   return inArray(locations.id, sql`(SELECT value FROM json_each(${ids}))`);
 };
 
-export function createLocationsMethods(db: Database, teamId: string) {
-  const inTeam = eq(locations.teamId, teamId);
+export function createLocationsMethods(db: Database, organizationId: string) {
+  const inTeam = eq(locations.organizationId, organizationId);
 
   /** A location from no sequence: `select(ownColumns)` + its joins. */
   const selectOwn = () =>
@@ -371,7 +371,12 @@ export function createLocationsMethods(db: Database, teamId: string) {
     const [sequence] = await db
       .select({ id: sequences.id })
       .from(sequences)
-      .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+      .where(
+        and(
+          eq(sequences.id, sequenceId),
+          eq(sequences.organizationId, organizationId)
+        )
+      );
     if (!sequence) throw new NotFoundError('Sequence not found');
   };
 
@@ -486,7 +491,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
     return [
       db.insert(locations).values({
         id,
-        teamId,
+        organizationId,
         selectedBibleVersionId: versionId,
         legacyName: bible.name,
         referenceStatus: opts.referenceStatus,

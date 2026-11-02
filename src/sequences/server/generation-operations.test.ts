@@ -24,7 +24,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -119,7 +119,7 @@ const {
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let userId: string;
 let sequenceId: string;
 let sceneId: string;
@@ -167,7 +167,7 @@ afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
@@ -175,13 +175,15 @@ beforeEach(async () => {
   updateAllRun = `local_update-stale-shots_${sequenceId}-plan-k`;
   storyboardRun = `local_storyboard_storyboard-${sequenceId}-k`;
   const styleId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@test.invalid` });
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 's',
     config: {
       mood: 'neutral',
@@ -195,7 +197,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'S',
     styleId,
     status: 'completed',
@@ -224,8 +226,8 @@ beforeEach(async () => {
   readProductionStatus.mockResolvedValue({ failures: [] });
 });
 
-const scoped = () => createScopedDb(teamId, userId);
-const actor = () => ({ userId, teamId });
+const scoped = () => createScopedDb(organizationId, userId);
+const actor = () => ({ userId, organizationId });
 const execute = (planToken: string, db = scoped()) =>
   executeGeneration(db, actor(), sequenceId, planToken);
 

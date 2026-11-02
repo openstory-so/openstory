@@ -22,7 +22,7 @@ import {
 import { generateId } from '@/platform/id';
 import type { LocationBible } from './bible-versions';
 import { sequences } from './sequences';
-import { teams } from './teams';
+import { organization } from './organization';
 
 const REFERENCE_STATUSES = [
   'pending',
@@ -42,9 +42,9 @@ export const locations = snakeCase.table(
       .notNull(),
     // No action, not cascade: a team delete is refused while it has
     // locations, as it is for characters (the #612 rebuild trap).
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id),
+      .references(() => organization.id),
     // The live `location_bible_versions` row (#1600). Null only on a row
     // written by a worker older than #1600.
     selectedBibleVersionId: text(),
@@ -86,7 +86,7 @@ export const locations = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_sequence_locations_team').on(table.teamId)]
+  (table) => [index('idx_sequence_locations_team').on(table.organizationId)]
 );
 
 /** One location in one sequence. */

@@ -46,7 +46,7 @@ const {
 
 const INPUT: StoryboardTriggerInput = {
   userId: 'u1',
-  teamId: 't1',
+  organizationId: 't1',
   sequenceId: 'seq_1',
   options: {
     shotsPerScene: 3,

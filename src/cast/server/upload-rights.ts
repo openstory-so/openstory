@@ -74,7 +74,7 @@ export type UploadRightsReader = {
  * call. A request passes its `ScopedDb`; `UploadCheckWorkflow` passes the
  * same methods through its named hatches.
  */
-export type LikenessCheckDb = Pick<ScopedDb, 'teamId' | 'userId'> &
+export type LikenessCheckDb = Pick<ScopedDb, 'organizationId' | 'userId'> &
   VisionBillingDb & {
     compliance: {
       attestations: Pick<
@@ -201,7 +201,7 @@ function analyzeUpload(opts: {
   }
   const key = r2KeyFromUrl(opts.url);
   // Only this team's own objects: the check streams the bytes to Gemini.
-  if (key === null || !key.split('/').includes(opts.scopedDb.teamId)) {
+  if (key === null || !key.split('/').includes(opts.scopedDb.organizationId)) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
@@ -220,17 +220,17 @@ function analyzeUpload(opts: {
  * key's owner segment, read the way the upload route reads it
  * (`<bucket>/<team>/…` or `<bucket>/teams/<team>/…`), never a substring.
  */
-export function isCheckable(url: string, teamId: string): boolean {
+export function isCheckable(url: string, organizationId: string): boolean {
   const key = r2KeyFromUrl(url);
   if (key === null) return needsLikenessCheck(url);
   if (mediaUrlHasTraversal(url)) return false;
   const path = key.split('/').slice(1);
-  return (path[0] === 'teams' ? path[1] : path[0]) === teamId;
+  return (path[0] === 'teams' ? path[1] : path[0]) === organizationId;
 }
 
 /** Refuse a URL {@link isCheckable} rejects: another team's file. */
-export function requireCheckable(url: string, teamId: string): void {
-  if (!isCheckable(url, teamId)) {
+export function requireCheckable(url: string, organizationId: string): void {
+  if (!isCheckable(url, organizationId)) {
     throw new ValidationError('This file is not an upload of yours');
   }
 }
@@ -251,7 +251,7 @@ export async function classifyUpload(opts: {
   filename?: string;
   request: LikenessRequestContext;
 }): Promise<UploadRights> {
-  requireCheckable(opts.url, opts.scopedDb.teamId);
+  requireCheckable(opts.url, opts.scopedDb.organizationId);
   const existing = await latestRow(opts.scopedDb, opts.url);
   if (existing) return rightsFromRow(existing);
   const analysis = await analyzeUpload(opts);

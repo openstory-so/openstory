@@ -16,7 +16,7 @@ import { resolveOAuthIssuer, rewriteAuthorizationIss } from './oauth-provider';
 import { resolveOAuthQuery } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from './oauth-scopes';
 import {
-  resolveUserTeam,
+  getUserTeamMembership,
   revokeOAuthGrantTokens,
 } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
@@ -96,7 +96,7 @@ export function toClientSummary(
  */
 export async function loadOAuthConsentContext(input: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   clientId: string;
   scope: string;
   redirectUri?: string;
@@ -114,13 +114,16 @@ export async function loadOAuthConsentContext(input: {
     if (!(error instanceof APIError)) throw error;
     if (error.statusCode !== 404) throw error;
   }
-  const team = await resolveUserTeam(input.userId);
+  const team = await getUserTeamMembership(input.userId, input.organizationId);
+  if (!team) {
+    throw new Error('No organization membership for this grant');
+  }
   return {
     client,
     scopes: scopeSummaries(input.scope),
     team: {
-      id: team?.teamId ?? input.teamId,
-      name: team?.teamName ?? '',
+      id: team.organizationId,
+      name: team.teamName,
     },
   };
 }
@@ -241,7 +244,7 @@ export function consentRedirectUrl(result: unknown): string | null {
  */
 export async function decideOAuthConsent(input: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   accept: boolean;
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: string;
@@ -290,7 +293,7 @@ export async function decideOAuthConsent(input: {
   if (redirect) {
     logger.info('oauth consent decided', {
       userId: input.userId,
-      teamId: input.teamId,
+      organizationId: input.organizationId,
       accept: input.accept,
       clientId: queryParams.get('client_id'),
     });

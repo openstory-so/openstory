@@ -50,7 +50,12 @@ export const Route = createFileRoute('/api/openrouter/callback')({
 
         try {
           await completeOpenRouterOAuth(
-            { teamId: context.teamId, code, csrfState, secureCookies },
+            {
+              organizationId: context.organizationId,
+              code,
+              csrfState,
+              secureCookies,
+            },
             context.scopedDb
           );
 

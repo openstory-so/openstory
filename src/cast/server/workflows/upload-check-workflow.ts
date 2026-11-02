@@ -19,7 +19,7 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 /** The check's reads and writes, through the run's named hatches. */
 function likenessCheckDb(scopedDb: WorkflowScopedDb): LikenessCheckDb {
   return {
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     userId: scopedDb.userId,
     apiKeys: {
       resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),

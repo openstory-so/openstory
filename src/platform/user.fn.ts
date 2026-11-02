@@ -19,7 +19,7 @@ import type { User } from '@/platform/server/db/schema';
 export type CurrentUserData = {
   user: User;
   isAuthenticated: boolean;
-  teamId?: string;
+  organizationId?: string;
   teamRole?: string;
   teamName?: string;
 };
@@ -40,12 +40,15 @@ export const getCurrentUserProfileFn = createServerFn({ method: 'GET' })
     }
 
     // Get complete team info with team name
-    const teamMembership = await resolveUserTeam(context.user.id);
+    const teamMembership = await resolveUserTeam(
+      context.user.id,
+      context.session.session.activeOrganizationId
+    );
 
     return {
       user: ensureResult.data,
       isAuthenticated: true,
-      teamId: teamMembership?.teamId,
+      organizationId: teamMembership?.organizationId,
       teamRole: teamMembership?.role,
       teamName: teamMembership?.teamName,
     };

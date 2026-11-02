@@ -68,7 +68,7 @@ function makeCharacter(
     styling: null,
     // Cast in its sequence (#2017).
     castId: 'cast-1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
@@ -88,7 +88,7 @@ function makeLocation(
 ): SequenceLocationWithReference {
   const location: SequenceLocationWithReference = {
     id: 'l1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     legacyLibraryReferenceHash: null,
     linkId: 'link-1',
     attached: false,

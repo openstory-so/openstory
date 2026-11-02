@@ -33,7 +33,7 @@ const env = asStub<CloudflareEnv>({
   VITE_APP_URL: 'https://openstory.so',
 });
 
-const body = { userId: 'u1', teamId: 't1' };
+const body = { userId: 'u1', organizationId: 't1' };
 
 function harness(
   createImpl: (opts: { id: string; params: unknown }) => Promise<unknown>,

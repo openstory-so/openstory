@@ -56,7 +56,7 @@ const ofLook = (lookId: string) =>
 
 export function createCharacterSheetVariantsMethods(
   db: Database,
-  teamId: string
+  organizationId: string
 ) {
   /** Sheets of the team's characters: every read and write here carries it. */
   const ofTeam = () =>
@@ -65,7 +65,7 @@ export function createCharacterSheetVariantsMethods(
       db
         .select({ id: characters.id })
         .from(characters)
-        .where(eq(characters.teamId, teamId))
+        .where(eq(characters.organizationId, organizationId))
     );
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
@@ -259,7 +259,7 @@ export function createCharacterSheetVariantsMethods(
     }): Promise<{ version: CharacterSheetVariant }> => {
       const { lookId, url, storagePath, inputHash, model, workflowRunId } =
         args;
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
 
       const now = new Date();
       const [version] = await db
@@ -335,7 +335,11 @@ export function createCharacterSheetVariantsMethods(
         );
       }
 
-      const look = await requireLook(db, teamId, version.lookId ?? characterId);
+      const look = await requireLook(
+        db,
+        organizationId,
+        version.lookId ?? characterId
+      );
       const [existing] = await db
         .select({ name: characterBibleColumns.name })
         .from(characters)
@@ -344,7 +348,10 @@ export function createCharacterSheetVariantsMethods(
           eq(characterBibleVersions.id, characters.selectedBibleVersionId)
         )
         .where(
-          and(eq(characters.id, characterId), eq(characters.teamId, teamId))
+          and(
+            eq(characters.id, characterId),
+            eq(characters.organizationId, organizationId)
+          )
         );
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
@@ -399,7 +406,7 @@ export function createCharacterSheetVariantsMethods(
       args: Parameters<typeof landCharacterSheet>[1]
     ) => {
       // A character an older worker wrote gets its look row first.
-      await requireLook(db, teamId, args.lookId);
+      await requireLook(db, organizationId, args.lookId);
       return await landCharacterSheet(db, args);
     },
 

@@ -120,13 +120,13 @@ export async function reconcileFalBilling(
     );
   const txByRequestId = new Map<
     string,
-    { teamId: string; id: string; chargedMicros: number }
+    { organizationId: string; id: string; chargedMicros: number }
   >();
   for (const tx of txRows) {
     const meta = (tx.metadata ?? {}) as UsageMetadata;
     if (!meta.requestId) continue;
     txByRequestId.set(meta.requestId, {
-      teamId: tx.teamId,
+      organizationId: tx.organizationId,
       id: tx.id,
       chargedMicros: meta.costMicros ?? -tx.amount,
     });
@@ -158,7 +158,7 @@ export async function reconcileFalBilling(
     if (Math.abs(deltaMicros) <= DRIFT_EPSILON_MICROS) continue;
     summary.drifts++;
     reportBillingDrift({
-      teamId: tx.teamId,
+      organizationId: tx.organizationId,
       transactionId: tx.id,
       requestId: event.requestId,
       endpointId: event.endpointId,

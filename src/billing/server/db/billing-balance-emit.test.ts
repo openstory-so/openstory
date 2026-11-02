@@ -10,7 +10,7 @@ import { generateId } from '@/platform/id';
 import {
   creditReservations,
   credits,
-  teams,
+  organization,
   transactions,
   user,
 } from '@/platform/server/db/schema';
@@ -31,7 +31,7 @@ vi.mock('@/platform/realtime', () => ({
     emit: emitMock,
     history: async () => [],
   }),
-  billingChannelId: (teamId: string) => `billing:${teamId}`,
+  billingChannelId: (organizationId: string) => `billing:${organizationId}`,
 }));
 
 // Dynamic import so the mock applies (vi.mock is hoisted; static import of
@@ -42,7 +42,7 @@ import { createBillingMethods } from './billing';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 const STARTING_BALANCE = 100_000_000; // $100
@@ -51,16 +51,20 @@ async function seed() {
   await db.delete(transactions);
   await db.delete(creditReservations);
   await db.delete(credits);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
-  await db.insert(credits).values({ teamId, balance: STARTING_BALANCE });
+  await db
+    .insert(credits)
+    .values({ organizationId, balance: STARTING_BALANCE });
   emitMock.mockClear();
 }
 
@@ -80,7 +84,7 @@ describe('billing.balance:updated emit (#1090)', () => {
   const rawCost = micros(1_000_000); // $1
 
   it('emits once on a new deductCredits charge', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const result = await billing.deductCredits(rawCost, {
       idempotencyKey: 'wf-1:image',
     });
@@ -90,7 +94,7 @@ describe('billing.balance:updated emit (#1090)', () => {
 
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenCalledWith('billing.balance:updated', {
-      teamId,
+      organizationId,
       balanceUsd: 99,
       availableUsd: 99,
       reservedUsd: 0,
@@ -102,7 +106,7 @@ describe('billing.balance:updated emit (#1090)', () => {
   });
 
   it('does not re-emit on idempotent deductCredits replay', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.deductCredits(rawCost, {
       idempotencyKey: 'wf-1:image',
     });
@@ -118,7 +122,7 @@ describe('billing.balance:updated emit (#1090)', () => {
   });
 
   it('emits on addCredits', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const result = await billing.addCredits(micros(5_000_000), {
       description: 'test top-up',
     });
@@ -128,7 +132,7 @@ describe('billing.balance:updated emit (#1090)', () => {
     if (!result) return;
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenCalledWith('billing.balance:updated', {
-      teamId,
+      organizationId,
       balanceUsd: 105,
       availableUsd: 105,
       reservedUsd: 0,
@@ -140,7 +144,7 @@ describe('billing.balance:updated emit (#1090)', () => {
   });
 
   it('emits available/reserved on createReservation, not on replay', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(micros(10_000_000), {
       idempotencyKey: 'run-1:reserve',
     });
@@ -149,7 +153,7 @@ describe('billing.balance:updated emit (#1090)', () => {
     expect(created.ok).toBe(true);
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenCalledWith('billing.balance:updated', {
-      teamId,
+      organizationId,
       balanceUsd: 100,
       availableUsd: 90,
       reservedUsd: 10,
@@ -166,7 +170,7 @@ describe('billing.balance:updated emit (#1090)', () => {
   });
 
   it('emits restored available after zeroReservation', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(micros(10_000_000), {
       idempotencyKey: 'run-1:reserve',
     });
@@ -179,7 +183,7 @@ describe('billing.balance:updated emit (#1090)', () => {
     await Promise.resolve();
 
     expect(emitMock).toHaveBeenCalledWith('billing.balance:updated', {
-      teamId,
+      organizationId,
       balanceUsd: 100,
       availableUsd: 100,
       reservedUsd: 0,

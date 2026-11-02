@@ -196,8 +196,8 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
 
     // Destination is resolved BEFORE generating: the image is stored inside
     // the generating step so its bytes never reach a checkpoint (#1645).
-    const { shotId, sequenceId, teamId } = input;
-    if (!shotId || !sequenceId || !teamId || !prep.versionId) {
+    const { shotId, sequenceId, organizationId } = input;
+    if (!shotId || !sequenceId || !organizationId || !prep.versionId) {
       throw new Error('Missing required IDs for variant storage');
     }
     const versionId = prep.versionId;
@@ -233,7 +233,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         }
         const uploaded = await uploadImageToStorage({
           imageUrl: generatedImageUrl,
-          teamId,
+          organizationId,
           sequenceId,
           shotId,
         });
@@ -308,7 +308,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         throw new Error(`Uploaded grid for ${versionId} has no R2 key`);
       }
       await recordProvenance(scopedDb.provenance, {
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         assetKind: 'frame_variant',
         assetId: versionId,
@@ -338,7 +338,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
-    if (!input.shotId || !input.teamId) return;
+    if (!input.shotId || !input.organizationId) return;
 
     await scopedDb.frameVariants.markFailedByWorkflowRun(
       event.instanceId,

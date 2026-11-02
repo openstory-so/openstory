@@ -7,7 +7,7 @@
  * unit-testable and so the same resolution runs in a server fn, a workflow, and
  * the admin UI without three subtly different interpretations of "suspended".
  *
- * Effective state is always derived, never denormalized onto `user`/`teams`: a
+ * Effective state is always derived, never denormalized onto `user`/`organization`: a
  * cached flag drifts, and it drifts toward "we believed this account was
  * suspended and it was not".
  */

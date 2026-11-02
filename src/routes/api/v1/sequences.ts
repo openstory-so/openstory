@@ -94,7 +94,7 @@ export const Route = createFileRoute('/api/v1/sequences')({
           const result = await runOneShotCreate(input, {
             scopedDb: context.scopedDb,
             user: context.user,
-            teamId: context.teamId,
+            organizationId: context.organizationId,
             request: {
               ipAddress: request.headers.get('cf-connecting-ip'),
               userAgent: request.headers.get('user-agent'),

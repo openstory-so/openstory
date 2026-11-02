@@ -1,7 +1,7 @@
 /**
  * requireCredits BYOK bypass — a fal key must satisfy the openrouter
  * requirement too, since LLM calls route through fal's OpenRouter endpoint
- * (issue #895). Regression: fal-only teams were blocked with "Insufficient
+ * (issue #895). Regression: fal-only organizations were blocked with "Insufficient
  * credits for script enhancement". An LLMTR key covers the same requirement:
  * it fronts most of the registry directly.
  */

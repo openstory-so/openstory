@@ -124,7 +124,7 @@ const eventOf = (
 ): Readonly<WorkflowEvent<LocationBibleWorkflowInput>> => ({
   payload: {
     userId: 'u1',
-    teamId: 'team-1',
+    organizationId: 'team-1',
     sequenceId: 'seq-1',
     locationBible: [diner],
     libraryLocationMatches: [],

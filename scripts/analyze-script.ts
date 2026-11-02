@@ -193,7 +193,7 @@ async function main() {
       imageModel: values['image-model'],
       videoModel: values['video-model'],
       userId: values['user-id'] ?? 'cli-user',
-      teamId: values['team-id'] ?? 'cli-team',
+      organizationId: values['team-id'] ?? 'cli-team',
       sequenceId: values['sequence-id'],
     });
 

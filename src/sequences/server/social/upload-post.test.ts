@@ -24,7 +24,7 @@ async function input(
 ): Promise<PublishVideoInput> {
   return {
     requestId: await derivePublishRequestId({
-      teamId: '01TEAM',
+      organizationId: '01TEAM',
       sequenceId: '01SEQUENCE',
       exportId: '01EXPORT',
       profile: 'creator',

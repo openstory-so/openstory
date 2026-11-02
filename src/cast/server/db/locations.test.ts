@@ -29,7 +29,7 @@ import {
   sequenceLocationLinks,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
@@ -39,8 +39,8 @@ import { createLocationsMethods } from './locations';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
-let otherTeamId = '';
+let organizationId = '';
+let otherOrganizationId = '';
 let actorId = '';
 /** Two sequences of the team, and one of another team. */
 let sequenceId = '';
@@ -73,42 +73,42 @@ beforeEach(async () => {
   await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
-  otherTeamId = generateId();
+  organizationId = generateId();
+  otherOrganizationId = generateId();
   actorId = generateId();
   sequenceId = generateId();
   secondSequenceId = generateId();
   otherTeamSequenceId = generateId();
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
-  await db.insert(teams).values([
-    { id: teamId, name: 'T', slug: 't' },
-    { id: otherTeamId, name: 'O', slug: 'o' },
+  await db.insert(organization).values([
+    { id: organizationId, name: 'T', slug: 't' },
+    { id: otherOrganizationId, name: 'O', slug: 'o' },
   ]);
   const [style, otherStyle] = await db
     .insert(styles)
     .values([
-      { teamId, name: 'default', config: STYLE },
-      { teamId: otherTeamId, name: 'default', config: STYLE },
+      { organizationId, name: 'default', config: STYLE },
+      { organizationId: otherOrganizationId, name: 'default', config: STYLE },
     ])
     .returning();
   if (!style || !otherStyle) throw new Error('test setup: no style');
   await db.insert(sequences).values([
-    { id: sequenceId, teamId, title: 'One', styleId: style.id },
-    { id: secondSequenceId, teamId, title: 'Two', styleId: style.id },
+    { id: sequenceId, organizationId, title: 'One', styleId: style.id },
+    { id: secondSequenceId, organizationId, title: 'Two', styleId: style.id },
     {
       id: otherTeamSequenceId,
-      teamId: otherTeamId,
+      organizationId: otherOrganizationId,
       title: 'Theirs',
       styleId: otherStyle.id,
     },
   ]);
 });
 
-const locs = () => createLocationsMethods(db, teamId);
-const theirs = () => createLocationsMethods(db, otherTeamId);
+const locs = () => createLocationsMethods(db, organizationId);
+const theirs = () => createLocationsMethods(db, otherOrganizationId);
 
 /** A location analysis made in a sequence of the team. */
 const analysed = (name: string, scriptId = 'loc_001', seq = sequenceId) =>
@@ -184,7 +184,7 @@ describe('a read through a sequence', () => {
       firstMentionLine: 3,
       attached: false,
       deletedAt: null,
-      teamId,
+      organizationId,
       name: 'Diner',
       rendering: PHOTOREAL_RENDERING,
     });
@@ -992,9 +992,12 @@ describe('deleting a sequence', () => {
     await locs().attach(secondSequenceId, shared.id, { actorId });
     await locs().addPhotos(own.id, [{ url: '/r2/a.png', path: 'a.png' }]);
 
-    await createSequencesMethods(db, teamId, actorId).delete(sequenceId, {
-      releasedVoiceIds: [],
-    });
+    await createSequencesMethods(db, organizationId, actorId).delete(
+      sequenceId,
+      {
+        releasedVoiceIds: [],
+      }
+    );
 
     expect(await linksOf()).toEqual([]);
     expect(
@@ -1017,7 +1020,7 @@ const linked = (
 ): SequenceLocationWithReference => ({
   linkId: `link-${overrides.id}`,
   sequenceId: 'seq-1',
-  teamId: 'team-1',
+  organizationId: 'team-1',
   type: null,
   description: null,
   architecturalStyle: null,

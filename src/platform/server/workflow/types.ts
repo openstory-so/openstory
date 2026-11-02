@@ -83,11 +83,11 @@ type PreClickEditPayload = {
 
 /**
  * Base workflow context that includes authentication
- * All workflows must include userId and teamId for authorization
+ * All workflows must include userId and organizationId for authorization
  */
 export interface UserWorkflowContext {
   userId: string;
-  teamId: string;
+  organizationId: string;
   /**
    * Run envelope (#1310). Optional so in-flight instances without it still
    * last-resort deduct. Children inherit this from the parent payload.

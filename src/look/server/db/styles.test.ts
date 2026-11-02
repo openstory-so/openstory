@@ -11,7 +11,7 @@ import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   styles,
-  teams,
+  organization,
   user,
   type NewStyle,
   type Style,
@@ -37,7 +37,11 @@ import {
 // other file's mock setup. Keep these in lockstep with the *team-scoped*
 // methods in @/lib/db/scoped/styles only — the public read path is exercised
 // via the real createPublicStylesReadMethods factory below, not mirrored.
-function makeStylesMethods(database: Database, teamId: string, userId: string) {
+function makeStylesMethods(
+  database: Database,
+  organizationId: string,
+  userId: string
+) {
   return {
     list: async (
       options: { orderBy?: 'popular' | 'sortOrder' } = {}
@@ -50,7 +54,12 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
       return await database
         .select()
         .from(styles)
-        .where(or(eq(styles.teamId, teamId), eq(styles.isPublic, true)))
+        .where(
+          or(
+            eq(styles.organizationId, organizationId),
+            eq(styles.isPublic, true)
+          )
+        )
         .orderBy(...order);
     },
     getById: async (styleId: string): Promise<Style | null> => {
@@ -66,7 +75,7 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
     ): Promise<Style> => {
       const result = await database
         .insert(styles)
-        .values({ ...data, teamId, createdBy: userId })
+        .values({ ...data, organizationId, createdBy: userId })
         .returning();
       const style = result[0];
       if (!style) throw new Error('insert returned nothing');
@@ -109,14 +118,14 @@ async function markPublic(styleId: string) {
 
 async function seed() {
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   team.id = generateId();
   userRow.id = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([team]);
 }
 
 beforeAll(async () => {
@@ -194,14 +203,14 @@ describe("createStylesMethods.list({ orderBy: 'popular' })", () => {
     expect(sorted.map((s) => s.id)).toEqual([a.id, b.id, c.id]);
   });
 
-  it('includes public styles owned by other teams', async () => {
-    const otherTeamId = generateId();
+  it('includes public styles owned by other organizations', async () => {
+    const otherOrganizationId = generateId();
     await db
-      .insert(teams)
-      .values([{ id: otherTeamId, name: 'Other', slug: 'o' }]);
+      .insert(organization)
+      .values([{ id: otherOrganizationId, name: 'Other', slug: 'o' }]);
 
     const ownMethods = makeStylesMethods(db, team.id, userRow.id);
-    const otherMethods = makeStylesMethods(db, otherTeamId, userRow.id);
+    const otherMethods = makeStylesMethods(db, otherOrganizationId, userRow.id);
 
     const mine = await ownMethods.create({
       name: 'Mine',
@@ -249,7 +258,7 @@ describe('createStylesMethods.listByIds', () => {
     const ids = Array.from({ length: 95 }, () => generateId());
     const rows: NewStyle[] = ids.map((id, i) => ({
       id,
-      teamId: team.id,
+      organizationId: team.id,
       name: `Batch Style ${i}`,
       config: baseConfig,
     }));
@@ -400,7 +409,7 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
 
   it("does not collide with another team's PRIVATE style (slug is unique within team ∪ public only)", async () => {
     const teamB = { id: generateId(), name: 'T2', slug: 't2' };
-    await db.insert(teams).values([teamB]);
+    await db.insert(organization).values([teamB]);
 
     await createStylesMethods(db, team.id, userRow.id).create({
       name: 'Shared',

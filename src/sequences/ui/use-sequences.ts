@@ -42,7 +42,8 @@ const logger = getLogger(['openstory', 'ui', 'use-sequences']);
 export const sequenceKeys = {
   all: ['sequences'] as const,
   lists: () => [...sequenceKeys.all, 'list'] as const,
-  list: (teamId?: string) => [...sequenceKeys.lists(), teamId] as const,
+  list: (organizationId?: string) =>
+    [...sequenceKeys.lists(), organizationId] as const,
   details: () => [...sequenceKeys.all, 'detail'] as const,
   detail: (id?: string) => [...sequenceKeys.details(), id] as const,
   generationSlice: (id: string, flags: ContinueFlags) =>
@@ -192,10 +193,13 @@ export function useSetSequenceModel() {
 
 // Hook for listing sequences. The app shell is anonymous-browsable but the
 // fn requires auth, so don't fire (and error-log) it without a session (#1333).
-export function useSequences(teamId?: string, options?: { enabled?: boolean }) {
+export function useSequences(
+  organizationId?: string,
+  options?: { enabled?: boolean }
+) {
   const { data: session } = useAuthSession();
   return useQuery<Sequence[]>({
-    queryKey: sequenceKeys.list(teamId),
+    queryKey: sequenceKeys.list(organizationId),
     queryFn: async () => {
       return getSequencesFn();
     },

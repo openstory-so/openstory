@@ -65,7 +65,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         const made = await recordDialogueTake({
           elevenLabsKey: eleven.key,
           seedKey,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId: input.sequenceId,
           shotId: input.shotId,
           line: input.line,
@@ -131,7 +131,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         cutAudioSection({
           storageKey: take.storageKey,
           speechId: take.speechId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId: input.sequenceId,
           fromSeconds: 0,
           toSeconds: take.durationSeconds,

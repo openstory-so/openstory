@@ -804,7 +804,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ data, context }) => {
-    const { sequence, teamId, user, scopedDb } = context;
+    const { sequence, organizationId, user, scopedDb } = context;
     const { plan, creditFloorMicros } = await prepareUpdateStale({
       scopedDb,
       userId: user.id,
@@ -822,7 +822,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
     // launchUpdateStale → triggerWorkflow, which runs the generation gate.
     const workflowRunId = await launchUpdateStale({
       userId: user.id,
-      teamId,
+      organizationId,
       sequenceId: sequence.id,
       plan,
       // Embed the sequence id in the instance id (the timestamp+uuid tail

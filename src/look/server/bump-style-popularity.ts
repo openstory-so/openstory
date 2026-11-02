@@ -12,7 +12,7 @@ export type BumpStylePopularityArgs = {
   scopedDb: ScopedDbLike;
   styleId: string;
   sequenceIds: string[];
-  teamId: string;
+  organizationId: string;
   userId: string;
 };
 
@@ -24,7 +24,7 @@ export function bumpStylePopularity(args: BumpStylePopularityArgs) {
   void args.scopedDb.styles.incrementUsage(args.styleId).catch((err) => {
     logger.error('incrementUsage failed', {
       styleId: args.styleId,
-      teamId: args.teamId,
+      organizationId: args.organizationId,
       userId: args.userId,
       sequenceCount: args.sequenceIds.length,
       err,
@@ -38,7 +38,7 @@ export function bumpStylePopularity(args: BumpStylePopularityArgs) {
     properties: {
       styleId: args.styleId,
       sequenceIds: args.sequenceIds,
-      teamId: args.teamId,
+      organizationId: args.organizationId,
     },
   });
 }

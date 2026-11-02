@@ -266,7 +266,10 @@ function UsageContent() {
               </tr>
             ) : (
               sorted.map((row) => (
-                <UserRow key={`${row.userId}-${row.teamId}`} row={row} />
+                <UserRow
+                  key={`${row.userId}-${row.organizationId}`}
+                  row={row}
+                />
               ))
             )}
           </tbody>
@@ -418,7 +421,7 @@ const CSV_COLUMNS = [
   'email',
   'createdAt',
   'status',
-  'teamId',
+  'organizationId',
   'teamName',
   'sequenceCount',
   'failedCount',
@@ -458,7 +461,7 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
       row.email,
       new Date(row.createdAt).toISOString(),
       row.status,
-      row.teamId,
+      row.organizationId,
       row.teamName,
       row.sequenceCount,
       row.failedCount,

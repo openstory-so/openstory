@@ -111,7 +111,7 @@ function makeEvent(
 ): Readonly<WorkflowEvent<StoryboardWorkflowInput>> {
   const payload: StoryboardWorkflowInput = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     includeMusic: true,
     sequenceId,
     title: 'The Long Walk',

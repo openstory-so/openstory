@@ -14,7 +14,10 @@ import {
 import { handleApiError } from '@/platform/errors';
 import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
 
-type RouteContext = Pick<AssistantCaller, 'user' | 'teamId' | 'scopedDb'>;
+type RouteContext = Pick<
+  AssistantCaller,
+  'user' | 'organizationId' | 'scopedDb'
+>;
 
 async function callerFrom(
   request: Request,
@@ -23,7 +26,7 @@ async function callerFrom(
   return {
     scopedDb: context.scopedDb,
     user: context.user,
-    teamId: context.teamId,
+    organizationId: context.organizationId,
     teamName: await context.scopedDb.assistant.teamName(),
     origin: new URL(request.url).origin,
     request,

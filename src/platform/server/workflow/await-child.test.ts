@@ -173,7 +173,7 @@ describe('spawnAndAwaitChild', () => {
     const binding = asStub<
       Workflow<{
         userId: string;
-        teamId: string;
+        organizationId: string;
       }>
     >(bindingStub);
     return { step, binding, create, waitForEvent };
@@ -183,7 +183,7 @@ describe('spawnAndAwaitChild', () => {
     parentBindingName: 'MOTION_BATCH_WORKFLOW' as keyof CloudflareEnv,
     parentInstanceId: 'parent_run_A',
     childId: 'motion:01SEQ:01FRAME',
-    childPayload: { userId: 'u1', teamId: 't1' },
+    childPayload: { userId: 'u1', organizationId: 't1' },
     spawnStepName: 'spawn-motion-0',
     awaitStepName: 'await-motion-0',
   };
@@ -250,7 +250,7 @@ describe('spawnAndAwaitChild', () => {
     const binding = asStub<
       Workflow<{
         userId: string;
-        teamId: string;
+        organizationId: string;
       }>
     >({ create, get });
     return { step, binding, get };

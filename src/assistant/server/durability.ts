@@ -18,7 +18,7 @@ import {
 } from '@tanstack/ai-durable-stream';
 import { EventType, type StreamDurability } from '@tanstack/ai';
 
-export type StreamOwner = { teamId: string; user: { id: string } };
+export type StreamOwner = { organizationId: string; user: { id: string } };
 type StreamLog = StreamDurability<DurableStreamOffset>;
 
 /**
@@ -46,7 +46,7 @@ const streamsFetch: typeof fetch = (input, init) =>
  * another user's run id names a stream that does not exist.
  */
 const prefixFor = (owner: StreamOwner) =>
-  `assistant/${owner.teamId}/${owner.user.id}`;
+  `assistant/${owner.organizationId}/${owner.user.id}`;
 
 /**
  * The log of the run `request` names (`X-Run-Id` on a POST, `?runId` on a

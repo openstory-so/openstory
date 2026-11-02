@@ -28,7 +28,13 @@ const logger = getLogger(['openstory', 'server', 'save-shot-prompt']);
 export async function saveShotPrompt(
   context: Pick<
     ShotEditContext,
-    'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'teamId' | 'scene'
+    | 'shot'
+    | 'frame'
+    | 'sequence'
+    | 'scopedDb'
+    | 'user'
+    | 'organizationId'
+    | 'scene'
   >,
   data: {
     promptType: 'visual' | 'motion';

@@ -70,7 +70,7 @@ const logger = getLogger(['openstory', 'api-v1', 'create']);
 export type OneShotContext = {
   scopedDb: ScopedDb;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
   /** Recorded on any portrait sign-off the request carries. */
   request: LikenessRequestContext;
 };
@@ -145,13 +145,13 @@ function inlineCreates<T>(items: readonly (string | T)[] | undefined): T[] {
 async function ingestReferenceImages(
   urls: string[] | undefined,
   bucket: StorageBucket,
-  teamId: string,
+  organizationId: string,
   labelFor: (index: number) => string
 ): Promise<string[]> {
   if (!urls || urls.length === 0) return [];
   const ingested = await Promise.all(
     urls.map((url, index) =>
-      ingestImageToBucket(url, bucket, teamId, 'uploads', {
+      ingestImageToBucket(url, bucket, organizationId, 'uploads', {
         label: labelFor(index),
       })
     )
@@ -197,7 +197,7 @@ async function requireIngestedImageRights(
 
 async function ingestInlineLocationImages(
   items: ApiCreateSequenceInput['locations'],
-  teamId: string
+  organizationId: string
 ): Promise<Map<LocationCreate, string[]>> {
   const map = new Map<LocationCreate, string[]>();
   await Promise.all(
@@ -205,7 +205,7 @@ async function ingestInlineLocationImages(
       const urls = await ingestReferenceImages(
         item.referenceImageUrls,
         STORAGE_BUCKETS.LOCATIONS,
-        teamId,
+        organizationId,
         (index) => `Location "${item.name}" reference image #${index + 1}`
       );
       map.set(item, urls);
@@ -255,8 +255,8 @@ export async function runOneShotCreate(
       input.style && input.style !== AUTO_STYLE_ID
         ? resolveStyle(ctx.scopedDb, input.style)
         : null,
-      ingestElements(ctx.teamId, input.elements),
-      ingestInlineLocationImages(input.locations, ctx.teamId),
+      ingestElements(ctx.organizationId, input.elements),
+      ingestInlineLocationImages(input.locations, ctx.organizationId),
       resolveApiVideoDefaults(ctx.scopedDb),
     ]);
   await requireIngestedImageRights(ctx, [
@@ -286,7 +286,11 @@ export async function runOneShotCreate(
         // Feed the enhancer the same style + element inputs the UI does.
         ...toEnhanceInputs({ style, elements: elementUploads }),
       },
-      { scopedDb: ctx.scopedDb, userId: ctx.user.id, teamId: ctx.teamId }
+      {
+        scopedDb: ctx.scopedDb,
+        userId: ctx.user.id,
+        organizationId: ctx.organizationId,
+      }
     );
     if (result.length > 0) {
       enhancedScript = result;
@@ -341,7 +345,11 @@ export async function runOneShotCreate(
                   renderingOfStyle(style && parseStyleConfig(style.config)),
                 photoUrls: ingestedLocations.get(item) ?? [],
               },
-              { userId: ctx.user.id, teamId: ctx.teamId, triggerSheet: false }
+              {
+                userId: ctx.user.id,
+                organizationId: ctx.organizationId,
+                triggerSheet: false,
+              }
             );
             createdLocationIds.push(location.id);
             return location;
@@ -398,7 +406,7 @@ export async function runOneShotCreate(
       createdLocationIds.map((locationId) =>
         triggerTeamLocationSheet(ctx.scopedDb, {
           userId: ctx.user.id,
-          teamId: ctx.teamId,
+          organizationId: ctx.organizationId,
           locationId,
         }).catch((error: unknown) => {
           logger.error('Failed to start the location sheet run', {

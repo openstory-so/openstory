@@ -111,7 +111,7 @@ export async function recordDialogueTake(input: {
   elevenLabsKey: string;
   /** Required for a Seed voice. */
   seedKey: string | null;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
   line: DialogueTakeLine;
@@ -165,7 +165,7 @@ export async function recordDialogueTake(input: {
       headers: { 'content-length': String(header.length + dataSize) },
     }),
     STORAGE_BUCKETS.AUDIO,
-    `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
+    `${input.organizationId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
     { contentType: 'audio/wav' }
   );
   const durationSeconds = dataSize / bytesPerSecond;

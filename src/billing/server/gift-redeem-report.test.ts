@@ -21,14 +21,14 @@ describe('reportGiftRedeemRefusal', () => {
       code: ' wwmmhx ',
       reason: 'fully_redeemed',
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
     });
 
     expect(warn).toHaveBeenCalledWith('Gift code redeem refused', {
       code: 'WWMMHX',
       reason: 'fully_redeemed',
       userId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
     });
     expect(captureProductEvent).toHaveBeenCalledWith({
       distinctId: 'user_1',
@@ -36,7 +36,7 @@ describe('reportGiftRedeemRefusal', () => {
       properties: {
         reason: 'fully_redeemed',
         code: 'WWMMHX',
-        teamId: 'team_1',
+        organizationId: 'team_1',
       },
     });
   });

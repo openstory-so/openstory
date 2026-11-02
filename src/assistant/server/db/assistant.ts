@@ -11,7 +11,7 @@ import {
   assistantMessages,
   assistantRuns,
   assistantThreads,
-  teams,
+  organization,
   type AssistantThread,
 } from '@/platform/server/db/schema';
 import { defineAIPersistence } from '@tanstack/ai-persistence';
@@ -361,23 +361,23 @@ export function threadTitleFrom(text: string): string {
 
 export function createAssistantMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   const own = and(
-    eq(assistantThreads.teamId, teamId),
+    eq(assistantThreads.organizationId, organizationId),
     eq(assistantThreads.userId, userId)
   );
   return {
     /** The team's display name, for the system prompt and `whoami`. */
     teamName: async (): Promise<string> => {
       const rows = await db
-        .select({ name: teams.name })
-        .from(teams)
-        .where(eq(teams.id, teamId))
+        .select({ name: organization.name })
+        .from(organization)
+        .where(eq(organization.id, organizationId))
         .limit(1);
       // The team middleware resolved this team a moment ago.
-      if (!rows[0]) throw new Error(`team ${teamId} not found`);
+      if (!rows[0]) throw new Error(`team ${organizationId} not found`);
       return rows[0].name;
     },
 
@@ -389,7 +389,7 @@ export function createAssistantMethods(
     threadStatus: async (id: string): Promise<'mine' | 'other' | 'none'> => {
       const rows = await db
         .select({
-          teamId: assistantThreads.teamId,
+          organizationId: assistantThreads.organizationId,
           userId: assistantThreads.userId,
         })
         .from(assistantThreads)
@@ -397,7 +397,9 @@ export function createAssistantMethods(
         .limit(1);
       const row = rows[0];
       if (!row) return 'none';
-      return row.teamId === teamId && row.userId === userId ? 'mine' : 'other';
+      return row.organizationId === organizationId && row.userId === userId
+        ? 'mine'
+        : 'other';
     },
 
     /**
@@ -448,7 +450,7 @@ export function createAssistantMethods(
     ): Promise<AssistantThread> => {
       const rows = await db
         .insert(assistantThreads)
-        .values({ id, teamId, userId, title })
+        .values({ id, organizationId, userId, title })
         .onConflictDoNothing({ target: assistantThreads.id })
         .returning();
       if (rows[0]) return rows[0];

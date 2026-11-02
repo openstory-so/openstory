@@ -37,7 +37,7 @@ describe('copySequenceElements', () => {
 
     await copySequenceElements({
       scopedDb,
-      teamId: 'team-1',
+      organizationId: 'team-1',
       userId: 'user-1',
       sourceSequenceId: 'seq-a',
       targetSequenceId: 'seq-b',

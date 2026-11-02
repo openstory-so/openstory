@@ -17,7 +17,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
-import { teams } from './teams';
+import { organization } from './organization';
 import { user } from './auth';
 
 export const API_KEY_PROVIDERS = [
@@ -46,9 +46,9 @@ export const teamApiKeys = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     provider: text().$type<ApiKeyProvider>().notNull(),
 
     // Encrypted key data (AES-256-GCM)
@@ -86,9 +86,9 @@ export const teamApiKeys = snakeCase.table(
   (table) => [
     // One active key per team per provider
     uniqueIndex('idx_team_api_keys_team_provider').on(
-      table.teamId,
+      table.organizationId,
       table.provider
     ),
-    index('idx_team_api_keys_team_id').on(table.teamId),
+    index('idx_team_api_keys_team_id').on(table.organizationId),
   ]
 );

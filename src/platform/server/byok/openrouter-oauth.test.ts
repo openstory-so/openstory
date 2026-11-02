@@ -38,7 +38,7 @@ describe('buildAuthorizationUrl', () => {
       USER_ID
     );
 
-    expect(state.teamId).toBe(TEAM_ID);
+    expect(state.organizationId).toBe(TEAM_ID);
     expect(state.userId).toBe(USER_ID);
     expect(state.codeVerifier.length).toBeGreaterThanOrEqual(43);
     expect(state.codeVerifier).not.toBe(state.csrfState);

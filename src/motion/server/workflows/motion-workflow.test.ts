@@ -217,7 +217,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq-1',
       shotId: 'shot-1',
       sceneId: 'scene-1',
@@ -1229,7 +1229,7 @@ describe('recording its own dialogue (#1657)', () => {
     const { scopedDb, videoVariants } = makeScopedDb();
     const [job] = buildMotionRender({
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'team-1',
       sequenceId: 'seq-1',
       shots: [
         {

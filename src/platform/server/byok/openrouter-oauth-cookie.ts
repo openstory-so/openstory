@@ -5,7 +5,7 @@
  * HttpOnly cookie instead of a server-side store (#807). The payload is
  * AES-256-GCM encrypted with API_KEY_ENCRYPTION_KEY, so the browser can
  * neither read nor forge it. The state is naturally per-browser-session,
- * which also fixes the old per-teamId key collision between two admins
+ * which also fixes the old per-organizationId key collision between two admins
  * running the flow concurrently.
  */
 
@@ -53,7 +53,7 @@ export function getOAuthCookieClearHeader(secure: boolean): string {
 }
 
 const sealedPayloadSchema = z.object({
-  teamId: z.string(),
+  organizationId: z.string(),
   userId: z.string(),
   codeVerifier: z.string(),
   csrfState: z.string(),
@@ -90,7 +90,7 @@ export async function unsealOAuthState(
     if (payload.expiresAt < Date.now()) return null;
 
     return {
-      teamId: payload.teamId,
+      organizationId: payload.organizationId,
       userId: payload.userId,
       codeVerifier: payload.codeVerifier,
       csrfState: payload.csrfState,

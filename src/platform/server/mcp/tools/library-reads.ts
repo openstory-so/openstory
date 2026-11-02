@@ -120,7 +120,7 @@ const listLibraryCharacters = productionRead(
       await readPage(
         input,
         // Bound to the team, like the other library cursors.
-        ['library_characters', scopedDb.teamId],
+        ['library_characters', scopedDb.organizationId],
         pageRows(await scopedDb.characters.listTeam())
       ),
       origin
@@ -154,7 +154,7 @@ const listLibraryLocations = productionRead(
       await readPage(
         input,
         // Bound to the team, like the other library cursors.
-        ['library_locations', scopedDb.teamId],
+        ['library_locations', scopedDb.organizationId],
         pageRows(await scopedDb.locations.listTeam())
       ),
       origin
@@ -335,7 +335,7 @@ const listStudioUploads = productionRead(
   async (input, { scopedDb, origin }) =>
     projectRead(
       uploadsSchema,
-      await listStudioUploadReads(scopedDb.teamId, input),
+      await listStudioUploadReads(scopedDb.organizationId, input),
       origin
     )
 );

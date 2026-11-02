@@ -7,8 +7,8 @@
  *
  * Subclasses implement `runImpl(event, step, scopedDb)` and optionally
  * `onFailure({ event, error, scopedDb })`. The base class:
- *   - Validates `userId` / `teamId` on the payload (same contract as
- *     `createScopedWorkflow`'s teamId middleware).
+ *   - Validates `userId` / `organizationId` on the payload (same contract as
+ *     `createScopedWorkflow`'s organizationId middleware).
  *   - Builds a `ScopedDb` from the payload and hands it to both `runImpl`
  *     and `onFailure`.
  *   - Sanitizes the error message and emits it in a `step.do('emit-failure')`
@@ -120,6 +120,18 @@ function extractParentHint(payload: unknown): ParentNotifyHint | undefined {
 }
 
 /**
+ * Runs queued before #813 stored `teamId`. The field on the contract is
+ * `organizationId`. Copy the old name once, at this seam.
+ */
+function organizationPayload<T extends UserWorkflowContext>(payload: T): T {
+  if (payload.organizationId) return payload;
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- pre-#813 payload slot, absent from the contract
+  const legacyId = (payload as T & { teamId?: unknown }).teamId;
+  if (typeof legacyId !== 'string' || legacyId.length === 0) return payload;
+  return { ...payload, organizationId: legacyId };
+}
+
+/**
  * `sequenceId` rides on most payloads (`SequenceWorkflowContext`) but not on
  * the base contract, so read it defensively for the failure alert.
  */
@@ -148,7 +160,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
   /**
    * Subclasses implement workflow logic here. Receives the same `event` /
    * `step` the engine hands to `run()`, plus a `WorkflowScopedDb` bound to the
-   * payload's `(teamId, userId)` — the full write surface, but reads only via
+   * payload's `(organizationId, userId)` — the full write surface, but reads only via
    * the enumerated `liveRead` escape hatch. Everything else must be
    * snapshotted onto the payload by the server fn that triggered the run.
    */
@@ -188,18 +200,20 @@ export abstract class OpenStoryWorkflowEntrypoint<
     // The payload seam (#2065): a run queued before the default look took
     // the bible's distinguishing features still carries them on its bible
     // entries. Folded once, here, so no workflow reads the old field.
+    // A run queued before #813 carries `teamId`. Copy it onto
+    // `organizationId` once, here. Drop the copy when no such run remains.
     const event: Readonly<WorkflowEvent<T>> = {
       ...queued,
-      payload: foldLegacyFeaturesInPayload(queued.payload),
+      payload: foldLegacyFeaturesInPayload(organizationPayload(queued.payload)),
     };
-    if (!event.payload.teamId || !event.payload.userId) {
+    if (!event.payload.organizationId || !event.payload.userId) {
       throw new Error(
-        `[${this.constructor.name}] payload missing teamId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`
+        `[${this.constructor.name}] payload missing organizationId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`
       );
     }
 
     const scopedDb = toWorkflowScopedDb(
-      createScopedDb(event.payload.teamId, event.payload.userId)
+      createScopedDb(event.payload.organizationId, event.payload.userId)
     );
 
     // Install the fal→proxy middleware on the global `fal` singleton before any
@@ -314,7 +328,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
           workflow: this.constructor.name,
           error: sanitized,
           sequence_id: extractSequenceId(event.payload) ?? null,
-          team_id: event.payload.teamId,
+          team_id: event.payload.organizationId,
           run_id: event.instanceId,
         },
       });

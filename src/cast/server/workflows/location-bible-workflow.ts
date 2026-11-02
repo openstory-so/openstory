@@ -52,14 +52,14 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         'sequenceId is required for location bible generation'
       );
     }
-    if (!input.teamId) {
+    if (!input.organizationId) {
       throw new WorkflowValidationError(
-        'teamId is required for location bible generation'
+        'organizationId is required for location bible generation'
       );
     }
 
     const sequenceId = input.sequenceId;
-    const teamId = input.teamId;
+    const organizationId = input.organizationId;
 
     // Create lookup map for the script locations matching bound (#1695)
     const matchMap = new Map<string, LibraryLocationMatch>(
@@ -163,7 +163,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         try {
           const unclaimedFields: SheetPayload<LocationSheetWorkflowInput> = {
             userId: input.userId,
-            teamId,
+            organizationId,
             sequenceId,
             reservationId: input.reservationId,
             locationDbId,

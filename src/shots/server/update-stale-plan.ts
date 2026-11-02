@@ -324,7 +324,7 @@ export type MusicPlan = {
  */
 type PlanSequence = {
   id: string;
-  teamId: string;
+  organizationId: string;
   title: string;
   aspectRatio: AspectRatio;
   resolution: Resolution;
@@ -482,7 +482,7 @@ export function findTargetMissingStartFrameMode(
 function toPlanSequence(sequence: Sequence): PlanSequence {
   return {
     id: sequence.id,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     title: sequence.title,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,

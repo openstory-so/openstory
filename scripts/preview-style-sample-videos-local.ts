@@ -27,7 +27,7 @@
  *   bun scripts/preview-style-sample-videos-local.ts --dry-run   # plan only, no writes
  */
 
-import { styles, teams } from '@/platform/server/db/schema';
+import { styles, organization } from '@/platform/server/db/schema';
 import type { StyleSampleVideo } from '@/platform/server/db/schema/libraries';
 import { buildSampleVideos } from '@/look/server/sample-videos';
 import { styleSlug } from '@/look/style-slug';
@@ -113,9 +113,9 @@ async function main() {
     const db = drizzle(d1);
 
     const [systemTeam]: { id: string }[] = await db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.slug, SYSTEM_TEAM_SLUG));
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
     if (!systemTeam) {
       throw new Error(
         `System team '${SYSTEM_TEAM_SLUG}' not found — run db:seed first.`
@@ -125,7 +125,7 @@ async function main() {
     const styleRows = await db
       .select({ id: styles.id, name: styles.name })
       .from(styles)
-      .where(eq(styles.teamId, systemTeam.id));
+      .where(eq(styles.organizationId, systemTeam.id));
     const idBySlug = new Map(styleRows.map((s) => [styleSlug(s.name), s.id]));
     const nameBySlug = new Map(
       styleRows.map((s) => [styleSlug(s.name), s.name])

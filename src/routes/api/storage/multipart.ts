@@ -48,7 +48,7 @@ export const Route = createFileRoute('/api/storage/multipart')({
         try {
           const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
-          const { bucket, path, contentType, teamId } = resolved.target;
+          const { bucket, path, contentType, organizationId } = resolved.target;
           const url = new URL(request.url);
           const action = url.searchParams.get('action');
           // Before the bytes: at create, and again before complete stores them.
@@ -56,7 +56,7 @@ export const Route = createFileRoute('/api/storage/multipart')({
             await requireUploadCheckAllowed({
               bucket,
               contentType,
-              teamId,
+              organizationId,
               userId: context.user.id,
             });
           }
@@ -97,7 +97,7 @@ export const Route = createFileRoute('/api/storage/multipart')({
               bucket,
               path,
               contentType,
-              teamId,
+              organizationId,
               userId: context.user.id,
               request,
             });
