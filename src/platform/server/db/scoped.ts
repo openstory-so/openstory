@@ -306,6 +306,12 @@ export async function createDefaultTeam(input: {
   return team;
 }
 
+/** A user row by id, typed like a session's user. Null when missing. */
+export async function getUserById(userId: string): Promise<User | null> {
+  const row = await getDb().query.user.findFirst({ where: { id: userId } });
+  return row ?? null;
+}
+
 /** Email + name for a PostHog identify. Null when the row is missing. */
 export async function getUserIdentity(
   userId: string

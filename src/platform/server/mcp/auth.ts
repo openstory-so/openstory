@@ -26,7 +26,10 @@ import {
 import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
 import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
-import { getUserTeamMembership } from '@/platform/server/db/scoped';
+import {
+  getUserById,
+  getUserTeamMembership,
+} from '@/platform/server/db/scoped';
 import { sessionOrganizationId } from '@/platform/server/auth/request-principal';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
@@ -148,13 +151,11 @@ export async function authenticateMcpRequest(
     }
     if (!token) return mcpUnauthorized({ invalidToken: true, request });
 
-    const { internalAdapter } = await auth.$context;
-    const user = await internalAdapter.findUserById(token.userId);
+    const user = await getUserById(token.userId);
     if (!user) return mcpUnauthorized({ invalidToken: true, request });
 
     const ctx = await resolveTeamContext(
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- adapter row matches getSession's user
-      user as User,
+      user,
       token,
       token.organizationId ?? null
     );

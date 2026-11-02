@@ -18,7 +18,10 @@ import {
 } from './oauth-bearer';
 import { apiResourceIdentifier, resolveOAuthIssuer } from './oauth-provider';
 import { readPublicApiKeyFromHeaders } from './public-api-key';
-import { getApiKeyOrganizationId } from '@/platform/server/db/scoped';
+import {
+  getApiKeyOrganizationId,
+  getUserById,
+} from '@/platform/server/db/scoped';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
 
@@ -110,8 +113,7 @@ export async function resolveRequestPrincipal(
         })
       );
     }
-    const { internalAdapter } = await auth.$context;
-    const user = await internalAdapter.findUserById(token.userId);
+    const user = await getUserById(token.userId);
     if (!user) {
       throw authErrorResponse(
         401,
@@ -124,8 +126,7 @@ export async function resolveRequestPrincipal(
       );
     }
     return {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the adapter returns the same row getSession would, minus the inferred additional-field typing
-      user: user as User,
+      user,
       session: null,
       oauth: token,
       organizationId: token.organizationId ?? null,

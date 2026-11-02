@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 const verifyOAuthAccessToken = vi.fn();
 const getSession = vi.fn();
-const findUserById = vi.fn();
+const getUserById = vi.fn();
 const getApiKeyOrganizationId = vi.fn();
 const getUserTeamMembership = vi.fn();
 const loadComplianceState = vi.fn();
@@ -21,11 +21,11 @@ vi.doMock('@/platform/server/auth/oauth-bearer', async () => {
 vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({
     api: { getSession },
-    $context: Promise.resolve({ internalAdapter: { findUserById } }),
   }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
   getApiKeyOrganizationId,
+  getUserById,
   getUserTeamMembership,
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
@@ -101,7 +101,7 @@ describe('authenticateMcpRequest', () => {
 
   it('verifies a JWT against the MCP audience and uses team_id', async () => {
     verifyOAuthAccessToken.mockResolvedValueOnce(oauth);
-    findUserById.mockResolvedValueOnce(user);
+    getUserById.mockResolvedValueOnce(user);
     const ctx = await authenticateMcpRequest(
       new Request('https://openstory.test/mcp', {
         headers: { authorization: `Bearer ${jwt}` },
