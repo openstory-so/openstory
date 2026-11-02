@@ -34,7 +34,8 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
   // column balances the last so the toggle does not drift left. The row is
   // the `viewbar` container: its width, not the screen's, decides whether
   // the actions have room for labels (the side panels squeeze it).
-  <div className="@container/viewbar grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 pt-4 md:px-4">
+  // A crowded row shrinks the empty column, never the actions.
+  <div className="@container/viewbar grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] items-center gap-2 px-2 pt-4 md:px-4">
     <div aria-hidden />
     <ToggleGroup
       type="single"
@@ -61,8 +62,6 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
         Script
       </ToggleGroupItem>
     </ToggleGroup>
-    <div className="flex min-w-0 items-center justify-end gap-1">
-      {trailing}
-    </div>
+    <div className="flex items-center justify-end gap-1">{trailing}</div>
   </div>
 );
