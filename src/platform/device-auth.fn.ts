@@ -6,7 +6,6 @@
  */
 
 import { getAuth } from '@/platform/server/auth/config';
-import { resolveUserTeam } from '@/platform/server/db/scoped';
 import { getLogger } from './logger';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
@@ -36,7 +35,6 @@ export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
       data,
       context,
     }): Promise<{ status: DeviceGrantStatus; teamName: string }> => {
-      const team = await resolveUserTeam(context.user.id);
       let status: DeviceGrantStatus = 'invalid';
       try {
         // With a session this also *claims* the code for the user — the
@@ -51,7 +49,7 @@ export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
       } catch (error) {
         if (!(error instanceof APIError)) throw error;
       }
-      return { status, teamName: team?.teamName ?? '' };
+      return { status, teamName: context.teamName };
     }
   );
 

@@ -40,7 +40,7 @@ describe('generation-gate wiring', () => {
     const start = source.indexOf('export const authWithTeamRequestMiddleware');
     const end = source.indexOf('export const authMiddleware');
     const block = source.slice(start, end);
-    expect(block).toMatch(/loadComplianceState/);
+    expect(block).toMatch(/resolveTeamAndCompliance/);
     expect(block).toMatch(/canAccess/);
     expect(block).toMatch(/canWrite/);
   });

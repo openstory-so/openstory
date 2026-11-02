@@ -4,11 +4,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const resolveUserTeam = vi.fn();
+const getUserTeamMembership = vi.fn();
 const loadComplianceState = vi.fn();
 vi.doMock('@/platform/server/db/scoped', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  resolveUserTeam,
+  getUserTeamMembership,
 }));
 vi.doMock(
   '@/platform/server/compliance/generation-gate',
@@ -24,55 +24,67 @@ const compliance = { enforcement: { canAccess: true } };
 
 beforeEach(() => {
   vi.useFakeTimers();
-  resolveUserTeam.mockReset().mockResolvedValue(team);
+  getUserTeamMembership.mockReset().mockResolvedValue(team);
   loadComplianceState.mockReset().mockResolvedValue(compliance);
 });
 
 describe('resolveTeamAndCompliance (#2082)', () => {
   it('answers a second GET within the TTL from one read', async () => {
     const [a, b] = await Promise.all([
-      resolveTeamAndCompliance('u-get', 'GET'),
-      resolveTeamAndCompliance('u-get', 'GET'),
+      resolveTeamAndCompliance('u-get', 'GET', 'team-1'),
+      resolveTeamAndCompliance('u-get', 'GET', 'team-1'),
     ]);
     expect(a).toEqual({ team, compliance });
     expect(b).toBe(a);
-    expect(resolveUserTeam).toHaveBeenCalledTimes(1);
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(1);
     expect(loadComplianceState).toHaveBeenCalledTimes(1);
   });
 
   it('reads fresh for a write, and refreshes the memo', async () => {
-    await resolveTeamAndCompliance('u-post', 'GET');
-    await resolveTeamAndCompliance('u-post', 'POST');
-    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+    await resolveTeamAndCompliance('u-post', 'GET', 'team-1');
+    await resolveTeamAndCompliance('u-post', 'POST', 'team-1');
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(2);
     // The next GET is served from the write's read.
-    await resolveTeamAndCompliance('u-post', 'GET');
-    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+    await resolveTeamAndCompliance('u-post', 'GET', 'team-1');
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(2);
   });
 
   it('reads again after the TTL', async () => {
-    await resolveTeamAndCompliance('u-ttl', 'GET');
+    await resolveTeamAndCompliance('u-ttl', 'GET', 'team-1');
     vi.advanceTimersByTime(5_001);
-    await resolveTeamAndCompliance('u-ttl', 'GET');
-    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+    await resolveTeamAndCompliance('u-ttl', 'GET', 'team-1');
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(2);
   });
 
   it('does not keep a failed read', async () => {
-    resolveUserTeam.mockRejectedValueOnce(new Error('primary unreachable'));
-    await expect(resolveTeamAndCompliance('u-fail', 'GET')).rejects.toThrow(
-      'primary unreachable'
+    getUserTeamMembership.mockRejectedValueOnce(
+      new Error('primary unreachable')
     );
-    await expect(resolveTeamAndCompliance('u-fail', 'GET')).resolves.toEqual({
+    await expect(
+      resolveTeamAndCompliance('u-fail', 'GET', 'team-1')
+    ).rejects.toThrow('primary unreachable');
+    await expect(
+      resolveTeamAndCompliance('u-fail', 'GET', 'team-1')
+    ).resolves.toEqual({
       team,
       compliance,
     });
-    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(2);
   });
 
   it('does not share a memo entry across active organizations', async () => {
     await resolveTeamAndCompliance('u-active', 'GET', 'org-a');
     await resolveTeamAndCompliance('u-active', 'GET', 'org-b');
-    expect(resolveUserTeam).toHaveBeenCalledTimes(2);
-    expect(resolveUserTeam).toHaveBeenNthCalledWith(1, 'u-active', 'org-a');
-    expect(resolveUserTeam).toHaveBeenNthCalledWith(2, 'u-active', 'org-b');
+    expect(getUserTeamMembership).toHaveBeenCalledTimes(2);
+    expect(getUserTeamMembership).toHaveBeenNthCalledWith(
+      1,
+      'u-active',
+      'org-a'
+    );
+    expect(getUserTeamMembership).toHaveBeenNthCalledWith(
+      2,
+      'u-active',
+      'org-b'
+    );
   });
 });

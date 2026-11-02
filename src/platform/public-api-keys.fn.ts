@@ -6,15 +6,18 @@
  *
  * Thin wrappers over the Better Auth `apiKey` plugin endpoints, run under the
  * dashboard's cookie session so the plugin scopes every key to the signed-in
- * user (`referenceId = user.id`); the team is derived from the user downstream
- * by `resolveUserTeam`.
+ * user (`referenceId = user.id`). The organization the key acts for is the
+ * session's active one, stored on the key's `metadata`.
  *
  * The plaintext key is returned exactly once, by `createPublicApiKeyFn`.
  * Listing only ever exposes the stored `start`/`prefix` hint, never the secret.
  */
 
 import { getAuth } from '@/platform/server/auth/config';
-import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
+import {
+  PUBLIC_API_KEY_PREFIX,
+  type ApiKeyMetadata,
+} from '@/platform/server/auth/public-api-key';
 import { getLogger } from './logger';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
@@ -71,6 +74,9 @@ export const createPublicApiKeyFn = createServerFn({ method: 'POST' })
         body: {
           name: data.name,
           prefix: PUBLIC_API_KEY_PREFIX,
+          metadata: {
+            organizationId: context.organizationId,
+          } satisfies ApiKeyMetadata,
           expiresIn: data.expiresInDays
             ? data.expiresInDays * 24 * 60 * 60
             : null,

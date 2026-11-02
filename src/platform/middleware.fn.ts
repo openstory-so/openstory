@@ -26,15 +26,12 @@ import {
   createScopedDb,
   createSystemAdminScopedDb,
   getSequenceByIdUnscoped,
-  getUserTeamMembership,
-  rememberActiveOrganization,
   type ScopedDb,
 } from '@/platform/server/db/scoped';
 import {
   assertCanWrite,
   restrictionNotice,
 } from '@/platform/server/compliance/enforcement';
-import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 import { resolveTeamAndCompliance } from '@/platform/server/auth/team-memo';
 import {
   AccountRestrictedError,
@@ -210,7 +207,7 @@ export const authRequestMiddleware = createMiddleware().server(
 
 /**
  * Request auth + team middleware — for use with server routes (server.middleware).
- * Authenticates user, resolves their default team, and creates a scoped DB.
+ * Authenticates user, acts for the request's organization, and creates a scoped DB.
  * Throws 401 if no user, 403 if no team, 429 if a key is over its rate limit.
  */
 export const authWithTeamRequestMiddleware = createMiddleware().server(
@@ -253,37 +250,23 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         }
       }
 
-      const activeOrganizationId =
-        principal.session?.session.activeOrganizationId;
-      const resolved = oauth?.organizationId
-        ? null
-        : await resolveTeamAndCompliance(
+      const { team, compliance } = principal.organizationId
+        ? await resolveTeamAndCompliance(
             principal.user.id,
             request.method,
-            activeOrganizationId
-          );
-      const team = oauth?.organizationId
-        ? await getUserTeamMembership(principal.user.id, oauth.organizationId)
-        : resolved?.team;
+            principal.organizationId
+          )
+        : { team: null, compliance: null };
 
-      if (!team) {
+      if (!team || !compliance) {
         throw authErrorResponse(
           403,
           'NO_TEAM',
-          oauth?.organizationId
+          oauth
             ? 'This token was issued for an organization you no longer belong to. Re-authorize the app.'
-            : 'No organization is associated with this account.'
+            : 'This key or session is not linked to an organization you belong to.'
         );
       }
-      await rememberActiveOrganization(
-        principal.session?.session.id,
-        activeOrganizationId,
-        team.organizationId
-      );
-
-      const compliance =
-        resolved?.compliance ??
-        (await loadComplianceState(principal.user.id, team.organizationId));
       if (!compliance.enforcement.canAccess) {
         throw authErrorResponse(
           403,
@@ -358,28 +341,25 @@ const analyticsFlushMiddleware = createMiddleware({ type: 'function' })
   });
 
 /**
- * Auth with default team context
- * Automatically resolves user's default team
+ * Auth with the session's active organization
  */
 export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
     const request = getRequest();
-    const activeOrganizationId = context.session.session.activeOrganizationId;
+    const organizationId = context.session.session.activeOrganizationId;
+    if (!organizationId) {
+      throw new Error('No active organization on this session');
+    }
     const { team, compliance } = await resolveTeamAndCompliance(
       context.user.id,
       request.method,
-      activeOrganizationId
+      organizationId
     );
 
     if (!team || !compliance) {
-      throw new Error('No organization found for user');
+      throw new Error('You are not a member of the active organization');
     }
-    await rememberActiveOrganization(
-      context.session.session.id,
-      activeOrganizationId,
-      team.organizationId
-    );
 
     if (!compliance.enforcement.canAccess) {
       throw new AccountRestrictedError(
@@ -403,6 +383,7 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
     return next({
       context: {
         organizationId: team.organizationId,
+        teamName: team.teamName,
         scopedDb: createScopedDb(team.organizationId, context.user.id),
       },
     });

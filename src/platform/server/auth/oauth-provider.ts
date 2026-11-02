@@ -31,17 +31,14 @@
  * - `src/routes/oauth/consent-start.ts` packs the signed consent query so
  *   TanStack cannot collapse repeated `ba_param`, then 302s to
  *   `src/routes/_app/oauth/consent.tsx` + `src/platform/oauth-consent.fn.ts`.
- * - At consent the grant is stamped with the session's active organization,
- *   or the highest-role membership when the session has none
- *   (`consentReferenceId` → `resolveUserTeam`). There is no picker yet. The
- *   JWT claim stays `team_id`. `/api/v1` uses `team_id` when present,
- *   otherwise the same lookup as an `osk_` key.
+ * - At consent the grant is stamped with the session's active organization
+ *   (`consentReferenceId`). There is no picker yet. The JWT claim stays
+ *   `team_id`, and `/api/v1` and `/mcp` act for that organization.
  */
 
 import { getEnv } from '#env';
 import { OAUTH_CONSENT_START_PATH } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_API_SCOPES, OAUTH_SCOPES } from './oauth-scopes';
-import { resolveUserTeam } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import { mcp } from '@better-auth/mcp';
 import { jwt } from 'better-auth/plugins';
@@ -296,23 +293,15 @@ export function createOAuthProviderPlugins() {
       // endpoint is throttled per IP in the auth catch-all route.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
-      // Consents (and therefore tokens) are keyed by the organization they
-      // bill to. The session's active organization wins; otherwise the
-      // highest role, the same fallback as an `osk_` key. The JWT claim
-      // stays `team_id`.
+      // Consents (and therefore tokens) are keyed by the session's active
+      // organization, which they bill to. The JWT claim stays `team_id`.
       postLogin: {
         page: OAUTH_CONSENT_START_PATH,
         shouldRedirect: () => false,
-        consentReferenceId: async ({ user, session }) => {
-          const activeOrganizationId = session.activeOrganizationId;
-          const team = await resolveUserTeam(
-            user.id,
-            typeof activeOrganizationId === 'string'
-              ? activeOrganizationId
-              : null
-          );
-          return team?.organizationId;
-        },
+        consentReferenceId: ({ session }) =>
+          typeof session.activeOrganizationId === 'string'
+            ? session.activeOrganizationId
+            : undefined,
       },
       customAccessTokenClaims: ({ referenceId }) =>
         referenceId ? { team_id: referenceId } : {},

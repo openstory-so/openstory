@@ -46,7 +46,7 @@ export function useSequenceDivergentMusicVariants(
  * Aggregate read for the team's sequences-list dashboard. Returns one row per
  * sequence that has at least one live divergent music alternate. The `enabled`
  * arg should be true once the team dashboard has loaded; the server function
- * uses the user's default team.
+ * uses the session's active organization.
  */
 export function useTeamDivergentSequenceVariants(enabled = true) {
   return useQuery<Array<{ sequenceId: string; hasMusic: boolean }>>({

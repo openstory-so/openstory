@@ -5,7 +5,6 @@
 
 import { RouteErrorFallback } from '@/ui/error/route-error-fallback';
 import { Tabs, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
-import { ensureOrganizationMembershipFn } from '@/platform/organization.fn';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
 import {
   createFileRoute,
@@ -19,7 +18,6 @@ export const Route = createFileRoute('/_app/settings')({
   component: SettingsLayout,
   beforeLoad: async ({ context: { queryClient }, location }) => {
     await requireSessionOrRedirect(queryClient, location.href);
-    await ensureOrganizationMembershipFn();
   },
   staticData: { breadcrumb: { label: 'Settings', to: '/settings' } },
   errorComponent: (props) => (

@@ -33,8 +33,8 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start';
 import { getDb } from '#db-client';
 import {
   createDefaultTeam,
+  getFirstOrganizationId,
   getUserIdentity,
-  resolveUserTeam,
 } from '@/platform/server/db/scoped';
 import { getEnv } from '#env';
 import {
@@ -199,7 +199,8 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       // a changed `user.status` is seen within `maxAge`. Compliance
       // enforcement is read fresh on every write and at most
       // `TEAM_MEMO_TTL_MS` stale on a GET (`team-memo.ts`).
-      cookieCache: { enabled: true, maxAge: 5 * 60 },
+      // Bump `version` when a session field changes meaning: old cookies stop being read.
+      cookieCache: { enabled: true, maxAge: 5 * 60, version: '2' },
       // Owned by the organization plugin. The OAuth spread stops Session from inferring it.
       additionalFields: {
         activeOrganizationId: {
@@ -285,9 +286,10 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       // key header — so the existing `getSession`/`requireUser` path works
       // transparently for `/api/v1/*` without any bespoke key-hashing. Keys are
       // prefixed `osk_` (OpenStory Key) and resolve to the creating user via
-      // `referenceId`; the team is derived downstream via `resolveUserTeam`.
+      // `referenceId`; the organization the key acts for is in `metadata`.
       apiKey({
         enableSessionForAPIKeys: true,
+        enableMetadata: true,
         defaultKeyLength: 64,
         // Per-key rate limit: 10 requests/second. Enforced on every `/api/v1`
         // request (via the session-from-key validation), stored per key. This
@@ -352,7 +354,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       },
     },
 
-    // Create a default team when a new user signs up
+    // Create the new user's first organization on sign-up
     databaseHooks: {
       user: {
         create: {
@@ -392,14 +394,10 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
         create: {
           before: async (session) => {
             if (session.activeOrganizationId) return { data: session };
-            const membership = await resolveUserTeam(session.userId);
-            if (!membership) return { data: session };
-            return {
-              data: {
-                ...session,
-                activeOrganizationId: membership.organizationId,
-              },
-            };
+            const activeOrganizationId = await getFirstOrganizationId(
+              session.userId
+            );
+            return { data: { ...session, activeOrganizationId } };
           },
           after: async (session, context) => {
             // Identify by email so checkout attempters are not anonymous

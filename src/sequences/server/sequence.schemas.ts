@@ -59,7 +59,7 @@ export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
   script: z.string().min(10), // Override to make it required with business rules
-  organizationId: ulidSchemaOptional, // Optional - will use user's default team if not provided
+  organizationId: ulidSchemaOptional, // Optional - the active organization if not provided
   aspectRatio: aspectRatioSchema.optional(), // Optional - defaults to '16:9' in database
   resolution: resolutionSchema.optional(), // Optional - defaults to '720p' in database
   styleId: z.string().optional(), // Optional - can be null

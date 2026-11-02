@@ -13,7 +13,6 @@ vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({ api: { deviceCode } }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  resolveUserTeam: vi.fn(),
   pruneExpiredDeviceCodes: prune,
 }));
 

@@ -5,7 +5,7 @@ const deviceToken = vi.fn();
 const createApiKey = vi.fn();
 const findSession = vi.fn();
 const deleteSession = vi.fn();
-const resolveUserTeam = vi.fn();
+const getUserTeamMembership = vi.fn();
 
 vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({
@@ -15,7 +15,7 @@ vi.doMock('@/platform/server/auth/config', () => ({
     }),
   }),
 }));
-vi.doMock('@/platform/server/db/scoped', () => ({ resolveUserTeam }));
+vi.doMock('@/platform/server/db/scoped', () => ({ getUserTeamMembership }));
 
 const { exchangeDeviceCode } = await import('./device-auth');
 
@@ -47,8 +47,11 @@ describe('exchangeDeviceCode', () => {
 
   it('swaps the approved session for a team-scoped API key and drops the session', async () => {
     deviceToken.mockResolvedValueOnce({ access_token: 'sess-token' });
-    findSession.mockResolvedValueOnce({ user: { id: 'u1' }, session: {} });
-    resolveUserTeam.mockResolvedValueOnce({
+    findSession.mockResolvedValueOnce({
+      user: { id: 'u1' },
+      session: { activeOrganizationId: 't1' },
+    });
+    getUserTeamMembership.mockResolvedValueOnce({
       organizationId: 't1',
       teamName: 'Team One',
     });
@@ -61,7 +64,11 @@ describe('exchangeDeviceCode', () => {
     });
     expect(deleteSession).toHaveBeenCalledWith('sess-token');
     expect(createApiKey).toHaveBeenCalledWith({
-      body: expect.objectContaining({ userId: 'u1', prefix: 'osk_' }),
+      body: expect.objectContaining({
+        userId: 'u1',
+        prefix: 'osk_',
+        metadata: { organizationId: 't1' },
+      }),
     });
     expect(createApiKey.mock.calls[0]?.[0].body.name).toMatch(
       /^Agent login · \d{4}-\d{2}-\d{2}$/

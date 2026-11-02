@@ -5,7 +5,7 @@ import { z } from 'zod';
 const verifyOAuthAccessToken = vi.fn();
 const getSession = vi.fn();
 const findUserById = vi.fn();
-const resolveUserTeam = vi.fn();
+const getApiKeyOrganizationId = vi.fn();
 const getUserTeamMembership = vi.fn();
 const loadComplianceState = vi.fn();
 
@@ -25,7 +25,7 @@ vi.doMock('@/platform/server/auth/config', () => ({
   }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  resolveUserTeam,
+  getApiKeyOrganizationId,
   getUserTeamMembership,
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
@@ -61,7 +61,7 @@ beforeEach(() => {
   loadComplianceState.mockResolvedValue({
     enforcement: { canAccess: true, canWrite: true },
   });
-  resolveUserTeam.mockResolvedValue(team);
+  getApiKeyOrganizationId.mockResolvedValue('team_1');
   getUserTeamMembership.mockResolvedValue(team);
 });
 
@@ -82,8 +82,8 @@ describe('authenticateMcpRequest', () => {
     expect(body.id).toBeNull();
   });
 
-  it('resolves an osk_ key through getSession and the default team', async () => {
-    getSession.mockResolvedValueOnce({ user });
+  it('resolves an osk_ key through getSession and the key organization', async () => {
+    getSession.mockResolvedValueOnce({ user, session: { id: 'key_1' } });
     const ctx = await authenticateMcpRequest(
       new Request('https://openstory.test/mcp', {
         headers: { authorization: 'Bearer osk_secretvalueXXXX' },
@@ -95,6 +95,7 @@ describe('authenticateMcpRequest', () => {
     expect(ctx.user.id).toBe('user_1');
     expect(ctx.organizationId).toBe('team_1');
     expect(ctx.keyHint).toBe('osk_…XXXX');
+    expect(getApiKeyOrganizationId).toHaveBeenCalledWith('key_1');
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
   });
 
@@ -163,7 +164,7 @@ describe('authenticateMcpRequest', () => {
   });
 
   it('403s when the account cannot access the service', async () => {
-    getSession.mockResolvedValueOnce({ user });
+    getSession.mockResolvedValueOnce({ user, session: { id: 'key_1' } });
     loadComplianceState.mockResolvedValueOnce({
       enforcement: { canAccess: false, canWrite: false },
     });

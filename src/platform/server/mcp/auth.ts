@@ -26,10 +26,8 @@ import {
 import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
 import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
-import {
-  getUserTeamMembership,
-  resolveUserTeam,
-} from '@/platform/server/db/scoped';
+import { getUserTeamMembership } from '@/platform/server/db/scoped';
+import { sessionOrganizationId } from '@/platform/server/auth/request-principal';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
 import { mcpJsonRpcError, mcpUnauthorized } from './json-rpc';
@@ -72,18 +70,19 @@ function mcpInternalError(): Response {
 
 async function resolveTeamContext(
   user: User,
-  oauth: OAuthAccessToken | null
+  oauth: OAuthAccessToken | null,
+  organizationId: string | null
 ): Promise<McpAuthContext | Response> {
-  const team = oauth?.organizationId
-    ? await getUserTeamMembership(user.id, oauth.organizationId)
-    : await resolveUserTeam(user.id);
+  const team = organizationId
+    ? await getUserTeamMembership(user.id, organizationId)
+    : null;
 
   if (!team) {
     return mcpJsonRpcError(
       403,
-      oauth?.organizationId
+      oauth
         ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
-        : 'No team is associated with this account.'
+        : 'This key is not linked to a team you belong to.'
     );
   }
 
@@ -153,8 +152,12 @@ export async function authenticateMcpRequest(
     const user = await internalAdapter.findUserById(token.userId);
     if (!user) return mcpUnauthorized({ invalidToken: true, request });
 
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- adapter row matches getSession's user
-    const ctx = await resolveTeamContext(user as User, token);
+    const ctx = await resolveTeamContext(
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- adapter row matches getSession's user
+      user as User,
+      token,
+      token.organizationId ?? null
+    );
     if (ctx instanceof Response) return ctx;
     return ctx;
   }
@@ -162,7 +165,11 @@ export async function authenticateMcpRequest(
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) return mcpUnauthorized({ request });
-    const ctx = await resolveTeamContext(session.user, null);
+    const ctx = await resolveTeamContext(
+      session.user,
+      null,
+      await sessionOrganizationId(session, request.headers)
+    );
     if (ctx instanceof Response) return ctx;
     const presented =
       bearer?.startsWith(PUBLIC_API_KEY_PREFIX) === true

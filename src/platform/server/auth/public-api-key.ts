@@ -3,6 +3,8 @@
  * plugin, the OAuth bearer router, and key-minting never drift on the prefix.
  */
 
+import { z } from 'zod';
+
 export const PUBLIC_API_KEY_PREFIX = 'osk_';
 
 /**
@@ -19,3 +21,7 @@ export function readPublicApiKeyFromHeaders(
   }
   return headers.get('x-api-key') ?? null;
 }
+
+/** What a key's plugin `metadata` holds: the organization it acts for. */
+export const apiKeyMetadataSchema = z.object({ organizationId: z.string() });
+export type ApiKeyMetadata = z.infer<typeof apiKeyMetadataSchema>;

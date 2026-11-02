@@ -9,9 +9,9 @@
 import { getDb } from '#db-client';
 import type { Sequence, User } from '@/platform/server/db/schema';
 import {
+  apikey,
   member,
   organization,
-  session,
   deviceCode,
   oauthAccessToken,
   oauthClient,
@@ -74,7 +74,8 @@ import {
   createStylesMethods,
 } from '@/look/server/db/styles';
 import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
-import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
+import { and, asc, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
+import { apiKeyMetadataSchema } from '@/platform/server/auth/public-api-key';
 
 import { getLogger } from '@/platform/logger';
 
@@ -185,14 +186,6 @@ type ResolvedOrganization = {
   teamName: string;
 };
 
-const roleRank = sql`CASE
-  WHEN ${member.role} = 'owner' THEN 1
-  WHEN ${member.role} = 'admin' THEN 2
-  WHEN ${member.role} = 'member' THEN 3
-  WHEN ${member.role} = 'viewer' THEN 4
-  ELSE 5
-END`;
-
 function asMemberRole(role: string): TeamMemberRole {
   if (
     role === 'owner' ||
@@ -205,14 +198,12 @@ function asMemberRole(role: string): TeamMemberRole {
   throw new Error(`Unknown organization role "${role}"`);
 }
 
-async function readMembership(
-  db: ReturnType<typeof getDb>,
+/** Membership of one organization, or null. */
+export async function getUserTeamMembership(
   userId: string,
-  organizationId?: string
+  organizationId: string
 ): Promise<ResolvedOrganization | null> {
-  const filters = [eq(member.userId, userId)];
-  if (organizationId) filters.push(eq(member.organizationId, organizationId));
-  const [result] = await db
+  const [result] = await getDb()
     .select({
       organizationId: member.organizationId,
       role: member.role,
@@ -220,58 +211,38 @@ async function readMembership(
     })
     .from(member)
     .innerJoin(organization, eq(member.organizationId, organization.id))
-    .where(and(...filters))
-    .orderBy(roleRank)
+    .where(
+      and(eq(member.userId, userId), eq(member.organizationId, organizationId))
+    )
     .limit(1);
   if (!result) return null;
   return { ...result, role: asMemberRole(result.role) };
 }
 
-/**
- * The organization this user acts as. `activeOrganizationId` wins when it is
- * one they still belong to; otherwise the highest role, which is what a
- * session with no active organization did before #813.
- */
-export async function resolveUserTeam(
-  userId: string,
-  activeOrganizationId?: string | null
-): Promise<ResolvedOrganization | null> {
-  const db = getDb();
-  if (activeOrganizationId) {
-    const active = await readMembership(db, userId, activeOrganizationId);
-    if (active) return active;
-  }
-  return readMembership(db, userId);
+/** The organization a new session starts in: the user's first membership. */
+export async function getFirstOrganizationId(
+  userId: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt))
+    .limit(1);
+  return row?.organizationId ?? null;
 }
 
-/** Membership of one organization, or null. */
-export async function getUserTeamMembership(
-  userId: string,
-  organizationId: string
-): Promise<ResolvedOrganization | null> {
-  const db = getDb();
-  return readMembership(db, userId, organizationId);
-}
-
-const stampedActiveOrganization = new Set<string>();
-
-/**
- * Write the resolved organization onto a real session row, once per isolate.
- * The cookie cache can still say null for five minutes; the next request
- * resolves the same way and does not write again.
- */
-export async function rememberActiveOrganization(
-  sessionId: string | undefined,
-  currentActiveOrganizationId: string | null | undefined,
-  organizationId: string
-): Promise<void> {
-  if (!sessionId || currentActiveOrganizationId === organizationId) return;
-  if (stampedActiveOrganization.has(sessionId)) return;
-  stampedActiveOrganization.add(sessionId);
-  await getDb()
-    .update(session)
-    .set({ activeOrganizationId: organizationId })
-    .where(eq(session.id, sessionId));
+/** The organization an `osk_` key acts for, from the key's `metadata`. */
+export async function getApiKeyOrganizationId(
+  keyId: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ metadata: apikey.metadata })
+    .from(apikey)
+    .where(eq(apikey.id, keyId))
+    .limit(1);
+  if (!row?.metadata) return null;
+  return apiKeyMetadataSchema.parse(JSON.parse(row.metadata)).organizationId;
 }
 
 /**
@@ -521,7 +492,7 @@ export function createSystemAdminScopedDb() {
 /**
  * Enforcement rows for one user (#1180).
  *
- * Module-level and unscoped, like `resolveUserTeam` above, for the same reason:
+ * Module-level and unscoped, like `getUserTeamMembership` above, for the same reason:
  * the generation gate runs before any team scope is meaningful, and an
  * enforcement action follows the person rather than the workspace. Returns raw
  * rows; interpretation lives in `@/platform/server/compliance/enforcement`.

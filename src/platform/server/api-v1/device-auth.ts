@@ -9,9 +9,10 @@
  */
 
 import { getAuth } from '@/platform/server/auth/config';
+import type { ApiKeyMetadata } from '@/platform/server/auth/public-api-key';
 import {
   pruneExpiredDeviceCodes,
-  resolveUserTeam,
+  getUserTeamMembership,
 } from '@/platform/server/db/scoped';
 import { APIError } from 'better-auth/api';
 import { env as workerEnv } from 'cloudflare:workers';
@@ -116,14 +117,18 @@ export async function exchangeDeviceCode(
   if (!found) throw new Error('Device login session vanished before exchange');
   const userId = found.user.id;
 
-  const team = await resolveUserTeam(userId);
-  if (!team) throw new Error('No team found for user');
+  const organizationId = found.session.activeOrganizationId;
+  if (!organizationId)
+    throw new Error('Device login session has no organization');
+  const team = await getUserTeamMembership(userId, organizationId);
+  if (!team) throw new Error('Not a member of the device login organization');
 
   const created = await auth.api.createApiKey({
     body: {
       userId,
       name: `Agent login · ${new Date().toISOString().slice(0, 10)}`,
       prefix: 'osk_',
+      metadata: { organizationId } satisfies ApiKeyMetadata,
     },
   });
   return {

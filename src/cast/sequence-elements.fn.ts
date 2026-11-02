@@ -36,11 +36,11 @@ import {
 } from '@/platform/middleware.fn';
 
 // ============================================================================
-// Presign upload — drafts go under the user's default team's `uploads/`
+// Presign upload — drafts go under the active organization's `uploads/`
 // folder, a permanent sequence-agnostic key that attach points rows at without
 // moving anything (#1471). Persisted uploads (existing sequence) must use the
 // *sequence's* organizationId in the path so the attach check passes for users whose
-// default team differs from the sequence's team (multi-team members and system
+// active organization differs from the sequence's (multi-org members and system
 // admins).
 // ============================================================================
 

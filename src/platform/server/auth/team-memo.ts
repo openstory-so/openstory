@@ -1,9 +1,9 @@
-import { resolveUserTeam } from '@/platform/server/db/scoped';
+import { getUserTeamMembership } from '@/platform/server/db/scoped';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 
 /**
- * The team a user acts as and their compliance state, memoised per isolate
- * for a few seconds (#2082). A sequence page fires ~40 server fns within a
+ * The user's membership of one organization and their compliance state,
+ * memoised per isolate for a few seconds (#2082). A sequence page fires ~40 server fns within a
  * second or two, and each resolved both from the primary — two round trips,
  * 350–450 ms apiece from Europe — before any work. Concurrent calls share one
  * in-flight read; a change to membership or enforcement is seen within
@@ -14,7 +14,7 @@ import { loadComplianceState } from '@/platform/server/compliance/generation-gat
  */
 const TEAM_MEMO_TTL_MS = 5_000;
 export type ResolvedTeam = {
-  team: Awaited<ReturnType<typeof resolveUserTeam>>;
+  team: Awaited<ReturnType<typeof getUserTeamMembership>>;
   compliance: Awaited<ReturnType<typeof loadComplianceState>> | null;
 };
 const teamMemo = new Map<
@@ -25,10 +25,10 @@ const teamMemo = new Map<
 export async function resolveTeamAndCompliance(
   userId: string,
   method: string,
-  activeOrganizationId?: string | null
+  organizationId: string
 ): Promise<ResolvedTeam> {
   const now = Date.now();
-  const memoKey = `${userId}:${activeOrganizationId ?? ''}`;
+  const memoKey = `${userId}:${organizationId}`;
   const hit = method === 'GET' ? teamMemo.get(memoKey) : undefined;
   if (hit && hit.until > now) return hit.value;
   // ponytail: prune on insert; a per-user entry for the whole isolate life
@@ -36,7 +36,7 @@ export async function resolveTeamAndCompliance(
   for (const [key, entry] of teamMemo)
     if (entry.until <= now) teamMemo.delete(key);
   const value = (async () => {
-    const team = await resolveUserTeam(userId, activeOrganizationId);
+    const team = await getUserTeamMembership(userId, organizationId);
     return {
       team,
       compliance: team
