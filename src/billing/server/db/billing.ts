@@ -402,8 +402,7 @@ export function createBillingMethods(
       await notifyAutoTopUpFailed({
         to: await createTeamManagementMethods(
           db,
-          organizationId,
-          userId
+          organizationId
         ).getOwnerEmail(),
         organizationId,
         userId,

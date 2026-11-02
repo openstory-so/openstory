@@ -7,11 +7,9 @@
  */
 
 import { getDb } from '#db-client';
-import { generateId } from '@/platform/id';
 import type { Sequence, User } from '@/platform/server/db/schema';
 import {
   member,
-  teamMembers,
   organization,
   session,
   deviceCode,
@@ -207,48 +205,6 @@ function asMemberRole(role: string): TeamMemberRole {
   throw new Error(`Unknown organization role "${role}"`);
 }
 
-/**
- * Copy `team_members` rows that are not on `member` yet. A user with exactly
- * one membership reuses their user id as `member.id` (SQL cannot mint a ULID).
- * Anyone with more than one gets `generateId()` here.
- */
-async function syncLegacyMemberships(
-  db: ReturnType<typeof getDb>,
-  userId: string
-): Promise<void> {
-  const legacy = await db
-    .select({
-      organizationId: teamMembers.organizationId,
-      role: teamMembers.role,
-      joinedAt: teamMembers.joinedAt,
-    })
-    .from(teamMembers)
-    .where(eq(teamMembers.userId, userId));
-  if (legacy.length === 0) return;
-
-  const current = await db
-    .select({ organizationId: member.organizationId })
-    .from(member)
-    .where(eq(member.userId, userId));
-  const have = new Set(current.map((row) => row.organizationId));
-  const missing = legacy.filter((row) => !have.has(row.organizationId));
-  if (missing.length === 0) return;
-
-  const soleMembership = legacy.length === 1;
-  await db
-    .insert(member)
-    .values(
-      missing.map((row) => ({
-        id: soleMembership ? userId : generateId(),
-        organizationId: row.organizationId,
-        userId,
-        role: row.role,
-        createdAt: row.joinedAt,
-      }))
-    )
-    .onConflictDoNothing();
-}
-
 async function readMembership(
   db: ReturnType<typeof getDb>,
   userId: string,
@@ -281,7 +237,6 @@ export async function resolveUserTeam(
   activeOrganizationId?: string | null
 ): Promise<ResolvedOrganization | null> {
   const db = getDb();
-  await syncLegacyMemberships(db, userId);
   if (activeOrganizationId) {
     const active = await readMembership(db, userId, activeOrganizationId);
     if (active) return active;
@@ -289,16 +244,12 @@ export async function resolveUserTeam(
   return readMembership(db, userId);
 }
 
-/**
- * Membership of one organization, or null. Copies a legacy `team_members`
- * row onto `member` first.
- */
+/** Membership of one organization, or null. */
 export async function getUserTeamMembership(
   userId: string,
   organizationId: string
 ): Promise<ResolvedOrganization | null> {
   const db = getDb();
-  await syncLegacyMemberships(db, userId);
   return readMembership(db, userId, organizationId);
 }
 
@@ -420,7 +371,6 @@ export async function ensureUserAndTeam(authUser: {
     });
 
     if (foundUser) {
-      await syncLegacyMemberships(db, authUser.id);
       const memberships = await db
         .select({ organizationId: member.organizationId, role: member.role })
         .from(member)
@@ -542,7 +492,7 @@ export function createScopedDb(organizationId: string, userId: string) {
 
     billing: createBillingMethods(db, organizationId, userId),
     apiKeys: createApiKeysMethods(db, organizationId, userId),
-    teamManagement: createTeamManagementMethods(db, organizationId, userId),
+    teamManagement: createTeamManagementMethods(db, organizationId),
     search: createSearchMethods(db, organizationId),
 
     // Compliance (#1180). `provenance` is its own domain rather than a member
