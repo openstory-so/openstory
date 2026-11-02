@@ -94,7 +94,10 @@ export const SequenceDownloadMenu: React.FC<{
   const { data: publishing } = useQuery({
     queryKey: ['social-publishing', publish?.teamId],
     queryFn: publish
-      ? () => getSocialPublishingFn({ data: { teamId: publish.teamId } })
+      ? () =>
+          getSocialPublishingFn({
+            data: { sequenceId: publish.sequenceId },
+          })
       : skipToken,
     staleTime: 5 * 60 * 1000,
   });
