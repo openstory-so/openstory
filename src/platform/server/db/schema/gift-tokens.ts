@@ -56,12 +56,12 @@ export const giftTokenRedemptions = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    uniqueIndex('idx_gift_token_redemptions_token_team').on(
+    uniqueIndex('idx_gift_token_redemptions_token_organization').on(
       table.giftTokenId,
       table.organizationId
     ),
     index('idx_gift_token_redemptions_token').on(table.giftTokenId),
-    index('idx_gift_token_redemptions_team').on(table.organizationId),
+    index('idx_gift_token_redemptions_organization').on(table.organizationId),
   ]
 );
 

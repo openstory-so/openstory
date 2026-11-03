@@ -135,7 +135,7 @@ export const characters = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_characters_team').on(table.organizationId)]
+  (table) => [index('idx_characters_organization').on(table.organizationId)]
 );
 
 // Type exports

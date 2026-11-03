@@ -77,7 +77,7 @@ export type ResolvedLlmKey = ResolvedApiKey & {
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 };
 
-// The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
+// The cached shape of a `organization_api_keys` lookup. Holds the *encrypted* row
 // (ciphertext + invalid flag) only — never the decrypted key. `resolveKey`
 // memoizes this per scope to avoid redundant D1 reads, then decrypts fresh on
 // each call so plaintext is never retained in the cache (issue #864).
@@ -93,7 +93,7 @@ type CachedKeyLookup =
     };
 
 export function createApiKeysReadMethods(db: Database, organizationId: string) {
-  // Per-scope memoization of the `team_api_keys` row lookup. A ScopedDb is
+  // Per-scope memoization of the `organization_api_keys` row lookup. A ScopedDb is
   // built fresh per workflow run / request, so this cache lives exactly one
   // run — there is no cross-run staleness (issue #864). Without it, `resolveKey`
   // runs a fresh D1 SELECT for every LLM/fal sub-call; under burst (the #801
@@ -188,7 +188,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     return !!row;
   }
 
-  // Read the encrypted `team_api_keys` row for `provider`, memoized per scope:
+  // Read the encrypted `organization_api_keys` row for `provider`, memoized per scope:
   // D1 is hit at most once per provider per run, and concurrent in-flight reads
   // collapse onto the same promise. A rejected read is evicted so a later caller
   // (or a step retry in a surviving isolate) can re-read rather than inheriting
@@ -245,7 +245,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       // step boundary, so this is the only place the real D1 reason (overload
       // vs connection-reset vs rate-limit) is observable. This read sits on
       // every generation path and is the first to fail under burst (#864).
-      logger.error('team_api_keys read failed', {
+      logger.error('organization_api_keys read failed', {
         provider,
         organizationId,
         err: serializeError(err),

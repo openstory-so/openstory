@@ -216,7 +216,7 @@ export const sequences = snakeCase.table(
     index('idx_sequences_created_at').on(table.createdAt),
     index('idx_sequences_status').on(table.status),
     index('idx_sequences_style_id').on(table.styleId),
-    index('idx_sequences_team_id').on(table.organizationId),
+    index('idx_sequences_organization_id').on(table.organizationId),
   ]
 );
 

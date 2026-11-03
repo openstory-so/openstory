@@ -86,7 +86,9 @@ export const locations = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_sequence_locations_team').on(table.organizationId)]
+  (table) => [
+    index('idx_sequence_locations_organization').on(table.organizationId),
+  ]
 );
 
 /** One location in one sequence. */

@@ -84,7 +84,7 @@ export const styles = snakeCase.table(
     }),
   },
   (table) => [
-    index('idx_styles_team_id').on(table.organizationId),
+    index('idx_styles_organization_id').on(table.organizationId),
     index('idx_styles_sequence_id').on(table.sequenceId),
   ]
 );
@@ -118,7 +118,7 @@ export const vfx = snakeCase.table(
   },
   (table) => [
     index('idx_vfx_name').on(table.name),
-    index('idx_vfx_team_id').on(table.organizationId),
+    index('idx_vfx_organization_id').on(table.organizationId),
   ]
 );
 
@@ -152,7 +152,7 @@ export const audio = snakeCase.table(
   },
   (table) => [
     index('idx_audio_name').on(table.name),
-    index('idx_audio_team_id').on(table.organizationId),
+    index('idx_audio_organization_id').on(table.organizationId),
   ]
 );
 

@@ -44,7 +44,7 @@ export const assistantThreads = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_assistant_threads_team_user').on(
+    index('idx_assistant_threads_organization_user').on(
       table.organizationId,
       table.userId,
       table.updatedAt

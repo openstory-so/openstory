@@ -7,7 +7,7 @@ through [Upload-Post](https://www.upload-post.com).
 ## Opt-in per team
 
 - The team adds an Upload-Post key in **Settings → API Keys → Publishing**
-  (`team_api_keys`, provider `upload_post`). There is no platform key:
+  (`organization_api_keys`, provider `upload_post`). There is no platform key:
   `platformKeyFor('upload_post')` is `undefined`, so a team without its own
   key has no publishing at all.
 - Without an active, valid key the Download menu has no "Publish to social…"

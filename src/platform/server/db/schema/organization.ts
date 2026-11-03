@@ -41,7 +41,7 @@ export const organization = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [uniqueIndex('idx_teams_slug').on(table.slug)]
+  (table) => [uniqueIndex('idx_organization_slug').on(table.slug)]
 );
 
 /**

@@ -40,7 +40,7 @@ export type ApiKeySource = (typeof API_KEY_SOURCES)[number];
  * Stores encrypted API keys per team per provider
  */
 export const organizationApiKeys = snakeCase.table(
-  'team_api_keys',
+  'organization_api_keys',
   {
     id: text()
       .$defaultFn(() => generateId())
@@ -85,10 +85,10 @@ export const organizationApiKeys = snakeCase.table(
   },
   (table) => [
     // One active key per team per provider
-    uniqueIndex('idx_team_api_keys_team_provider').on(
+    uniqueIndex('idx_organization_api_keys_organization_provider').on(
       table.organizationId,
       table.provider
     ),
-    index('idx_team_api_keys_team_id').on(table.organizationId),
+    index('idx_organization_api_keys_organization_id').on(table.organizationId),
   ]
 );

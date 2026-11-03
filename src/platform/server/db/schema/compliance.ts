@@ -163,7 +163,7 @@ export const contentProvenance = snakeCase.table(
     index('idx_provenance_storage_key').on(table.storageKey),
     index('idx_provenance_content_sha').on(table.contentSha256),
     // "Show me everything this account generated" — enforcement + audits.
-    index('idx_provenance_team_created').on(
+    index('idx_provenance_organization_created').on(
       table.organizationId,
       table.createdAt
     ),
@@ -266,7 +266,7 @@ export const uploadAttestations = snakeCase.table(
     ),
     // "Everything this account attested to" — enforcement + audit.
     index('idx_upload_attestations_user').on(table.userId, table.attestedAt),
-    index('idx_upload_attestations_team').on(
+    index('idx_upload_attestations_organization').on(
       table.organizationId,
       table.attestedAt
     ),
@@ -369,7 +369,9 @@ export const contentReports = snakeCase.table(
       table.createdAt
     ),
     // "What else has been reported about this account?"
-    index('idx_content_reports_subject_team').on(table.subjectOrganizationId),
+    index('idx_content_reports_subject_organization').on(
+      table.subjectOrganizationId
+    ),
     index('idx_content_reports_subject_user').on(table.subjectUserId),
     // Duplicate detection on re-reports of the same asset.
     index('idx_content_reports_target').on(table.targetType, table.targetId),
@@ -480,7 +482,7 @@ export const enforcementActions = snakeCase.table(
       table.subjectUserId,
       table.revokedAt
     ),
-    index('idx_enforcement_subject_team').on(
+    index('idx_enforcement_subject_organization').on(
       table.subjectOrganizationId,
       table.revokedAt
     ),

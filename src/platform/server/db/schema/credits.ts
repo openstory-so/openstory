@@ -79,19 +79,19 @@ export const transactions = snakeCase.table(
     index('idx_transactions_type').on(table.type),
     // Team ledger newest first — the history page (#1881). Also serves every
     // team_id lookup, so there is no single-column team index.
-    index('idx_transactions_team_created').on(
+    index('idx_transactions_organization_created').on(
       table.organizationId,
       table.createdAt
     ),
     // Team ledger by type, newest first — the typed history page (#1881).
-    index('idx_transactions_team_type_created').on(
+    index('idx_transactions_organization_type_created').on(
       table.organizationId,
       table.type,
       table.createdAt
     ),
     index('idx_transactions_user_id').on(table.userId),
     uniqueIndex('idx_transactions_stripe_session_id').on(table.stripeSessionId),
-    uniqueIndex('idx_transactions_team_idempotency_key')
+    uniqueIndex('idx_transactions_organization_idempotency_key')
       .on(table.organizationId, table.idempotencyKey)
       .where(sql`${table.idempotencyKey} IS NOT NULL`),
   ]
@@ -126,11 +126,11 @@ export const creditReservations = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    uniqueIndex('idx_credit_reservations_team_idempotency_key').on(
+    uniqueIndex('idx_credit_reservations_organization_idempotency_key').on(
       table.organizationId,
       table.idempotencyKey
     ),
-    index('idx_credit_reservations_team_expires').on(
+    index('idx_credit_reservations_organization_expires').on(
       table.organizationId,
       table.expiresAt
     ),
@@ -142,7 +142,7 @@ export const creditReservations = snakeCase.table(
 );
 
 export const organizationBillingSettings = snakeCase.table(
-  'team_billing_settings',
+  'organization_billing_settings',
   {
     organizationId: text()
       .primaryKey()
@@ -221,8 +221,8 @@ export const creditBatches = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_credit_batches_team_id').on(table.organizationId),
-    index('idx_credit_batches_team_remaining_created').on(
+    index('idx_credit_batches_organization_id').on(table.organizationId),
+    index('idx_credit_batches_organization_remaining_created').on(
       table.organizationId,
       table.remainingAmount,
       table.createdAt

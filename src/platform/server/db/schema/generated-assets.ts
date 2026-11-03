@@ -117,15 +117,18 @@ export const generatedAssets = snakeCase.table(
   },
   (table) => [
     // Team-scoped newest-first listing: order by id (ULID ≈ creation time).
-    index('idx_generated_assets_team').on(table.organizationId, table.id),
+    index('idx_generated_assets_organization').on(
+      table.organizationId,
+      table.id
+    ),
     // Per-endpoint "recent runs" list on the model detail page.
-    index('idx_generated_assets_team_endpoint').on(
+    index('idx_generated_assets_organization_endpoint').on(
       table.organizationId,
       table.endpointId,
       table.id
     ),
     // Studio library: team + source (catalog vs studio) + recency.
-    index('idx_generated_assets_team_source').on(
+    index('idx_generated_assets_organization_source').on(
       table.organizationId,
       table.source,
       table.id

@@ -36,7 +36,7 @@ export const stitches = snakeCase.table(
       .notNull(),
     publishedAt: integer({ mode: 'timestamp' }),
   },
-  (table) => [index('idx_stitches_team').on(table.organizationId)]
+  (table) => [index('idx_stitches_organization').on(table.organizationId)]
 );
 
 export type Stitch = InferSelectModel<typeof stitches>;

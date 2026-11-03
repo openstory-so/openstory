@@ -133,7 +133,7 @@ const revalidateApiKeyInputSchema = z.object({
 
 /**
  * Re-run the provider's validation check against the currently stored team
- * key. Persists the result (isInvalid + invalidReason) on the team_api_keys
+ * key. Persists the result (isInvalid + invalidReason) on the organization_api_keys
  * row so subsequent billing-gate reads reflect the current state.
  */
 export const revalidateApiKeyFn = createServerFn({ method: 'POST' })
