@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 const inviteSchema = z.object({
   email: z.string().email('Enter an email address'),
-  role: z.enum(['viewer', 'member', 'admin']),
+  role: z.enum(['member', 'admin']),
 });
 
 async function authData<T>(
@@ -175,7 +175,6 @@ function InviteForm() {
         >
           <option value="member">Member</option>
           <option value="admin">Admin</option>
-          <option value="viewer">Viewer</option>
         </select>
       </div>
       {error ? (

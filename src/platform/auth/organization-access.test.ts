@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { roleHasPermission } from './organization-access';
 
 describe('organization roles (#813)', () => {
-  it('lets a member write a sequence and keeps a viewer out', () => {
+  it('lets a member write a sequence', () => {
     expect(roleHasPermission('member', { sequence: ['create'] })).toBe(true);
-    expect(roleHasPermission('viewer', { sequence: ['create'] })).toBe(false);
   });
 
   it('lets an admin manage billing and members, and only an owner delete the organization', () => {
@@ -18,7 +17,7 @@ describe('organization roles (#813)', () => {
   });
 
   it('accepts a comma-separated role list', () => {
-    expect(roleHasPermission('viewer,admin', { billing: ['update'] })).toBe(
+    expect(roleHasPermission('member,admin', { billing: ['update'] })).toBe(
       true
     );
   });

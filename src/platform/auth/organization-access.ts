@@ -15,22 +15,6 @@ const statement = {
 
 export const organizationAc = createAccessControl(statement);
 
-const noProduct = {
-  sequence: [],
-  library: [],
-  billing: [],
-} as const;
-
-/** Read-only member. No write, invite, or billing. */
-const viewer = organizationAc.newRole({
-  organization: [],
-  member: [],
-  invitation: [],
-  team: [],
-  ac: [],
-  ...noProduct,
-});
-
 /** Create and update sequences and library items. */
 const member = organizationAc.newRole({
   organization: [],
@@ -71,10 +55,9 @@ export const organizationRoles = {
   owner,
   admin,
   member,
-  viewer,
 };
 
-const organizationRoleNames = ['owner', 'admin', 'member', 'viewer'] as const;
+const organizationRoleNames = ['owner', 'admin', 'member'] as const;
 
 function isOrganizationRole(
   name: string

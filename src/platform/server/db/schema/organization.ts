@@ -18,7 +18,7 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 
 // Enum values as constants (SQLite doesn't have native enums)
-const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
+const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
 export type TeamMemberRole = (typeof TEAM_MEMBER_ROLES)[number];
 
 const INVITATION_STATUSES = [

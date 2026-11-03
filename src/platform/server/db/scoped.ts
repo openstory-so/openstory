@@ -187,12 +187,7 @@ type ResolvedOrganization = {
 };
 
 function asMemberRole(role: string): TeamMemberRole {
-  if (
-    role === 'owner' ||
-    role === 'admin' ||
-    role === 'member' ||
-    role === 'viewer'
-  ) {
+  if (role === 'owner' || role === 'admin' || role === 'member') {
     return role;
   }
   throw new Error(`Unknown organization role "${role}"`);
