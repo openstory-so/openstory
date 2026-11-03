@@ -1,7 +1,7 @@
 /**
  * Publish to social (#1267) — server functions behind the Download menu's
  * "Publish to social…". Everything goes through Upload-Post
- * (`server/social/upload-post.ts`) on the team's own key (`team_api_keys`,
+ * (`server/social/upload-post.ts`) on the team's own key (`organization_api_keys`,
  * provider `upload_post`), resolved server-side; it never reaches the browser.
  *
  *   - `getSocialPublishingFn`     — `{ enabled }`: whether the team has an

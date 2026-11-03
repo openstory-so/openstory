@@ -1,7 +1,7 @@
 /**
  * In-memory DB tests for per-scope `resolveKey` memoization (issue #864).
  *
- * `resolveKey` previously ran a fresh D1 SELECT on `team_api_keys` for every
+ * `resolveKey` previously ran a fresh D1 SELECT on `organization_api_keys` for every
  * LLM/fal sub-call; under the #801 90-sequence burst the redundant identical
  * reads exhausted D1 and hard-failed sequences in phase 3. A `ScopedDb` is
  * built once per workflow run / request, so memoizing the row lookup on the
@@ -137,7 +137,7 @@ beforeEach(async () => {
 });
 
 describe('resolveKey memoization (issue #864)', () => {
-  it('reads team_api_keys once across repeated resolveKey calls in one scope', async () => {
+  it('reads organization_api_keys once across repeated resolveKey calls in one scope', async () => {
     await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'openrouter',
       apiKey: 'sk-team-123',
@@ -818,7 +818,7 @@ describe('resolveOptionalKey', () => {
 });
 
 describe('resolveKey elevenlabs (platform-only, #1552)', () => {
-  it('returns the platform key without reading team_api_keys', async () => {
+  it('returns the platform key without reading organization_api_keys', async () => {
     testEnv.ELEVENLABS_API_KEY = 'el-platform';
     const { db: cdb, selects } = countingDb();
     const scope = createApiKeysReadMethods(cdb, organizationId);
