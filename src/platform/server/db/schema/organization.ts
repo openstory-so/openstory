@@ -15,7 +15,7 @@ import {
   primaryKey,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
-import { user } from './auth';
+import { deviceCode, user } from './auth';
 
 // Enum values as constants (SQLite doesn't have native enums)
 const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
@@ -179,4 +179,21 @@ export const invitation = snakeCase.table(
     index('invitation_organizationId_idx').on(table.organizationId),
     index('invitation_email_idx').on(table.email),
   ]
+);
+
+/**
+ * The organization a device login was approved for. The plugin's
+ * `device_code` row has no field for it; the key minted at exchange acts for
+ * this one.
+ */
+export const deviceGrantOrganizations = snakeCase.table(
+  'device_grant_organizations',
+  {
+    deviceCodeId: text()
+      .primaryKey()
+      .references(() => deviceCode.id, { onDelete: 'cascade' }),
+    organizationId: text()
+      .notNull()
+      .references(() => organization.id),
+  }
 );

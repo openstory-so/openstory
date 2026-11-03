@@ -31,9 +31,8 @@
  * - `src/routes/oauth/consent-start.ts` packs the signed consent query so
  *   TanStack cannot collapse repeated `ba_param`, then 302s to
  *   `src/routes/_app/oauth/consent.tsx` + `src/platform/oauth-consent.fn.ts`.
- * - At consent the grant is stamped with the session's active organization
- *   (`consentReferenceId`). There is no picker yet. The JWT claim stays
- *   `team_id`, and `/api/v1` and `/mcp` act for that organization.
+ * - The consent page picks the organization the grant acts for; the JWT
+ *   carries it as `organization_id`, and `/api/v1` and `/mcp` act for it.
  */
 
 import { getEnv } from '#env';
@@ -42,6 +41,10 @@ import { OAUTH_API_SCOPES, OAUTH_SCOPES } from './oauth-scopes';
 import { getLogger } from '@/platform/logger';
 import { mcp } from '@better-auth/mcp';
 import { jwt } from 'better-auth/plugins';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/** The organization the consent page picked, set around its in-process consent POST. */
+export const consentOrganization = new AsyncLocalStorage<string>();
 
 const logger = getLogger(['openstory', 'auth', 'oauth-provider']);
 
@@ -293,18 +296,20 @@ export function createOAuthProviderPlugins() {
       // endpoint is throttled per IP in the auth catch-all route.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
-      // Consents (and therefore tokens) are keyed by the session's active
-      // organization, which they bill to. The JWT claim stays `team_id`.
+      // Consents and tokens are keyed by the organization they bill to: the
+      // consent page's pick while it posts, the active one when authorize
+      // looks for an existing consent.
       postLogin: {
         page: OAUTH_CONSENT_START_PATH,
         shouldRedirect: () => false,
         consentReferenceId: ({ session }) =>
-          typeof session.activeOrganizationId === 'string'
+          consentOrganization.getStore() ??
+          (typeof session.activeOrganizationId === 'string'
             ? session.activeOrganizationId
-            : undefined,
+            : undefined),
       },
       customAccessTokenClaims: ({ referenceId }) =>
-        referenceId ? { team_id: referenceId } : {},
+        referenceId ? { organization_id: referenceId } : {},
     }),
   ];
 }

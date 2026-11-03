@@ -18,6 +18,7 @@ import { getRequestHeaders } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware } from './middleware.fn';
+import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 export type {
   AuthorizedApp,
@@ -33,8 +34,8 @@ const consentContextSchema = z.object({
 });
 
 /**
- * What the consent page renders: who is asking, for what, and which team the
- * grant will bill to. Unknown client ids read as `client: null`.
+ * What the consent page renders: who is asking, for what, and the
+ * organizations the grant can bill to. Unknown client ids read as `client: null`.
  */
 export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
@@ -52,6 +53,7 @@ export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
 
 const decideSchema = z.object({
   accept: z.boolean(),
+  organizationId: ulidSchema,
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: z.string().min(1).max(8192),
 });
@@ -66,7 +68,7 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }): Promise<{ url: string }> =>
     decideOAuthConsent({
       userId: context.user.id,
-      organizationId: context.organizationId,
+      organizationId: data.organizationId,
       accept: data.accept,
       oauthQuery: data.oauthQuery,
       headers: getRequestHeaders(),

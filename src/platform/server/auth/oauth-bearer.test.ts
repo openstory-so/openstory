@@ -91,7 +91,7 @@ describe('isOAuthResourcePath', () => {
 
 describe('verifyOAuthAccessToken', () => {
   it('accepts a token signed by the current key for the right audience', async () => {
-    const token = await mint({ team_id: 'team_1' });
+    const token = await mint({ organization_id: 'team_1' });
     const verified = await verifyOAuthAccessToken(token, API_AUDIENCE);
     expect(verified).toEqual({
       userId: 'user_1',

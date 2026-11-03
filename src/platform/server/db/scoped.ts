@@ -10,6 +10,7 @@ import { getDb } from '#db-client';
 import type { Sequence, User } from '@/platform/server/db/schema';
 import {
   apikey,
+  deviceGrantOrganizations,
   member,
   organization,
   deviceCode,
@@ -212,6 +213,63 @@ export async function getUserTeamMembership(
     .limit(1);
   if (!result) return null;
   return { ...result, role: asMemberRole(result.role) };
+}
+
+export type OrganizationOption = { id: string; name: string };
+
+/** Every organization the user belongs to, by name. */
+export async function listUserOrganizations(
+  userId: string
+): Promise<OrganizationOption[]> {
+  return getDb()
+    .select({ id: organization.id, name: organization.name })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(eq(member.userId, userId))
+    .orderBy(asc(organization.name));
+}
+
+/** Record the organization a device login was approved for. */
+export async function recordDeviceGrantOrganization(input: {
+  userCode: string;
+  userId: string;
+  organizationId: string;
+}): Promise<void> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: deviceCode.id })
+    .from(deviceCode)
+    .where(
+      and(
+        eq(deviceCode.userCode, input.userCode),
+        eq(deviceCode.userId, input.userId)
+      )
+    )
+    .limit(1);
+  if (!row) throw new Error('Device login code not found');
+  await db
+    .insert(deviceGrantOrganizations)
+    .values({ deviceCodeId: row.id, organizationId: input.organizationId })
+    .onConflictDoUpdate({
+      target: deviceGrantOrganizations.deviceCodeId,
+      set: { organizationId: input.organizationId },
+    });
+}
+
+/** The organization a device code was approved for, or null before approval. */
+export async function getDeviceGrantOrganizationId(
+  deviceCodeValue: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ organizationId: deviceGrantOrganizations.organizationId })
+    .from(deviceGrantOrganizations)
+    .innerJoin(
+      deviceCode,
+      eq(deviceGrantOrganizations.deviceCodeId, deviceCode.id)
+    )
+    .where(eq(deviceCode.deviceCode, deviceCodeValue))
+    .limit(1);
+  return row?.organizationId ?? null;
 }
 
 /** The organization a new session starts in: the user's first membership. */

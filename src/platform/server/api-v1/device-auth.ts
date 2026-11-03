@@ -12,6 +12,7 @@ import { getAuth } from '@/platform/server/auth/config';
 import type { ApiKeyMetadata } from '@/platform/server/auth/public-api-key';
 import {
   pruneExpiredDeviceCodes,
+  getDeviceGrantOrganizationId,
   getUserTeamMembership,
 } from '@/platform/server/db/scoped';
 import { APIError } from 'better-auth/api';
@@ -82,6 +83,8 @@ export async function exchangeDeviceCode(
   deviceCode: string
 ): Promise<DeviceTokenResult> {
   const auth = getAuth();
+  // Read first: the plugin deletes the code row, and this one with it, on exchange.
+  const organizationId = await getDeviceGrantOrganizationId(deviceCode);
   let accessToken: string;
   try {
     ({ access_token: accessToken } = await auth.api.deviceToken({
@@ -117,9 +120,9 @@ export async function exchangeDeviceCode(
   if (!found) throw new Error('Device login session vanished before exchange');
   const userId = found.user.id;
 
-  const organizationId = found.session.activeOrganizationId;
-  if (!organizationId)
-    throw new Error('Device login session has no organization');
+  if (!organizationId) {
+    throw new Error('Device login was approved without an organization');
+  }
   const team = await getUserTeamMembership(userId, organizationId);
   if (!team) throw new Error('Not a member of the device login organization');
 

@@ -13,6 +13,13 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { APIError } from 'better-auth/api';
 import { z } from 'zod';
 import { authWithTeamMiddleware } from './middleware.fn';
+import {
+  getUserTeamMembership,
+  listUserOrganizations,
+  recordDeviceGrantOrganization,
+} from '@/platform/server/db/scoped';
+import type { OrganizationOption } from '@/platform/server/db/scoped';
+import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'device-auth']);
 
@@ -34,7 +41,11 @@ export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
     async ({
       data,
       context,
-    }): Promise<{ status: DeviceGrantStatus; teamName: string }> => {
+    }): Promise<{
+      status: DeviceGrantStatus;
+      organizations: OrganizationOption[];
+      activeOrganizationId: string;
+    }> => {
       let status: DeviceGrantStatus = 'invalid';
       try {
         // With a session this also *claims* the code for the user — the
@@ -49,25 +60,44 @@ export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
       } catch (error) {
         if (!(error instanceof APIError)) throw error;
       }
-      return { status, teamName: context.teamName };
+      return {
+        status,
+        organizations: await listUserOrganizations(context.user.id),
+        activeOrganizationId: context.organizationId,
+      };
     }
   );
 
 /** Plugin OAuth error code on failure (e.g. `access_denied` = claimed by another user). */
 export const decideDeviceGrantFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(codeSchema.extend({ approve: z.boolean() })))
+  .validator(
+    zodValidator(
+      codeSchema.extend({ approve: z.boolean(), organizationId: ulidSchema })
+    )
+  )
   .handler(async ({ data, context }): Promise<{ error: string | null }> => {
     const auth = getAuth();
-    const args = {
-      headers: getRequestHeaders(),
-      body: { userCode: normalizeUserCode(data.userCode) },
-    };
+    const userCode = normalizeUserCode(data.userCode);
+    const args = { headers: getRequestHeaders(), body: { userCode } };
+    if (
+      data.approve &&
+      !(await getUserTeamMembership(context.user.id, data.organizationId))
+    ) {
+      throw new Error('You are not a member of that organization');
+    }
     let error: string | null = null;
     try {
-      await (data.approve
-        ? auth.api.deviceApprove(args)
-        : auth.api.deviceDeny(args));
+      if (data.approve) {
+        await auth.api.deviceApprove(args);
+        await recordDeviceGrantOrganization({
+          userCode,
+          userId: context.user.id,
+          organizationId: data.organizationId,
+        });
+      } else {
+        await auth.api.deviceDeny(args);
+      }
     } catch (err) {
       if (!(err instanceof APIError)) throw err;
       error =
@@ -76,7 +106,7 @@ export const decideDeviceGrantFn = createServerFn({ method: 'POST' })
     }
     logger[error ? 'warn' : 'info']('device grant decided', {
       userId: context.user.id,
-      organizationId: context.organizationId,
+      organizationId: data.organizationId,
       approve: data.approve,
       error,
     });

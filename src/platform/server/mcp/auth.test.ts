@@ -99,7 +99,7 @@ describe('authenticateMcpRequest', () => {
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
   });
 
-  it('verifies a JWT against the MCP audience and uses team_id', async () => {
+  it('verifies a JWT against the MCP audience and uses organization_id', async () => {
     verifyOAuthAccessToken.mockResolvedValueOnce(oauth);
     getUserById.mockResolvedValueOnce(user);
     const ctx = await authenticateMcpRequest(

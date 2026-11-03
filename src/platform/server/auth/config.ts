@@ -173,7 +173,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
     secret: runtimeEnv.BETTER_AUTH_SECRET,
     // JWT plugin's GET /token mints a session JWT from a cookie. That is not
     // the OAuth token endpoint (`/oauth2/token`) and must stay off when we
-    // are an authorization server — same JWKS, no scopes / team_id.
+    // are an authorization server — same JWKS, no scopes / organization_id.
     // https://better-auth.com/docs/plugins/jwt#oauth-provider-mode
     disabledPaths: ['/token'],
     trustedOrigins: [

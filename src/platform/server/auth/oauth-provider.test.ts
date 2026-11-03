@@ -171,7 +171,7 @@ describe('createOAuthProviderPlugins', () => {
         referenceId: 'team_1',
         scopes: [],
       })
-    ).toEqual({ team_id: 'team_1' });
+    ).toEqual({ organization_id: 'team_1' });
     expect(await options.customAccessTokenClaims?.({ scopes: [] })).toEqual({});
     expect(
       await options.postLogin?.shouldRedirect({

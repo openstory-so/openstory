@@ -15,7 +15,10 @@ vi.doMock('@/platform/server/auth/config', () => ({
     }),
   }),
 }));
-vi.doMock('@/platform/server/db/scoped', () => ({ getUserTeamMembership }));
+vi.doMock('@/platform/server/db/scoped', () => ({
+  getDeviceGrantOrganizationId: async () => 't1',
+  getUserTeamMembership,
+}));
 
 const { exchangeDeviceCode } = await import('./device-auth');
 
@@ -49,7 +52,7 @@ describe('exchangeDeviceCode', () => {
     deviceToken.mockResolvedValueOnce({ access_token: 'sess-token' });
     findSession.mockResolvedValueOnce({
       user: { id: 'u1' },
-      session: { activeOrganizationId: 't1' },
+      session: {},
     });
     getUserTeamMembership.mockResolvedValueOnce({
       organizationId: 't1',

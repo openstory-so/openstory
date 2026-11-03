@@ -25,6 +25,7 @@ import {
 } from './auth';
 
 import {
+  deviceGrantOrganizations,
   invitation,
   member,
   teamInvitations,
@@ -156,7 +157,14 @@ export {
 export type { User } from './auth';
 
 // Organization (tenant) + Better Auth member/invitation (#813)
-export { invitation, member, teamInvitations, teamMembers, organization };
+export {
+  deviceGrantOrganizations,
+  invitation,
+  member,
+  teamInvitations,
+  teamMembers,
+  organization,
+};
 
 // Sequences
 export { sequences };
@@ -542,6 +550,7 @@ export const schema = {
 
   // Organization
   organization,
+  deviceGrantOrganizations,
   member,
   invitation,
   teamMembers,

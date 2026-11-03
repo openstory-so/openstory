@@ -23,6 +23,7 @@ vi.doMock('./config', () => ({
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
   getUserTeamMembership,
+  listUserOrganizations: async () => [{ id: 'team_1', name: 'T' }],
   revokeOAuthGrantTokens,
 }));
 
@@ -34,6 +35,7 @@ const {
   performAuthorizedAppRevoke,
   toClientSummary,
 } = await import('./oauth-consent');
+const { consentOrganization } = await import('./oauth-provider');
 
 const client = {
   client_id: 'c1',
@@ -76,8 +78,8 @@ describe('loadOAuthConsentContext', () => {
       headers: new Headers(),
     });
     expect(result.client).toBeNull();
-    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
-    expect(result.team).toEqual({ id: 'team_1', name: 'T' });
+    expect(result.organizations).toEqual([{ id: 'team_1', name: 'T' }]);
+    expect(result.activeOrganizationId).toBe('team_1');
   });
 
   it('rethrows non-404 client lookup errors', async () => {
@@ -193,9 +195,11 @@ describe('decideOAuthConsent', () => {
     });
 
   it('accepts redirect_uri when the client does not set url', async () => {
-    authHandler.mockResolvedValueOnce(
-      jsonRes({ redirect_uri: 'http://127.0.0.1:8765/cb?code=2' })
-    );
+    let picked: string | undefined;
+    authHandler.mockImplementationOnce(async () => {
+      picked = consentOrganization.getStore();
+      return jsonRes({ redirect_uri: 'http://127.0.0.1:8765/cb?code=2' });
+    });
     const result = await decideOAuthConsent({
       userId: 'user_1',
       organizationId: 'team_1',
@@ -204,6 +208,9 @@ describe('decideOAuthConsent', () => {
       headers: new Headers({ origin }),
     });
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
+    // The grant is stamped with the picked organization, not the active one.
+    expect(picked).toBe('team_1');
+    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
   });
 
   it('unpacks a packed q before calling the provider', async () => {
