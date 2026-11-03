@@ -9,18 +9,18 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { locationBibleFieldsSchema } from '@/cast/bible-field';
 import {
-  deleteTeamLocation,
+  deleteOrganizationLocation,
   requireLocation,
-  restoreTeamLocation,
+  restoreOrganizationLocation,
   updateLocation,
 } from '@/cast/server/cast-edit';
 import {
   attachLocationReferenceImages,
-  createTeamLocation,
-} from '@/cast/server/locations/team-locations';
-import { teamUserUploadStoragePath } from '@/cast/server/team-user-upload';
+  createOrganizationLocation,
+} from '@/cast/server/locations/organization-locations';
+import { organizationUserUploadStoragePath } from '@/cast/server/organization-user-upload';
 import { generateId } from '@/platform/id';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
@@ -32,22 +32,24 @@ import {
 const locationIdSchema = z.object({ locationId: ulidSchema });
 const nameSchema = z.string().trim().min(1).max(255);
 
-export const listTeamLocationsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
-  .handler(async ({ context }) => await context.scopedDb.locations.listTeam());
+export const listOrganizationLocationsFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
+  .handler(
+    async ({ context }) => await context.scopedDb.locations.listOrganization()
+  );
 
 /**
  * One location at its current version, with the sequences that use it and
  * the photos its sheet is drawn from.
  */
-export const getTeamLocationFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+export const getOrganizationLocationFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(locationIdSchema))
   .handler(async ({ context, data }) => {
     const { locations } = context.scopedDb;
     const [location, team, photos] = await Promise.all([
       locations.getCurrent(data.locationId),
-      locations.getTeamLocation(data.locationId),
+      locations.getOrganizationLocation(data.locationId),
       locations.listPhotos(data.locationId),
     ]);
     // Null, not an error: the page says "not found" for a location that is
@@ -63,20 +65,20 @@ export const getTeamLocationFn = createServerFn({ method: 'GET' })
   });
 
 /** Live divergent sheet alternates across the team's locations: the card dots. */
-export const getTeamLocationDivergentVariantsFn = createServerFn({
+export const getOrganizationLocationDivergentVariantsFn = createServerFn({
   method: 'GET',
 })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
-    const locations = await context.scopedDb.locations.listTeam();
+    const locations = await context.scopedDb.locations.listOrganization();
     return await context.scopedDb.locationSheetVariants.listDivergentActiveByLocations(
       locations.map((location) => location.id)
     );
   });
 
 /** Make a location with no sequence and start its sheet. */
-export const createTeamLocationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const createOrganizationLocationFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -91,7 +93,7 @@ export const createTeamLocationFn = createServerFn({ method: 'POST' })
   )
   .handler(
     async ({ context, data }) =>
-      await createTeamLocation(
+      await createOrganizationLocation(
         context.scopedDb,
         { ...data, description: data.description || null },
         {
@@ -103,8 +105,8 @@ export const createTeamLocationFn = createServerFn({ method: 'POST' })
   );
 
 /** Edit a location's bible from no sequence; every sequence reads the edit. */
-export const updateTeamLocationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const updateOrganizationLocationFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       locationBibleFieldsSchema.extend({
@@ -124,26 +126,26 @@ export const updateTeamLocationFn = createServerFn({ method: 'POST' })
     );
   });
 
-/** Delete a location no sequence uses. Soft: `restoreTeamLocationFn` undoes it. */
-export const deleteTeamLocationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+/** Delete a location no sequence uses. Soft: `restoreOrganizationLocationFn` undoes it. */
+export const deleteOrganizationLocationFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(locationIdSchema))
   .handler(
     async ({ context, data }) =>
-      await deleteTeamLocation(context.scopedDb, data.locationId)
+      await deleteOrganizationLocation(context.scopedDb, data.locationId)
   );
 
-export const restoreTeamLocationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const restoreOrganizationLocationFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(locationIdSchema))
   .handler(
     async ({ context, data }) =>
-      await restoreTeamLocation(context.scopedDb, data.locationId)
+      await restoreOrganizationLocation(context.scopedDb, data.locationId)
   );
 
 /** A signed URL to upload one photo to; the photo is attached afterwards. */
 export const presignLocationUploadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const ext = getExtensionFromUrl(data.filename);
@@ -152,7 +154,11 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
     // likeness ledger, then points a photo row at this key.
     return getSignedUploadUrl(
       STORAGE_BUCKETS.LOCATIONS,
-      teamUserUploadStoragePath(context.organizationId, generateId(), ext),
+      organizationUserUploadStoragePath(
+        context.organizationId,
+        generateId(),
+        ext
+      ),
       getMimeTypeFromExtension(ext)
     );
   });
@@ -162,7 +168,7 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
  * stale until it is regenerated.
  */
 export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(locationIdSchema.extend({ publicUrl: mediaUrlSchema }))
   )
@@ -181,8 +187,10 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
  * Remove one photo. The sheet is not redrawn: it reads stale, and a run in
  * flight loses its claim.
  */
-export const removeTeamLocationPhotoFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const removeOrganizationLocationPhotoFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(locationIdSchema.extend({ photoId: ulidSchema })))
   .handler(async ({ context, data }) => {
     await context.scopedDb.locations.removePhoto(data.locationId, data.photoId);

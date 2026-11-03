@@ -21,7 +21,7 @@ import {
   sequences,
   user,
 } from '@/platform/server/db/schema';
-import type { TeamMemberRole } from '@/platform/server/db/schema/organization';
+import type { OrganizationMemberRole } from '@/platform/server/db/schema/organization';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
@@ -74,7 +74,7 @@ import {
   createPublicStylesReadMethods,
   createStylesMethods,
 } from '@/look/server/db/styles';
-import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
+import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
 import { and, asc, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 import { apiKeyMetadataSchema } from '@/platform/server/auth/public-api-key';
 
@@ -179,11 +179,11 @@ export async function revokeOAuthGrantTokens(
 
 type ResolvedOrganization = {
   organizationId: string;
-  role: TeamMemberRole;
-  teamName: string;
+  role: OrganizationMemberRole;
+  organizationName: string;
 };
 
-function asMemberRole(role: string): TeamMemberRole {
+function asMemberRole(role: string): OrganizationMemberRole {
   if (role === 'owner' || role === 'admin' || role === 'member') {
     return role;
   }
@@ -191,7 +191,7 @@ function asMemberRole(role: string): TeamMemberRole {
 }
 
 /** Membership of one organization, or null. */
-export async function getUserTeamMembership(
+export async function getUserOrganizationMembership(
   userId: string,
   organizationId: string
 ): Promise<ResolvedOrganization | null> {
@@ -199,7 +199,7 @@ export async function getUserTeamMembership(
     .select({
       organizationId: member.organizationId,
       role: member.role,
-      teamName: organization.name,
+      organizationName: organization.name,
     })
     .from(member)
     .innerJoin(organization, eq(member.organizationId, organization.id))
@@ -329,14 +329,17 @@ export async function getSequenceByIdUnscoped(
  * `user.create` hook. The membership id is the user id because
  * this is their only membership.
  */
-export async function createDefaultTeam(input: {
+export async function createDefaultOrganization(input: {
   userId: string;
-  teamName: string;
+  organizationName: string;
 }) {
   const db = getDb();
   const [team] = await db
     .insert(organization)
-    .values({ name: input.teamName, slug: `team-${input.userId.slice(0, 8)}` })
+    .values({
+      name: input.organizationName,
+      slug: `team-${input.userId.slice(0, 8)}`,
+    })
     .returning();
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
   if (!team) {
@@ -442,7 +445,10 @@ export function createScopedDb(organizationId: string, userId: string) {
 
     billing: createBillingMethods(db, organizationId, userId),
     apiKeys: createApiKeysMethods(db, organizationId, userId),
-    teamManagement: createTeamManagementMethods(db, organizationId),
+    organizationManagement: createOrganizationManagementMethods(
+      db,
+      organizationId
+    ),
     search: createSearchMethods(db, organizationId),
 
     // Compliance (#1180). `provenance` is its own domain rather than a member
@@ -471,7 +477,7 @@ export function createSystemAdminScopedDb() {
 /**
  * Enforcement rows for one user (#1180).
  *
- * Module-level and unscoped, like `getUserTeamMembership` above, for the same reason:
+ * Module-level and unscoped, like `getUserOrganizationMembership` above, for the same reason:
  * the generation gate runs before any team scope is meaningful, and an
  * enforcement action follows the person rather than the workspace. Returns raw
  * rows; interpretation lives in `@/platform/server/compliance/enforcement`.

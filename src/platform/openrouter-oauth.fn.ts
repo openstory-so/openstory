@@ -10,7 +10,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequest, setCookie } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { teamAdminAccessMiddleware } from './middleware.fn';
+import { organizationAdminAccessMiddleware } from './middleware.fn';
 import { buildAuthorizationUrl } from '@/platform/server/byok/openrouter-oauth';
 import {
   getOAuthCookieName,
@@ -32,7 +32,7 @@ const initiateOAuthInputSchema = z.object({
  * Returns a URL to redirect the user to OpenRouter's auth page.
  */
 export const initiateOpenRouterOAuthFn = createServerFn({ method: 'POST' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(initiateOAuthInputSchema))
   .handler(async ({ context }) => {
     const request = getRequest();

@@ -364,13 +364,13 @@ beforeEach(async () => {
 });
 
 describe('parseUploadedStoragePath', () => {
-  const ownTeam = '01TEAM';
+  const ownOrganization = '01TEAM';
   it('accepts a stored URL under the team prefix and strips the bucket', () => {
     expect(
       parseUploadedStoragePath(
         '/r2/thumbnails/teams/01TEAM/sequences/s/frames/f/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBe('teams/01TEAM/sequences/s/frames/f/x.png');
   });
@@ -379,28 +379,28 @@ describe('parseUploadedStoragePath', () => {
       parseUploadedStoragePath(
         '/r2/videos/teams/01TEAM/x.mp4',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
         '/r2/thumbnails/teams/OTHER/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
         '/r2/thumbnails/teams/01TEAM/../OTHER/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
         'https://evil.example/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
   });

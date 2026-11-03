@@ -25,7 +25,7 @@ import {
   type VoiceLanguageFilter,
   type VoiceNationalityFilter,
 } from '@/cast/voice';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { ValidationError } from '@/platform/errors';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -59,7 +59,7 @@ function requireElevenLabsKey(): string {
 }
 
 export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -89,7 +89,7 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
   });
 
 export const getSavedVoiceFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ voiceId: z.string().min(1).max(128) })))
   .handler(async ({ data }): Promise<SavedVoiceMeta | null> => {
     // A Seed voice is clips in R2, not an ElevenLabs voice (#1765).

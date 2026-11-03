@@ -25,7 +25,7 @@ import { createGeneratedAssetsMethods } from './generated-assets';
 let closeDb: () => Promise<void>;
 let db: Database;
 let methods: ReturnType<typeof createGeneratedAssetsMethods>;
-let otherTeamMethods: ReturnType<typeof createGeneratedAssetsMethods>;
+let otherOrganizationMethods: ReturnType<typeof createGeneratedAssetsMethods>;
 
 const USER_ID = 'user-1';
 let organizationId = '';
@@ -71,7 +71,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await seed();
   methods = createGeneratedAssetsMethods(db, organizationId, USER_ID);
-  otherTeamMethods = createGeneratedAssetsMethods(
+  otherOrganizationMethods = createGeneratedAssetsMethods(
     db,
     otherOrganizationId,
     USER_ID
@@ -94,7 +94,7 @@ describe('list', () => {
   it('is team-scoped and newest-first', async () => {
     const first = await methods.insert(assetInput());
     const second = await methods.insert(assetInput());
-    await otherTeamMethods.insert(assetInput());
+    await otherOrganizationMethods.insert(assetInput());
 
     const { assets, nextCursor } = await methods.list();
     expect(assets.map((a) => a.id)).toEqual([second.id, first.id]);
@@ -151,7 +151,7 @@ describe('list', () => {
 describe('getById', () => {
   it('returns own-team rows and hides other organizations', async () => {
     const row = await methods.insert(assetInput());
-    const foreign = await otherTeamMethods.insert(assetInput());
+    const foreign = await otherOrganizationMethods.insert(assetInput());
 
     expect((await methods.getById(row.id))?.id).toBe(row.id);
     expect(await methods.getById(foreign.id)).toBeNull();
@@ -202,7 +202,7 @@ describe('status lifecycle', () => {
     // Throwing (not a silent no-op) — a zero-row status write means the
     // workflow would otherwise "succeed" with nothing persisted.
     await expect(
-      otherTeamMethods.markFailed(row.id, 'cross-team write')
+      otherOrganizationMethods.markFailed(row.id, 'cross-team write')
     ).rejects.toThrow(/not found for this team/);
 
     const current = await methods.getById(row.id);

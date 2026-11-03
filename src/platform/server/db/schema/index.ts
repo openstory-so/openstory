@@ -100,12 +100,12 @@ import {
   creditBatches,
   creditReservations,
   credits,
-  teamBillingSettings,
+  organizationBillingSettings,
   transactions,
   welcomeCardClaims,
 } from './credits';
 
-import { teamApiKeys } from './team-api-keys';
+import { organizationApiKeys } from './organization-api-keys';
 
 import { giftTokenRedemptions, giftTokens } from './gift-tokens';
 
@@ -415,7 +415,7 @@ export type {
   LocationRow,
   LocationWithReference,
   NewSequenceLocation,
-  NewTeamLocation,
+  NewOrganizationLocation,
   ReferenceStatus,
   SequenceLocation,
   SequenceLocationLinkRow,
@@ -456,13 +456,13 @@ export { creditReservations, credits, transactions };
  *
  * @public used by drizzle-kit generate, not the app graph
  */
-export { creditBatches, teamBillingSettings, welcomeCardClaims };
+export { creditBatches, organizationBillingSettings, welcomeCardClaims };
 
 // Team API Keys
-export { teamApiKeys };
+export { organizationApiKeys };
 
-export { API_KEY_PROVIDERS } from './team-api-keys';
-export type { ApiKeyProvider } from './team-api-keys';
+export { API_KEY_PROVIDERS } from './organization-api-keys';
+export type { ApiKeyProvider } from './organization-api-keys';
 
 // Gift Tokens
 export { giftTokens, giftTokenRedemptions };
@@ -603,11 +603,11 @@ export const schema = {
   creditBatches,
   creditReservations,
   transactions,
-  teamBillingSettings,
+  organizationBillingSettings,
   welcomeCardClaims,
 
   // Team API Keys
-  teamApiKeys,
+  organizationApiKeys,
 
   // Gift Tokens
   giftTokens,

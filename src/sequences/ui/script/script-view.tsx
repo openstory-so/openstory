@@ -27,7 +27,7 @@ import {
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
-} from '@/cast/ui/use-team-characters';
+} from '@/cast/ui/use-organization-characters';
 import { GenerationStopAlert } from '@/sequences/ui/generation/generation-stop-alert';
 import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
@@ -84,7 +84,7 @@ import {
   useAttachLocation,
   useSequenceLocations,
 } from '@/cast/ui/use-sequence-locations';
-import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useOrganizationLocationList } from '@/cast/ui/use-organization-locations';
 import { TARGET_DURATION_PRESETS } from '@/sequences/ui/target-duration-chip';
 import {
   useRecommendedStyles,
@@ -664,8 +664,8 @@ export const ScriptView: FC<{
   const attachLibraryCharacter = useAttachLibraryCharacter();
   // The team's locations, the same way (#1695): a pick links the sequence
   // to one, or goes onto the draft's suggested locations.
-  const { data: teamLocations, isError: teamLocationsFailed } =
-    useTeamLocationList(isAuthenticated);
+  const { data: organizationLocations, isError: organizationLocationsFailed } =
+    useOrganizationLocationList(isAuthenticated);
   const attachLocation = useAttachLocation();
   const { data: mentionElements } = useSequenceElements(mentionSequenceId);
   const { data: mentionCharacters } = useSequenceCharacters(
@@ -711,7 +711,7 @@ export const ScriptView: FC<{
       // A draft has no locations of its own yet, so every team location is
       // offered; picking one twice is the same pick.
       ...libraryLocationMentionItems(
-        teamLocations ?? [],
+        organizationLocations ?? [],
         new Set((mentionLocations ?? []).map((l) => l.id))
       ),
     ];
@@ -723,7 +723,7 @@ export const ScriptView: FC<{
     draftElements,
     libraryCharacters,
     castCharacterIds,
-    teamLocations,
+    organizationLocations,
   ]);
 
   // A picked library row inserts her name as a cast row would; the attach
@@ -1325,9 +1325,9 @@ export const ScriptView: FC<{
         />
       )}
       <LocationSuggestionSelector
-        locations={isAuthenticated ? teamLocations : []}
+        locations={isAuthenticated ? organizationLocations : []}
         signedOut={!isAuthenticated}
-        failed={teamLocationsFailed}
+        failed={organizationLocationsFailed}
         selectedLocationIds={selectedLocationIds}
         onSelectionChange={(v) =>
           setSelections((s) => ({ ...s, locationIds: v }))

@@ -10,31 +10,33 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import {
-  createTeamCharacterFn,
-  updateTeamCharacterFn,
-  getTeamCharacterFn,
-  getTeamCharacterShotCountsFn,
-  listTeamCharactersFn,
-  deleteTeamCharacterFn,
-  restoreTeamCharacterFn,
-} from '@/cast/team-characters.fn';
+  createOrganizationCharacterFn,
+  updateOrganizationCharacterFn,
+  getOrganizationCharacterFn,
+  getOrganizationCharacterShotCountsFn,
+  listOrganizationCharactersFn,
+  deleteOrganizationCharacterFn,
+  restoreOrganizationCharacterFn,
+} from '@/cast/organization-characters.fn';
 import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 
-export const teamCharacterKeys = {
+export const organizationCharacterKeys = {
   all: ['team-characters'] as const,
-  current: (id: string) => [...teamCharacterKeys.all, 'current', id] as const,
-  list: () => [...teamCharacterKeys.all, 'list'] as const,
-  detail: (id: string) => [...teamCharacterKeys.all, 'detail', id] as const,
+  current: (id: string) =>
+    [...organizationCharacterKeys.all, 'current', id] as const,
+  list: () => [...organizationCharacterKeys.all, 'list'] as const,
+  detail: (id: string) =>
+    [...organizationCharacterKeys.all, 'detail', id] as const,
   shotCounts: (id: string) =>
-    [...teamCharacterKeys.all, 'shot-counts', id] as const,
+    [...organizationCharacterKeys.all, 'shot-counts', id] as const,
 };
 
 /** The team's characters, sorted by use. Signed-in only. */
-export function useTeamCharacters() {
+export function useOrganizationCharacters() {
   return useSuspenseQuery({
-    queryKey: teamCharacterKeys.list(),
-    queryFn: () => listTeamCharactersFn(),
+    queryKey: organizationCharacterKeys.list(),
+    queryFn: () => listOrganizationCharactersFn(),
     staleTime: 30_000,
   });
 }
@@ -45,32 +47,33 @@ export function useTeamCharacters() {
  */
 export function useLibraryCharacters(enabled: boolean) {
   return useQuery({
-    queryKey: teamCharacterKeys.list(),
-    queryFn: () => listTeamCharactersFn(),
+    queryKey: organizationCharacterKeys.list(),
+    queryFn: () => listOrganizationCharactersFn(),
     staleTime: 30_000,
     enabled,
   });
 }
 
-export function useTeamCharacter(characterId: string) {
+export function useOrganizationCharacter(characterId: string) {
   return useSuspenseQuery({
-    queryKey: teamCharacterKeys.detail(characterId),
-    queryFn: () => getTeamCharacterFn({ data: { characterId } }),
+    queryKey: organizationCharacterKeys.detail(characterId),
+    queryFn: () => getOrganizationCharacterFn({ data: { characterId } }),
     staleTime: 30_000,
   });
 }
 
 /** Shots the character is in, per sequence. Its own page only. */
-export function useTeamCharacterShotCounts(characterId: string) {
+export function useOrganizationCharacterShotCounts(characterId: string) {
   return useSuspenseQuery({
-    queryKey: teamCharacterKeys.shotCounts(characterId),
-    queryFn: () => getTeamCharacterShotCountsFn({ data: { characterId } }),
+    queryKey: organizationCharacterKeys.shotCounts(characterId),
+    queryFn: () =>
+      getOrganizationCharacterShotCountsFn({ data: { characterId } }),
     staleTime: 60_000,
   });
 }
 
 /** Bible fields a form posts; `''` clears a nullable field server-side. */
-type TeamBibleInput = {
+type OrganizationBibleInput = {
   age?: string;
   gender?: string;
   ethnicity?: string;
@@ -83,19 +86,22 @@ type TeamBibleInput = {
 };
 
 /** Make a character with no sequence (#2065). The caller shows the failure. */
-export function useCreateTeamCharacter() {
+export function useCreateOrganizationCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; rendering: string } & TeamBibleInput) =>
-      createTeamCharacterFn({ data }),
+    mutationFn: (
+      data: { name: string; rendering: string } & OrganizationBibleInput
+    ) => createOrganizationCharacterFn({ data }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
     },
   });
 }
 
 /** Edit the bible from no sequence. The form shows the failure. */
-export function useUpdateTeamCharacter() {
+export function useUpdateOrganizationCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
@@ -104,37 +110,43 @@ export function useUpdateTeamCharacter() {
         name: string;
         voiceOnly: boolean;
         isPerson?: boolean;
-      } & TeamBibleInput
-    ) => updateTeamCharacterFn({ data }),
+      } & OrganizationBibleInput
+    ) => updateOrganizationCharacterFn({ data }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
     },
   });
 }
 
 /** Delete a character no sequence casts. Its own page shows the failure. */
-export function useDeleteTeamCharacter() {
+export function useDeleteOrganizationCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: { characterId: string }) =>
-      deleteTeamCharacterFn({ data }),
+      deleteOrganizationCharacterFn({ data }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
     },
   });
 }
 
 /** Undo a delete, from its toast. */
-export function useRestoreTeamCharacter() {
+export function useRestoreOrganizationCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: { globalError: true },
     mutationFn: (data: { characterId: string }) =>
-      restoreTeamCharacterFn({ data }),
+      restoreOrganizationCharacterFn({ data }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
     },
   });
 }
@@ -153,16 +165,18 @@ export function useAttachLibraryCharacter() {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),
       });
-      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
     },
   });
 }
 
 /** The character's name for a breadcrumb: never suspends the header. */
-export function useTeamCharacterName(characterId: string) {
+export function useOrganizationCharacterName(characterId: string) {
   return useQuery({
-    queryKey: teamCharacterKeys.detail(characterId),
-    queryFn: () => getTeamCharacterFn({ data: { characterId } }),
+    queryKey: organizationCharacterKeys.detail(characterId),
+    queryFn: () => getOrganizationCharacterFn({ data: { characterId } }),
     staleTime: 30_000,
     select: (character) => character?.name,
   });

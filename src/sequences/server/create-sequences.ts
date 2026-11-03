@@ -324,7 +324,7 @@ export const createSequences = createServerOnlyFn(
     // row is written: every pick must be the team's, and no two may share
     // a name, or the attach after the insert would leave an empty sequence.
     if (castCharacterIds?.length) {
-      const library = await context.scopedDb.characters.listTeam();
+      const library = await context.scopedDb.characters.listOrganization();
       const names = new Map<string, string>();
       for (const id of new Set(castCharacterIds)) {
         const character = library.find((c) => c.id === id);

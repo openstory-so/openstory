@@ -256,7 +256,10 @@ export type NewSequenceLocation = {
 } & NewLocationBible;
 
 /** A new location made from no sequence. */
-export type NewTeamLocation = Pick<InferInsertModel<typeof locations>, 'id'> &
+export type NewOrganizationLocation = Pick<
+  InferInsertModel<typeof locations>,
+  'id'
+> &
   NewLocationBible;
 
 export type SequenceLocationMinimal = Pick<

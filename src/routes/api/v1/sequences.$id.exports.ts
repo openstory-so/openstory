@@ -11,12 +11,12 @@
  *          the `ready` URL. `?wait=60s` long-polls until nothing is
  *          `processing`.
  *
- * Team-scoped via `authWithTeamRequestMiddleware`; a key only sees its own
+ * Team-scoped via `authWithOrganizationRequestMiddleware`; a key only sees its own
  * team's sequences. Theatre Download/Copy POST this same route; a ready MP4
  * whose `sourceShotsHash` matches is reused (#1406).
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import {
   API_V1_BASE,
@@ -51,7 +51,7 @@ function exportsLinks(sequenceId: string): HalLinks {
 
 export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context, request }) =>
         runApiV1Handler(async () => {

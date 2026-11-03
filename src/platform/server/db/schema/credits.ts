@@ -141,26 +141,29 @@ export const creditReservations = snakeCase.table(
   ]
 );
 
-export const teamBillingSettings = snakeCase.table('team_billing_settings', {
-  organizationId: text()
-    .primaryKey()
-    .notNull()
-    .references(() => organization.id, { onDelete: 'cascade' }),
-  stripeCustomerId: text(),
-  autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
-  autoTopUpThresholdMicros: integer().default(5_000_000),
-  autoTopUpAmountMicros: integer().default(100_000_000),
-  /**
-   * Set when an off-session auto-top-up PaymentIntent is declined or
-   * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
-   * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
-   */
-  autoTopUpFailedAt: integer({ mode: 'timestamp' }),
-  autoTopUpDeclineCode: text(),
-  updatedAt: integer({ mode: 'timestamp' })
-    .$defaultFn(() => new Date())
-    .notNull(),
-});
+export const organizationBillingSettings = snakeCase.table(
+  'team_billing_settings',
+  {
+    organizationId: text()
+      .primaryKey()
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    stripeCustomerId: text(),
+    autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
+    autoTopUpThresholdMicros: integer().default(5_000_000),
+    autoTopUpAmountMicros: integer().default(100_000_000),
+    /**
+     * Set when an off-session auto-top-up PaymentIntent is declined or
+     * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
+     * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
+     */
+    autoTopUpFailedAt: integer({ mode: 'timestamp' }),
+    autoTopUpDeclineCode: text(),
+    updatedAt: integer({ mode: 'timestamp' })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }
+);
 
 /**
  * Retired with the welcome grant (#1883): nothing reads or writes it. Kept
@@ -229,4 +232,6 @@ export const creditBatches = snakeCase.table(
 );
 
 // Type exports
-export type TeamBillingSetting = InferSelectModel<typeof teamBillingSettings>;
+export type OrganizationBillingSetting = InferSelectModel<
+  typeof organizationBillingSettings
+>;

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { LocationMediaUpload } from '@/cast/ui/location-library/location-media-upload';
-import { useCreateTeamLocation } from '@/cast/ui/use-team-locations';
+import { useCreateOrganizationLocation } from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -38,7 +38,7 @@ export const NewLocationDialog: React.FC<{
   const [files, setFiles] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const createLocation = useCreateTeamLocation();
+  const createLocation = useCreateOrganizationLocation();
   const hydrated = useHydrated();
 
   const close = () => {

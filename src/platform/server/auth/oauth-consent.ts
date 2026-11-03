@@ -20,7 +20,7 @@ import {
 import { resolveOAuthQuery } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from './oauth-scopes';
 import {
-  getUserTeamMembership,
+  getUserOrganizationMembership,
   listUserOrganizations,
   revokeOAuthGrantTokens,
   type OrganizationOption,
@@ -253,7 +253,7 @@ export async function decideOAuthConsent(input: {
 }): Promise<{ url: string }> {
   if (
     input.accept &&
-    !(await getUserTeamMembership(input.userId, input.organizationId))
+    !(await getUserOrganizationMembership(input.userId, input.organizationId))
   ) {
     throw new ValidationError('You are not a member of that organization');
   }

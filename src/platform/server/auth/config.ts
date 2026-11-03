@@ -32,7 +32,7 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start';
 
 import { getDb } from '#db-client';
 import {
-  createDefaultTeam,
+  createDefaultOrganization,
   getFirstOrganizationId,
   getUserIdentity,
 } from '@/platform/server/db/scoped';
@@ -198,7 +198,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       // `user` from the primary before doing anything. A revoked session or
       // a changed `user.status` is seen within `maxAge`. Compliance
       // enforcement is read fresh on every write and at most
-      // `TEAM_MEMO_TTL_MS` stale on a GET (`team-memo.ts`).
+      // `ORGANIZATION_MEMO_TTL_MS` stale on a GET (`organization-memo.ts`).
       // Bump `version` when a session field changes meaning: old cookies stop being read.
       cookieCache: { enabled: true, maxAge: 5 * 60, version: '2' },
       // Owned by the organization plugin. The OAuth spread stops Session from inferring it.
@@ -361,9 +361,9 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
           after: async (user) => {
             // Team + owner membership (#1047; preflight fixed in #1062). The SQL lives in db/scoped so this file never
             // writes a table directly.
-            const team = await createDefaultTeam({
+            const team = await createDefaultOrganization({
               userId: user.id,
-              teamName: user.name
+              organizationName: user.name
                 ? `${user.name}'s Organization`
                 : `Organization ${user.id.slice(0, 8)}`,
             });

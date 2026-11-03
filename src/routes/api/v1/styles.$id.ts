@@ -3,7 +3,7 @@
  * resolves the team's own library rows and public templates.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { styleDocument } from '@/platform/server/api-v1/styles';
 import { NotFoundError } from '@/platform/errors';
@@ -11,7 +11,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/styles/$id')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context }) =>
         runApiV1Handler(async () => {

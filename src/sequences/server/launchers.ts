@@ -257,7 +257,9 @@ async function resolveStoryboardPayload(
     referenceOnly: !sequence.generateStartFrames,
     generateVoices: sequence.generateVoices,
     includeMusic: sequence.includeMusic,
-    ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
+    ownerEmail: await scopedDb.organizationManagement.getMemberEmail(
+      input.userId
+    ),
     sequenceUrl: sequenceScenesUrl(sequenceId),
     // Pin stop-at from this click, else the sequence snapshot (#1408).
     stopAt: resolveStopAt({

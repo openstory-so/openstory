@@ -10,33 +10,33 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import {
-  createTeamLocationFn,
-  deleteTeamLocationFn,
+  createOrganizationLocationFn,
+  deleteOrganizationLocationFn,
   finalizeLocationUploadFn,
-  getTeamLocationDivergentVariantsFn,
-  getTeamLocationFn,
-  listTeamLocationsFn,
+  getOrganizationLocationDivergentVariantsFn,
+  getOrganizationLocationFn,
+  listOrganizationLocationsFn,
   presignLocationUploadFn,
-  removeTeamLocationPhotoFn,
-  restoreTeamLocationFn,
-  updateTeamLocationFn,
-} from '@/cast/team-locations.fn';
+  removeOrganizationLocationPhotoFn,
+  restoreOrganizationLocationFn,
+  updateOrganizationLocationFn,
+} from '@/cast/organization-locations.fn';
 import {
   invalidateLocations,
   locationSheetVariantKeys,
-  teamLocationKeys,
+  organizationLocationKeys,
 } from '@/cast/ui/location-keys';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import type { LocationBibleInput } from '@/cast/ui/use-sequence-locations';
 import { putToR2, snapshotFile } from '@/ui/upload';
 
-export { teamLocationKeys };
+export { organizationLocationKeys };
 
 /** The team's locations, most recently used first. Signed-in only. */
-export function useTeamLocations() {
+export function useOrganizationLocations() {
   return useSuspenseQuery({
-    queryKey: teamLocationKeys.list(),
-    queryFn: () => listTeamLocationsFn(),
+    queryKey: organizationLocationKeys.list(),
+    queryFn: () => listOrganizationLocationsFn(),
     staleTime: 30_000,
     // A sheet being drawn reports on its own channel, which the list does
     // not open: poll until none is.
@@ -51,28 +51,28 @@ export function useTeamLocations() {
  * The same list for a picker or the `@` dropdown: never suspends, and asks
  * nothing while closed or signed out.
  */
-export function useTeamLocationList(enabled: boolean) {
+export function useOrganizationLocationList(enabled: boolean) {
   return useQuery({
-    queryKey: teamLocationKeys.list(),
-    queryFn: () => listTeamLocationsFn(),
+    queryKey: organizationLocationKeys.list(),
+    queryFn: () => listOrganizationLocationsFn(),
     staleTime: 30_000,
     enabled,
   });
 }
 
-export function useTeamLocation(locationId: string) {
+export function useOrganizationLocation(locationId: string) {
   return useSuspenseQuery({
-    queryKey: teamLocationKeys.detail(locationId),
-    queryFn: () => getTeamLocationFn({ data: { locationId } }),
+    queryKey: organizationLocationKeys.detail(locationId),
+    queryFn: () => getOrganizationLocationFn({ data: { locationId } }),
     staleTime: 30_000,
   });
 }
 
 /** The location's name for a breadcrumb: never suspends the header. */
-export function useTeamLocationName(locationId: string) {
+export function useOrganizationLocationName(locationId: string) {
   return useQuery({
-    queryKey: teamLocationKeys.detail(locationId),
-    queryFn: () => getTeamLocationFn({ data: { locationId } }),
+    queryKey: organizationLocationKeys.detail(locationId),
+    queryFn: () => getOrganizationLocationFn({ data: { locationId } }),
     staleTime: 30_000,
     select: (location) => location?.name,
   });
@@ -81,24 +81,24 @@ export function useTeamLocationName(locationId: string) {
 /** The photos a location's sheet is drawn from. */
 export function useLocationPhotos(locationId: string) {
   return useQuery({
-    queryKey: teamLocationKeys.detail(locationId),
-    queryFn: () => getTeamLocationFn({ data: { locationId } }),
+    queryKey: organizationLocationKeys.detail(locationId),
+    queryFn: () => getOrganizationLocationFn({ data: { locationId } }),
     staleTime: 30_000,
     select: (location) => location?.photos,
   });
 }
 
 /** Live divergent sheet alternates across the team's locations: the card dots. */
-export function useTeamLocationDivergentVariants() {
+export function useOrganizationLocationDivergentVariants() {
   return useQuery({
-    queryKey: locationSheetVariantKeys.divergentByTeam(),
-    queryFn: () => getTeamLocationDivergentVariantsFn(),
+    queryKey: locationSheetVariantKeys.divergentByOrganization(),
+    queryFn: () => getOrganizationLocationDivergentVariantsFn(),
     staleTime: 30_000,
   });
 }
 
 /** Make a location with no sequence and start its sheet. The caller shows the failure. */
-export function useCreateTeamLocation() {
+export function useCreateOrganizationLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: {
@@ -106,7 +106,7 @@ export function useCreateTeamLocation() {
       description: string | null;
       rendering: string;
       photoUrls: string[];
-    }) => createTeamLocationFn({ data }),
+    }) => createOrganizationLocationFn({ data }),
     onSuccess: () => {
       void invalidateLocations(queryClient);
     },
@@ -114,12 +114,12 @@ export function useCreateTeamLocation() {
 }
 
 /** Edit the bible from no sequence. The form shows the failure. */
-export function useUpdateTeamLocation() {
+export function useUpdateOrganizationLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
       data: { locationId: string; name?: string } & LocationBibleInput
-    ) => updateTeamLocationFn({ data }),
+    ) => updateOrganizationLocationFn({ data }),
     onSuccess: () => {
       void invalidateLocations(queryClient);
     },
@@ -127,11 +127,11 @@ export function useUpdateTeamLocation() {
 }
 
 /** Delete a location no sequence uses. Its own page shows the failure. */
-export function useDeleteTeamLocation() {
+export function useDeleteOrganizationLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { locationId: string }) =>
-      deleteTeamLocationFn({ data }),
+      deleteOrganizationLocationFn({ data }),
     onSuccess: () => {
       void invalidateLocations(queryClient);
     },
@@ -139,12 +139,12 @@ export function useDeleteTeamLocation() {
 }
 
 /** Undo a delete, from its toast. */
-export function useRestoreTeamLocation() {
+export function useRestoreOrganizationLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     meta: { globalError: true },
     mutationFn: (data: { locationId: string }) =>
-      restoreTeamLocationFn({ data }),
+      restoreOrganizationLocationFn({ data }),
     onSuccess: () => {
       void invalidateLocations(queryClient);
     },
@@ -228,7 +228,7 @@ export function useRemoveLocationPhoto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { locationId: string; photoId: string }) =>
-      removeTeamLocationPhotoFn({ data }),
+      removeOrganizationLocationPhotoFn({ data }),
     onSuccess: () => {
       void invalidateLocations(queryClient);
     },

@@ -1,5 +1,5 @@
 import { getEnv } from '#env';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import {
   getEffectiveFalPricing,
@@ -125,7 +125,7 @@ const estimateDraftGenerationInputSchema = z.object({
  * debounced composer edit lands here, so it is gated like the create fn.
  */
 export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(estimateDraftGenerationInputSchema))
   .handler(async ({ data }) => {
     if (!data.script.trim()) return { estimateMicros: null };

@@ -51,8 +51,8 @@ export const handlers = [
         isAuthenticated: true,
         isAnonymous: false,
         organizationId: 'demo-team',
-        teamRole: 'owner',
-        teamName: 'Demo Team',
+        organizationRole: 'owner',
+        organizationName: 'Demo Team',
       },
     });
   }),

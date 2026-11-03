@@ -140,7 +140,7 @@ export const traceContentFn = createServerFn({ method: 'GET' })
   });
 
 /** Everything an account generated — evidence for an enforcement decision. */
-export const listTeamProvenanceFn = createServerFn({ method: 'GET' })
+export const listOrganizationProvenanceFn = createServerFn({ method: 'GET' })
   .middleware([systemAdminMiddleware])
   .validator(
     zodValidator(
@@ -152,13 +152,13 @@ export const listTeamProvenanceFn = createServerFn({ method: 'GET' })
   )
   .handler(async ({ context, data }) => {
     const [provenance, attestations] = await Promise.all([
-      context.adminScopedDb.moderation.listProvenanceForTeam(
+      context.adminScopedDb.moderation.listProvenanceForOrganization(
         data.organizationId,
         {
           limit: data.limit,
         }
       ),
-      context.adminScopedDb.moderation.listAttestationsForTeam(
+      context.adminScopedDb.moderation.listAttestationsForOrganization(
         data.organizationId,
         {
           limit: data.limit,

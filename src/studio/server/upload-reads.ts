@@ -1,5 +1,5 @@
 import { listFilesPage } from '#storage';
-import { TEAM_USER_UPLOAD_PREFIX } from '@/cast/server/team-user-upload';
+import { ORGANIZATION_USER_UPLOAD_PREFIX } from '@/cast/server/organization-user-upload';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { decodeCursor, encodeCursor } from '@/platform/server/read-page';
 import type { PageInput } from '@/platform/server/read-page';
@@ -13,7 +13,7 @@ export async function listStudioUploadReads(
   const cursor = decodeCursor(input.cursor, scope);
   const page = await listFilesPage(
     STORAGE_BUCKETS.TALENT,
-    `${organizationId}/${TEAM_USER_UPLOAD_PREFIX}`,
+    `${organizationId}/${ORGANIZATION_USER_UPLOAD_PREFIX}`,
     { limit: input.limit, cursor: cursor ?? undefined }
   );
   return {

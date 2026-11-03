@@ -18,7 +18,7 @@ vi.doMock('../use-sequences-with-shots', () => ({
   useSequencesWithShots: ownData,
 }));
 vi.doMock('@/audio/ui/use-sequence-variants', () => ({
-  useTeamDivergentSequenceVariants: variants,
+  useOrganizationDivergentSequenceVariants: variants,
 }));
 vi.doMock('@/look/ui/use-styles', () => ({ useStyles: () => ({ data: [] }) }));
 vi.doMock('@tanstack/react-query', () => ({

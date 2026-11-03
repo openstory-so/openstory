@@ -10,7 +10,7 @@ import { generateId } from '@/platform/id';
 import {
   creditReservations,
   credits,
-  teamBillingSettings,
+  organizationBillingSettings,
   organization,
   transactions,
   user,
@@ -94,7 +94,7 @@ beforeEach(async () => {
   });
   await db.delete(transactions);
   await db.delete(creditReservations);
-  await db.delete(teamBillingSettings);
+  await db.delete(organizationBillingSettings);
   await db.delete(credits);
   await db.delete(organization);
   await db.delete(user);
@@ -117,7 +117,7 @@ async function seedSettings(overrides: {
   await db
     .insert(credits)
     .values({ organizationId, balance: overrides.balance });
-  await db.insert(teamBillingSettings).values({
+  await db.insert(organizationBillingSettings).values({
     organizationId,
     stripeCustomerId: 'cus_1',
     autoTopUpEnabled: true,
@@ -137,8 +137,8 @@ function balanceOf() {
 function settingsOf() {
   return db
     .select()
-    .from(teamBillingSettings)
-    .where(eq(teamBillingSettings.organizationId, organizationId))
+    .from(organizationBillingSettings)
+    .where(eq(organizationBillingSettings.organizationId, organizationId))
     .then(([row]) => row);
 }
 
@@ -276,14 +276,14 @@ describe('maybeAutoTopUp', () => {
   it('retries after the decline cooldown expires', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(
           Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
         ),
         autoTopUpDeclineCode: 'insufficient_funds',
       })
-      .where(eq(teamBillingSettings.organizationId, organizationId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_retry',
@@ -302,12 +302,12 @@ describe('maybeAutoTopUp', () => {
   it('retries immediately after a successful credit purchase clears the decline', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(),
         autoTopUpDeclineCode: 'generic_decline',
       })
-      .where(eq(teamBillingSettings.organizationId, organizationId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_after_purchase',
@@ -329,12 +329,12 @@ describe('maybeAutoTopUp', () => {
   it('retries immediately after auto-top-up settings are saved', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(),
         autoTopUpDeclineCode: 'card_declined',
       })
-      .where(eq(teamBillingSettings.organizationId, organizationId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_after_settings',
@@ -391,13 +391,13 @@ describe('decline notice (#1499)', () => {
   /** Let the decline cooldown lapse so the next attempt reaches Stripe. */
   async function expireCooldown() {
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(
           Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
         ),
       })
-      .where(eq(teamBillingSettings.organizationId, organizationId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
   }
 
   beforeEach(async () => {

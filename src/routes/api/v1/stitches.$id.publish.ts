@@ -7,7 +7,7 @@
  * `portraitAttestation` in the body (`stitch share --portrait-rights`).
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { getLink, withLinks } from '@/platform/server/api-v1/hal';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
@@ -16,7 +16,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/stitches/$id/publish')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ params, request, context }) =>
         runApiV1Handler(async () => {

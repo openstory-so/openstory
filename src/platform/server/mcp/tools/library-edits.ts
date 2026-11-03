@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { NotFoundError, ValidationError } from '@/platform/errors';
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
 import { apiCreateStyleSchema } from '@/platform/server/api-v1/style-input-schema';
 import {
   styleDocument,
@@ -73,7 +73,7 @@ const deleteStyleTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const style = await scopedDb.styles.getById(input.styleId);
     if (!style) throw new NotFoundError('Style not found');
-    await requireTeamAdminAccess(userId, style.organizationId);
+    await requireOrganizationAdminAccess(userId, style.organizationId);
     await scopedDb.styles.delete(style.id);
     return {
       data: { styleId: style.id },

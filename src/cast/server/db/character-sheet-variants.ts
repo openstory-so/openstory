@@ -59,7 +59,7 @@ export function createCharacterSheetVariantsMethods(
   organizationId: string
 ) {
   /** Sheets of the team's characters: every read and write here carries it. */
-  const ofTeam = () =>
+  const ofOrganization = () =>
     inArray(
       characterSheetVariants.characterId,
       db
@@ -76,7 +76,7 @@ export function createCharacterSheetVariantsMethods(
       return await pageOf(
         db.select().from(characterSheetVariants).$dynamic(),
         and(
-          ofTeam(),
+          ofOrganization(),
           ofLook(lookId),
           options?.includeDiscarded
             ? undefined
@@ -102,7 +102,7 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             ofLook(lookId),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
@@ -131,7 +131,7 @@ export function createCharacterSheetVariantsMethods(
             .from(characterSheetVariants)
             .where(
               and(
-                ofTeam(),
+                ofOrganization(),
                 inArray(
                   characterSheetVariants.characterId,
                   characterIds.slice(i, i + 90)
@@ -157,7 +157,7 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`
           )
@@ -177,7 +177,7 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -195,7 +195,7 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             inArray(characterSheetVariants.characterId, characterIds),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -220,7 +220,7 @@ export function createCharacterSheetVariantsMethods(
             .from(characterSheetVariants)
             .where(
               and(
-                ofTeam(),
+                ofOrganization(),
                 inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
               )
             ))
@@ -234,7 +234,7 @@ export function createCharacterSheetVariantsMethods(
       const result = await db
         .select()
         .from(characterSheetVariants)
-        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+        .where(and(ofOrganization(), eq(characterSheetVariants.id, variantId)));
       return result[0] ?? null;
     },
 
@@ -314,7 +314,7 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             eq(characterSheetVariants.id, versionId),
             eq(characterSheetVariants.characterId, characterId)
           )
@@ -495,7 +495,7 @@ export function createCharacterSheetVariantsMethods(
         .set({ discardedAt, updatedAt: discardedAt })
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             eq(characterSheetVariants.id, variantId),
             notExists(live)
           )
@@ -505,7 +505,9 @@ export function createCharacterSheetVariantsMethods(
         const [row] = await db
           .select({ id: characterSheetVariants.id })
           .from(characterSheetVariants)
-          .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+          .where(
+            and(ofOrganization(), eq(characterSheetVariants.id, variantId))
+          );
         if (!row)
           throw new Error(`CharacterSheetVariant ${variantId} not found`);
         throw new ConflictError(
@@ -528,7 +530,7 @@ export function createCharacterSheetVariantsMethods(
         .set({ portraitUrl, updatedAt: new Date() })
         .where(
           and(
-            ofTeam(),
+            ofOrganization(),
             eq(characterSheetVariants.id, variantId),
             isNull(characterSheetVariants.portraitUrl)
           )
@@ -539,7 +541,7 @@ export function createCharacterSheetVariantsMethods(
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt: null, updatedAt: new Date() })
-        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
+        .where(and(ofOrganization(), eq(characterSheetVariants.id, variantId)))
         .returning();
       if (result.length === 0) {
         throw new Error(`CharacterSheetVariant ${variantId} not found`);

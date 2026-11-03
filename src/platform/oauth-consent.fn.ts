@@ -17,7 +17,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from './middleware.fn';
+import { authWithOrganizationMiddleware } from './middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 export type {
@@ -38,7 +38,7 @@ const consentContextSchema = z.object({
  * organizations the grant can bill to. Unknown client ids read as `client: null`.
  */
 export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(consentContextSchema))
   .handler(async ({ data, context }): Promise<OAuthConsentContext> =>
     loadOAuthConsentContext({
@@ -63,7 +63,7 @@ const decideSchema = z.object({
  * client's `redirect_uri` with a code, or with `error=access_denied`.
  */
 export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(decideSchema))
   .handler(async ({ data, context }): Promise<{ url: string }> =>
     decideOAuthConsent({
@@ -77,7 +77,7 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
 
 /** Apps the user has granted access to, newest first. */
 export const listAuthorizedAppsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async (): Promise<AuthorizedApp[]> =>
     listAuthorizedApps(getRequestHeaders())
   );
@@ -89,7 +89,7 @@ const revokeSchema = z.object({
 
 /** Revoke an app: its consent and the refresh tokens issued under it. */
 export const revokeAuthorizedAppFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(revokeSchema))
   .handler(async ({ data, context }): Promise<{ success: true }> => {
     await performAuthorizedAppRevoke({

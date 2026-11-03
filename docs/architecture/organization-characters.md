@@ -85,7 +85,7 @@ link's.** Reads through the link (`getById`, `getByIds`, `list`,
 #2065) passes `null`: the same write, no event. Everything else is the
 character's own and takes no sequence: the voice methods, the sheet claim
 (`claimSheet`, `failSheetClaim`, `promoteIfPending`), `applyConvergent`, the
-sheet lists, `getCurrent`, `listTeam`, `getTeamCharacter`.
+sheet lists, `getCurrent`, `listOrganization`, `getOrganizationCharacter`.
 
 A character whose current bible version does not exist throws on read. The
 pointer has no FK, so this is the check.
@@ -109,7 +109,7 @@ What follows from one character in two sequences:
   `getOwnVoiceHolds`). Removing a character from a sequence, archiving a
   sequence, or a sequence letting the character go releases nothing.
   Turning the voice off (`setCharacterVoiceEnabled`) and deleting the
-  character (`deleteTeamCharacter`) release it, provider first, row second
+  character (`deleteOrganizationCharacter`) release it, provider first, row second
   (`elevenlabs.md`); a failed release leaves the character listed. Seed
   voices take no slot.
 - **Sheet variants are the look's**, with no sequence on the row. A sheet
@@ -121,7 +121,7 @@ What follows from one character in two sequences:
 
 - **`/characters`** is on the sidebar. It lists the team's characters, all
   of them. Signed out, the page asks to sign in.
-- **The list** is `characters.listTeam`: one grouped read over the cast
+- **The list** is `characters.listOrganization`: one grouped read over the cast
   links, with no stored column.
   - Order: the most recently changed sequence casting the character
     (`max(sequences.updated_at)`), then how many sequences cast it.
@@ -168,9 +168,9 @@ What follows from one character in two sequences:
     designed voice is named after the character (`<name> · <id tail>`),
     not the sequence.
   - The bible form takes the voice description from no sequence too
-    (`updateTeamCharacterFn` takes every bible field).
-- **New character** (#2065) is on the Characters tab. `createTeamCharacterFn`
-  → `createTeamCharacter` → `characters.createForTeam`: one batch writes
+    (`updateOrganizationCharacterFn` takes every bible field).
+- **New character** (#2065) is on the Characters tab. `createOrganizationCharacterFn`
+  → `createOrganizationCharacter` → `characters.createForOrganization`: one batch writes
   the character, its first bible version (`source: 'edit'`, by the user),
   its default look (the character's own id) and that look's first version.
   No cast link and no event (events are per sequence). The consistency tag
@@ -179,16 +179,16 @@ What follows from one character in two sequences:
   form (`NewCharacterForm`).
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
-  (`getTeamCharacterShotCountsFn`).
-- **Delete** (`deleteTeamCharacterFn`) is on that page while no sequence,
-  archived ones included, casts the character (`TeamCharacter.castAnywhere`,
+  (`getOrganizationCharacterShotCountsFn`).
+- **Delete** (`deleteOrganizationCharacterFn`) is on that page while no sequence,
+  archived ones included, casts the character (`OrganizationCharacter.castAnywhere`,
   the server's own condition). It is soft: `characters.deleted_at` is
   stamped, the character leaves the list, the `@` picker and every other
-  team read (`selectTeam`, `attach`, the no-sequence writes), and every row
-  of it stays. The toast's Undo clears the stamp (`restoreTeamCharacterFn`).
+  team read (`selectOrganization`, `attach`, the no-sequence writes), and every row
+  of it stays. The toast's Undo clears the stamp (`restoreOrganizationCharacterFn`).
   - Refused while any sequence, archived ones included, has a link to it
     that is not removed (`getCastInAnySequenceOrArchive`). The write
-    (`softDeleteForTeam`) is one UPDATE with the same condition, so a
+    (`softDeleteForOrganization`) is one UPDATE with the same condition, so a
     sequence that casts the character between the check and the write still
     stops it.
   - The delete is written first, then a voice it still points at is
@@ -229,7 +229,7 @@ the script then names her like any cast member.
   Attaching a character the sequence already casts is idempotent.
 - **Surfaces.** The script editor's `@` dropdown lists the team's characters
   not cast here, most recently used first (`libraryMentionItems`, the
-  `listTeam` order), as pick-only rows: picking one inserts her name in
+  `listOrganization` order), as pick-only rows: picking one inserts her name in
   capitals and attaches her (`attachLibraryCharacterFn`); on the create
   screen the pick goes onto the draft (`castCharacterIds`) and
   `createSequences` attaches before the storyboard trigger, so the first
@@ -302,7 +302,7 @@ the script then names her like any cast member.
 - **New character** (`characters.create`): one batch inserts the character
   (with the team), its first bible version, the cast link, the default look
   and its first look version.
-- **New character with no sequence** (`characters.createForTeam`, #2065):
+- **New character with no sequence** (`characters.createForOrganization`, #2065):
   the same batch without the cast link.
 - **Bible edit** (`bibleWrite`): appends a version, moves the current
   pointer, and revokes the character's sheet claims when a field the sheets

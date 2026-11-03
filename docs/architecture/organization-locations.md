@@ -95,11 +95,11 @@ link's, or when it records a sequence event.**
 - A write that records an event takes `sequenceId | null`: `updateBible`,
   and `locationSheetVariants.select`. From no sequence it is the same write
   with no event.
-- Everything else is the location's own and takes no sequence: `listTeam`,
-  `getTeamLocation`, `getCurrent`, `listBibleVersions`,
-  `getUsedInAnySequenceOrArchive`, the photo methods, `createForTeam`, the
+- Everything else is the location's own and takes no sequence: `listOrganization`,
+  `getOrganizationLocation`, `getCurrent`, `listBibleVersions`,
+  `getUsedInAnySequenceOrArchive`, the photo methods, `createForOrganization`, the
   sheet claim (`claimReference`, `claimReferenceIfUnmoved`,
-  `failReferenceClaim`), `softDeleteForTeam`, `restoreForTeam`.
+  `failReferenceClaim`), `softDeleteForOrganization`, `restoreForOrganization`.
 
 Another team's location is not found by any of them.
 
@@ -219,13 +219,13 @@ sheet hash read no sequence style.
 
 ## Locations page and runs from no sequence
 
-- `/locations` lists the team's locations (`locations.listTeam`): one
+- `/locations` lists the team's locations (`locations.listOrganization`): one
   grouped read over the links, with no stored column. Order: the most
   recently changed sequence using it, then how many sequences use it. A
   removed link and an archived sequence do not count. A location nothing
   uses is listed last. Signed out, the page asks to sign in: there are no
   public locations.
-- A location made there (`createTeamLocation` → `locations.createForTeam`)
+- A location made there (`createOrganizationLocation` → `locations.createForOrganization`)
   has no link and writes no event. Its first bible version is
   `source: 'edit'`, by the user.
 - A sheet run from no sequence carries `sequenceId: null`
@@ -240,12 +240,12 @@ sheet hash read no sequence style.
 
 - **Remove from a sequence** is soft: the link's `removedAt`
   (`softDelete`). **Restore** clears it, and clears a team delete too.
-- **Delete from the team** (`deleteTeamLocation` → `softDeleteForTeam`) is
+- **Delete from the team** (`deleteOrganizationLocation` → `softDeleteForOrganization`) is
   soft: `deletedAt` is stamped and the location leaves the list, the pickers
   and every read from no sequence. Refused while any sequence, archived
   ones included, has a link to it that is not removed. The write is one
   UPDATE with that condition, so a sequence that attaches it between a check
-  and the write still stops it. `restoreForTeam` clears the stamp.
+  and the write still stops it. `restoreForOrganization` clears the stamp.
 - **Hard delete.** Nothing cascades. `deleteLocationsStatements` is the one
   list of what a location owns: photos, bible versions, sheet versions, then
   the location. The links go first (`deleteLocationLinksStatements`).
@@ -343,7 +343,7 @@ before the change fails once at the top of the run
 
 ## Known limits
 
-- **The team list is not paged.** `listTeam` loads every location.
+- **The team list is not paged.** `listOrganization` loads every location.
 - **Two locations of one plain name.** Attach, Restore and Replace refuse a
   name a live location of the sequence already has. Analysis does not pass
   through that check and may still make two.

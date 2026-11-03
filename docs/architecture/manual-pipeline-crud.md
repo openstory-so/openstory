@@ -142,7 +142,7 @@ sequence-scoped read excludes deleted rows):
   update-stale-plan/Update-all, smart retry, export inputs, theatre, api-v1,
   VTT), `sequences.listShotsByIds`, `shots.countInRenderSegment`,
   `characters.list/listWithSheets/getNeedingSheets`,
-  `sequenceLocations.list/listWithReferences/getNeedingReferences/getTeamLibrary`,
+  `sequenceLocations.list/listWithReferences/getNeedingReferences/getOrganizationLibrary`,
   `sequenceElements.list/getShotCountsByElement`, the character/location/element
   → shots matcher scans (recast + replace-element affected sets).
 - **Deliberately unfiltered:** id-addressed gets (`getById`/`getByIds`/

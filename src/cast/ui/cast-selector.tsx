@@ -5,7 +5,7 @@
  */
 
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
-import type { TeamCharacter } from '@/cast/server/db/characters';
+import type { OrganizationCharacter } from '@/cast/server/db/characters';
 import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
@@ -26,7 +26,7 @@ import { useState } from 'react';
 
 type CastSelectorProps = {
   /** The team's characters; undefined while they load. */
-  characters: readonly TeamCharacter[] | undefined;
+  characters: readonly OrganizationCharacter[] | undefined;
   failed: boolean;
   /** Signed out there is no team. */
   signedOut: boolean;
@@ -35,10 +35,10 @@ type CastSelectorProps = {
   disabled: boolean;
 };
 
-const Picture: React.FC<{ character: TeamCharacter; iconClass: string }> = ({
-  character,
-  iconClass,
-}) => {
+const Picture: React.FC<{
+  character: OrganizationCharacter;
+  iconClass: string;
+}> = ({ character, iconClass }) => {
   // The portrait drawn from the sheet; a sheet from before portraits is cropped.
   const portraitUrl = character.sheetPortraitUrl;
   const url = portraitUrl ?? character.sheetImageUrl;

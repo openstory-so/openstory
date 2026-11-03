@@ -83,7 +83,7 @@ const whoami = toolDefinition({
       email: caller.user.email,
       name: caller.user.name,
     },
-    team: { id: caller.organizationId, name: caller.teamName },
+    team: { id: caller.organizationId, name: caller.organizationName },
   };
 });
 
@@ -165,7 +165,7 @@ function mcpToolContext(
     caller: {
       user: auth.user,
       organizationId: auth.organizationId,
-      teamName: auth.teamName,
+      organizationName: auth.organizationName,
     },
     origin,
     scoped: (scope) => {

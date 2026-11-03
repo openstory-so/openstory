@@ -40,12 +40,12 @@ const styleConfig = {
 const ids = {
   tannerUser: '',
   tannerTeammate: '',
-  tannerTeam: '',
+  tannerOrganization: '',
   tannerStyle: '',
   liveSeq: '',
   archivedSeq: '',
   otherUser: '',
-  otherTeam: '',
+  otherOrganization: '',
   otherStyle: '',
   otherSeq: '',
   tannerImage: '',
@@ -65,9 +65,9 @@ async function seed() {
 
   ids.tannerUser = generateId();
   ids.tannerTeammate = generateId();
-  ids.tannerTeam = generateId();
+  ids.tannerOrganization = generateId();
   ids.otherUser = generateId();
-  ids.otherTeam = generateId();
+  ids.otherOrganization = generateId();
   ids.liveSeq = generateId();
   ids.archivedSeq = generateId();
   ids.otherSeq = generateId();
@@ -87,28 +87,28 @@ async function seed() {
     { id: ids.otherUser, name: 'Someone Else', email: 'other@example.com' },
   ]);
   await db.insert(organization).values([
-    { id: ids.tannerTeam, name: 'Tanner', slug: 'tanner' },
-    { id: ids.otherTeam, name: 'Other', slug: 'other' },
+    { id: ids.tannerOrganization, name: 'Tanner', slug: 'tanner' },
+    { id: ids.otherOrganization, name: 'Other', slug: 'other' },
   ]);
   const joined = new Date();
   await db.insert(member).values([
     {
       id: ids.tannerUser,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       role: 'owner',
       createdAt: joined,
     },
     {
       id: ids.tannerTeammate,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerTeammate,
       role: 'member',
       createdAt: joined,
     },
     {
       id: ids.otherUser,
-      organizationId: ids.otherTeam,
+      organizationId: ids.otherOrganization,
       userId: ids.otherUser,
       role: 'owner',
       createdAt: joined,
@@ -118,12 +118,12 @@ async function seed() {
     .insert(styles)
     .values([
       {
-        organizationId: ids.tannerTeam,
+        organizationId: ids.tannerOrganization,
         name: 'tanner-style',
         config: styleConfig,
       },
       {
-        organizationId: ids.otherTeam,
+        organizationId: ids.otherOrganization,
         name: 'other-style',
         config: styleConfig,
       },
@@ -139,21 +139,21 @@ async function seed() {
   await db.insert(sequences).values([
     {
       id: ids.liveSeq,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       title: 'Hidden Divide',
       styleId: ids.tannerStyle,
       status: 'completed',
     },
     {
       id: ids.archivedSeq,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       title: 'Old Teaser',
       styleId: ids.tannerStyle,
       status: 'archived',
     },
     {
       id: ids.otherSeq,
-      organizationId: ids.otherTeam,
+      organizationId: ids.otherOrganization,
       title: 'Unrelated',
       styleId: ids.otherStyle,
       status: 'completed',
@@ -163,7 +163,7 @@ async function seed() {
   await db.insert(generatedAssets).values([
     {
       id: ids.tannerImage,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -175,7 +175,7 @@ async function seed() {
     },
     {
       id: ids.tannerTeammateImage,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerTeammate,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -187,7 +187,7 @@ async function seed() {
     },
     {
       id: ids.tannerVideo,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/kling-video',
@@ -199,7 +199,7 @@ async function seed() {
     },
     {
       id: ids.tannerCatalog,
-      organizationId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -211,7 +211,7 @@ async function seed() {
     },
     {
       id: ids.otherImage,
-      organizationId: ids.otherTeam,
+      organizationId: ids.otherOrganization,
       userId: ids.otherUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',

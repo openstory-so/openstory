@@ -16,8 +16,8 @@ import { generateId } from '@/platform/id';
 import { deviceCode, user } from './auth';
 
 // Enum values as constants (SQLite doesn't have native enums)
-const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
-export type TeamMemberRole = (typeof TEAM_MEMBER_ROLES)[number];
+const ORGANIZATION_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
+export type OrganizationMemberRole = (typeof ORGANIZATION_MEMBER_ROLES)[number];
 
 /**
  * Teams table
@@ -58,7 +58,7 @@ export const member = snakeCase.table(
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    role: text().$type<TeamMemberRole>().default('member').notNull(),
+    role: text().$type<OrganizationMemberRole>().default('member').notNull(),
     createdAt: integer({ mode: 'timestamp_ms' }).notNull(),
   },
   (table) => [

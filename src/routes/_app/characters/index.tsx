@@ -1,5 +1,5 @@
 import { NewCharacterDialog } from '@/cast/ui/character-library/new-character-dialog';
-import { TeamCharacterList } from '@/cast/ui/character-library/team-character-list';
+import { OrganizationCharacterList } from '@/cast/ui/character-library/organization-character-list';
 import { LibraryGridSkeleton } from '@/cast/ui/library-virtual-grid';
 import { rememberLibrarySearch } from '@/cast/ui/library-search';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
@@ -64,7 +64,10 @@ function CharactersPage() {
               />
             </InputGroup>
             <Suspense fallback={<LibraryGridSkeleton />}>
-              <TeamCharacterList scrollRef={scrollRef} query={search.q ?? ''} />
+              <OrganizationCharacterList
+                scrollRef={scrollRef}
+                query={search.q ?? ''}
+              />
             </Suspense>
           </div>
         ) : isPending ? (

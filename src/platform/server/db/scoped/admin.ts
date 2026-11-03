@@ -86,7 +86,7 @@ export type UserActivityRow = {
   createdAt: Date;
   status: string | null;
   organizationId: string;
-  teamName: string;
+  organizationName: string;
   sequenceCount: number;
   failedCount: number;
   avgAnalysisDurationMs: number | null;
@@ -376,7 +376,7 @@ export function createAdminMethods(db: Database) {
         createdAt: user.createdAt,
         status: user.status,
         organizationId: organization.id,
-        teamName: organization.name,
+        organizationName: organization.name,
         sequenceCount: sql<number>`coalesce(${seqStatsSq.count}, 0)`,
         failedCount: sql<number>`coalesce(${seqStatsSq.failedCount}, 0)`,
         avgAnalysisDurationMs: sql<

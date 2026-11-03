@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { member, user } from '@/platform/server/db/schema';
 
-export function createTeamManagementMethods(
+export function createOrganizationManagementMethods(
   db: Database,
   organizationId: string
 ) {

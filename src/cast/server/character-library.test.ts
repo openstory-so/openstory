@@ -28,13 +28,13 @@ import {
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { asStub } from '@/test/as-stub';
 import {
-  createTeamCharacter,
-  createTeamCharacterLook,
-  deleteTeamCharacter,
-  restoreTeamCharacter,
-  removeTeamCharacterLook,
-  updateTeamCharacter,
-  updateTeamCharacterLook,
+  createOrganizationCharacter,
+  createOrganizationCharacterLook,
+  deleteOrganizationCharacter,
+  restoreOrganizationCharacter,
+  removeOrganizationCharacterLook,
+  updateOrganizationCharacter,
+  updateOrganizationCharacterLook,
 } from './cast-edit';
 import { createCharacterLooksMethods } from './db/character-looks';
 import { createCharactersMethods } from './db/characters';
@@ -66,7 +66,7 @@ let userId = '';
 let styleId = '';
 
 const chars = () => createCharactersMethods(db, organizationId);
-// The surface `deleteTeamCharacter` and the release touch.
+// The surface `deleteOrganizationCharacter` and the release touch.
 const scoped = () =>
   asStub<ScopedDb>({
     characters: chars(),
@@ -154,17 +154,17 @@ beforeEach(async () => {
   styleId = style.id;
 });
 
-describe('deleteTeamCharacter', () => {
+describe('deleteOrganizationCharacter', () => {
   it('is refused while a live sequence casts the character', async () => {
     const { created } = await voiced();
 
     await expect(
-      deleteTeamCharacter(scoped(), { userId }, created.id)
+      deleteOrganizationCharacter(scoped(), { userId }, created.id)
     ).rejects.toThrow('Remove it from its sequences first.');
 
     expect(mockDelete).not.toHaveBeenCalled();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
-    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
+    expect(await chars().getOrganizationCharacter(created.id)).not.toBeNull();
   });
 
   it('is refused while only an archived sequence casts the character', async () => {
@@ -175,29 +175,31 @@ describe('deleteTeamCharacter', () => {
     expect(await chars().getCastInAnySequenceOrArchive(created.id)).toBe(true);
 
     await expect(
-      deleteTeamCharacter(scoped(), { userId }, created.id)
+      deleteOrganizationCharacter(scoped(), { userId }, created.id)
     ).rejects.toThrow('Remove it from its sequences first.');
 
     expect(mockDelete).not.toHaveBeenCalled();
-    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
+    expect(await chars().getOrganizationCharacter(created.id)).not.toBeNull();
   });
 
   it('soft-deletes the character and releases its voice when nothing casts it; restore brings it back without the voice', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     // Still listed, with no sequence.
-    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
+    expect((await chars().listOrganization()).map((c) => c.id)).toEqual([
+      created.id,
+    ]);
 
     // Provider first: the row still names the voice when the delete runs.
     mockDelete.mockImplementation(async () => {
       expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
     });
-    await deleteTeamCharacter(scoped(), { userId }, created.id);
+    await deleteOrganizationCharacter(scoped(), { userId }, created.id);
 
     expect(mockDelete).toHaveBeenCalledWith('key', VOICE);
     // Off the list and not attachable; every row of it is still there.
-    expect(await chars().getTeamCharacter(created.id)).toBeNull();
-    expect(await chars().listTeam()).toEqual([]);
+    expect(await chars().getOrganizationCharacter(created.id)).toBeNull();
+    expect(await chars().listOrganization()).toEqual([]);
     await expect(
       chars().attach(await newSequence('B'), created.id, { actorId: userId })
     ).rejects.toThrow('Character not found');
@@ -211,34 +213,36 @@ describe('deleteTeamCharacter', () => {
         .where(eq(sequenceCast.characterId, created.id))
     ).toHaveLength(1);
 
-    await restoreTeamCharacter(scoped(), created.id);
-    expect(await chars().getTeamCharacter(created.id)).toMatchObject({
+    await restoreOrganizationCharacter(scoped(), created.id);
+    expect(await chars().getOrganizationCharacter(created.id)).toMatchObject({
       id: created.id,
       sequences: [],
     });
     expect((await chars().getVoice(created.id)).voiceId).toBeNull();
     // Only a deleted character restores.
-    await expect(restoreTeamCharacter(scoped(), created.id)).rejects.toThrow(
-      'Character not found'
-    );
+    await expect(
+      restoreOrganizationCharacter(scoped(), created.id)
+    ).rejects.toThrow('Character not found');
   });
 
   it('restoring it in the sequence that removed it brings it back to the team', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     mockDelete.mockResolvedValue(undefined);
-    await deleteTeamCharacter(scoped(), { userId }, created.id);
+    await deleteOrganizationCharacter(scoped(), { userId }, created.id);
 
     await chars().restore(sequenceId, created.id, { actorId: userId });
 
-    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
+    expect((await chars().listOrganization()).map((c) => c.id)).toEqual([
+      created.id,
+    ]);
   });
 
   it('a re-analysis that revives it in the sequence that removed it brings it back to the team', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     mockDelete.mockResolvedValue(undefined);
-    await deleteTeamCharacter(scoped(), { userId }, created.id);
+    await deleteOrganizationCharacter(scoped(), { userId }, created.id);
 
     // The script still names her: analysis takes her script id again.
     const revived = await chars().create(
@@ -252,7 +256,9 @@ describe('deleteTeamCharacter', () => {
     );
 
     expect(revived.id).toBe(created.id);
-    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
+    expect((await chars().listOrganization()).map((c) => c.id)).toEqual([
+      created.id,
+    ]);
   });
 
   it('a sequence that casts it after the check still stops the delete', async () => {
@@ -269,12 +275,12 @@ describe('deleteTeamCharacter', () => {
     };
 
     await expect(
-      deleteTeamCharacter(raced, { userId }, created.id)
+      deleteOrganizationCharacter(raced, { userId }, created.id)
     ).rejects.toThrow('Remove it from its sequences first.');
 
     expect(mockDelete).not.toHaveBeenCalled();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
-    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
+    expect(await chars().getOrganizationCharacter(created.id)).not.toBeNull();
   });
 
   it('leaves the character when the provider delete fails, so it can be retried', async () => {
@@ -283,10 +289,10 @@ describe('deleteTeamCharacter', () => {
     mockDelete.mockRejectedValue(new Error('ElevenLabs 503'));
 
     await expect(
-      deleteTeamCharacter(scoped(), { userId }, created.id)
+      deleteOrganizationCharacter(scoped(), { userId }, created.id)
     ).rejects.toThrow('ElevenLabs 503');
 
-    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
+    expect(await chars().getOrganizationCharacter(created.id)).not.toBeNull();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
   });
 });
@@ -294,7 +300,7 @@ describe('deleteTeamCharacter', () => {
 describe('a character made with no sequence (#2065)', () => {
   it('is created, edited and given looks from the Characters page, then cast by an attach', async () => {
     const actor = { userId };
-    const made = await createTeamCharacter(scoped(), actor, {
+    const made = await createOrganizationCharacter(scoped(), actor, {
       rendering: 'Photoreal live action',
       name: 'Ada Lovelace',
       physicalDescription: 'grey eyes',
@@ -305,22 +311,33 @@ describe('a character made with no sequence (#2065)', () => {
       consistencyTag: 'char_ada_lovelace: ada_lovelace',
       standardClothing: null,
     });
-    expect(await chars().listTeam()).toMatchObject([
+    expect(await chars().listOrganization()).toMatchObject([
       { id: made.id, sequences: [] },
     ]);
 
-    await updateTeamCharacter(scoped(), actor, made.id, {
+    await updateOrganizationCharacter(scoped(), actor, made.id, {
       personality: 'exact',
       standardClothing: 'coat',
     });
-    const gala = await createTeamCharacterLook(scoped(), actor, made.id, {
-      name: ' Gala ',
-      clothing: 'gown',
-      styling: '',
-    });
-    await updateTeamCharacterLook(scoped(), actor, made.id, gala.lookId, {
-      styling: 'hair up',
-    });
+    const gala = await createOrganizationCharacterLook(
+      scoped(),
+      actor,
+      made.id,
+      {
+        name: ' Gala ',
+        clothing: 'gown',
+        styling: '',
+      }
+    );
+    await updateOrganizationCharacterLook(
+      scoped(),
+      actor,
+      made.id,
+      gala.lookId,
+      {
+        styling: 'hair up',
+      }
+    );
     expect(await chars().getCurrent(made.id)).toMatchObject({
       personality: 'exact',
       looks: [
@@ -330,18 +347,23 @@ describe('a character made with no sequence (#2065)', () => {
     });
 
     // A look of another character is not found; a removed one is not edited.
-    const other = await createTeamCharacter(scoped(), actor, {
+    const other = await createOrganizationCharacter(scoped(), actor, {
       name: 'Bob',
       rendering: 'Photoreal live action',
     });
     await expect(
-      updateTeamCharacterLook(scoped(), actor, other.id, gala.lookId, {
+      updateOrganizationCharacterLook(scoped(), actor, other.id, gala.lookId, {
         name: 'x',
       })
     ).rejects.toThrow('Look not found');
-    await removeTeamCharacterLook(scoped(), actor, made.id, gala.lookId);
+    await removeOrganizationCharacterLook(
+      scoped(),
+      actor,
+      made.id,
+      gala.lookId
+    );
     await expect(
-      updateTeamCharacterLook(scoped(), actor, made.id, gala.lookId, {
+      updateOrganizationCharacterLook(scoped(), actor, made.id, gala.lookId, {
         name: 'x',
       })
     ).rejects.toThrow('Restore the look first');
@@ -357,8 +379,8 @@ describe('a character made with no sequence (#2065)', () => {
       standardClothing: 'coat',
       sheetStatus: 'pending',
     });
-    expect((await chars().getTeamCharacter(made.id))?.sequences).toHaveLength(
-      1
-    );
+    expect(
+      (await chars().getOrganizationCharacter(made.id))?.sequences
+    ).toHaveLength(1);
   });
 });

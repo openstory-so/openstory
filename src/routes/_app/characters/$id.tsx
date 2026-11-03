@@ -1,10 +1,10 @@
 import { DeleteCharacterButton } from '@/cast/ui/character-library/delete-character-button';
 import { CharacterDetailView } from '@/cast/ui/talent/character-detail-view';
 import {
-  useTeamCharacter,
-  useTeamCharacterName,
-  useTeamCharacterShotCounts,
-} from '@/cast/ui/use-team-characters';
+  useOrganizationCharacter,
+  useOrganizationCharacterName,
+  useOrganizationCharacterShotCounts,
+} from '@/cast/ui/use-organization-characters';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { routeParams } from '@/ui/layout/breadcrumbs';
@@ -19,14 +19,14 @@ import { Suspense } from 'react';
 import { z } from 'zod';
 
 function CharacterCrumbLabel({ id }: { id: string }) {
-  const { data: name } = useTeamCharacterName(id);
+  const { data: name } = useOrganizationCharacterName(id);
   return <>{name ?? '…'}</>;
 }
 
 export const Route = createFileRoute('/_app/characters/$id')({
   // The sequence whose casting of the character the page shows.
   validateSearch: z.object({ sequence: z.string().min(1).optional() }),
-  component: TeamCharacterPage,
+  component: OrganizationCharacterPage,
   staticData: {
     breadcrumb: (match) => {
       const { id } = routeParams<{ id: string }>(match);
@@ -53,7 +53,7 @@ function ShotCount({
   characterId: string;
   sequenceId: string | null;
 }) {
-  const { data: counts } = useTeamCharacterShotCounts(characterId);
+  const { data: counts } = useOrganizationCharacterShotCounts(characterId);
   if (sequenceId === null) {
     return <>{shotsLabel(Object.values(counts).reduce((a, b) => a + b, 0))}</>;
   }
@@ -62,9 +62,9 @@ function ShotCount({
   return <>{count === undefined ? '…' : shotsLabel(count)}</>;
 }
 
-function TeamCharacterContent({ id }: { id: string }) {
+function OrganizationCharacterContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
-  const { data: character } = useTeamCharacter(id);
+  const { data: character } = useOrganizationCharacter(id);
   // Gone or another team's. Reached from a stale link.
   if (!character) {
     return (
@@ -193,7 +193,7 @@ function TeamCharacterContent({ id }: { id: string }) {
   );
 }
 
-function TeamCharacterPage() {
+function OrganizationCharacterPage() {
   const { id } = Route.useParams();
   const { data: session, isPending } = useAuthSession();
 
@@ -217,7 +217,7 @@ function TeamCharacterPage() {
         </div>
       }
     >
-      {!isPending && <TeamCharacterContent key={id} id={id} />}
+      {!isPending && <OrganizationCharacterContent key={id} id={id} />}
     </Suspense>
   );
 }

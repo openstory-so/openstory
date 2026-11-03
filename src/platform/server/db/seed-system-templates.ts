@@ -27,7 +27,7 @@ export type SeedDb =
 
 type SeedLog = (message: string) => void;
 
-const SYSTEM_TEAM_SLUG = 'system-templates';
+const SYSTEM_ORGANIZATION_SLUG = 'system-templates';
 const SEED_HASH_KEY = 'system-templates-seed-hash';
 const SEED_LOCK_KEY = 'system-templates-seed-lock';
 
@@ -189,30 +189,30 @@ async function syncSystemTemplates(
   log: SeedLog = () => {}
 ): Promise<void> {
   // 1. Find or create system team
-  let [systemTeam]: { id: string }[] = await db
+  let [systemOrganization]: { id: string }[] = await db
     .select()
     .from(organization)
-    .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
+    .where(eq(organization.slug, SYSTEM_ORGANIZATION_SLUG));
 
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB query returns undefined when no rows match
-  if (!systemTeam) {
+  if (!systemOrganization) {
     const organizationId = generateId();
     await db.insert(organization).values({
       id: organizationId,
       name: 'System Templates',
-      slug: SYSTEM_TEAM_SLUG,
+      slug: SYSTEM_ORGANIZATION_SLUG,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    systemTeam = { id: organizationId };
-    log(`System team created with ID: ${systemTeam.id}`);
+    systemOrganization = { id: organizationId };
+    log(`System team created with ID: ${systemOrganization.id}`);
   }
 
   // 2. Rename old template styles
   const existingTemplates = await db
     .select()
     .from(styles)
-    .where(eq(styles.organizationId, systemTeam.id));
+    .where(eq(styles.organizationId, systemOrganization.id));
 
   const existingByName = new Map(existingTemplates.map((t) => [t.name, t]));
 
@@ -264,7 +264,7 @@ async function syncSystemTemplates(
     } else {
       await db.insert(styles).values({
         ...template,
-        organizationId: systemTeam.id,
+        organizationId: systemOrganization.id,
         createdBy: null,
       });
       insertedCount++;

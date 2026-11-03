@@ -45,7 +45,7 @@ let actorId = '';
 /** Two sequences of the team, and one of another team. */
 let sequenceId = '';
 let secondSequenceId = '';
-let otherTeamSequenceId = '';
+let otherOrganizationSequenceId = '';
 
 const STYLE = {
   mood: 'neutral',
@@ -81,7 +81,7 @@ beforeEach(async () => {
   actorId = generateId();
   sequenceId = generateId();
   secondSequenceId = generateId();
-  otherTeamSequenceId = generateId();
+  otherOrganizationSequenceId = generateId();
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
   await db.insert(organization).values([
     { id: organizationId, name: 'T', slug: 't' },
@@ -99,7 +99,7 @@ beforeEach(async () => {
     { id: sequenceId, organizationId, title: 'One', styleId: style.id },
     { id: secondSequenceId, organizationId, title: 'Two', styleId: style.id },
     {
-      id: otherTeamSequenceId,
+      id: otherOrganizationSequenceId,
       organizationId: otherOrganizationId,
       title: 'Theirs',
       styleId: otherStyle.id,
@@ -123,8 +123,8 @@ const analysed = (name: string, scriptId = 'loc_001', seq = sequenceId) =>
   );
 
 /** A location made on the Locations page: no link. */
-const teamLocation = (name: string) =>
-  locs().createForTeam(
+const organizationLocation = (name: string) =>
+  locs().createForOrganization(
     { name, rendering: PHOTOREAL_RENDERING },
     { createdBy: actorId }
   );
@@ -231,8 +231,8 @@ describe("another team's location", () => {
     expect(await theirs().getCurrentByIds([linked.id])).toEqual([]);
     expect(await theirs().get(null, linked.id)).toBeNull();
     expect(await theirs().get(sequenceId, linked.id)).toBeNull();
-    expect(await theirs().getTeamLocation(linked.id)).toBeNull();
-    expect(await theirs().listTeam()).toEqual([]);
+    expect(await theirs().getOrganizationLocation(linked.id)).toBeNull();
+    expect(await theirs().listOrganization()).toEqual([]);
     expect(await theirs().listBibleVersions(linked.id)).toEqual([]);
     expect(await theirs().listBibleVersionsBySequence(sequenceId)).toEqual([]);
     expect(await theirs().listPhotos(linked.id)).toEqual([]);
@@ -244,14 +244,18 @@ describe("another team's location", () => {
 
   it('is not writable by id', async () => {
     const linked = await analysed('Diner');
-    const unlinked = await teamLocation('Depot');
-    const own = await theirs().createForTeam(
+    const unlinked = await organizationLocation('Depot');
+    const own = await theirs().createForOrganization(
       { name: 'Their Yard', rendering: PHOTOREAL_RENDERING },
       { createdBy: actorId }
     );
-    const ownLinked = await theirs().attach(otherTeamSequenceId, own.id, {
-      actorId,
-    });
+    const ownLinked = await theirs().attach(
+      otherOrganizationSequenceId,
+      own.id,
+      {
+        actorId,
+      }
+    );
     const claim = await locs().claimReference(linked.id, {
       markGenerating: true,
     });
@@ -288,17 +292,17 @@ describe("another team's location", () => {
       theirs().restore(sequenceId, linked.id, { actorId })
     ).rejects.toThrow('Location not found');
     // Nothing links `unlinked`, so only the team stops this delete.
-    expect(await theirs().softDeleteForTeam(unlinked.id)).toBe(false);
+    expect(await theirs().softDeleteForOrganization(unlinked.id)).toBe(false);
     // Into their own sequence, and into ours.
     await expect(
-      theirs().attach(otherTeamSequenceId, unlinked.id, { actorId })
+      theirs().attach(otherOrganizationSequenceId, unlinked.id, { actorId })
     ).rejects.toThrow('Location not found');
     await expect(
       theirs().attach(sequenceId, unlinked.id, { actorId })
     ).rejects.toThrow('Location not found');
     // Their own location replaced with ours, and ours replaced with theirs.
     await expect(
-      theirs().replace(otherTeamSequenceId, ownLinked.id, unlinked.id, {
+      theirs().replace(otherOrganizationSequenceId, ownLinked.id, unlinked.id, {
         actorId,
       })
     ).rejects.toThrow('Location not found');
@@ -315,22 +319,22 @@ describe("another team's location", () => {
     expect(await locs().listPhotos(linked.id)).toEqual([]);
     expect(await locs().listBibleVersions(linked.id)).toHaveLength(1);
     expect(await linksOf()).toHaveLength(1);
-    expect(await linksOf(otherTeamSequenceId)).toMatchObject([
+    expect(await linksOf(otherOrganizationSequenceId)).toMatchObject([
       { locationId: own.id },
     ]);
   });
 
   it('is not brought back by their undo of a team delete', async () => {
-    const unlinked = await teamLocation('Depot');
-    expect(await locs().softDeleteForTeam(unlinked.id)).toBe(true);
-    await theirs().restoreForTeam(unlinked.id);
+    const unlinked = await organizationLocation('Depot');
+    expect(await locs().softDeleteForOrganization(unlinked.id)).toBe(true);
+    await theirs().restoreForOrganization(unlinked.id);
     expect((await rowOf(unlinked.id)).deletedAt).toBeInstanceOf(Date);
   });
 });
 
 describe('attach', () => {
   it('links one of the team’s locations and copies nothing', async () => {
-    const diner = await teamLocation("Mel's Diner");
+    const diner = await organizationLocation("Mel's Diner");
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
 
     expect(attached).toMatchObject({
@@ -347,7 +351,7 @@ describe('attach', () => {
   });
 
   it('is idempotent', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const first = await locs().attach(sequenceId, diner.id, { actorId });
     const second = await locs().attach(sequenceId, diner.id, { actorId });
 
@@ -358,7 +362,7 @@ describe('attach', () => {
 
   it('gives a second location of one slug the next free script id', async () => {
     const first = await analysed('Old Place', 'loc_diner');
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
     expect(first.locationId).toBe('loc_diner');
     expect(attached.locationId).toBe('loc_diner_2');
@@ -381,7 +385,7 @@ describe('attach', () => {
 
   it('refuses a name a live location of the sequence already has', async () => {
     await analysed('Diner');
-    const twin = await teamLocation(' diner ');
+    const twin = await organizationLocation(' diner ');
     await expect(
       locs().attach(sequenceId, twin.id, { actorId })
     ).rejects.toThrow(/already a location in this sequence/);
@@ -402,16 +406,16 @@ describe('attach', () => {
   it('does not refuse a name only a removed location has', async () => {
     const old = await analysed('Diner');
     await locs().softDelete(sequenceId, old.id, { actorId });
-    const twin = await teamLocation('Diner');
+    const twin = await organizationLocation('Diner');
     await expect(
       locs().attach(sequenceId, twin.id, { actorId })
     ).resolves.toMatchObject({ id: twin.id });
   });
 
   it("refuses another team's sequence, and a sequence that does not exist", async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     await expect(
-      locs().attach(otherTeamSequenceId, diner.id, { actorId })
+      locs().attach(otherOrganizationSequenceId, diner.id, { actorId })
     ).rejects.toThrow('Sequence not found');
     await expect(
       locs().attach(generateId(), diner.id, { actorId })
@@ -420,8 +424,8 @@ describe('attach', () => {
   });
 
   it('refuses a location deleted from the team', async () => {
-    const diner = await teamLocation('Diner');
-    await locs().softDeleteForTeam(diner.id);
+    const diner = await organizationLocation('Diner');
+    await locs().softDeleteForOrganization(diner.id);
     await expect(
       locs().attach(sequenceId, diner.id, { actorId })
     ).rejects.toThrow('Location not found');
@@ -441,7 +445,7 @@ describe('replace', () => {
       },
       analysis
     );
-    const next = await locs().createForTeam(
+    const next = await locs().createForOrganization(
       {
         name: 'Roadhouse',
         rendering: PHOTOREAL_RENDERING,
@@ -515,12 +519,12 @@ describe('replace', () => {
   it('refuses a name another live location of the sequence has', async () => {
     const old = await analysed('Diner');
     await analysed('Roadhouse', 'loc_002');
-    const twin = await teamLocation('roadhouse');
+    const twin = await organizationLocation('roadhouse');
     await expect(
       locs().replace(sequenceId, old.id, twin.id, { actorId })
     ).rejects.toThrow(/already a location in this sequence/);
     // Its own name is free to it: the link it takes over is not a twin.
-    const sameName = await teamLocation('Diner');
+    const sameName = await organizationLocation('Diner');
     await expect(
       locs().replace(sequenceId, old.id, sameName.id, { actorId })
     ).resolves.toMatchObject({ id: sameName.id, locationId: 'loc_001' });
@@ -547,14 +551,14 @@ describe('replace', () => {
   });
 
   it('refuses a location that is not linked here, or deleted from the team', async () => {
-    const unlinked = await teamLocation('Depot');
-    const next = await teamLocation('Roadhouse');
+    const unlinked = await organizationLocation('Depot');
+    const next = await organizationLocation('Roadhouse');
     await expect(
       locs().replace(sequenceId, unlinked.id, next.id, { actorId })
     ).rejects.toThrow('Location not found');
 
     const old = await analysed('Diner');
-    await locs().softDeleteForTeam(next.id);
+    await locs().softDeleteForOrganization(next.id);
     await expect(
       locs().replace(sequenceId, old.id, next.id, { actorId })
     ).rejects.toThrow('Location not found');
@@ -566,7 +570,7 @@ describe('delete from the team', () => {
   it('is refused while a sequence uses the location', async () => {
     const diner = await analysed('Diner');
     expect(await locs().getUsedInAnySequenceOrArchive(diner.id)).toBe(true);
-    expect(await locs().softDeleteForTeam(diner.id)).toBe(false);
+    expect(await locs().softDeleteForOrganization(diner.id)).toBe(false);
     expect((await rowOf(diner.id)).deletedAt).toBeNull();
   });
 
@@ -578,7 +582,7 @@ describe('delete from the team', () => {
       .where(eq(sequences.id, sequenceId));
 
     expect(await locs().getUsedInAnySequenceOrArchive(diner.id)).toBe(true);
-    expect(await locs().softDeleteForTeam(diner.id)).toBe(false);
+    expect(await locs().softDeleteForOrganization(diner.id)).toBe(false);
     expect(await locs().getCurrent(diner.id)).not.toBeNull();
   });
 
@@ -587,26 +591,26 @@ describe('delete from the team', () => {
     await locs().softDelete(sequenceId, diner.id, { actorId });
     expect(await locs().getUsedInAnySequenceOrArchive(diner.id)).toBe(false);
 
-    expect(await locs().softDeleteForTeam(diner.id)).toBe(true);
+    expect(await locs().softDeleteForOrganization(diner.id)).toBe(true);
     expect(await locs().getCurrent(diner.id)).toBeNull();
     expect(await locs().getCurrentByIds([diner.id])).toEqual([]);
-    expect(await locs().getTeamLocation(diner.id)).toBeNull();
-    expect(await locs().listTeam()).toEqual([]);
+    expect(await locs().getOrganizationLocation(diner.id)).toBeNull();
+    expect(await locs().listOrganization()).toEqual([]);
     await expect(
       locs().updateBible(null, diner.id, { name: 'Cafe' }, { actorId })
     ).rejects.toThrow('Location not found');
     // Every row of it stays.
     expect(await locs().listBibleVersions(diner.id)).toHaveLength(1);
     // A second delete has nothing to do.
-    expect(await locs().softDeleteForTeam(diner.id)).toBe(false);
+    expect(await locs().softDeleteForOrganization(diner.id)).toBe(false);
 
-    await locs().restoreForTeam(diner.id);
+    await locs().restoreForOrganization(diner.id);
     expect((await locs().getCurrent(diner.id))?.name).toBe('Diner');
   });
 
   it('succeeds for a location no sequence ever used', async () => {
-    const depot = await teamLocation('Depot');
-    expect(await locs().softDeleteForTeam(depot.id)).toBe(true);
+    const depot = await organizationLocation('Depot');
+    expect(await locs().softDeleteForOrganization(depot.id)).toBe(true);
   });
 });
 
@@ -614,7 +618,7 @@ describe('restore through a sequence', () => {
   it('brings the link back and clears a team delete too', async () => {
     const diner = await analysed('Diner');
     await locs().softDelete(sequenceId, diner.id, { actorId });
-    expect(await locs().softDeleteForTeam(diner.id)).toBe(true);
+    expect(await locs().softDeleteForOrganization(diner.id)).toBe(true);
 
     const restored = await locs().restore(sequenceId, diner.id, { actorId });
 
@@ -646,7 +650,7 @@ describe('reference photos', () => {
     (await rowOf(id)).pendingPromoteReferenceVersionId;
 
   it('adding photos revokes a pending sheet claim and lists them oldest first', async () => {
-    const depot = await teamLocation('Depot');
+    const depot = await organizationLocation('Depot');
     const claim = await locs().claimReference(depot.id, {
       markGenerating: true,
     });
@@ -667,7 +671,7 @@ describe('reference photos', () => {
   });
 
   it('adding no photos changes nothing', async () => {
-    const depot = await teamLocation('Depot');
+    const depot = await organizationLocation('Depot');
     const claim = await locs().claimReference(depot.id, {
       markGenerating: true,
     });
@@ -676,7 +680,7 @@ describe('reference photos', () => {
   });
 
   it('removing a photo revokes a pending sheet claim', async () => {
-    const depot = await teamLocation('Depot');
+    const depot = await organizationLocation('Depot');
     await locs().addPhotos(depot.id, [{ url: '/r2/a.png', path: 'a.png' }]);
     const [photo] = await locs().listPhotos(depot.id);
     if (!photo) throw new Error('test setup: no photo');
@@ -692,8 +696,8 @@ describe('reference photos', () => {
   });
 
   it("does not remove another location's photo", async () => {
-    const depot = await teamLocation('Depot');
-    const yard = await teamLocation('Yard');
+    const depot = await organizationLocation('Depot');
+    const yard = await organizationLocation('Yard');
     await locs().addPhotos(yard.id, [{ url: '/r2/y.png', path: 'y.png' }]);
     const [photo] = await locs().listPhotos(yard.id);
     if (!photo) throw new Error('test setup: no photo');
@@ -705,8 +709,8 @@ describe('reference photos', () => {
   });
 
   it('is refused on a location deleted from the team', async () => {
-    const depot = await teamLocation('Depot');
-    await locs().softDeleteForTeam(depot.id);
+    const depot = await organizationLocation('Depot');
+    await locs().softDeleteForOrganization(depot.id);
     await expect(
       locs().addPhotos(depot.id, [{ url: '/r2/a.png', path: 'a.png' }])
     ).rejects.toThrow('Location not found');
@@ -730,7 +734,7 @@ describe('rendering is required', () => {
 
   it('on a location made from no sequence', async () => {
     await expect(
-      locs().createForTeam(
+      locs().createForOrganization(
         { name: 'Depot', rendering: ' ' },
         { createdBy: actorId }
       )
@@ -755,7 +759,7 @@ describe('rendering is required', () => {
   });
 
   it('is stored trimmed', async () => {
-    const depot = await locs().createForTeam(
+    const depot = await locs().createForOrganization(
       { name: 'Depot', rendering: '  2D cel animation ' },
       { createdBy: actorId }
     );
@@ -898,19 +902,19 @@ describe('the team list', () => {
     const both = await analysed('Both', 'loc_002', sequenceId);
     await locs().attach(secondSequenceId, both.id, { actorId });
     // Used by nothing.
-    const unused = await teamLocation('Unused');
+    const unused = await organizationLocation('Unused');
     // Its only link is removed.
     const removed = await analysed('Removed', 'loc_003', sequenceId);
     await locs().softDelete(sequenceId, removed.id, { actorId });
     // Deleted from the team, and another team's.
-    const deleted = await teamLocation('Deleted');
-    await locs().softDeleteForTeam(deleted.id);
-    await theirs().createForTeam(
+    const deleted = await organizationLocation('Deleted');
+    await locs().softDeleteForOrganization(deleted.id);
+    await theirs().createForOrganization(
       { name: 'Theirs', rendering: PHOTOREAL_RENDERING },
       { createdBy: actorId }
     );
 
-    const list = await locs().listTeam();
+    const list = await locs().listOrganization();
 
     expect(list.map((location) => location.name)).toEqual([
       'Both',
@@ -942,7 +946,9 @@ describe('the team list', () => {
         sequences: [],
       });
     }
-    expect(await locs().getTeamLocation(both.id)).toEqual(byId.get(both.id));
+    expect(await locs().getOrganizationLocation(both.id)).toEqual(
+      byId.get(both.id)
+    );
   });
 
   it('an archived sequence still holds the location but is not listed as a use', async () => {
@@ -952,7 +958,7 @@ describe('the team list', () => {
       .set({ status: 'archived' })
       .where(eq(sequences.id, sequenceId));
 
-    expect(await locs().listTeam()).toMatchObject([
+    expect(await locs().listOrganization()).toMatchObject([
       { id: diner.id, usedAnywhere: true, lastUsedAt: null, sequences: [] },
     ]);
   });
@@ -974,7 +980,7 @@ describe('the team list', () => {
       .set({ selectedReferenceVersionId: versionId })
       .where(eq(locations.id, diner.id));
 
-    expect(await locs().listTeam()).toMatchObject([
+    expect(await locs().listOrganization()).toMatchObject([
       {
         referenceImageUrl: '/r2/diner.png',
         referencePortraitUrl: '/r2/diner-portrait.png',
@@ -986,7 +992,7 @@ describe('the team list', () => {
 describe('deleting a sequence', () => {
   it('removes its links, and only the locations it alone made', async () => {
     const own = await analysed('Own', 'loc_001');
-    const attached = await teamLocation('Attached');
+    const attached = await organizationLocation('Attached');
     await locs().attach(sequenceId, attached.id, { actorId });
     const shared = await analysed('Shared', 'loc_002');
     await locs().attach(secondSequenceId, shared.id, { actorId });

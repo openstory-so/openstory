@@ -4,7 +4,7 @@
  */
 
 import { createServerFn } from '@tanstack/react-start';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { isStripeEnabled } from './constants';
 import { microsToUsd } from './money';
 
@@ -13,7 +13,7 @@ import { microsToUsd } from './money';
  * Uses member-level auth (not admin-only like checkApiKeyStatusFn)
  */
 export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     const { scopedDb } = context;
 

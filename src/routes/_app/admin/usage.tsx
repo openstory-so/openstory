@@ -67,7 +67,7 @@ function UsageContent() {
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.email.toLowerCase().includes(q) ||
-        r.teamName.toLowerCase().includes(q)
+        r.organizationName.toLowerCase().includes(q)
     );
   }, [rows, search]);
 
@@ -360,7 +360,9 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
       <td className="px-4 py-3">
         <Badge variant={statusVariant}>{row.status ?? 'unknown'}</Badge>
       </td>
-      <td className="px-4 py-3 text-muted-foreground">{row.teamName}</td>
+      <td className="px-4 py-3 text-muted-foreground">
+        {row.organizationName}
+      </td>
       <td className="px-4 py-3 text-right tabular-nums">{row.sequenceCount}</td>
       <td className="px-4 py-3 text-right tabular-nums">
         <span className={row.failedCount > 0 ? 'text-destructive' : undefined}>
@@ -422,7 +424,7 @@ const CSV_COLUMNS = [
   'createdAt',
   'status',
   'organizationId',
-  'teamName',
+  'organizationName',
   'sequenceCount',
   'failedCount',
   'avgAnalysisDurationSec',
@@ -462,7 +464,7 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
       new Date(row.createdAt).toISOString(),
       row.status,
       row.organizationId,
-      row.teamName,
+      row.organizationName,
       row.sequenceCount,
       row.failedCount,
       avgSec,

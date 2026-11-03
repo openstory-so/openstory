@@ -9,8 +9,8 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useMatches } from '@tanstack/react-router';
-import { teamCharacterKeys } from '@/cast/ui/use-team-characters';
-import { teamLocationKeys } from '@/cast/ui/use-team-locations';
+import { organizationCharacterKeys } from '@/cast/ui/use-organization-characters';
+import { organizationLocationKeys } from '@/cast/ui/use-organization-locations';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotKeys } from '@/shots/ui/use-shots';
@@ -93,7 +93,7 @@ export function usePageContext(): PageContextItem[] {
       matches.some((m) => m.routeId.startsWith('/_app/characters/')))
   ) {
     const character = queryClient.getQueryData(
-      teamCharacterKeys.detail(characterId)
+      organizationCharacterKeys.detail(characterId)
     );
     push(
       'character',
@@ -104,7 +104,7 @@ export function usePageContext(): PageContextItem[] {
 
   if (params.locationId) {
     const location = queryClient.getQueryData(
-      teamLocationKeys.detail(params.locationId)
+      organizationLocationKeys.detail(params.locationId)
     );
     push(
       'location',

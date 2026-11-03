@@ -381,7 +381,7 @@ describe('auto length and edit (#1925)', () => {
   it('flags a run that took an uploaded reference clip', () => {
     expect(
       studioUsedUploadedReferenceVideo({
-        referenceVideos: ['/r2/talent/team1/uploads/a.mp4'],
+        referenceVideos: ['/r2/talent/organization1/uploads/a.mp4'],
       })
     ).toBe(true);
     expect(
@@ -392,19 +392,21 @@ describe('auto length and edit (#1925)', () => {
     // A clip the studio generated passed through gated inputs.
     expect(
       studioUsedUploadedReferenceVideo({
-        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
+        referenceVideos: ['/r2/teams/organization1/studio/asset1/video.mp4'],
       })
     ).toBe(false);
     // After #2203 an address is an upload even when the path looks generated.
     expect(
       studioUsedUploadedReferenceVideo({
-        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
-        referenceClips: [{ url: '/r2/teams/team1/studio/asset1/video.mp4' }],
+        referenceVideos: ['/r2/teams/organization1/studio/asset1/video.mp4'],
+        referenceClips: [
+          { url: '/r2/teams/organization1/studio/asset1/video.mp4' },
+        ],
       })
     ).toBe(true);
     expect(
       studioUsedUploadedReferenceVideo({
-        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
+        referenceVideos: ['/r2/teams/organization1/studio/asset1/video.mp4'],
         referenceClips: [{ assetId: '01ASSET' }],
       })
     ).toBe(false);

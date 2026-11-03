@@ -103,7 +103,7 @@ async function seed() {
 
 /** One of the team's locations, in no sequence. */
 const seedLocation = async (name: string) =>
-  await createLocationsMethods(db, team.id).createForTeam(
+  await createLocationsMethods(db, team.id).createForOrganization(
     { name, rendering: 'Photoreal live action' },
     { createdBy: userRow.id }
   );

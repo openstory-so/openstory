@@ -24,7 +24,7 @@ import {
   useAttachLocation,
   useCreateSequenceLocation,
 } from '@/cast/ui/use-sequence-locations';
-import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useOrganizationLocationList } from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -51,12 +51,12 @@ export const AddLocationDialog: React.FC<{
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
-  const { data: teamLocations } = useTeamLocationList(open);
+  const { data: organizationLocations } = useOrganizationLocationList(open);
   const attach = useAttachLocation();
   const createLocation = useCreateSequenceLocation();
 
   const q = query.trim().toLowerCase();
-  const offered = teamLocations?.filter(
+  const offered = organizationLocations?.filter(
     (l) => !usedLocationIds.has(l.id) && l.name.toLowerCase().includes(q)
   );
 

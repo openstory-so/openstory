@@ -23,7 +23,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from './middleware.fn';
+import { authWithOrganizationMiddleware } from './middleware.fn';
 
 const logger = getLogger(['openstory', 'serverFn', 'public-api-keys']);
 
@@ -61,7 +61,7 @@ export type PublicApiKeySummary = {
  * retrievable again, so the UI must surface it to the user immediately.
  */
 export const createPublicApiKeyFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(createPublicApiKeySchema))
   .handler(
     async ({
@@ -95,7 +95,7 @@ export const createPublicApiKeyFn = createServerFn({ method: 'POST' })
 
 /** List the signed-in user's public-API keys (no secrets). */
 export const listPublicApiKeysFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async (): Promise<PublicApiKeySummary[]> => {
     const auth = getAuth();
     const { apiKeys } = await auth.api.listApiKeys({
@@ -115,7 +115,7 @@ export const listPublicApiKeysFn = createServerFn({ method: 'GET' })
 
 /** Permanently revoke (delete) a public-API key the signed-in user owns. */
 export const revokePublicApiKeyFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(revokePublicApiKeySchema))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const auth = getAuth();

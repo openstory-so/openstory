@@ -3,7 +3,7 @@
  * End-to-end type-safe functions for style library operations
  */
 
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
 import type { Sequence, Style } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -15,7 +15,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 export { getPublicStylesFn } from './public-styles.fn';
@@ -29,7 +29,7 @@ export { getPublicStylesFn } from './public-styles.fn';
  * @returns Array of styles
  */
 export const getStylesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z
@@ -57,7 +57,7 @@ const getStyleInputSchema = z.object({
  * failure: a throw here was retried by the query client and logged at error.
  */
 export const getStyleFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(getStyleInputSchema))
   .handler(async ({ data, context }): Promise<Style | null> => {
     return context.scopedDb.styles.getById(data.styleId);
@@ -84,7 +84,7 @@ export const getSequenceStyleFn = createServerFn({ method: 'GET' })
  * @returns The created style
  */
 export const createStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(createStyleSchema))
   .handler(async ({ data, context }) => {
     return context.scopedDb.styles.create(data);
@@ -103,7 +103,7 @@ const updateStyleInputSchema = updateStyleSchema.extend({
  * @returns The updated style
  */
 export const updateStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(updateStyleInputSchema))
   .handler(async ({ data, context }) => {
     const { styleId, ...updateData } = data;
@@ -131,7 +131,7 @@ const deleteStyleInputSchema = z.object({
  * Delete a style (requires admin/owner role)
  */
 export const deleteStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(deleteStyleInputSchema))
   .handler(async ({ data, context }) => {
     // Style lookup without team scoping (need to discover the team first)
@@ -141,7 +141,7 @@ export const deleteStyleFn = createServerFn({ method: 'POST' })
       throw new NotFoundError('Style not found');
     }
 
-    await requireTeamAdminAccess(context.user.id, style.organizationId);
+    await requireOrganizationAdminAccess(context.user.id, style.organizationId);
 
     await context.scopedDb.styles.delete(data.styleId);
 
@@ -181,7 +181,7 @@ export function assertPromotableAutoStyle(
  * at the same (now library) row.
  */
 export const promoteSequenceStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(promoteSequenceStyleInputSchema))
   .handler(async ({ data, context }) => {
     const sequence = await context.scopedDb.sequences.getForUser({

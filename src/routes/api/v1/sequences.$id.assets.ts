@@ -8,7 +8,7 @@
  * authenticated route; `/r2` itself is unauthenticated.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { API_V1_BASE, getLink, withLinks } from '@/platform/server/api-v1/hal';
 import { assetScopeSchema } from '@/sequences/sequence-assets';
@@ -25,7 +25,7 @@ function assetLinks(sequenceId: string) {
 
 export const Route = createFileRoute('/api/v1/sequences/$id/assets')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context, request }) =>
         runApiV1Handler(async () => {

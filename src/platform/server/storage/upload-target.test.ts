@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserTeamMembership = vi.fn();
-vi.doMock('@/platform/server/db/scoped', () => ({ getUserTeamMembership }));
+const getUserOrganizationMembership = vi.fn();
+vi.doMock('@/platform/server/db/scoped', () => ({
+  getUserOrganizationMembership,
+}));
 
 const isSystemAdmin = vi.fn();
 vi.doMock('@/platform/server/auth/system-admin', () => ({ isSystemAdmin }));
@@ -13,7 +15,7 @@ vi.doMock('#storage', () => ({ fileExists }));
 const { resolveUploadTarget } = await import('./upload-target');
 
 const TEAM = '01JQTEAMAAAAAAAAAAAAAAAAAA';
-const OTHER_TEAM = '01JQTEAMBBBBBBBBBBBBBBBBBB';
+const OTHER_ORGANIZATION = '01JQTEAMBBBBBBBBBBBBBBBBBB';
 const USER = { id: 'user-1', email: 'member@example.com' };
 
 function request(path: string): Request {
@@ -23,8 +25,8 @@ function request(path: string): Request {
 }
 
 beforeEach(() => {
-  getUserTeamMembership.mockReset();
-  getUserTeamMembership.mockImplementation(
+  getUserOrganizationMembership.mockReset();
+  getUserOrganizationMembership.mockImplementation(
     (_userId: string, organizationId: string) =>
       Promise.resolve(
         organizationId === TEAM ? { organizationId, role: 'member' } : null
@@ -101,12 +103,14 @@ describe('resolveUploadTarget', () => {
     );
 
     expect(resolved.ok).toBe(true);
-    expect(getUserTeamMembership).toHaveBeenCalledWith('user-1', TEAM);
+    expect(getUserOrganizationMembership).toHaveBeenCalledWith('user-1', TEAM);
   });
 
   it('403s when the caller is not a member of the path’s team', async () => {
     const resolved = await resolveUploadTarget(
-      request(`teams/${OTHER_TEAM}/sequences/s1/exports/abc_openstory.mp4`),
+      request(
+        `teams/${OTHER_ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`
+      ),
       USER
     );
 
@@ -118,7 +122,9 @@ describe('resolveUploadTarget', () => {
     isSystemAdmin.mockReturnValue(true);
 
     const resolved = await resolveUploadTarget(
-      request(`teams/${OTHER_TEAM}/sequences/s1/exports/abc_openstory.mp4`),
+      request(
+        `teams/${OTHER_ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`
+      ),
       { id: 'admin-1', email: 'admin@openstory.so' }
     );
 
@@ -136,12 +142,12 @@ describe('resolveUploadTarget', () => {
 
   it('rejects traversal before it ever reaches the membership check', async () => {
     const resolved = await resolveUploadTarget(
-      request(`teams/${TEAM}/../${OTHER_TEAM}/x.mp4`),
+      request(`teams/${TEAM}/../${OTHER_ORGANIZATION}/x.mp4`),
       USER
     );
 
     expect(resolved.ok).toBe(false);
     if (!resolved.ok) expect(resolved.response.status).toBe(400);
-    expect(getUserTeamMembership).not.toHaveBeenCalled();
+    expect(getUserOrganizationMembership).not.toHaveBeenCalled();
   });
 });

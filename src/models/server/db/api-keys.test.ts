@@ -23,7 +23,11 @@ import {
   markGoogleRegionBlocked,
   resetGoogleRegionBlock,
 } from '@/models/google-region';
-import { teamApiKeys, organization, user } from '@/platform/server/db/schema';
+import {
+  organizationApiKeys,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import {
   afterAll,
   beforeAll,
@@ -99,7 +103,7 @@ function countingDb(): { db: Database; selects: () => number } {
 }
 
 async function seed() {
-  await db.delete(teamApiKeys);
+  await db.delete(organizationApiKeys);
   await db.delete(organization);
   await db.delete(user);
 

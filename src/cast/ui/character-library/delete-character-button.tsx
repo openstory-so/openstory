@@ -15,9 +15,9 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
-  useDeleteTeamCharacter,
-  useRestoreTeamCharacter,
-} from '@/cast/ui/use-team-characters';
+  useDeleteOrganizationCharacter,
+  useRestoreOrganizationCharacter,
+} from '@/cast/ui/use-organization-characters';
 import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
@@ -29,8 +29,8 @@ export const DeleteCharacterButton: React.FC<{
   characterId: string;
   name: string;
 }> = ({ characterId, name }) => {
-  const remove = useDeleteTeamCharacter();
-  const restore = useRestoreTeamCharacter();
+  const remove = useDeleteOrganizationCharacter();
+  const restore = useRestoreOrganizationCharacter();
   const navigate = useNavigate();
   const hydrated = useHydrated();
 

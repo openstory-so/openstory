@@ -12,7 +12,7 @@ import { SITE_CONFIG } from '@/ui/marketing/constants';
 const logger = getLogger(['openstory', 'emails', 'auto-top-up-failed']);
 
 export async function notifyAutoTopUpFailed(opts: {
-  /** The team owner's address (`scopedDb.teamManagement.getOwnerEmail`); null = no owner row. */
+  /** The team owner's address (`scopedDb.organizationManagement.getOwnerEmail`); null = no owner row. */
   to: string | null;
   organizationId: string;
   userId: string;

@@ -352,7 +352,7 @@ export function createPublicReportIntake(db: Database) {
 // ============================================================================
 
 export type ReportQueueRow = ContentReport & {
-  subjectTeamName: string | null;
+  subjectOrganizationName: string | null;
   subjectUserEmail: string | null;
   reporterUserEmail: string | null;
 };
@@ -375,7 +375,7 @@ export type ProvenanceLookupRow = {
   referenceImageCount: number;
   createdAt: Date;
   organizationId: string;
-  teamName: string | null;
+  organizationName: string | null;
   userId: string | null;
   userEmail: string | null;
   userName: string | null;
@@ -386,7 +386,7 @@ export function createModerationMethods(db: Database) {
   // same pattern as the admin support queries.
   const reporterUser = alias(user, 'reporter_user');
   const subjectUser = alias(user, 'subject_user');
-  const subjectTeam = alias(organization, 'subject_team');
+  const subjectOrganization = alias(organization, 'subject_team');
 
   async function listReports(opts?: {
     statuses?: ContentReportStatus[];
@@ -397,7 +397,7 @@ export function createModerationMethods(db: Database) {
     const rows = await db
       .select({
         report: contentReports,
-        subjectTeamName: subjectTeam.name,
+        subjectOrganizationName: subjectOrganization.name,
         subjectUserEmail: subjectUser.email,
         reporterUserEmail: reporterUser.email,
       })
@@ -408,8 +408,8 @@ export function createModerationMethods(db: Database) {
       )
       .leftJoin(subjectUser, eq(contentReports.subjectUserId, subjectUser.id))
       .leftJoin(
-        subjectTeam,
-        eq(contentReports.subjectOrganizationId, subjectTeam.id)
+        subjectOrganization,
+        eq(contentReports.subjectOrganizationId, subjectOrganization.id)
       )
       .where(
         statuses?.length ? inArray(contentReports.status, statuses) : undefined
@@ -599,7 +599,7 @@ export function createModerationMethods(db: Database) {
     const rows = await db
       .select({
         provenance: contentProvenance,
-        teamName: organization.name,
+        organizationName: organization.name,
         userEmail: user.email,
         userName: user.name,
       })
@@ -613,17 +613,19 @@ export function createModerationMethods(db: Database) {
       .orderBy(desc(contentProvenance.createdAt))
       .limit(query.limit ?? 20);
 
-    return rows.map(({ provenance, teamName, userEmail, userName }) => ({
-      ...provenance,
-      traceId: `OS-${provenance.id}`,
-      teamName,
-      userEmail,
-      userName,
-    }));
+    return rows.map(
+      ({ provenance, organizationName, userEmail, userName }) => ({
+        ...provenance,
+        traceId: `OS-${provenance.id}`,
+        organizationName,
+        userEmail,
+        userName,
+      })
+    );
   }
 
   /** Everything an account generated in a window — enforcement evidence. */
-  async function listProvenanceForTeam(
+  async function listProvenanceForOrganization(
     subjectOrganizationId: string,
     opts?: { limit?: number }
   ) {
@@ -636,7 +638,7 @@ export function createModerationMethods(db: Database) {
   }
 
   /** Attestations an account made — the portrait-rights evidence trail. */
-  async function listAttestationsForTeam(
+  async function listAttestationsForOrganization(
     subjectOrganizationId: string,
     opts?: { limit?: number }
   ): Promise<UploadAttestation[]> {
@@ -658,7 +660,7 @@ export function createModerationMethods(db: Database) {
     markEnforcementNotified,
     listEnforcement,
     findProvenance,
-    listProvenanceForTeam,
-    listAttestationsForTeam,
+    listProvenanceForOrganization,
+    listAttestationsForOrganization,
   };
 }

@@ -71,7 +71,7 @@ Inside a product domain: root files are client-safe (catalogs, pure logic, zod);
 - **Import boundaries are one lint rule per question** (`scripts/lint/restricted-imports.ts`, plugin `boundaries`). oxlint overrides replace a rule's whole config for the files they match, so concerns sharing one rule key cannot be layered — every override would have to restate the others. Instead each concern is its own rule, on for every file, and each override in `.oxlintrc.json` is exactly "these files may do X":
   - `boundaries/no-server-imports` — **client/server seam (#1445).** `src/**/server/**` is server-only; lifted for server code (`src/**/server/**`, `src/**/*.fn.ts` — the compiler strips `.handler()`, `src/routes/api/**`, the root-level server-only routes, `*.test.ts`, scripts). `*.test.tsx` and stories are NOT lifted: a React test or story only ever needs `import type` from server code. Transitive backstop: `src/platform/client-server-boundary.test.ts` (pre-commit). Do not punch `!` holes in the pattern: a file that needs server code belongs under `server/` or is a `*.fn.ts`; a file that mixes halves is split, not exempted. One deliberate leak shape remains: a `createIsomorphicFn().server(…)` body may value-import server modules under an `oxlint-disable-next-line boundaries/no-server-imports` (`src/billing/billing-observability.ts`, `routes/__root.tsx`), because the compiler strips it.
   - `boundaries/no-sql` — **SQL is written in the db layer only.** `drizzle-orm` query builders are lifted for `src/**/server/db/**` (the scoped-db modules), the schema, the seeds, scripts, `*.test.ts`, and the pricing/cron jobs that still read the raw handle (collapsing into one db-layer module under #1535); `drizzle-orm/zod` validators are fine anywhere. A domain module that needs a query adds a method to its scoped-db module and calls it through `scopedDb` — it does not take a `Database` handle as a parameter.
-  - `boundaries/no-raw-db` and `boundaries/no-scoped-factory` — **raw db access is allowlisted twice.** `#db-client` is lifted only for the raw-handle readers (the scoped-db factory, the Better Auth adapter, the pricing/cron jobs, the seeds); `createScopedDb` / `createSystemAdminScopedDb` only for the two request middlewares, the MCP server, and the workflow base. Even the allowlisted files keep table SQL out where they can: the sign-up hook calls `createDefaultTeam`, the same bootstrap `ensureUserAndTeam` uses. `src/platform/server/db/db-access-allowlist.test.ts` pins both lists by resolving every value import, which catches the relative-path form the lint rule cannot see. Everything team-scoped goes through `context.scopedDb`.
+  - `boundaries/no-raw-db` and `boundaries/no-scoped-factory` — **raw db access is allowlisted twice.** `#db-client` is lifted only for the raw-handle readers (the scoped-db factory, the Better Auth adapter, the pricing/cron jobs, the seeds); `createScopedDb` / `createSystemAdminScopedDb` only for the two request middlewares, the MCP server, and the workflow base. Even the allowlisted files keep table SQL out where they can: the sign-up hook calls `createDefaultOrganization`, the same bootstrap `ensureUserAndOrganization` uses. `src/platform/server/db/db-access-allowlist.test.ts` pins both lists by resolving every value import, which catches the relative-path form the lint rule cannot see. Everything team-scoped goes through `context.scopedDb`.
   - `boundaries/platform-domain-blind` — on for `src/platform/**` only (see Project Structure).
   - All of them ignore `import type`; the inline `import { type X }` form is banned by `typescript/no-import-type-side-effects` because it leaves a side-effect import that ships the whole graph.
 
@@ -98,7 +98,7 @@ All API routes use TanStack Start server handlers. Standard shape:
 // src/routes/api/example/$id.ts
 export const Route = createFileRoute('/api/example/$id')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ params, request, context }) => {
         try {
@@ -130,7 +130,7 @@ export const Route = createFileRoute('/api/example/$id')({
 });
 ```
 
-Steps: 1) validate input · 2) auth via `authWithTeamRequestMiddleware` (user/organizationId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
+Steps: 1) validate input · 2) auth via `authWithOrganizationRequestMiddleware` (user/organizationId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
 
 ## Workflow Pattern
 
@@ -256,7 +256,7 @@ changing the area, and update it in the same PR.**
   (#2065): a look's `styling` is already resolved (`effectiveStyling`), so
   never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
   show or prompt with, and copy a look version forward from `storedStyling`.
-- **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
+- **Team characters (#2017)** — `docs/architecture/organization-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that holds only the script id, the soft remove and the `attached`
   flag. There are no per-sequence versions, sheets or voices: every sequence
@@ -279,7 +279,7 @@ changing the area, and update it in the same PR.**
   included, casts it (`getCastInAnySequenceOrArchive`). Nothing cascades
   from `characters`: a hard delete goes through `deleteCharactersStatements`
   and is refused while it would strand a saved voice.
-- **Team locations (#1695)** — `docs/architecture/team-locations.md`. A
+- **Team locations (#1695)** — `docs/architecture/organization-locations.md`. A
   location belongs to the team; a sequence uses it through a
   `sequence_location_links` row that holds only the script id, the first
   mention, the soft remove and the `attached` flag. There is no location
@@ -439,7 +439,7 @@ This destroyed `team_members`, `session`, `account`, and `passkey` in production
    - Copy out, drop, **create the table again** and copy back with named columns. Not drizzle's rename, which fails at commit.
    - The pattern drops any trigger on the rebuilt table without a word (none exist today).
 
-   Prove it before merging, on a copy of production and on a scratch remote D1. What has been run for the worked example: `wrangler d1 migrations apply --local` on local data and on a copy of production, the PR-preview path on an empty remote D1, and on 2026-10-07 `migrations apply --remote` on a throwaway remote D1 loaded with a production export (188,226 rows; all eight character tables identical in count, no foreign key violations, both files recorded). Still local only: the out-of-order control, the guard stopping file 2 when file 1 has not run. Details: `docs/architecture/team-characters.md` § Migrations.
+   Prove it before merging, on a copy of production and on a scratch remote D1. What has been run for the worked example: `wrangler d1 migrations apply --local` on local data and on a copy of production, the PR-preview path on an empty remote D1, and on 2026-10-07 `migrations apply --remote` on a throwaway remote D1 loaded with a production export (188,226 rows; all eight character tables identical in count, no foreign key violations, both files recorded). Still local only: the out-of-order control, the guard stopping file 2 when file 1 has not run. Details: `docs/architecture/organization-characters.md` § Migrations.
 
 3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `organization`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code. The Better Auth `member` and `invitation` rows cascade from `organization` and `user` because that is what the plugin's generated schema does, and it matches the existing `team_members` foreign keys.
 

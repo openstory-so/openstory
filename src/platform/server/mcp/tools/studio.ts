@@ -10,7 +10,7 @@ import { resolutionSchema } from '@/models/resolutions';
 import { ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { fromShareableUrl } from '@/platform/server/storage/buckets';
-import { watchClipForTeam } from '@/models/server/watch-clip';
+import { watchClipForOrganization } from '@/models/server/watch-clip';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -23,7 +23,7 @@ import {
 } from '@/studio/server/create-studio-asset';
 import {
   deleteStudioAsset,
-  draftStudioPromptForTeam,
+  draftStudioPromptForOrganization,
   getStudioEditHistory,
   setStudioAssetFavorite,
 } from '@/studio/server/studio-asset-actions';
@@ -225,7 +225,7 @@ const draftStudioPromptTool = openstoryTool({
   }),
   outputSchema: z.object({ prompt: z.string() }),
   run: async (input, { scopedDb }) => ({
-    data: await draftStudioPromptForTeam(
+    data: await draftStudioPromptForOrganization(
       scopedDb,
       studioPromptDraftInputSchema.parse({
         ...input,
@@ -254,7 +254,7 @@ const watchClipTool = openstoryTool({
   }),
   outputSchema: z.object({ answer: z.string(), model: z.string() }),
   run: async (input, { scopedDb }) => ({
-    data: await watchClipForTeam(scopedDb, {
+    data: await watchClipForOrganization(scopedDb, {
       url: fromShareableUrl(input.url),
       question: input.question,
     }),

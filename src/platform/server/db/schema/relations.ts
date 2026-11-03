@@ -358,9 +358,9 @@ export const relations = defineRelations(schema, (r) => ({
     }),
     user: r.one.user({ from: r.transactions.userId, to: r.user.id }),
   },
-  teamBillingSettings: {
+  organizationBillingSettings: {
     team: r.one.organization({
-      from: r.teamBillingSettings.organizationId,
+      from: r.organizationBillingSettings.organizationId,
       to: r.organization.id,
     }),
   },
@@ -386,13 +386,13 @@ export const relations = defineRelations(schema, (r) => ({
   },
 
   // ---- Team API Keys ----
-  teamApiKeys: {
+  organizationApiKeys: {
     team: r.one.organization({
-      from: r.teamApiKeys.organizationId,
+      from: r.organizationApiKeys.organizationId,
       to: r.organization.id,
     }),
     addedByUser: r.one.user({
-      from: r.teamApiKeys.addedBy,
+      from: r.organizationApiKeys.addedBy,
       to: r.user.id,
     }),
   },

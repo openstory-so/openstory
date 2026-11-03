@@ -131,7 +131,7 @@ function makeScopedDb(opts: {
     sequenceElements: { list: listElements },
     characters: { list: listCharacters, getHeldElsewhere },
     locations: { list: listLocations, getCurrentByIds: getLocationsByIds },
-    teamManagement: { getMemberEmail },
+    organizationManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
     sequenceEvents: { record: recordSequenceEvent },
   };

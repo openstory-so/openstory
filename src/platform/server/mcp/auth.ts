@@ -28,7 +28,7 @@ import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 import {
   getUserById,
-  getUserTeamMembership,
+  getUserOrganizationMembership,
 } from '@/platform/server/db/scoped';
 import { sessionOrganizationId } from '@/platform/server/auth/request-principal';
 import { getLogger, toErrorPayload } from '@/platform/logger';
@@ -43,7 +43,7 @@ type McpAuthKind = 'oauth' | 'api_key';
 export type McpCallerIdentity = {
   user: User;
   organizationId: string;
-  teamName: string;
+  organizationName: string;
 };
 
 export type McpAuthContext = McpCallerIdentity & {
@@ -71,13 +71,13 @@ function mcpInternalError(): Response {
   );
 }
 
-async function resolveTeamContext(
+async function resolveOrganizationContext(
   user: User,
   oauth: OAuthAccessToken | null,
   organizationId: string | null
 ): Promise<McpAuthContext | Response> {
   const team = organizationId
-    ? await getUserTeamMembership(user.id, organizationId)
+    ? await getUserOrganizationMembership(user.id, organizationId)
     : null;
 
   if (!team) {
@@ -102,7 +102,7 @@ async function resolveTeamContext(
   return {
     user,
     organizationId: team.organizationId,
-    teamName: team.teamName,
+    organizationName: team.organizationName,
     session: null,
     oauth,
     kind,
@@ -154,7 +154,7 @@ export async function authenticateMcpRequest(
     const user = await getUserById(token.userId);
     if (!user) return mcpUnauthorized({ invalidToken: true, request });
 
-    const ctx = await resolveTeamContext(
+    const ctx = await resolveOrganizationContext(
       user,
       token,
       token.organizationId ?? null
@@ -166,7 +166,7 @@ export async function authenticateMcpRequest(
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) return mcpUnauthorized({ request });
-    const ctx = await resolveTeamContext(
+    const ctx = await resolveOrganizationContext(
       session.user,
       null,
       await sessionOrganizationId(session, request.headers)

@@ -1,9 +1,9 @@
 import { DeleteLocationButton } from '@/cast/ui/location-library/delete-location-button';
 import { LocationDetailView } from '@/cast/ui/locations/location-detail-view';
 import {
-  useTeamLocation,
-  useTeamLocationName,
-} from '@/cast/ui/use-team-locations';
+  useOrganizationLocation,
+  useOrganizationLocationName,
+} from '@/cast/ui/use-organization-locations';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { routeParams } from '@/ui/layout/breadcrumbs';
@@ -17,14 +17,14 @@ import { Suspense } from 'react';
 import { z } from 'zod';
 
 function LocationCrumbLabel({ id }: { id: string }) {
-  const { data: name } = useTeamLocationName(id);
+  const { data: name } = useOrganizationLocationName(id);
   return <>{name ?? '…'}</>;
 }
 
 export const Route = createFileRoute('/_app/locations/$locationId')({
   // The sequence whose use of the location the page shows.
   validateSearch: z.object({ sequence: z.string().min(1).optional() }),
-  component: TeamLocationPage,
+  component: OrganizationLocationPage,
   staticData: {
     breadcrumb: (match) => {
       const { locationId } = routeParams<{ locationId: string }>(match);
@@ -36,9 +36,9 @@ export const Route = createFileRoute('/_app/locations/$locationId')({
   },
 });
 
-function TeamLocationContent({ id }: { id: string }) {
+function OrganizationLocationContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
-  const { data: location } = useTeamLocation(id);
+  const { data: location } = useOrganizationLocation(id);
   // Gone or another team's. Reached from a stale link.
   if (!location) {
     return (
@@ -146,7 +146,7 @@ function TeamLocationContent({ id }: { id: string }) {
   );
 }
 
-function TeamLocationPage() {
+function OrganizationLocationPage() {
   const { locationId } = Route.useParams();
   const { data: session, isPending } = useAuthSession();
 
@@ -170,7 +170,9 @@ function TeamLocationPage() {
         </div>
       }
     >
-      {!isPending && <TeamLocationContent key={locationId} id={locationId} />}
+      {!isPending && (
+        <OrganizationLocationContent key={locationId} id={locationId} />
+      )}
     </Suspense>
   );
 }

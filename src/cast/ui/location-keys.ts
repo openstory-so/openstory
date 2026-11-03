@@ -31,10 +31,11 @@ export const sequenceLocationKeys = {
     ] as const,
 };
 
-export const teamLocationKeys = {
+export const organizationLocationKeys = {
   all: ['team-locations'] as const,
-  list: () => [...teamLocationKeys.all, 'list'] as const,
-  detail: (id: string) => [...teamLocationKeys.all, 'detail', id] as const,
+  list: () => [...organizationLocationKeys.all, 'list'] as const,
+  detail: (id: string) =>
+    [...organizationLocationKeys.all, 'detail', id] as const,
 };
 
 export const locationSheetVariantKeys = {
@@ -47,7 +48,7 @@ export const locationSheetVariantKeys = {
       scope(sequenceId),
       locationDbId,
     ] as const,
-  divergentByTeam: () =>
+  divergentByOrganization: () =>
     [...locationSheetVariantKeys.divergent(), 'team'] as const,
   history: (sequenceId: string | null, locationDbId: string) =>
     [
@@ -64,7 +65,9 @@ export const locationSheetVariantKeys = {
  * the sequence refetch so a caller can stay pending until it lands.
  */
 export function invalidateLocations(queryClient: QueryClient): Promise<void> {
-  void queryClient.invalidateQueries({ queryKey: teamLocationKeys.all });
+  void queryClient.invalidateQueries({
+    queryKey: organizationLocationKeys.all,
+  });
   void queryClient.invalidateQueries({
     queryKey: locationSheetVariantKeys.all,
   });

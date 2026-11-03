@@ -3,10 +3,10 @@
  * `roleHasPermission` in `@/platform/auth/organization-access`.
  */
 
-import { getUserTeamMembership } from '@/platform/server/db/scoped';
-import type { TeamRole } from './constants';
+import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
+import type { OrganizationRole } from './constants';
 
-export type { TeamRole };
+export type { OrganizationRole };
 
 /**
  * Role for one organization, or null when the user is not a member.
@@ -14,8 +14,11 @@ export type { TeamRole };
 export async function getUserRole(
   userId: string,
   organizationId: string
-): Promise<TeamRole | null> {
-  const membership = await getUserTeamMembership(userId, organizationId);
+): Promise<OrganizationRole | null> {
+  const membership = await getUserOrganizationMembership(
+    userId,
+    organizationId
+  );
   if (!membership) return null;
   return membership.role;
 }

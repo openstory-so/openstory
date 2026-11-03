@@ -11,7 +11,7 @@ import {
   FileUploadTrigger,
   type FileUploadProps,
 } from '@/ui/shadcn/file-upload';
-import { useUploadLocationPhoto } from '@/cast/ui/use-team-locations';
+import { useUploadLocationPhoto } from '@/cast/ui/use-organization-locations';
 import { getFileKey } from '@/ui/upload';
 import { Upload, X } from 'lucide-react';
 

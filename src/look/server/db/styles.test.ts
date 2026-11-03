@@ -408,15 +408,15 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
   });
 
   it("does not collide with another team's PRIVATE style (slug is unique within team ∪ public only)", async () => {
-    const teamB = { id: generateId(), name: 'T2', slug: 't2' };
-    await db.insert(organization).values([teamB]);
+    const organizationB = { id: generateId(), name: 'T2', slug: 't2' };
+    await db.insert(organization).values([organizationB]);
 
     await createStylesMethods(db, team.id, userRow.id).create({
       name: 'Shared',
       config: baseConfig, // private to team A
     });
     await expect(
-      createStylesMethods(db, teamB.id, userRow.id).create({
+      createStylesMethods(db, organizationB.id, userRow.id).create({
         name: 'Shared',
         config: baseConfig,
       })

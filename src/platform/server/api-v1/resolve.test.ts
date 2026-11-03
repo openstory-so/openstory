@@ -1,6 +1,6 @@
 import type { Style } from '@/platform/server/db/schema';
 import { ConflictError, NotFoundError } from '@/platform/errors';
-import type { TeamLocation } from '@/cast/server/db/locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the runtime side-effecting deps so resolve.ts (and the safe-fetch ingest
@@ -62,7 +62,9 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
   };
 }
 
-function makeLocation(overrides: Partial<TeamLocation> = {}): TeamLocation {
+function makeLocation(
+  overrides: Partial<OrganizationLocation> = {}
+): OrganizationLocation {
   return {
     id: 'loc-1',
     name: 'Rooftop Bar',
@@ -119,7 +121,7 @@ describe('resolveStyle', () => {
 
 function library(rows: Array<{ id: string; name: string }>) {
   return {
-    listTeam: async () =>
+    listOrganization: async () =>
       rows.map((row) => ({
         ...row,
         physicalDescription: null,
@@ -233,14 +235,14 @@ describe('resolveCharacterIds', () => {
 });
 
 describe('resolveLocationIds', () => {
-  // `listTeam` is the team's own locations: another team's never appear.
+  // `listOrganization` is the team's own locations: another team's never appear.
   const team = [
     makeLocation({ id: 'l-roof', name: 'Rooftop Bar' }),
     makeLocation({ id: 'l-pier-1', name: 'Pier' }),
     makeLocation({ id: 'l-pier-2', name: 'pier' }),
   ];
   const deps = (createLocation = vi.fn()) => ({
-    locations: { listTeam: async () => team },
+    locations: { listOrganization: async () => team },
     createLocation,
   });
 

@@ -13,7 +13,7 @@ import type { ApiKeyMetadata } from '@/platform/server/auth/public-api-key';
 import {
   pruneExpiredDeviceCodes,
   getDeviceGrantOrganizationId,
-  getUserTeamMembership,
+  getUserOrganizationMembership,
 } from '@/platform/server/db/scoped';
 import { APIError } from 'better-auth/api';
 import { env as workerEnv } from 'cloudflare:workers';
@@ -123,7 +123,7 @@ export async function exchangeDeviceCode(
   if (!organizationId) {
     throw new Error('Device login was approved without an organization');
   }
-  const team = await getUserTeamMembership(userId, organizationId);
+  const team = await getUserOrganizationMembership(userId, organizationId);
   if (!team) throw new Error('Not a member of the device login organization');
 
   const created = await auth.api.createApiKey({
@@ -137,6 +137,6 @@ export async function exchangeDeviceCode(
   return {
     status: 'approved',
     apiKey: created.key,
-    team: { id: team.organizationId, name: team.teamName },
+    team: { id: team.organizationId, name: team.organizationName },
   };
 }

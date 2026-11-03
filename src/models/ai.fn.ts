@@ -43,7 +43,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 
 import { getLogger } from '@/platform/logger';
@@ -102,7 +102,7 @@ const shortenPromptInputSchema = z.object({
 });
 
 export const shortenPromptFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(shortenPromptInputSchema))
   .handler(async ({ data, context }) => {
     enforceRateLimit(promptShorteningRateLimiter, getClientIP());
@@ -308,7 +308,7 @@ const enhanceScriptInputSchema = z
 export type EnhanceScriptInput = z.infer<typeof enhanceScriptInputSchema>;
 
 export const enhanceScriptStreamFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(enhanceScriptInputSchema))
   .handler(async function* ({ data, context }) {
     // IP rate-limit the dashboard path here: the shared core is also driven
@@ -445,7 +445,7 @@ export function rankStyleRecommendations(
  * billed like script enhancement.
  */
 export const recommendStylesForScriptFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(recommendStylesInputSchema))
   .handler(async ({ data, context }) => {
     enforceRateLimit(recommendStylesRateLimiter, getClientIP());

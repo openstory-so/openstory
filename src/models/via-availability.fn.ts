@@ -19,7 +19,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { claimBytePlusVia } from '@/models/server/byteplus-config';
 import { referenceOnlyMotionModels, type ImageToVideoModel } from './models';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 
 export type ViaAvailability = {
   /**
@@ -43,7 +43,7 @@ export type ViaAvailability = {
 };
 
 export const getViaAvailabilityFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }): Promise<ViaAvailability> => {
     const [xaiKey, falKey] = await Promise.all([
       context.scopedDb.apiKeys.resolveOptionalKey('xai'),

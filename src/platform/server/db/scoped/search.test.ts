@@ -213,7 +213,7 @@ async function seedAsset(
 }
 
 /** A team with one of every searchable kind, each saying `word`. */
-async function seedTeam(word: string) {
+async function seedOrganization(word: string) {
   const organizationId = generateId();
   const userId = generateId();
   await db
@@ -264,8 +264,8 @@ const find = (organizationId: string, query: string) =>
 
 describe('search', () => {
   it('returns every kind of the team’s own, and nothing of another team’s', async () => {
-    const mine = await seedTeam('zebra');
-    const theirs = await seedTeam('zebra');
+    const mine = await seedOrganization('zebra');
+    const theirs = await seedOrganization('zebra');
 
     const hits = await find(mine.organizationId, 'ZEBRA');
 
@@ -294,8 +294,8 @@ describe('search', () => {
   });
 
   it('never reads another team’s text through a stray version pointer', async () => {
-    const mine = await seedTeam('heron');
-    const theirs = await seedTeam('giraffe');
+    const mine = await seedOrganization('heron');
+    const theirs = await seedOrganization('giraffe');
 
     // Version pointers have no foreign key. Point each of mine at theirs.
     await db
@@ -326,7 +326,7 @@ describe('search', () => {
   });
 
   it('hides archived sequences, deleted rows and non-studio generations', async () => {
-    const mine = await seedTeam('otter');
+    const mine = await seedOrganization('otter');
     const archived = await seedSequence(
       mine.organizationId,
       mine.styleId,

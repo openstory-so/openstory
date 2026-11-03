@@ -107,7 +107,7 @@ export type AssistantCaller = {
   scopedDb: ScopedDb;
   user: User;
   organizationId: string;
-  teamName: string;
+  organizationName: string;
   origin: string;
   request: Request;
 };
@@ -147,7 +147,7 @@ function systemPrompts(
 ): string[] {
   const prompts = [
     SYSTEM_PROMPT,
-    `The user is ${caller.user.name} in team "${caller.teamName}". Today is ${new Date().toISOString().slice(0, 10)}.`,
+    `The user is ${caller.user.name} in team "${caller.organizationName}". Today is ${new Date().toISOString().slice(0, 10)}.`,
   ];
   if (web) prompts.push(WEB_PROMPT);
   const page = describePageContext(pageContext);
@@ -170,7 +170,7 @@ export function toolContext(caller: AssistantCaller): OpenStoryMcpContext {
     caller: {
       user: caller.user,
       organizationId: caller.organizationId,
-      teamName: caller.teamName,
+      organizationName: caller.organizationName,
     },
     origin: caller.origin,
     scoped: () => readContext,

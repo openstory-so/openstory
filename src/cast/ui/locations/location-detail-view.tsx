@@ -20,7 +20,7 @@ import {
 } from '@/cast/ui/use-location-sheet-variants';
 import {
   restoreSequenceLocation,
-  useTeamLocationCurrent,
+  useOrganizationLocationCurrent,
   useLocationSheetStaleness,
   useRegenerateLocationSheet,
   useShotIdsForLocation,
@@ -29,9 +29,9 @@ import {
   useSoftDeleteSequenceLocation,
 } from '@/cast/ui/use-sequence-locations';
 import { locationChannelId } from '@/cast/cast-channel';
-import type { TeamLocation } from '@/cast/server/db/locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
 import { invalidateLocations } from '@/cast/ui/location-keys';
-import { useLocationPhotos } from '@/cast/ui/use-team-locations';
+import { useLocationPhotos } from '@/cast/ui/use-organization-locations';
 import type { LocationSheetVariant } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import { useRealtime } from '@/platform/ui/realtime/client';
@@ -84,11 +84,15 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
   // mention) and names the locations Replace must not offer. From no
   // sequence, the location's current version. Only one of the two is asked.
   const sequenceList = useSequenceLocations(sequenceId ?? '');
-  const teamRead = useTeamLocationCurrent(locationId, sequenceId === null);
+  const organizationRead = useOrganizationLocationCurrent(
+    locationId,
+    sequenceId === null
+  );
   const sequenceLocations = sequenceList.data;
   const link = sequenceLocations?.find((l) => l.id === locationId);
-  const location = sequenceId === null ? teamRead.data : link;
-  const { isLoading, error } = sequenceId === null ? teamRead : sequenceList;
+  const location = sequenceId === null ? organizationRead.data : link;
+  const { isLoading, error } =
+    sequenceId === null ? organizationRead : sequenceList;
   const { data: photos } = useLocationPhotos(locationId);
   const channelId = locationChannelId(sequenceId, locationId);
   const recastLocation = useRecastLocation();
@@ -153,7 +157,9 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
   // Dialog states for recasting
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [replacement, setReplacement] = useState<TeamLocation | null>(null);
+  const [replacement, setReplacement] = useState<OrganizationLocation | null>(
+    null
+  );
 
   // Track regenerating state from realtime events
   const [isRegenerating, setIsRegenerating] = useState(false);

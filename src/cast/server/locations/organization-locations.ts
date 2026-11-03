@@ -7,7 +7,7 @@
 
 import { regenerateLocationSheet } from '@/cast/server/cast-generation';
 import { requireUploadRights } from '@/cast/server/upload-rights';
-import { assertTeamUserUploadAttachable } from '@/cast/server/team-user-upload';
+import { assertOrganizationUserUploadAttachable } from '@/cast/server/organization-user-upload';
 import { NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { LocationWithReference } from '@/platform/server/db/schema';
@@ -33,7 +33,7 @@ export async function attachLocationReferenceImages(
 
   for (const url of uploadUrls) {
     results.push(
-      await assertTeamUserUploadAttachable({
+      await assertOrganizationUserUploadAttachable({
         url,
         bucket: STORAGE_BUCKETS.LOCATIONS,
         organizationId,
@@ -48,7 +48,7 @@ export async function attachLocationReferenceImages(
  * Take the reference claim (#1113) and start the location's sheet run from
  * no sequence. Returns the workflow run id.
  */
-export async function triggerTeamLocationSheet(
+export async function triggerOrganizationLocationSheet(
   scopedDb: ScopedDb,
   ctx: { userId: string; organizationId: string; locationId: string }
 ): Promise<string> {
@@ -66,7 +66,7 @@ export async function triggerTeamLocationSheet(
  * `triggerSheet`, its first sheet run. The public API passes false and
  * starts the run itself once the sequence exists.
  */
-export async function createTeamLocation(
+export async function createOrganizationLocation(
   scopedDb: ScopedDb,
   input: {
     name: string;
@@ -83,7 +83,7 @@ export async function createTeamLocation(
     input.photoUrls,
     ctx.organizationId
   );
-  const location = await scopedDb.locations.createForTeam(
+  const location = await scopedDb.locations.createForOrganization(
     {
       name: input.name,
       description: input.description,
@@ -95,7 +95,7 @@ export async function createTeamLocation(
   if (!ctx.triggerSheet) return location;
 
   try {
-    await triggerTeamLocationSheet(scopedDb, {
+    await triggerOrganizationLocationSheet(scopedDb, {
       userId: ctx.userId,
       organizationId: ctx.organizationId,
       locationId: location.id,

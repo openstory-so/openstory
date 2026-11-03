@@ -37,10 +37,10 @@ export function createLocationSheetVariantsMethods(
   organizationId: string
 ) {
   /** The row belongs to one of this team's locations. */
-  const ofTeam = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.organization_id = ${organizationId})`;
+  const ofOrganization = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.organization_id = ${organizationId})`;
   const ofLocation = (locationId: string) =>
-    and(eq(locationSheetVariants.locationId, locationId), ofTeam);
-  const inTeam = eq(locations.organizationId, organizationId);
+    and(eq(locationSheetVariants.locationId, locationId), ofOrganization);
+  const inOrganization = eq(locations.organizationId, organizationId);
 
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
@@ -93,7 +93,7 @@ export function createLocationSheetVariantsMethods(
         .where(
           and(
             inArray(locationSheetVariants.locationId, locationIds),
-            ofTeam,
+            ofOrganization,
             sql`${locationSheetVariants.divergedAt} IS NOT NULL`,
             sql`${locationSheetVariants.discardedAt} IS NULL`
           )
@@ -112,7 +112,7 @@ export function createLocationSheetVariantsMethods(
             .where(
               and(
                 inArray(locationSheetVariants.id, variantIds.slice(i, i + 80)),
-                ofTeam
+                ofOrganization
               )
             ))
         );
@@ -125,7 +125,7 @@ export function createLocationSheetVariantsMethods(
       const result = await db
         .select()
         .from(locationSheetVariants)
-        .where(and(eq(locationSheetVariants.id, variantId), ofTeam));
+        .where(and(eq(locationSheetVariants.id, variantId), ofOrganization));
       return result[0] ?? null;
     },
 
@@ -165,7 +165,7 @@ export function createLocationSheetVariantsMethods(
             .from(locationSheetVariants)
             .where(
               and(
-                ofTeam,
+                ofOrganization,
                 inArray(
                   locationSheetVariants.locationId,
                   locationIds.slice(i, i + 90)
@@ -209,7 +209,7 @@ export function createLocationSheetVariantsMethods(
       const [existing] = await db
         .select({ id: locations.id })
         .from(locations)
-        .where(and(eq(locations.id, locationDbId), inTeam));
+        .where(and(eq(locations.id, locationDbId), inOrganization));
       if (!existing) throw new NotFoundError('Location not found');
 
       const now = new Date();
@@ -239,7 +239,7 @@ export function createLocationSheetVariantsMethods(
             pendingPromoteReferenceVersionId: null,
             updatedAt: now,
           })
-          .where(and(eq(locations.id, locationDbId), inTeam)),
+          .where(and(eq(locations.id, locationDbId), inOrganization)),
       ]);
       const [version] = versions;
       if (!version) {
@@ -293,7 +293,7 @@ export function createLocationSheetVariantsMethods(
           locationBibleVersions,
           eq(locationBibleVersions.id, locations.selectedBibleVersionId)
         )
-        .where(and(eq(locations.id, locationDbId), inTeam));
+        .where(and(eq(locations.id, locationDbId), inOrganization));
       if (!existing) throw new NotFoundError('Location not found');
 
       const now = new Date();
@@ -308,7 +308,7 @@ export function createLocationSheetVariantsMethods(
             pendingPromoteReferenceVersionId: null,
             updatedAt: now,
           })
-          .where(and(eq(locations.id, locationDbId), inTeam)),
+          .where(and(eq(locations.id, locationDbId), inOrganization)),
         db
           .update(locationSheetVariants)
           .set({ divergedAt: null, updatedAt: now })
@@ -389,7 +389,7 @@ export function createLocationSheetVariantsMethods(
         .where(
           and(
             eq(locationSheetVariants.id, variantId),
-            ofTeam,
+            ofOrganization,
             sql`NOT EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND COALESCE(l.selected_reference_version_id, l.id) = ${variantId})`
           )
         )
@@ -398,7 +398,7 @@ export function createLocationSheetVariantsMethods(
       const [row] = await db
         .select({ id: locationSheetVariants.id })
         .from(locationSheetVariants)
-        .where(and(eq(locationSheetVariants.id, variantId), ofTeam));
+        .where(and(eq(locationSheetVariants.id, variantId), ofOrganization));
       if (!row) throw new NotFoundError('Location sheet version not found');
       throw new ConflictError(
         'Cannot discard the selected reference version; select another first.'
@@ -419,7 +419,7 @@ export function createLocationSheetVariantsMethods(
         .where(
           and(
             eq(locationSheetVariants.id, variantId),
-            ofTeam,
+            ofOrganization,
             isNull(locationSheetVariants.portraitUrl)
           )
         );
@@ -429,7 +429,7 @@ export function createLocationSheetVariantsMethods(
       const result = await db
         .update(locationSheetVariants)
         .set({ discardedAt: null, updatedAt: new Date() })
-        .where(and(eq(locationSheetVariants.id, variantId), ofTeam))
+        .where(and(eq(locationSheetVariants.id, variantId), ofOrganization))
         .returning({ id: locationSheetVariants.id });
       if (result.length === 0) {
         throw new NotFoundError('Location sheet version not found');

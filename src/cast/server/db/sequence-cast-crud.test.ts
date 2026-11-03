@@ -1283,7 +1283,7 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     expect(await m.list(sequenceId)).toHaveLength(0);
     expect(await m.listWithReferences(sequenceId)).toHaveLength(0);
     // Removed from the sequence, not from the team (#1695).
-    expect(await m.listTeam()).toMatchObject([
+    expect(await m.listOrganization()).toMatchObject([
       { id: created.id, sequences: [], usedAnywhere: false },
     ]);
     expect((await m.getById(sequenceId, created.id))?.deletedAt).toBeInstanceOf(
@@ -1293,7 +1293,7 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     const restored = await m.restore(sequenceId, created.id, { actorId });
     expect(restored.deletedAt).toBeNull();
     expect(await m.list(sequenceId)).toHaveLength(1);
-    expect(await m.listTeam()).toMatchObject([
+    expect(await m.listOrganization()).toMatchObject([
       { id: created.id, sequences: [{ id: sequenceId }], usedAnywhere: true },
     ]);
 
@@ -1984,11 +1984,11 @@ describe('team characters (#2017)', () => {
   it('another team cannot delete a sequence or what it casts', async () => {
     const created = await withSheetAndVoices('char_001');
     const before = await rowsOf(created.id);
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await db
       .insert(organization)
-      .values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createSequencesMethods(db, otherTeam, actorId);
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createSequencesMethods(db, otherOrganization, actorId);
 
     expect(await theirs.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual([]);
     await theirs.delete(sequenceId, NO_VOICES);
@@ -2105,7 +2105,7 @@ describe('team characters (#2017)', () => {
     );
     expect(bob.id).not.toBe(ada.id);
     expect(bob).toMatchObject({ name: 'Bob', characterId: 'char_001_2' });
-    expect(await chars().getTeamCharacter(ada.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(ada.id)).toMatchObject({
       name: 'Ada',
     });
     expect(await versionsOf(ada.id)).toHaveLength(1);
@@ -2186,14 +2186,16 @@ describe('team characters (#2017)', () => {
     );
     expect(await chars().list(other)).toHaveLength(1);
 
-    const foreignTeam = generateId();
+    const foreignOrganization = generateId();
     const foreignSequence = generateId();
-    await db
-      .insert(organization)
-      .values({ id: foreignTeam, name: 'F', slug: foreignTeam });
+    await db.insert(organization).values({
+      id: foreignOrganization,
+      name: 'F',
+      slug: foreignOrganization,
+    });
     await db.insert(sequences).values({
       id: foreignSequence,
-      organizationId: foreignTeam,
+      organizationId: foreignOrganization,
       title: 'F',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -2336,7 +2338,7 @@ describe('team characters (#2017)', () => {
     await touch(other, '2026-02-01T00:00:00Z');
 
     // Removed from its only sequence: still the team's, listed last (#2065).
-    expect(await chars().listTeam()).toEqual([
+    expect(await chars().listOrganization()).toEqual([
       {
         id: busy.id,
         name: 'Busy',
@@ -2363,7 +2365,7 @@ describe('team characters (#2017)', () => {
         sequences: [],
       }),
     ]);
-    expect(await chars().getTeamCharacter(removed.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(removed.id)).toMatchObject({
       lastUsedAt: null,
       sequences: [],
     });
@@ -2374,27 +2376,29 @@ describe('team characters (#2017)', () => {
       .set({ status: 'archived' })
       .where(eq(sequences.id, other));
     expect(
-      (await chars().getTeamCharacter(busy.id))?.sequences.map((row) => row.id)
+      (await chars().getOrganizationCharacter(busy.id))?.sequences.map(
+        (row) => row.id
+      )
     ).toEqual([sequenceId]);
     // Its link in the archived sequence still stops a delete (#2065).
     await chars().softDelete(sequenceId, busy.id, { actorId });
-    expect(await chars().getTeamCharacter(busy.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(busy.id)).toMatchObject({
       sequences: [],
       castAnywhere: true,
     });
 
     // Another team sees none of it.
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await db
       .insert(organization)
-      .values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createCharactersMethods(db, otherTeam);
-    expect(await theirs.listTeam()).toEqual([]);
-    expect(await theirs.getTeamCharacter(busy.id)).toBeNull();
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createCharactersMethods(db, otherOrganization);
+    expect(await theirs.listOrganization()).toEqual([]);
+    expect(await theirs.getOrganizationCharacter(busy.id)).toBeNull();
   });
 
   it('makes a character with no sequence: a bible version and a default look, no cast link (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2436,7 +2440,7 @@ describe('team characters (#2017)', () => {
     expect(await linksOf(made.id)).toEqual([]);
     expect(await db.select().from(characterSheetVariants)).toEqual([]);
     expect(await eventKinds()).toEqual([]);
-    expect(await chars().listTeam()).toMatchObject([
+    expect(await chars().listOrganization()).toMatchObject([
       { id: made.id, name: 'Ada', lastUsedAt: null, sequences: [] },
     ]);
     // Another team does not see it.
@@ -2446,7 +2450,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('edits a bible and looks with no sequence: a new version, the current pointer moves, no pin or event (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2542,9 +2546,9 @@ describe('team characters (#2017)', () => {
     });
     expect(cast.looks.map((look) => look.name)).toEqual(['Day wear', 'Gala']);
     // Another team cannot edit her or her looks.
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await expect(
-      createCharactersMethods(db, otherTeam).updateBible(
+      createCharactersMethods(db, otherOrganization).updateBible(
         null,
         made.id,
         { age: '1' },
@@ -2552,7 +2556,7 @@ describe('team characters (#2017)', () => {
       )
     ).rejects.toThrow('not found');
     await expect(
-      createCharacterLooksMethods(db, otherTeam).update(
+      createCharacterLooksMethods(db, otherOrganization).update(
         null,
         made.id,
         { clothing: 'x' },
@@ -2562,7 +2566,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('a deleted character is not read or edited from no sequence until it is restored (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2570,7 +2574,7 @@ describe('team characters (#2017)', () => {
       },
       { createdBy: actorId }
     );
-    expect(await chars().softDeleteForTeam(made.id)).toBe(true);
+    expect(await chars().softDeleteForOrganization(made.id)).toBe(true);
 
     expect(await chars().getCurrent(made.id)).toBeNull();
     await expect(
@@ -2601,7 +2605,7 @@ describe('team characters (#2017)', () => {
         .where(eq(characterLooks.characterId, made.id))
     ).toHaveLength(1);
 
-    expect(await chars().restoreForTeam(made.id)).toBe(true);
+    expect(await chars().restoreForOrganization(made.id)).toBe(true);
     expect(await chars().getCurrent(made.id)).toMatchObject({
       age: null,
       standardClothing: 'coat',
@@ -2609,7 +2613,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('analysis never rewrites a character the writer attached, even when no other sequence casts her (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2701,7 +2705,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('deleting a sequence keeps a character the writer attached to it alone (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2728,12 +2732,12 @@ describe('team characters (#2017)', () => {
       },
       analysis
     );
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await db
       .insert(organization)
-      .values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createCharactersMethods(db, otherTeam);
-    const theirLooks = createCharacterLooksMethods(db, otherTeam);
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createCharactersMethods(db, otherOrganization);
+    const theirLooks = createCharacterLooksMethods(db, otherOrganization);
 
     expect(await theirs.getById(sequenceId, created.id)).toBeNull();
     expect(await theirs.list(sequenceId)).toEqual([]);

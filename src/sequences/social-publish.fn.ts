@@ -18,10 +18,10 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
   sequenceAccessMiddleware,
-  teamMemberAccessMiddleware,
+  organizationMemberAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { getLogger } from '@/platform/logger';
-import { requireTeamMemberAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationMemberAccess } from '@/platform/server/auth/action-utils';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { getProductionDeploymentAppUrl } from '@/platform/server/env/environment';
@@ -57,14 +57,14 @@ async function requireUploadPostKey(
 }
 
 export const getSocialPublishingFn = createServerFn({ method: 'GET' })
-  .middleware([teamMemberAccessMiddleware])
+  .middleware([organizationMemberAccessMiddleware])
   .validator(zodValidator(z.object({ organizationId: ulidSchema })))
   .handler(async ({ context }) => ({
     enabled: await context.scopedDb.apiKeys.hasUsableKey('upload_post'),
   }));
 
 export const listSocialProfilesFn = createServerFn({ method: 'GET' })
-  .middleware([teamMemberAccessMiddleware])
+  .middleware([organizationMemberAccessMiddleware])
   .validator(zodValidator(z.object({ organizationId: ulidSchema })))
   .handler(async ({ context }) => {
     const apiKey = await requireUploadPostKey(context.scopedDb.apiKeys);
@@ -83,7 +83,10 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
       // A system admin opening another team's sequence gets that team's
       // scopedDb (and key). Reading is an admin power; posting on the team's
       // own social accounts is not.
-      await requireTeamMemberAccess(context.user.id, sequence.organizationId);
+      await requireOrganizationMemberAccess(
+        context.user.id,
+        sequence.organizationId
+      );
       const apiKey = await requireUploadPostKey(scopedDb.apiKeys);
       const exportRow = await scopedDb.sequenceExports.getById(data.exportId);
       assertPublishableExport(exportRow, sequence.id);
@@ -118,7 +121,7 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
   });
 
 export const getSocialPublishStatusFn = createServerFn({ method: 'GET' })
-  .middleware([teamMemberAccessMiddleware])
+  .middleware([organizationMemberAccessMiddleware])
   .validator(
     zodValidator(
       z.object({

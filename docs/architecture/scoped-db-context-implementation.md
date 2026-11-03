@@ -132,12 +132,12 @@ Update `src/platform/middleware.fn.ts`:
 ```typescript
 import { createScopedDb, type ScopedDbContext } from '@/lib/db/scoped-context';
 
-export type TeamContext = AuthContext & {
+export type OrganizationContext = AuthContext & {
   teamId: string;
   db: ScopedDbContext; // Add scoped context
 };
 
-export type SequenceContext = TeamContext & {
+export type SequenceContext = OrganizationContext & {
   sequence: Sequence;
 };
 
@@ -146,13 +146,15 @@ export type FrameContext = SequenceContext & {
 };
 ```
 
-### 2.2 Update authWithTeamMiddleware
+### 2.2 Update authWithOrganizationMiddleware
 
 ```typescript
-export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
+export const authWithOrganizationMiddleware = createMiddleware({
+  type: 'function',
+})
   .middleware([authMiddleware])
   .server(async ({ next, context }) => {
-    const team = await getUserDefaultTeam(context.user.id);
+    const team = await getUserDefaultOrganization(context.user.id);
     if (!team) throw new Error('No team found for user');
 
     return next({
@@ -251,7 +253,7 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
   .handler(async ({ data, context }) => {
     const seq = await getSequenceById(data.sequenceId);
     if (!seq) throw new Error('Sequence not found');
-    await requireTeamMemberAccess(context.user.id, seq.teamId);
+    await requireOrganizationMemberAccess(context.user.id, seq.teamId);
     return sequenceService.getSequence(data.sequenceId, data.includeFrames);
   });
 ```
@@ -260,7 +262,7 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
 
 ```typescript
 export const getSequenceFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .inputValidator(zodValidator(getSequenceInputSchema))
   .handler(async ({ data, context }) => {
     // Impossible to access wrong team - db is scoped
@@ -289,7 +291,7 @@ Update `src/look/styles.fn.ts` - currently uses `getDb()` directly:
 // Remove: import { getDb } from '#db-client';
 
 export const createStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .inputValidator(zodValidator(createStyleSchema))
   .handler(async ({ data, context }) => {
     return context.db.styles.create({

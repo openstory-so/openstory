@@ -14,9 +14,9 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
-  useDeleteTeamLocation,
-  useRestoreTeamLocation,
-} from '@/cast/ui/use-team-locations';
+  useDeleteOrganizationLocation,
+  useRestoreOrganizationLocation,
+} from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
@@ -28,8 +28,8 @@ export const DeleteLocationButton: React.FC<{
   locationId: string;
   name: string;
 }> = ({ locationId, name }) => {
-  const remove = useDeleteTeamLocation();
-  const restore = useRestoreTeamLocation();
+  const remove = useDeleteOrganizationLocation();
+  const restore = useRestoreOrganizationLocation();
   const navigate = useNavigate();
   const hydrated = useHydrated();
 

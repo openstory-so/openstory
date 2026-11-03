@@ -10,7 +10,7 @@ import { shotKeys } from '@/shots/ui/use-shots';
 import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
-import { teamLocationKeys } from '@/cast/ui/use-team-locations';
+import { organizationLocationKeys } from '@/cast/ui/use-organization-locations';
 import {
   musicPromptStalenessKey,
   sequenceKeys,
@@ -746,7 +746,11 @@ export function updateQueryCacheFromEvent(
       );
       // A match links the sequence to a team location (#1695): the team
       // list's sequence counts and order move.
-      debouncedInvalidate(queryClient, teamLocationKeys.all, 'team-locations');
+      debouncedInvalidate(
+        queryClient,
+        organizationLocationKeys.all,
+        'team-locations'
+      );
       invalidateSceneFacets(queryClient, sequenceId);
       break;
 
@@ -758,7 +762,11 @@ export function updateQueryCacheFromEvent(
         sequenceLocationKeys.all,
         'sequence-locations'
       );
-      debouncedInvalidate(queryClient, teamLocationKeys.all, 'team-locations');
+      debouncedInvalidate(
+        queryClient,
+        organizationLocationKeys.all,
+        'team-locations'
+      );
       debouncedInvalidate(
         queryClient,
         locationSheetVariantKeys.all,

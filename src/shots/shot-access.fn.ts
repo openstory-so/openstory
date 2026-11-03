@@ -7,7 +7,7 @@
  */
 import {
   sequenceAccessMiddleware,
-  type TeamContext,
+  type OrganizationContext,
 } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { loadShotTarget, type ShotTarget } from '@/shots/server/shot-context';
@@ -15,7 +15,7 @@ import { createMiddleware } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-export type ShotContext = TeamContext & ShotTarget;
+export type ShotContext = OrganizationContext & ShotTarget;
 
 /**
  * Shot access middleware

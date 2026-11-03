@@ -4,7 +4,7 @@
  *   GET  — list this team's sequences (most recent first, cursor-paginated).
  *   POST — one-shot sequence creation.
  *
- * Authenticated via `authWithTeamRequestMiddleware`: an API key
+ * Authenticated via `authWithOrganizationRequestMiddleware`: an API key
  * (`Authorization: Bearer <key>` or `x-api-key`, resolved to its owner by the
  * Better Auth apiKey plugin) or, equivalently, a dashboard session cookie. Both
  * verbs are team-scoped, so a key only ever sees its own team's sequences.
@@ -24,7 +24,7 @@
  * tool of their own.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import {
   type OneShotWaitResult,
   runOneShotCreate,
@@ -50,7 +50,7 @@ const logger = getLogger(['openstory', 'api-v1']);
 
 export const Route = createFileRoute('/api/v1/sequences')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ request, context }) =>
         runApiV1Handler(async () => {

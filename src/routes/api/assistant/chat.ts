@@ -12,7 +12,7 @@ import {
   type AssistantCaller,
 } from '@/assistant/server/assistant-chat';
 import { handleApiError } from '@/platform/errors';
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 
 type RouteContext = Pick<
   AssistantCaller,
@@ -27,7 +27,7 @@ async function callerFrom(
     scopedDb: context.scopedDb,
     user: context.user,
     organizationId: context.organizationId,
-    teamName: await context.scopedDb.assistant.teamName(),
+    organizationName: await context.scopedDb.assistant.organizationName(),
     origin: new URL(request.url).origin,
     request,
   };
@@ -44,7 +44,7 @@ function errorResponse(error: unknown): Response {
 
 export const Route = createFileRoute('/api/assistant/chat')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ request, context }) => {
         try {

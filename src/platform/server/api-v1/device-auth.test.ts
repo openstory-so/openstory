@@ -5,7 +5,7 @@ const deviceToken = vi.fn();
 const createApiKey = vi.fn();
 const findSession = vi.fn();
 const deleteSession = vi.fn();
-const getUserTeamMembership = vi.fn();
+const getUserOrganizationMembership = vi.fn();
 
 vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({
@@ -17,7 +17,7 @@ vi.doMock('@/platform/server/auth/config', () => ({
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
   getDeviceGrantOrganizationId: async () => 't1',
-  getUserTeamMembership,
+  getUserOrganizationMembership,
 }));
 
 const { exchangeDeviceCode } = await import('./device-auth');
@@ -54,9 +54,9 @@ describe('exchangeDeviceCode', () => {
       user: { id: 'u1' },
       session: {},
     });
-    getUserTeamMembership.mockResolvedValueOnce({
+    getUserOrganizationMembership.mockResolvedValueOnce({
       organizationId: 't1',
-      teamName: 'Team One',
+      organizationName: 'Team One',
     });
     createApiKey.mockResolvedValueOnce({ key: 'osk_secret' });
 

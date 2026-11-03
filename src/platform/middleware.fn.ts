@@ -5,9 +5,9 @@
 
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 import {
-  requireTeamAdminAccess,
-  requireTeamMemberAccess,
-  requireTeamOwnerAccess,
+  requireOrganizationAdminAccess,
+  requireOrganizationMemberAccess,
+  requireOrganizationOwnerAccess,
 } from '@/platform/server/auth/action-utils';
 import type { Session, User } from '@/platform/server/auth/config';
 import { getAuth } from '@/platform/server/auth/config';
@@ -32,7 +32,7 @@ import {
   assertCanWrite,
   restrictionNotice,
 } from '@/platform/server/compliance/enforcement';
-import { resolveTeamAndCompliance } from '@/platform/server/auth/team-memo';
+import { resolveOrganizationAndCompliance } from '@/platform/server/auth/organization-memo';
 import {
   AccountRestrictedError,
   AuthenticationError,
@@ -55,12 +55,12 @@ export type AuthContext = {
   session: Session;
 };
 
-export type TeamContext = AuthContext & {
+export type OrganizationContext = AuthContext & {
   organizationId: string;
   scopedDb: ScopedDb;
 };
 
-export type SequenceContext = TeamContext & {
+export type SequenceContext = OrganizationContext & {
   sequence: Sequence;
 };
 
@@ -210,7 +210,7 @@ export const authRequestMiddleware = createMiddleware().server(
  * Authenticates user, acts for the request's organization, and creates a scoped DB.
  * Throws 401 if no user, 403 if no team, 429 if a key is over its rate limit.
  */
-export const authWithTeamRequestMiddleware = createMiddleware().server(
+export const authWithOrganizationRequestMiddleware = createMiddleware().server(
   async ({ next, request }) => {
     // Server ROUTES don't get `analyticsFlushMiddleware` — that one is
     // `type: 'function'`, so it only composes into server functions. Without
@@ -251,7 +251,7 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
       }
 
       const { team, compliance } = principal.organizationId
-        ? await resolveTeamAndCompliance(
+        ? await resolveOrganizationAndCompliance(
             principal.user.id,
             request.method,
             principal.organizationId
@@ -261,7 +261,7 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
       if (!team || !compliance) {
         throw authErrorResponse(
           403,
-          'NO_TEAM',
+          'NO_ORGANIZATION',
           oauth
             ? 'This token was issued for an organization you no longer belong to. Re-authorize the app.'
             : 'This key or session is not linked to an organization you belong to.'
@@ -343,7 +343,9 @@ const analyticsFlushMiddleware = createMiddleware({ type: 'function' })
 /**
  * Auth with the session's active organization
  */
-export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
+export const authWithOrganizationMiddleware = createMiddleware({
+  type: 'function',
+})
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
     const request = getRequest();
@@ -351,7 +353,7 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
     if (!organizationId) {
       throw new Error('No active organization on this session');
     }
-    const { team, compliance } = await resolveTeamAndCompliance(
+    const { team, compliance } = await resolveOrganizationAndCompliance(
       context.user.id,
       request.method,
       organizationId
@@ -383,7 +385,7 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
     return next({
       context: {
         organizationId: team.organizationId,
-        teamName: team.teamName,
+        organizationName: team.organizationName,
         scopedDb: createScopedDb(team.organizationId, context.user.id),
       },
     });
@@ -395,10 +397,10 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
 
 /**
  * System admin middleware - requires ADMIN_EMAILS env var match
- * Extends authWithTeamMiddleware so context includes organizationId
+ * Extends authWithOrganizationMiddleware so context includes organizationId
  */
 export const systemAdminMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .server(async ({ next, context }) => {
     requireSystemAdmin(context.user.email);
     return next({
@@ -418,7 +420,7 @@ export const systemAdminMiddleware = createMiddleware({ type: 'function' })
  * Requires sequenceId in input data
  */
 export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     return next({ context: await loadSequence(context, data.sequenceId) });
@@ -430,7 +432,7 @@ export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
  * `context.sequence` is then null, and the team is the caller's own.
  */
 export const castAccessMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema.nullable() })))
   .server(async ({ next, context, data }) => {
     const loaded: {
@@ -479,12 +481,17 @@ async function loadSequence(
  * Verifies user has access to the specified team
  * Requires organizationId in input data
  */
-export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+export const organizationMemberAccessMiddleware = createMiddleware({
+  type: 'function',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     if (data.organizationId !== context.organizationId) {
-      await requireTeamMemberAccess(context.user.id, data.organizationId);
+      await requireOrganizationMemberAccess(
+        context.user.id,
+        data.organizationId
+      );
     }
 
     return next({
@@ -503,11 +510,13 @@ export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
  * Verifies user has admin access to the specified team
  * Requires organizationId in input data
  */
-export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+export const organizationAdminAccessMiddleware = createMiddleware({
+  type: 'function',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    await requireTeamAdminAccess(context.user.id, data.organizationId);
+    await requireOrganizationAdminAccess(context.user.id, data.organizationId);
 
     return next({
       context: {
@@ -525,11 +534,13 @@ export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
  * Verifies user has owner access to the specified team
  * Requires organizationId in input data
  */
-export const teamOwnerAccessMiddleware = createMiddleware({ type: 'function' })
-  .middleware([authWithTeamMiddleware])
+export const organizationOwnerAccessMiddleware = createMiddleware({
+  type: 'function',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.looseObject({ organizationId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    await requireTeamOwnerAccess(context.user.id, data.organizationId);
+    await requireOrganizationOwnerAccess(context.user.id, data.organizationId);
 
     return next({
       context: {

@@ -270,7 +270,7 @@ export type StudioRunInput =
       referenceVideos: string[];
     });
 
-/** Draft a prompt from the attached references (`draftStudioPromptForTeam`). */
+/** Draft a prompt from the attached references (`draftStudioPromptForOrganization`). */
 export const studioPromptDraftInputSchema = z.object({
   activity: studioActivitySchema,
   references: z

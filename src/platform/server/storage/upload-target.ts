@@ -10,7 +10,7 @@
 
 import { fileExists } from '#storage';
 import { isSystemAdmin } from '@/platform/server/auth/system-admin';
-import { getUserTeamMembership } from '@/platform/server/db/scoped';
+import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
 import {
   LIKENESS_CHECKED_BUCKETS,
   STORAGE_BUCKETS,
@@ -83,7 +83,7 @@ export async function resolveUploadTarget(
   if (!ownerSegment) return fail('Invalid upload path', 400);
   const authorized =
     isSystemAdmin(user.email) ||
-    (await getUserTeamMembership(user.id, ownerSegment)) !== null;
+    (await getUserOrganizationMembership(user.id, ownerSegment)) !== null;
   if (!authorized) {
     return fail('Path must be within your team prefix', 403);
   }

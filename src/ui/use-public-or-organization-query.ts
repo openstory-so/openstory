@@ -12,10 +12,10 @@
 import { useQuery, type QueryKey } from '@tanstack/react-query';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 
-export function usePublicOrTeamQuery<T>(options: {
-  teamKey: QueryKey;
+export function usePublicOrOrganizationQuery<T>(options: {
+  organizationKey: QueryKey;
   publicKey: QueryKey;
-  teamFn: () => Promise<T>;
+  organizationFn: () => Promise<T>;
   publicFn: () => Promise<T>;
   enabled?: boolean;
   staleTime?: number;
@@ -24,14 +24,14 @@ export function usePublicOrTeamQuery<T>(options: {
   const isAuthenticated = !!session;
 
   return useQuery<T>({
-    queryKey: isAuthenticated ? options.teamKey : options.publicKey,
+    queryKey: isAuthenticated ? options.organizationKey : options.publicKey,
     queryFn: () => {
       if (sessionError) {
         throw new Error(`Failed to fetch session: ${sessionError.message}`, {
           cause: sessionError,
         });
       }
-      return isAuthenticated ? options.teamFn() : options.publicFn();
+      return isAuthenticated ? options.organizationFn() : options.publicFn();
     },
     staleTime: options.staleTime,
     enabled: (options.enabled ?? true) && !isPending,

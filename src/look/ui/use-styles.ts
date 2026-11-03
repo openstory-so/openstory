@@ -9,7 +9,7 @@ import {
   getStylesFn,
   promoteSequenceStyleFn,
 } from '@/look/styles.fn';
-import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
+import { usePublicOrOrganizationQuery } from '@/ui/use-public-or-organization-query';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { publicStylesQueryKey } from './public-styles-query';
 import { simpleHash } from '@/platform/hash';
@@ -37,12 +37,12 @@ export const styleKeys = {
 // Hook for listing styles.
 // Anonymous (logged-out) visitors get the public style catalogue so they can
 // compose a sequence before signing in; authenticated users get their team's
-// styles plus public ones (see usePublicOrTeamQuery for the session rules).
+// styles plus public ones (see usePublicOrOrganizationQuery for the session rules).
 export function useStyles(organizationId?: string, enabled = true) {
-  return usePublicOrTeamQuery<Style[]>({
-    teamKey: styleKeys.list(organizationId),
+  return usePublicOrOrganizationQuery<Style[]>({
+    organizationKey: styleKeys.list(organizationId),
     publicKey: styleKeys.public(),
-    teamFn: () => getStylesFn(),
+    organizationFn: () => getStylesFn(),
     publicFn: () => getPublicStylesFn(),
     staleTime: 10 * 60 * 1000, // 10 minutes (styles change less frequently)
     enabled,

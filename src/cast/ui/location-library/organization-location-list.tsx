@@ -1,10 +1,10 @@
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { LibraryVirtualGrid } from '@/cast/ui/library-virtual-grid';
-import { TeamLocationCard } from '@/cast/ui/location-library/team-location-card';
+import { OrganizationLocationCard } from '@/cast/ui/location-library/organization-location-card';
 import {
-  useTeamLocationDivergentVariants,
-  useTeamLocations,
-} from '@/cast/ui/use-team-locations';
+  useOrganizationLocationDivergentVariants,
+  useOrganizationLocations,
+} from '@/cast/ui/use-organization-locations';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { MapPin } from 'lucide-react';
 import type React from 'react';
@@ -14,12 +14,12 @@ import type React from 'react';
  * sequence's one-off locations are here too, so the rows are virtualized
  * against the page's scroller.
  */
-export const TeamLocationList: React.FC<{
+export const OrganizationLocationList: React.FC<{
   scrollRef: React.RefObject<HTMLDivElement | null>;
   /** The page's `?search=`: matched against name and description. */
   search: string;
 }> = ({ scrollRef, search }) => {
-  const { data: all } = useTeamLocations();
+  const { data: all } = useOrganizationLocations();
   const q = search.trim().toLowerCase();
   const locations = q
     ? all.filter(
@@ -28,7 +28,7 @@ export const TeamLocationList: React.FC<{
           l.description?.toLowerCase().includes(q)
       )
     : all;
-  const { data: divergent } = useTeamLocationDivergentVariants();
+  const { data: divergent } = useOrganizationLocationDivergentVariants();
 
   if (locations.length === 0) {
     return (
@@ -51,7 +51,7 @@ export const TeamLocationList: React.FC<{
       scrollRef={scrollRef}
       estimateRowHeight={280}
       renderItem={(location) => (
-        <TeamLocationCard
+        <OrganizationLocationCard
           location={location}
           divergentVariantId={
             divergent?.find((v) => v.locationId === location.id)?.id

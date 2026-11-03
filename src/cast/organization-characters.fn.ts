@@ -9,37 +9,41 @@ import { z } from 'zod';
 import { characterBibleFieldsSchema } from '@/cast/bible-field';
 import { lookFieldsSchema } from '@/cast/look-field';
 import {
-  createTeamCharacter,
-  createTeamCharacterLook,
-  deleteTeamCharacter,
-  removeTeamCharacterLook,
-  restoreTeamCharacterLook,
-  updateTeamCharacter,
-  updateTeamCharacterLook,
-  restoreTeamCharacter,
+  createOrganizationCharacter,
+  createOrganizationCharacterLook,
+  deleteOrganizationCharacter,
+  removeOrganizationCharacterLook,
+  restoreOrganizationCharacterLook,
+  updateOrganizationCharacter,
+  updateOrganizationCharacterLook,
+  restoreOrganizationCharacter,
 } from '@/cast/server/cast-edit';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 const characterIdSchema = z.object({ characterId: ulidSchema });
 const lookIdSchema = characterIdSchema.extend({ lookId: ulidSchema });
 // A new character has no voice yet; an edit may describe one (#2017).
-const teamBibleFieldsSchema = characterBibleFieldsSchema.omit({
+const organizationBibleFieldsSchema = characterBibleFieldsSchema.omit({
   voiceDescription: true,
 });
 const nameSchema = z.string().trim().min(1).max(255);
 
-export const listTeamCharactersFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
-  .handler(async ({ context }) => await context.scopedDb.characters.listTeam());
+export const listOrganizationCharactersFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
+  .handler(
+    async ({ context }) => await context.scopedDb.characters.listOrganization()
+  );
 
-export const getTeamCharacterFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+export const getOrganizationCharacterFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(async ({ context, data }) => {
     // Null, not an error: the page says "not found" for a character that is
     // gone or another team's.
-    return await context.scopedDb.characters.getTeamCharacter(data.characterId);
+    return await context.scopedDb.characters.getOrganizationCharacter(
+      data.characterId
+    );
   });
 
 /**
@@ -47,13 +51,16 @@ export const getTeamCharacterFn = createServerFn({ method: 'GET' })
  * matched to a character by scene tags in memory, one sequence at a time, so
  * this is for the character's own page and never for a list.
  */
-export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+export const getOrganizationCharacterShotCountsFn = createServerFn({
+  method: 'GET',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getTeamCharacter(
-      data.characterId
-    );
+    const character =
+      await context.scopedDb.characters.getOrganizationCharacter(
+        data.characterId
+      );
     const counts: Record<string, number> = {};
     if (!character) return counts;
     // ponytail: every shot of every casting sequence is loaded; give scene tags the cast id when a character is in hundreds.
@@ -67,33 +74,33 @@ export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
     return counts;
   });
 
-/** Delete a character no sequence casts. Soft: `restoreTeamCharacterFn` undoes it. */
-export const deleteTeamCharacterFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+/** Delete a character no sequence casts. Soft: `restoreOrganizationCharacterFn` undoes it. */
+export const deleteOrganizationCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(
     async ({ context, data }) =>
-      await deleteTeamCharacter(
+      await deleteOrganizationCharacter(
         context.scopedDb,
         { userId: context.user.id },
         data.characterId
       )
   );
 
-export const restoreTeamCharacterFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const restoreOrganizationCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(
     async ({ context, data }) =>
-      await restoreTeamCharacter(context.scopedDb, data.characterId)
+      await restoreOrganizationCharacter(context.scopedDb, data.characterId)
   );
 
 /** Make a character with no sequence (#2065). */
-export const createTeamCharacterFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const createOrganizationCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
-      teamBibleFieldsSchema.extend({
+      organizationBibleFieldsSchema.extend({
         name: nameSchema,
         // Required here: no sequence style to take it from (#2017).
         rendering: z.string().trim().min(1).max(2000),
@@ -102,7 +109,7 @@ export const createTeamCharacterFn = createServerFn({ method: 'POST' })
   )
   .handler(
     async ({ context, data }) =>
-      await createTeamCharacter(
+      await createOrganizationCharacter(
         context.scopedDb,
         { userId: context.user.id },
         data
@@ -110,8 +117,8 @@ export const createTeamCharacterFn = createServerFn({ method: 'POST' })
   );
 
 /** Edit a character's bible from no sequence: only its current version moves. */
-export const updateTeamCharacterFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const updateOrganizationCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       characterBibleFieldsSchema.extend({
@@ -123,7 +130,7 @@ export const updateTeamCharacterFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { characterId, ...fields } = data;
-    return await updateTeamCharacter(
+    return await updateOrganizationCharacter(
       context.scopedDb,
       { userId: context.user.id },
       characterId,
@@ -131,12 +138,14 @@ export const updateTeamCharacterFn = createServerFn({ method: 'POST' })
     );
   });
 
-export const createTeamCharacterLookFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const createOrganizationCharacterLookFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(characterIdSchema.extend(lookFieldsSchema.shape)))
   .handler(
     async ({ context, data }) =>
-      await createTeamCharacterLook(
+      await createOrganizationCharacterLook(
         context.scopedDb,
         { userId: context.user.id },
         data.characterId,
@@ -144,14 +153,16 @@ export const createTeamCharacterLookFn = createServerFn({ method: 'POST' })
       )
   );
 
-export const updateTeamCharacterLookFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const updateOrganizationCharacterLookFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(lookIdSchema.extend(lookFieldsSchema.partial().shape))
   )
   .handler(
     async ({ context, data }) =>
-      await updateTeamCharacterLook(
+      await updateOrganizationCharacterLook(
         context.scopedDb,
         { userId: context.user.id },
         data.characterId,
@@ -160,12 +171,14 @@ export const updateTeamCharacterLookFn = createServerFn({ method: 'POST' })
       )
   );
 
-export const removeTeamCharacterLookFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const removeOrganizationCharacterLookFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(lookIdSchema))
   .handler(
     async ({ context, data }) =>
-      await removeTeamCharacterLook(
+      await removeOrganizationCharacterLook(
         context.scopedDb,
         { userId: context.user.id },
         data.characterId,
@@ -173,12 +186,14 @@ export const removeTeamCharacterLookFn = createServerFn({ method: 'POST' })
       )
   );
 
-export const restoreTeamCharacterLookFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+export const restoreOrganizationCharacterLookFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(lookIdSchema))
   .handler(
     async ({ context, data }) =>
-      await restoreTeamCharacterLook(
+      await restoreOrganizationCharacterLook(
         context.scopedDb,
         { userId: context.user.id },
         data.characterId,

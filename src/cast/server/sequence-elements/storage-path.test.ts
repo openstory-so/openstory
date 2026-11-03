@@ -7,18 +7,21 @@ import {
 } from './storage-path';
 
 describe('isValidElementStoragePath', () => {
-  const organizationId = 'teamA';
+  const organizationId = 'organizationA';
 
   it('accepts a well-formed path under the team prefix', () => {
     expect(
-      isValidElementStoragePath('elements/teamA/file.png', organizationId)
+      isValidElementStoragePath(
+        'elements/organizationA/file.png',
+        organizationId
+      )
     ).toBe(true);
   });
 
   it('accepts nested paths under the team prefix', () => {
     expect(
       isValidElementStoragePath(
-        'elements/teamA/sub/dir/file.png',
+        'elements/organizationA/sub/dir/file.png',
         organizationId
       )
     ).toBe(true);
@@ -27,7 +30,7 @@ describe('isValidElementStoragePath', () => {
   it('rejects a `..` segment that traverses out of the team namespace', () => {
     expect(
       isValidElementStoragePath(
-        'elements/teamA/../teamB/file.png',
+        'elements/organizationA/../organizationB/file.png',
         organizationId
       )
     ).toBe(false);
@@ -35,25 +38,34 @@ describe('isValidElementStoragePath', () => {
 
   it('rejects empty segments (double slash) that would normalize away', () => {
     expect(
-      isValidElementStoragePath('elements/teamA//file.png', organizationId)
+      isValidElementStoragePath(
+        'elements/organizationA//file.png',
+        organizationId
+      )
     ).toBe(false);
   });
 
   it('rejects an empty rest after the team prefix (path equals the prefix)', () => {
-    expect(isValidElementStoragePath('elements/teamA/', organizationId)).toBe(
-      false
-    );
+    expect(
+      isValidElementStoragePath('elements/organizationA/', organizationId)
+    ).toBe(false);
   });
 
   it('rejects another team prefix even with a valid-looking suffix', () => {
     expect(
-      isValidElementStoragePath('elements/teamB/file.png', organizationId)
+      isValidElementStoragePath(
+        'elements/organizationB/file.png',
+        organizationId
+      )
     ).toBe(false);
   });
 
-  it('rejects a prefix-collision team id (teamAB starts with teamA but is different)', () => {
+  it('rejects a prefix-collision team id (organizationAB starts with organizationA but is different)', () => {
     expect(
-      isValidElementStoragePath('elements/teamAB/file.png', organizationId)
+      isValidElementStoragePath(
+        'elements/organizationAB/file.png',
+        organizationId
+      )
     ).toBe(false);
   });
 });
@@ -64,7 +76,7 @@ describe('draft upload keys round-trip', () => {
   // exact string is what the client stores as `tempPath` and hands back at
   // attach time — if either side's shape drifts, every draft element is
   // rejected at create with nothing else to catch it.
-  const organizationId = 'teamA';
+  const organizationId = 'organizationA';
   const key = buildR2Key(
     STORAGE_BUCKETS.ELEMENTS,
     `${organizationId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/01JXYZ.png`
@@ -76,7 +88,7 @@ describe('draft upload keys round-trip', () => {
 
   it('derives a public URL pointing back at the same object', () => {
     expect(elementImageUrlFromPath(key)).toBe(
-      '/r2/elements/teamA/uploads/01JXYZ.png'
+      '/r2/elements/organizationA/uploads/01JXYZ.png'
     );
   });
 });

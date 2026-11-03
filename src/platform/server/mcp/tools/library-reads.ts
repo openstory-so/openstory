@@ -121,7 +121,7 @@ const listLibraryCharacters = productionRead(
         input,
         // Bound to the team, like the other library cursors.
         ['library_characters', scopedDb.organizationId],
-        pageRows(await scopedDb.characters.listTeam())
+        pageRows(await scopedDb.characters.listOrganization())
       ),
       origin
     )
@@ -155,7 +155,7 @@ const listLibraryLocations = productionRead(
         input,
         // Bound to the team, like the other library cursors.
         ['library_locations', scopedDb.organizationId],
-        pageRows(await scopedDb.locations.listTeam())
+        pageRows(await scopedDb.locations.listOrganization())
       ),
       origin
     )
@@ -168,7 +168,7 @@ const getLibraryLocation = productionRead(
   documentSchema,
   async (input, { scopedDb, origin }) => {
     const data = await readCast(scopedDb, 'location', input.id, '', origin);
-    const use = await scopedDb.locations.getTeamLocation(input.id);
+    const use = await scopedDb.locations.getOrganizationLocation(input.id);
     if (!use) throw new NotFoundError('Library resource not found.');
     return {
       document: await readDocument(

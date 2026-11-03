@@ -442,7 +442,7 @@ function makeContext(
     shotPromptVersions: { getSelectedMotionByShots },
     sequence: vi.fn(() => ({ updateStatus })),
     sequenceVariants: { claimMusic, failMusicClaim: vi.fn(async () => {}) },
-    teamManagement: {
+    organizationManagement: {
       getMemberEmail: vi.fn(async () => 'owner@example.com'),
     },
   };

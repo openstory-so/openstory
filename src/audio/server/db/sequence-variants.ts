@@ -559,7 +559,7 @@ export function createSequenceVariantsMethods(db: Database) {
      * corner-dot indicator on the sequence dashboard — a single round-trip
      * keyed by `organizationId` instead of N per-sequence calls.
      */
-    listDivergentByTeam: async (
+    listDivergentByOrganization: async (
       organizationId: string
     ): Promise<Array<{ sequenceId: string; hasMusic: boolean }>> => {
       const musicRows = await db

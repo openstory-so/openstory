@@ -65,11 +65,11 @@ describe('ensureSystemTemplatesSeeded', () => {
     const logs: string[] = [];
     await ensureSystemTemplatesSeeded(db, (m) => logs.push(m));
 
-    const [systemTeam] = await db
+    const [systemOrganization] = await db
       .select()
       .from(organization)
       .where(eq(organization.slug, 'system-templates'));
-    expect(systemTeam).toBeDefined();
+    expect(systemOrganization).toBeDefined();
 
     const counts = await templateCounts();
     expect(counts.styles).toBe(DEFAULT_SYSTEM_STYLES.length);

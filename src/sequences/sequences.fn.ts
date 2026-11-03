@@ -46,7 +46,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import {
@@ -61,7 +61,7 @@ import {
 } from '@/sequences/server/sequence-edit';
 
 export const getSequencesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     return context.scopedDb.sequences.list();
   });
@@ -69,7 +69,7 @@ export const getSequencesFn = createServerFn({ method: 'GET' })
 /** Archived sequences for the unarchive picker (#1108 Phase 4) — the default
  * list excludes them. */
 export const getArchivedSequencesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     return context.scopedDb.sequences.listArchived();
   });
@@ -140,7 +140,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
  * fan-out, element promotion, and workflow trigger.
  */
 export const createSequenceFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(createSequenceSchema))
   .handler(async ({ data, context }) => {
     const { sequences } = await createSequences(data, {

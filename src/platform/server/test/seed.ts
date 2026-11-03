@@ -95,7 +95,7 @@ export async function createTestUser(
   const name = opts.name ?? 'E2E Test User';
 
   const email = `test-${userId.slice(-8).toLowerCase()}@e2e.test`;
-  const teamSlug = `test-team-${organizationId.slice(-8).toLowerCase()}`;
+  const organizationSlug = `test-team-${organizationId.slice(-8).toLowerCase()}`;
 
   await db.insert(user).values({
     id: userId,
@@ -110,7 +110,7 @@ export async function createTestUser(
   await db.insert(organization).values({
     id: organizationId,
     name: 'E2E Test Team',
-    slug: teamSlug,
+    slug: organizationSlug,
     createdAt: now,
     updatedAt: now,
   });

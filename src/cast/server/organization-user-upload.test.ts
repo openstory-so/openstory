@@ -5,22 +5,22 @@ const fileExists = vi.fn();
 vi.doMock('#storage', () => ({ fileExists }));
 
 const {
-  assertTeamUserUploadAttachable,
-  isTeamUserUploadUrl,
-  teamUserUploadStoragePath,
-} = await import('./team-user-upload');
+  assertOrganizationUserUploadAttachable,
+  isOrganizationUserUploadUrl,
+  organizationUserUploadStoragePath,
+} = await import('./organization-user-upload');
 
-describe('isTeamUserUploadUrl', () => {
+describe('isOrganizationUserUploadUrl', () => {
   it('accepts uploads/ and leftover temp/ under this team', () => {
     expect(
-      isTeamUserUploadUrl(
+      isOrganizationUserUploadUrl(
         '/r2/talent/team-1/uploads/a.png',
         STORAGE_BUCKETS.TALENT,
         'team-1'
       )
     ).toBe(true);
     expect(
-      isTeamUserUploadUrl(
+      isOrganizationUserUploadUrl(
         '/r2/locations/team-1/temp/a.png',
         STORAGE_BUCKETS.LOCATIONS,
         'team-1'
@@ -30,14 +30,14 @@ describe('isTeamUserUploadUrl', () => {
 
   it('rejects another team or an entity folder', () => {
     expect(
-      isTeamUserUploadUrl(
+      isOrganizationUserUploadUrl(
         '/r2/talent/team-2/uploads/a.png',
         STORAGE_BUCKETS.TALENT,
         'team-1'
       )
     ).toBe(false);
     expect(
-      isTeamUserUploadUrl(
+      isOrganizationUserUploadUrl(
         '/r2/talent/team-1/tal-1/headshot.png',
         STORAGE_BUCKETS.TALENT,
         'team-1'
@@ -46,15 +46,15 @@ describe('isTeamUserUploadUrl', () => {
   });
 });
 
-describe('teamUserUploadStoragePath', () => {
+describe('organizationUserUploadStoragePath', () => {
   it('writes under uploads/', () => {
-    expect(teamUserUploadStoragePath('team-1', 'up-1', 'png')).toBe(
+    expect(organizationUserUploadStoragePath('team-1', 'up-1', 'png')).toBe(
       'team-1/uploads/up-1.png'
     );
   });
 });
 
-describe('assertTeamUserUploadAttachable', () => {
+describe('assertOrganizationUserUploadAttachable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fileExists.mockResolvedValue(true);
@@ -62,7 +62,7 @@ describe('assertTeamUserUploadAttachable', () => {
 
   it('returns the bucket-relative path when the object exists', async () => {
     await expect(
-      assertTeamUserUploadAttachable({
+      assertOrganizationUserUploadAttachable({
         url: '/r2/talent/team-1/uploads/a.png',
         bucket: STORAGE_BUCKETS.TALENT,
         organizationId: 'team-1',
@@ -80,7 +80,7 @@ describe('assertTeamUserUploadAttachable', () => {
   it('refuses a missing object', async () => {
     fileExists.mockResolvedValue(false);
     await expect(
-      assertTeamUserUploadAttachable({
+      assertOrganizationUserUploadAttachable({
         url: '/r2/talent/team-1/uploads/gone.png',
         bucket: STORAGE_BUCKETS.TALENT,
         organizationId: 'team-1',
@@ -90,7 +90,7 @@ describe('assertTeamUserUploadAttachable', () => {
 
   it('refuses a path outside uploads/temp', async () => {
     await expect(
-      assertTeamUserUploadAttachable({
+      assertOrganizationUserUploadAttachable({
         url: '/r2/talent/team-1/tal-1/a.png',
         bucket: STORAGE_BUCKETS.TALENT,
         organizationId: 'team-1',

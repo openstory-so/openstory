@@ -69,13 +69,15 @@ const FLUX_SCHEMA: ModelInputJsonSchema = {
   required: ['prompt'],
 };
 
-const TEAM_ID = generateId();
+const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(organization).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db
+    .insert(organization)
+    .values([{ id: ORGANIZATION_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -156,7 +158,7 @@ describe('createGeneratedAsset', () => {
     mockRequireGenerationAllowed.mockRejectedValue(
       new AccountRestrictedError('paused')
     );
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createGeneratedAsset(scopedDb, createData({ prompt: 'ok' }))
@@ -168,7 +170,7 @@ describe('createGeneratedAsset', () => {
   });
 
   it('rejects invalid input BEFORE the credit gate, leaving no row', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     const result = await createGeneratedAsset(
       scopedDb,
@@ -188,7 +190,7 @@ describe('createGeneratedAsset', () => {
     mockRequireCredits.mockRejectedValueOnce(
       new Error('Insufficient credits for image generation')
     );
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createGeneratedAsset(scopedDb, createData({ prompt: 'a red fox' }))
@@ -199,7 +201,7 @@ describe('createGeneratedAsset', () => {
   });
 
   it('happy path: reserves the row, triggers /asset, stores the run id', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     const result = await createGeneratedAsset(
       scopedDb,
@@ -220,7 +222,7 @@ describe('createGeneratedAsset', () => {
     expect(rows).toHaveLength(1);
     const row = rows[0];
     expect(row?.id).toBe(result.id);
-    expect(row?.organizationId).toBe(TEAM_ID);
+    expect(row?.organizationId).toBe(ORGANIZATION_ID);
     expect(row?.userId).toBe(USER_ID);
     expect(row?.provider).toBe('fal');
     expect(row?.status).toBe('queued');
@@ -231,7 +233,7 @@ describe('createGeneratedAsset', () => {
       '/asset',
       {
         userId: USER_ID,
-        organizationId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
         assetId: result.id,
         endpointId: 'fal-ai/flux-1/dev',
         activity: 'image',
@@ -243,7 +245,7 @@ describe('createGeneratedAsset', () => {
 
   it('marks the row failed (and rethrows) when the workflow trigger throws', async () => {
     mockTriggerWorkflow.mockRejectedValueOnce(new Error('binding exploded'));
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createGeneratedAsset(scopedDb, createData({ prompt: 'a red fox' }))

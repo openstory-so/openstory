@@ -23,11 +23,11 @@ import { isShortScript } from '@/models/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { createTeamCharacter } from '@/cast/server/cast-edit';
+import { createOrganizationCharacter } from '@/cast/server/cast-edit';
 import {
-  createTeamLocation,
-  triggerTeamLocationSheet,
-} from '@/cast/server/locations/team-locations';
+  createOrganizationLocation,
+  triggerOrganizationLocationSheet,
+} from '@/cast/server/locations/organization-locations';
 import { renderingOfStyle } from '@/cast/rendering';
 import { parseStyleConfig } from '@/look/style-config';
 import { getLogger } from '@/platform/logger';
@@ -222,8 +222,12 @@ async function rollbackInlineCreates(
   const results = await Promise.allSettled([
     // Nothing uses a character or location this request made, so the team
     // delete holds.
-    ...characterIds.map((id) => ctx.scopedDb.characters.softDeleteForTeam(id)),
-    ...locationIds.map((id) => ctx.scopedDb.locations.softDeleteForTeam(id)),
+    ...characterIds.map((id) =>
+      ctx.scopedDb.characters.softDeleteForOrganization(id)
+    ),
+    ...locationIds.map((id) =>
+      ctx.scopedDb.locations.softDeleteForOrganization(id)
+    ),
   ]);
   for (const result of results) {
     if (result.status === 'rejected') {
@@ -311,7 +315,7 @@ export async function runOneShotCreate(
           characters: ctx.scopedDb.characters,
           createCharacter: async (item) => {
             // The sequence draws the character's sheet.
-            const character = await createTeamCharacter(
+            const character = await createOrganizationCharacter(
               ctx.scopedDb,
               { userId: ctx.user.id },
               {
@@ -335,7 +339,7 @@ export async function runOneShotCreate(
           createLocation: async (item) => {
             // A team location (#1695). Rendered as the sequence's style
             // says, unless the caller said.
-            const location = await createTeamLocation(
+            const location = await createOrganizationLocation(
               ctx.scopedDb,
               {
                 name: item.name,
@@ -404,7 +408,7 @@ export async function runOneShotCreate(
     // the generation plan owes a missing sheet, so the run draws it.
     await Promise.allSettled(
       createdLocationIds.map((locationId) =>
-        triggerTeamLocationSheet(ctx.scopedDb, {
+        triggerOrganizationLocationSheet(ctx.scopedDb, {
           userId: ctx.user.id,
           organizationId: ctx.organizationId,
           locationId,

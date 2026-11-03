@@ -264,7 +264,9 @@ function objectId(
   return typeof value === 'string' ? value : value.id;
 }
 
-export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {
+export async function organizationHasSavedCard(
+  scopedDb: ScopedDb
+): Promise<boolean> {
   const settings = await scopedDb.billing.getBillingSettings();
   if (!settings.stripeCustomerId) return false;
   const stripe = getStripeOrThrow();

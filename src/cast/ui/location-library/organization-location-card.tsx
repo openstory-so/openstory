@@ -1,4 +1,4 @@
-import type { TeamLocation } from '@/cast/server/db/locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
 import { locationUseLine } from '@/cast/ui/locations/location-picker-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -8,8 +8,8 @@ import { MapPin } from 'lucide-react';
 import type React from 'react';
 
 /** One of the team's locations (#1695). The picture is its sheet. */
-export const TeamLocationCard: React.FC<{
-  location: TeamLocation;
+export const OrganizationLocationCard: React.FC<{
+  location: OrganizationLocation;
   /** A sheet alternate waiting to be compared, shown as a corner dot. */
   divergentVariantId: string | undefined;
 }> = ({ location, divergentVariantId }) => (

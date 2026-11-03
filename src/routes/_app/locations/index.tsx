@@ -1,5 +1,5 @@
 import { NewLocationDialog } from '@/cast/ui/location-library/new-location-dialog';
-import { TeamLocationList } from '@/cast/ui/location-library/team-location-list';
+import { OrganizationLocationList } from '@/cast/ui/location-library/organization-location-list';
 import { LibraryGridSkeleton } from '@/cast/ui/library-virtual-grid';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
@@ -62,7 +62,10 @@ function LocationsPage() {
               }
             />
             <Suspense fallback={<LibraryGridSkeleton />}>
-              <TeamLocationList scrollRef={scrollRef} search={search ?? ''} />
+              <OrganizationLocationList
+                scrollRef={scrollRef}
+                search={search ?? ''}
+              />
             </Suspense>
           </div>
         ) : isPending ? (

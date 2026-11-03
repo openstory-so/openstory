@@ -3,13 +3,13 @@
  * Balance, checkout, transactions, and auto-top-up
  */
 
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
 import { roleHasPermission } from '@/platform/auth/organization-access';
 import { getUserRole } from '@/platform/server/auth/permissions';
 import {
   createCheckoutSession,
   createSetupCheckoutSession,
-  teamHasSavedCard,
+  organizationHasSavedCard,
 } from '@/billing/server/checkout';
 import {
   captureCheckoutCanceledFromSession,
@@ -37,7 +37,7 @@ import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import Stripe from 'stripe';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 
 const logger = getLogger(['openstory', 'functions', 'billing']);
 
@@ -49,7 +49,7 @@ const checkoutInputSchema = z.object({
 });
 
 export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(checkoutInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
@@ -75,13 +75,16 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
 
 /** Save a card with no charge (Stripe Checkout `mode: 'setup'`). */
 export const createSetupCheckoutSessionFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.organizationId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
     const appUrl = getServerAppUrl(getRequest());
     return createSetupCheckoutSession({
@@ -103,7 +106,7 @@ const reportCheckoutCanceledSchema = z.object({
  * not a client-only event (#1466).
  */
 export const reportCheckoutCanceledFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(reportCheckoutCanceledSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) return { ok: true as const };
@@ -147,7 +150,7 @@ export type SavedPaymentMethod = {
  * gets `canManage: false` and no cards, so the page can say so.
  */
 export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(
     async ({
       context,
@@ -227,14 +230,17 @@ const purchaseInputSchema = z.object({
  * still go through Stripe Checkout (which saves them for next time).
  */
 export const purchaseCreditsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(purchaseInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.organizationId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
     const settings = await context.scopedDb.billing.getBillingSettings();
     if (!settings.stripeCustomerId) {
@@ -407,7 +413,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 export const getBillingBalanceFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     const { scopedDb } = context;
 
@@ -447,7 +453,7 @@ const founderCreditsInputSchema = z.object({
 });
 
 export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(founderCreditsInputSchema))
   .handler(async ({ data, context }) => {
     const balance = await context.scopedDb.billing.getBalance();
@@ -529,7 +535,7 @@ type Transaction = {
 };
 
 export const getTransactionsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(transactionsInputSchema))
   .handler(
     async ({
@@ -576,16 +582,19 @@ const autoTopUpInputSchema = z.object({
 });
 
 export const updateAutoTopUpFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(autoTopUpInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.organizationId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
-    if (data.enabled && !(await teamHasSavedCard(context.scopedDb))) {
+    if (data.enabled && !(await organizationHasSavedCard(context.scopedDb))) {
       throw new ValidationError('Add a card first');
     }
 

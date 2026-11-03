@@ -4,7 +4,7 @@
  * against the picks and links the sequence to the ones that match.
  */
 
-import type { TeamLocation } from '@/cast/server/db/locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
 import { NewLocationDialog } from '@/cast/ui/location-library/new-location-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
@@ -25,7 +25,7 @@ import { useState } from 'react';
 
 type LocationSuggestionSelectorProps = {
   /** The team's locations; undefined while they load. */
-  locations: readonly TeamLocation[] | undefined;
+  locations: readonly OrganizationLocation[] | undefined;
   failed: boolean;
   /** Signed out there is no team, so nothing to pick. */
   signedOut: boolean;
@@ -34,10 +34,10 @@ type LocationSuggestionSelectorProps = {
   disabled: boolean;
 };
 
-const Picture: React.FC<{ location: TeamLocation; iconClass: string }> = ({
-  location,
-  iconClass,
-}) =>
+const Picture: React.FC<{
+  location: OrganizationLocation;
+  iconClass: string;
+}> = ({ location, iconClass }) =>
   location.referenceImageUrl ? (
     <AppImage
       src={location.referenceImageUrl}

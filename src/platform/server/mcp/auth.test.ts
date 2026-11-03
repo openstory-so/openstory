@@ -6,7 +6,7 @@ const verifyOAuthAccessToken = vi.fn();
 const getSession = vi.fn();
 const getUserById = vi.fn();
 const getApiKeyOrganizationId = vi.fn();
-const getUserTeamMembership = vi.fn();
+const getUserOrganizationMembership = vi.fn();
 const loadComplianceState = vi.fn();
 
 vi.doMock('#env', () => ({
@@ -26,7 +26,7 @@ vi.doMock('@/platform/server/auth/config', () => ({
 vi.doMock('@/platform/server/db/scoped', () => ({
   getApiKeyOrganizationId,
   getUserById,
-  getUserTeamMembership,
+  getUserOrganizationMembership,
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   loadComplianceState,
@@ -39,7 +39,11 @@ const { authenticateMcpRequest } = await import('./auth');
 
 const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
-const team = { organizationId: 'team_1', teamName: 'Ada', role: 'owner' };
+const team = {
+  organizationId: 'team_1',
+  organizationName: 'Ada',
+  role: 'owner',
+};
 const oauth = {
   userId: 'user_1',
   organizationId: 'team_1',
@@ -62,7 +66,7 @@ beforeEach(() => {
     enforcement: { canAccess: true, canWrite: true },
   });
   getApiKeyOrganizationId.mockResolvedValue('team_1');
-  getUserTeamMembership.mockResolvedValue(team);
+  getUserOrganizationMembership.mockResolvedValue(team);
 });
 
 describe('authenticateMcpRequest', () => {
@@ -117,7 +121,10 @@ describe('authenticateMcpRequest', () => {
       ['https://openstory.test/mcp'],
       ['https://openstory.test']
     );
-    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
+    expect(getUserOrganizationMembership).toHaveBeenCalledWith(
+      'user_1',
+      'team_1'
+    );
     expect(getSession).not.toHaveBeenCalled();
   });
 

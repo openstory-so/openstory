@@ -107,7 +107,7 @@ async function libraryRows(
     (await scopedDb.locations.getCurrent(id)) ?? Promise.reject(notFound());
   switch (kind) {
     case 'location':
-      return scopedDb.locations.listTeam();
+      return scopedDb.locations.listOrganization();
     case 'location_sheet':
       return scopedDb.locations.listPhotos((await location(parentId)).id);
     case 'location_sheet_version':

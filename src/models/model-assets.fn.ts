@@ -19,7 +19,7 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -53,7 +53,7 @@ export type CreateGeneratedAssetData = z.infer<
 >;
 
 export const createGeneratedAssetFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(createGeneratedAssetInputSchema))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();
@@ -74,7 +74,7 @@ const listGeneratedAssetsInputSchema = z.object({
 
 /** Team-scoped newest-first list, filterable by activity / endpoint. */
 export const listGeneratedAssetsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(listGeneratedAssetsInputSchema.optional()))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();
@@ -92,7 +92,7 @@ const getGeneratedAssetInputSchema = z.object({
 
 /** Single run row — the client polls this while a run is in flight. */
 export const getGeneratedAssetFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(getGeneratedAssetInputSchema))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();

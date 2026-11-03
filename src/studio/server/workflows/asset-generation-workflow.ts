@@ -203,7 +203,9 @@ export type AssetPersistScopedDb = {
  * @tanstack/ai-fal adapters make. Called inside every step that talks to fal,
  * since a replayed step may run in a fresh isolate.
  */
-async function configureFalForTeam(scopedDb: WorkflowScopedDb): Promise<void> {
+async function configureFalForOrganization(
+  scopedDb: WorkflowScopedDb
+): Promise<void> {
   const keyInfo = await scopedDb.credentials.resolveKey('fal');
   // Bound each queue HTTP call so a hung fal connection fails the step and
   // can retry rather than stalling asset generation forever (#826). Total
@@ -236,7 +238,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     // retrying the same input can't succeed, so fail immediately; anything
     // else is transient and leans on CF's per-step retries.
     const { requestId } = await step.do('submit-asset-job', async () => {
-      await configureFalForTeam(scopedDb);
+      await configureFalForOrganization(scopedDb);
       logger.info(
         `[AssetGenerationWorkflow] Submitting ${endpointId} (${activity}) for asset ${assetId}`
       );
@@ -262,7 +264,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         await step.sleep(`asset-poll-wait-${batch}`, 1);
       }
       completed = await step.do(`asset-poll-batch-${batch}`, async () => {
-        await configureFalForTeam(scopedDb);
+        await configureFalForOrganization(scopedDb);
         const deadline = Date.now() + POLL_BATCH_DURATION_MS;
         while (Date.now() < deadline) {
           const status = await fal.queue.status(endpointId, {
@@ -284,7 +286,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     // Fetch the result. A failed fal job rejects here with the real error —
     // deterministic, so don't burn CF retries on it.
     const outputRefs = await step.do('fetch-result', async () => {
-      await configureFalForTeam(scopedDb);
+      await configureFalForOrganization(scopedDb);
       let data: JsonValue;
       try {
         const result = await fal.queue.result(endpointId, { requestId });

@@ -1,7 +1,7 @@
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
-import { TeamCharacterCard } from '@/cast/ui/character-library/team-character-card';
+import { OrganizationCharacterCard } from '@/cast/ui/character-library/organization-character-card';
 import { LibraryVirtualGrid } from '@/cast/ui/library-virtual-grid';
-import { useTeamCharacters } from '@/cast/ui/use-team-characters';
+import { useOrganizationCharacters } from '@/cast/ui/use-organization-characters';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { User } from 'lucide-react';
 import type React from 'react';
@@ -11,12 +11,12 @@ import type React from 'react';
  * characters are here too, so the rows are virtualized against the page's
  * scroller.
  */
-export const TeamCharacterList: React.FC<{
+export const OrganizationCharacterList: React.FC<{
   scrollRef: React.RefObject<HTMLDivElement | null>;
   /** The search box: matches name or description, any case. */
   query: string;
 }> = ({ scrollRef, query }) => {
-  const { data: everyCharacter } = useTeamCharacters();
+  const { data: everyCharacter } = useOrganizationCharacters();
   const needle = query.trim().toLowerCase();
   const characters = needle
     ? everyCharacter.filter(
@@ -52,7 +52,9 @@ export const TeamCharacterList: React.FC<{
       items={characters}
       scrollRef={scrollRef}
       estimateRowHeight={320}
-      renderItem={(character) => <TeamCharacterCard character={character} />}
+      renderItem={(character) => (
+        <OrganizationCharacterCard character={character} />
+      )}
     />
   );
 };

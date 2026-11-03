@@ -453,7 +453,7 @@ describe('music claim lifecycle (#1115)', () => {
   });
 });
 
-describe('listDivergentByTeam', () => {
+describe('listDivergentByOrganization', () => {
   it('excludes variants belonging to a different team and excludes discarded rows', async () => {
     const methods = createSequenceVariantsMethods(db);
 
@@ -549,7 +549,7 @@ describe('listDivergentByTeam', () => {
       divergedAt,
     });
 
-    const rows = await methods.listDivergentByTeam(team.id);
+    const rows = await methods.listDivergentByOrganization(team.id);
     const byId = new Map(rows.map((r) => [r.sequenceId, r]));
 
     expect(rows).toHaveLength(2);

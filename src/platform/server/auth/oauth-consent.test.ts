@@ -8,7 +8,7 @@ const deleteOAuthConsent = vi.fn();
 const oauth2Consent = vi.fn();
 const authHandler = vi.fn();
 const revokeOAuthGrantTokens = vi.fn();
-const getUserTeamMembership = vi.fn();
+const getUserOrganizationMembership = vi.fn();
 
 vi.doMock('./config', () => ({
   getAuth: () => ({
@@ -22,7 +22,7 @@ vi.doMock('./config', () => ({
   }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  getUserTeamMembership,
+  getUserOrganizationMembership,
   listUserOrganizations: async () => [{ id: 'team_1', name: 'T' }],
   revokeOAuthGrantTokens,
 }));
@@ -50,10 +50,10 @@ beforeEach(() => {
   oauth2Consent.mockReset();
   authHandler.mockReset();
   revokeOAuthGrantTokens.mockReset();
-  getUserTeamMembership.mockReset();
-  getUserTeamMembership.mockResolvedValue({
+  getUserOrganizationMembership.mockReset();
+  getUserOrganizationMembership.mockResolvedValue({
     organizationId: 'team_1',
-    teamName: 'T',
+    organizationName: 'T',
   });
 });
 
@@ -210,7 +210,10 @@ describe('decideOAuthConsent', () => {
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
     // The grant is stamped with the picked organization, not the active one.
     expect(picked).toBe('team_1');
-    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
+    expect(getUserOrganizationMembership).toHaveBeenCalledWith(
+      'user_1',
+      'team_1'
+    );
   });
 
   it('unpacks a packed q before calling the provider', async () => {

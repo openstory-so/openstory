@@ -820,9 +820,8 @@ export async function executeSmartRetry(
   // status flips back to 'failed' and the failure summary reappears.
   if (sequence.status === 'failed') {
     await context.scopedDb.sequence(sequence.id).updateStatus('completed');
-    const ownerEmail = await context.scopedDb.teamManagement.getMemberEmail(
-      user.id
-    );
+    const ownerEmail =
+      await context.scopedDb.organizationManagement.getMemberEmail(user.id);
     try {
       await notifySequenceReady({
         scopedDb: toWorkflowScopedDb(context.scopedDb),

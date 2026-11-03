@@ -192,7 +192,7 @@ const ReportsTab: React.FC = () => {
                   </Field>
                   <Field label="Owner">
                     {report.subjectUserEmail ??
-                      report.subjectTeamName ??
+                      report.subjectOrganizationName ??
                       'Not yet attributed'}
                   </Field>
                   <Field label="Trace">{report.traceId ?? '—'}</Field>
@@ -439,7 +439,9 @@ const TraceTab: React.FC = () => {
               <Field label="Account">
                 {row.userEmail ?? row.userName ?? row.userId ?? 'Unknown user'}
               </Field>
-              <Field label="Team">{row.teamName ?? row.organizationId}</Field>
+              <Field label="Team">
+                {row.organizationName ?? row.organizationId}
+              </Field>
               <Field label="Model">
                 {row.provider} · {row.model}
               </Field>

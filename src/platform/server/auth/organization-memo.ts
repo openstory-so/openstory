@@ -1,4 +1,4 @@
-import { getUserTeamMembership } from '@/platform/server/db/scoped';
+import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 
 /**
@@ -7,36 +7,36 @@ import { loadComplianceState } from '@/platform/server/compliance/generation-gat
  * second or two, and each resolved both from the primary — two round trips,
  * 350–450 ms apiece from Europe — before any work. Concurrent calls share one
  * in-flight read; a change to membership or enforcement is seen within
- * `TEAM_MEMO_TTL_MS` on an isolate that already answered for the user. Only
+ * `ORGANIZATION_MEMO_TTL_MS` on an isolate that already answered for the user. Only
  * a GET is answered from the memo: a write reads both fresh (and refreshes
  * the memo), so a removed member or a new enforcement bites on the next
  * write.
  */
-const TEAM_MEMO_TTL_MS = 5_000;
-export type ResolvedTeam = {
-  team: Awaited<ReturnType<typeof getUserTeamMembership>>;
+const ORGANIZATION_MEMO_TTL_MS = 5_000;
+export type ResolvedOrganization = {
+  team: Awaited<ReturnType<typeof getUserOrganizationMembership>>;
   compliance: Awaited<ReturnType<typeof loadComplianceState>> | null;
 };
-const teamMemo = new Map<
+const organizationMemo = new Map<
   string,
-  { until: number; value: Promise<ResolvedTeam> }
+  { until: number; value: Promise<ResolvedOrganization> }
 >();
 
-export async function resolveTeamAndCompliance(
+export async function resolveOrganizationAndCompliance(
   userId: string,
   method: string,
   organizationId: string
-): Promise<ResolvedTeam> {
+): Promise<ResolvedOrganization> {
   const now = Date.now();
   const memoKey = `${userId}:${organizationId}`;
-  const hit = method === 'GET' ? teamMemo.get(memoKey) : undefined;
+  const hit = method === 'GET' ? organizationMemo.get(memoKey) : undefined;
   if (hit && hit.until > now) return hit.value;
   // ponytail: prune on insert; a per-user entry for the whole isolate life
   // would otherwise grow with every user it ever answered.
-  for (const [key, entry] of teamMemo)
-    if (entry.until <= now) teamMemo.delete(key);
+  for (const [key, entry] of organizationMemo)
+    if (entry.until <= now) organizationMemo.delete(key);
   const value = (async () => {
-    const team = await getUserTeamMembership(userId, organizationId);
+    const team = await getUserOrganizationMembership(userId, organizationId);
     return {
       team,
       compliance: team
@@ -44,8 +44,11 @@ export async function resolveTeamAndCompliance(
         : null,
     };
   })();
-  teamMemo.set(memoKey, { until: now + TEAM_MEMO_TTL_MS, value });
+  organizationMemo.set(memoKey, {
+    until: now + ORGANIZATION_MEMO_TTL_MS,
+    value,
+  });
   // A failed read is not kept: the next call reads again.
-  value.catch(() => teamMemo.delete(memoKey));
+  value.catch(() => organizationMemo.delete(memoKey));
   return value;
 }

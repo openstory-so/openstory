@@ -129,8 +129,11 @@ const versionsOf = (id: string) =>
     .where(eq(locationBibleVersions.locationId, id));
 
 /** A location made on the Locations page: no link. */
-const teamLocation = (name: string, description = 'as the team wrote it') =>
-  locs().createForTeam(
+const organizationLocation = (
+  name: string,
+  description = 'as the team wrote it'
+) =>
+  locs().createForOrganization(
     {
       name,
       description,
@@ -242,7 +245,7 @@ describe('createBulk', () => {
     const [made] = await bulk([entry('loc_001')]);
     if (!made) throw new Error('test setup: createBulk returned nothing');
     await locs().softDelete(sequenceId, made.id, { actorId });
-    expect(await locs().softDeleteForTeam(made.id)).toBe(true);
+    expect(await locs().softDeleteForOrganization(made.id)).toBe(true);
 
     const [back] = await bulk([entry('loc_001')]);
     expect(back).toMatchObject({ id: made.id, deletedAt: null });
@@ -255,7 +258,7 @@ describe('createBulk', () => {
 
 describe('createBulk never rewrites a location that is not this sequence’s', () => {
   it('leaves an attached location as it is, refreshing its first mention', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
     const claim = await locs().claimReference(diner.id, {
       markGenerating: true,
@@ -288,7 +291,7 @@ describe('createBulk never rewrites a location that is not this sequence’s', (
   });
 
   it('brings back the removed link of an attached location without rewriting it', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
     await locs().softDelete(sequenceId, diner.id, { actorId });
 
@@ -398,7 +401,7 @@ describe('createBulk never rewrites a location that is not this sequence’s', (
 
 describe('createBulk with an entry bound to a team location', () => {
   it('links and makes nothing', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
 
     const [result] = await bulk([
       entry('loc_001', {
@@ -445,7 +448,7 @@ describe('createBulk with an entry bound to a team location', () => {
   });
 
   it('is idempotent on replay', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const bound = () => bulk([entry('loc_001', { boundTo: diner.id })]);
     const [first] = await bound();
     const [second] = await bound();
@@ -454,7 +457,7 @@ describe('createBulk with an entry bound to a team location', () => {
   });
 
   it("a bible edit through the sequence never writes the script's tag into the team's bible", async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     await bulk([
       entry('loc_001', { consistencyTag: 'script_diner', boundTo: diner.id }),
     ]);
@@ -487,7 +490,7 @@ describe('createBulk with an entry bound to a team location', () => {
   it('takes the script id over from the link that held it', async () => {
     const [made] = await bulk([entry('loc_001')]);
     if (!made) throw new Error('test setup: createBulk returned nothing');
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
 
     const [result] = await bulk([entry('loc_001', { boundTo: diner.id })]);
 
@@ -508,7 +511,7 @@ describe('createBulk with an entry bound to a team location', () => {
   });
 
   it('re-points a link the sequence already has to the location', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
     expect(attached.locationId).toBe('loc_diner');
 
@@ -526,7 +529,7 @@ describe('createBulk with an entry bound to a team location', () => {
   it('re-points its own link and drops the one that held the script id', async () => {
     const [made] = await bulk([entry('loc_001')]);
     if (!made) throw new Error('test setup: createBulk returned nothing');
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
     expect(await linksOf()).toHaveLength(2);
 
@@ -548,7 +551,7 @@ describe('createBulk with an entry bound to a team location', () => {
   });
 
   it('brings back a removed link to the location', async () => {
-    const diner = await teamLocation('Diner');
+    const diner = await organizationLocation('Diner');
     await locs().attach(sequenceId, diner.id, { actorId });
     await locs().softDelete(sequenceId, diner.id, { actorId });
 
@@ -560,7 +563,7 @@ describe('createBulk with an entry bound to a team location', () => {
     const theirs = await createLocationsMethods(
       db,
       otherOrganizationId
-    ).createForTeam(
+    ).createForOrganization(
       { name: 'Their Yard', rendering: PHOTOREAL_RENDERING },
       { createdBy: actorId }
     );
@@ -568,8 +571,8 @@ describe('createBulk with an entry bound to a team location', () => {
       bulk([entry('loc_001', { boundTo: theirs.id })])
     ).rejects.toThrow('Location not found');
 
-    const deleted = await teamLocation('Deleted');
-    await locs().softDeleteForTeam(deleted.id);
+    const deleted = await organizationLocation('Deleted');
+    await locs().softDeleteForOrganization(deleted.id);
     await expect(
       bulk([entry('loc_001', { boundTo: deleted.id })])
     ).rejects.toThrow('Location not found');

@@ -3,7 +3,7 @@
  */
 
 import { roleHasPermission } from '@/platform/auth/organization-access';
-import type { TeamRole } from './permissions';
+import type { OrganizationRole } from './permissions';
 import { getUserRole } from './permissions';
 
 async function requirePermission(
@@ -11,7 +11,7 @@ async function requirePermission(
   organizationId: string,
   permissions: Parameters<typeof roleHasPermission>[1],
   denied: string
-): Promise<TeamRole> {
+): Promise<OrganizationRole> {
   const role = await getUserRole(userId, organizationId);
   if (!role) {
     throw new Error('Access denied: not a member of this organization');
@@ -23,10 +23,10 @@ async function requirePermission(
 }
 
 /** Member or above: can create a sequence. */
-export async function requireTeamMemberAccess(
+export async function requireOrganizationMemberAccess(
   userId: string,
   organizationId: string
-): Promise<TeamRole> {
+): Promise<OrganizationRole> {
   return requirePermission(
     userId,
     organizationId,
@@ -36,10 +36,10 @@ export async function requireTeamMemberAccess(
 }
 
 /** Admin or owner: can manage members. */
-export async function requireTeamAdminAccess(
+export async function requireOrganizationAdminAccess(
   userId: string,
   organizationId: string
-): Promise<TeamRole> {
+): Promise<OrganizationRole> {
   return requirePermission(
     userId,
     organizationId,
@@ -49,10 +49,10 @@ export async function requireTeamAdminAccess(
 }
 
 /** Owner: can delete the organization. */
-export async function requireTeamOwnerAccess(
+export async function requireOrganizationOwnerAccess(
   userId: string,
   organizationId: string
-): Promise<TeamRole> {
+): Promise<OrganizationRole> {
   return requirePermission(
     userId,
     organizationId,

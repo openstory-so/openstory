@@ -39,7 +39,7 @@ export type ApiKeySource = (typeof API_KEY_SOURCES)[number];
  * Team API Keys table
  * Stores encrypted API keys per team per provider
  */
-export const teamApiKeys = snakeCase.table(
+export const organizationApiKeys = snakeCase.table(
   'team_api_keys',
   {
     id: text()

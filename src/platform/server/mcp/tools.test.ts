@@ -18,9 +18,9 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 vi.mock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: vi.fn(),
 }));
-import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import { analyzeTalentMediaForOrganization } from '@/cast/server/talent/analyze-talent-media';
 vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
-  analyzeTalentMediaForTeam: vi.fn(),
+  analyzeTalentMediaForOrganization: vi.fn(),
 }));
 import {
   characterBibleVersions,
@@ -88,7 +88,10 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
-import { updateCharacter, updateTeamCharacter } from '@/cast/server/cast-edit';
+import {
+  updateCharacter,
+  updateOrganizationCharacter,
+} from '@/cast/server/cast-edit';
 import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
 import {
   LIKENESS_CLEARED_V1,
@@ -1803,7 +1806,7 @@ describe('Studio, Gallery and library reads', () => {
     });
     expect(detail).not.toHaveProperty('organizationId');
     // Deleted from the team: gone from both reads.
-    await scopedDb.locations.softDeleteForTeam(libraryLocationId);
+    await scopedDb.locations.softDeleteForOrganization(libraryLocationId);
     expect(
       page
         .parse(await data('list_library_locations', {}))
@@ -3353,7 +3356,7 @@ describe('cast and music edits (#1979)', () => {
     expect(list.find((c) => c.id === drawing.id)?.isPerson).toBe(false);
     // From no sequence every sequence's sheets count, an archived
     // sequence's too: the edit is refused and the read says why.
-    const teamLock = async (character: { id: string }) =>
+    const organizationLock = async (character: { id: string }) =>
       await personLockOf(scopedDb, { id: character.id });
     // A bible version is shared: another sequence that casts her, with no
     // upload of its own, cannot make her not a person either.
@@ -3379,12 +3382,14 @@ describe('cast and music edits (#1979)', () => {
       .set({ status: 'archived' })
       .where(eq(sequences.id, sequenceId));
     await expect(
-      updateTeamCharacter(scopedDb, actor, photo.id, notPerson)
+      updateOrganizationCharacter(scopedDb, actor, photo.id, notPerson)
     ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
-    expect(await teamLock(photo)).toEqual({ reason: 'upload' });
-    expect(await teamLock(drawing)).toBeNull();
-    await updateTeamCharacter(scopedDb, actor, photo.id, { isPerson: true });
-    await updateTeamCharacter(scopedDb, actor, drawing.id, notPerson);
+    expect(await organizationLock(photo)).toEqual({ reason: 'upload' });
+    expect(await organizationLock(drawing)).toBeNull();
+    await updateOrganizationCharacter(scopedDb, actor, photo.id, {
+      isPerson: true,
+    });
+    await updateOrganizationCharacter(scopedDb, actor, drawing.id, notPerson);
   });
 
   it('reads and selects character voices and sheet versions', async () => {
@@ -3918,7 +3923,7 @@ describe('generation and uploads (#1979)', () => {
           fullPath: `${bucket}/${path}`,
         })
       );
-    vi.mocked(analyzeTalentMediaForTeam)
+    vi.mocked(analyzeTalentMediaForOrganization)
       .mockReset()
       .mockResolvedValue(asStub({ subjectKind: 'other' }));
   });
@@ -4139,7 +4144,7 @@ describe('generation and uploads (#1979)', () => {
   });
 
   it('create_stitch needs the portrait sign-off for a real person in a still', async () => {
-    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+    vi.mocked(analyzeTalentMediaForOrganization).mockResolvedValue(
       asStub({ subjectKind: 'human' })
     );
     const cut = {
@@ -4181,7 +4186,7 @@ describe('generation and uploads (#1979)', () => {
   });
 
   it('needs the portrait sign-off for a real person', async () => {
-    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+    vi.mocked(analyzeTalentMediaForOrganization).mockResolvedValue(
       asStub({ subjectKind: 'human' })
     );
     const args = {
@@ -4300,7 +4305,7 @@ describe('generation and uploads (#1979)', () => {
     expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
       music: { variantId },
     });
-    expect(vi.mocked(analyzeTalentMediaForTeam)).not.toHaveBeenCalled();
+    expect(vi.mocked(analyzeTalentMediaForOrganization)).not.toHaveBeenCalled();
   });
 });
 
@@ -4327,7 +4332,7 @@ describe('Studio create and edit (#1985)', () => {
           fullPath: `${bucket}/${path}`,
         })
       );
-    vi.mocked(analyzeTalentMediaForTeam)
+    vi.mocked(analyzeTalentMediaForOrganization)
       .mockReset()
       .mockResolvedValue(asStub({ subjectKind: 'other' }));
   });
@@ -4495,14 +4500,14 @@ describe('Studio create and edit (#1985)', () => {
     expect(await call('delete_studio_asset', { id })).toMatchObject(
       refusal('NOT_FOUND')
     );
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await db
       .insert(organization)
-      .values({ id: otherTeam, name: 'O', slug: otherTeam });
+      .values({ id: otherOrganization, name: 'O', slug: otherOrganization });
     const foreign = generateId();
     await db.insert(generatedAssets).values({
       id: foreign,
-      organizationId: otherTeam,
+      organizationId: otherOrganization,
       userId: actorId,
       source: 'studio',
       provider: 'fal',
@@ -4618,7 +4623,7 @@ describe('production-context resources (#1462)', () => {
         caller: {
           user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
           organizationId,
-          teamName: 'T',
+          organizationName: 'T',
         },
         origin: 'https://openstory.test',
         scoped: () => ({
@@ -4784,7 +4789,7 @@ describe('official MCP client transport (#1463)', () => {
     const auth = asStub<McpAuthContext>({
       user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
       organizationId,
-      teamName: 'T',
+      organizationName: 'T',
       kind: scopes ? 'oauth' : 'api_key',
       keyHint: 'osk_…test',
       clientId: 'vitest',

@@ -35,7 +35,7 @@ import {
   type SeedTarget,
 } from './seed-db-client';
 
-const SYSTEM_TEAM_SLUG = 'system-templates';
+const SYSTEM_ORGANIZATION_SLUG = 'system-templates';
 const VALIDATION_CONCURRENCY = 10;
 
 function getPublicAssetsDomain(): string {
@@ -106,18 +106,18 @@ function sqlString(value: string): string {
  */
 function generateSql(planned: PlannedStyle[]): string {
   const stylesTable = getTableConfig(styles).name;
-  const teamsTable = getTableConfig(organization).name;
+  const organizationsTable = getTableConfig(organization).name;
   const col = {
     sampleVideos: styles.sampleVideos.name,
     updatedAt: styles.updatedAt.name,
     name: styles.name.name,
     organizationId: styles.organizationId.name,
-    teamsId: organization.id.name,
-    teamsSlug: organization.slug.name,
+    organizationsId: organization.id.name,
+    organizationsSlug: organization.slug.name,
   };
   // `updatedAt` is integer({ mode: 'timestamp' }) → seconds since epoch.
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const teamFilter = `(SELECT "${col.teamsId}" FROM "${teamsTable}" WHERE "${col.teamsSlug}" = ${sqlString(SYSTEM_TEAM_SLUG)})`;
+  const organizationFilter = `(SELECT "${col.organizationsId}" FROM "${organizationsTable}" WHERE "${col.organizationsSlug}" = ${sqlString(SYSTEM_ORGANIZATION_SLUG)})`;
 
   const statements = planned.map(({ name, entries }) => {
     const json = JSON.stringify(entries);
@@ -126,7 +126,7 @@ function generateSql(planned: PlannedStyle[]): string {
       `"${col.sampleVideos}" = ${sqlString(json)}, ` +
       `"${col.updatedAt}" = ${nowSeconds} ` +
       `WHERE "${col.name}" = ${sqlString(name)} ` +
-      `AND "${col.organizationId}" = ${teamFilter};`
+      `AND "${col.organizationId}" = ${organizationFilter};`
     );
   });
 
@@ -212,20 +212,20 @@ async function run(
   // 3b. Write to DB directly (local/test/d1).
   const { db, dispose } = await createSeedDb(target);
   try {
-    const [systemTeam]: { id: string }[] = await db
+    const [systemOrganization]: { id: string }[] = await db
       .select()
       .from(organization)
-      .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
-    if (!systemTeam) {
+      .where(eq(organization.slug, SYSTEM_ORGANIZATION_SLUG));
+    if (!systemOrganization) {
       throw new Error(
-        `System team '${SYSTEM_TEAM_SLUG}' not found — run db:seed first.`
+        `System team '${SYSTEM_ORGANIZATION_SLUG}' not found — run db:seed first.`
       );
     }
 
     const existing = await db
       .select()
       .from(styles)
-      .where(eq(styles.organizationId, systemTeam.id));
+      .where(eq(styles.organizationId, systemOrganization.id));
     const existingByName = new Map(existing.map((s) => [s.name, s]));
 
     let updated = 0;

@@ -334,7 +334,7 @@ Treat **server functions as the contract** (API/MCP later wraps them). Group by 
 
 | Need                          | Existing pattern                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Team-scoped auth              | `authWithTeam` / shot-access middleware                                             |
+| Team-scoped auth              | `authWithOrganization` / shot-access middleware                                     |
 | Append-only versions + select | `frameVariants.select`, `videoVariants.select`, prompt `write`                      |
 | Soft-hide versions            | `discardedAt` + promote/discard/undiscard Fns (sheets, music, frame/video variants) |
 | Soft-archive sequence         | `archiveSequenceFn` — extend with unarchive                                         |

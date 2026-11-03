@@ -38,7 +38,7 @@ import path from 'node:path';
 import { getLocalPlatformProxy } from './local-platform-proxy';
 
 const SAMPLE_DIR = path.join(process.cwd(), 'sample-videos');
-const SYSTEM_TEAM_SLUG = 'system-templates';
+const SYSTEM_ORGANIZATION_SLUG = 'system-templates';
 
 type ProxyEnv = { DB?: D1Database; R2_STORAGE_BUCKET?: R2Bucket };
 
@@ -112,20 +112,20 @@ async function main() {
     if (!d1) throw new Error('D1 binding "DB" missing.');
     const db = drizzle(d1);
 
-    const [systemTeam]: { id: string }[] = await db
+    const [systemOrganization]: { id: string }[] = await db
       .select({ id: organization.id })
       .from(organization)
-      .where(eq(organization.slug, SYSTEM_TEAM_SLUG));
-    if (!systemTeam) {
+      .where(eq(organization.slug, SYSTEM_ORGANIZATION_SLUG));
+    if (!systemOrganization) {
       throw new Error(
-        `System team '${SYSTEM_TEAM_SLUG}' not found — run db:seed first.`
+        `System team '${SYSTEM_ORGANIZATION_SLUG}' not found — run db:seed first.`
       );
     }
 
     const styleRows = await db
       .select({ id: styles.id, name: styles.name })
       .from(styles)
-      .where(eq(styles.organizationId, systemTeam.id));
+      .where(eq(styles.organizationId, systemOrganization.id));
     const idBySlug = new Map(styleRows.map((s) => [styleSlug(s.name), s.id]));
     const nameBySlug = new Map(
       styleRows.map((s) => [styleSlug(s.name), s.name])

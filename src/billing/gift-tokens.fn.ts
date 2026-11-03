@@ -8,7 +8,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
   authMiddleware,
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   systemAdminMiddleware,
 } from '@/platform/middleware.fn';
 
@@ -73,7 +73,7 @@ export const batchCreateGiftTokensFn = createServerFn({ method: 'POST' })
   });
 
 export const redeemGiftTokenFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ code: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const result = await context.scopedDb.billing.redeemGiftToken({

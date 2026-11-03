@@ -19,8 +19,8 @@ let closeDb: () => Promise<void>;
 let db: Database;
 
 const userA = { id: '', name: 'A', email: 'a@example.com' };
-const teamA = { id: '', name: 'Team A', slug: 'team-a' };
-const teamB = { id: '', name: 'Team B', slug: 'team-b' };
+const organizationA = { id: '', name: 'Team A', slug: 'team-a' };
+const organizationB = { id: '', name: 'Team B', slug: 'team-b' };
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -36,12 +36,12 @@ beforeEach(async () => {
   await db.delete(user);
 
   userA.id = generateId();
-  teamA.id = generateId();
-  teamB.id = generateId();
+  organizationA.id = generateId();
+  organizationB.id = generateId();
   await db
     .insert(user)
     .values([{ id: userA.id, name: userA.name, email: userA.email }]);
-  await db.insert(organization).values([teamA, teamB]);
+  await db.insert(organization).values([organizationA, organizationB]);
 });
 
 describe('listEnforcementFor', () => {
@@ -56,7 +56,7 @@ describe('listEnforcementFor', () => {
 
     const rows = await createComplianceReadMethods(db).listEnforcementFor(
       userA.id,
-      teamA.id
+      organizationA.id
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.action).toBe('generation_suspended');
@@ -66,18 +66,18 @@ describe('listEnforcementFor', () => {
     await db.insert(enforcementActions).values({
       id: generateId(),
       subjectUserId: null,
-      subjectOrganizationId: teamA.id,
+      subjectOrganizationId: organizationA.id,
       action: 'account_suspended',
       reason: 'csam',
     });
 
     const onA = await createComplianceReadMethods(db).listEnforcementFor(
       userA.id,
-      teamA.id
+      organizationA.id
     );
     const onB = await createComplianceReadMethods(db).listEnforcementFor(
       userA.id,
-      teamB.id
+      organizationB.id
     );
     expect(onA).toHaveLength(1);
     expect(onB).toHaveLength(0);
@@ -104,7 +104,7 @@ describe('listEnforcementFor', () => {
 
     const rows = await createComplianceReadMethods(db).listEnforcementFor(
       userA.id,
-      teamA.id
+      organizationA.id
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.action).toBe('warning');

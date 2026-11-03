@@ -54,11 +54,11 @@ type LocationCreate = Exclude<
 >;
 
 type CharacterResolveDeps = {
-  characters: Pick<ScopedDb['characters'], 'listTeam'>;
+  characters: Pick<ScopedDb['characters'], 'listOrganization'>;
   createCharacter: (input: CharacterCreate) => Promise<{ id: string }>;
 };
 type LocationResolveDeps = {
-  locations: Pick<ScopedDb['locations'], 'listTeam'>;
+  locations: Pick<ScopedDb['locations'], 'listOrganization'>;
   createLocation: (input: LocationCreate) => Promise<{ id: string }>;
 };
 
@@ -123,7 +123,7 @@ export async function resolveCharacterIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  const team = await deps.characters.listTeam();
+  const team = await deps.characters.listOrganization();
   /** The one team character `ref` names, or null; several is a conflict. */
   const named = (ref: string, matches: typeof team): string | null => {
     if (matches.length > 1) {
@@ -185,7 +185,7 @@ export async function resolveLocationIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  const team = await deps.locations.listTeam();
+  const team = await deps.locations.listOrganization();
   /** The one team location `ref` names, or null; several is a conflict. */
   const named = (ref: string, matches: typeof team): string | null => {
     if (matches.length > 1) {

@@ -15,7 +15,7 @@ import { useCreateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
-} from '@/cast/ui/use-team-characters';
+} from '@/cast/ui/use-organization-characters';
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { errorMessage } from '@/platform/errors';
 import { useNavigate } from '@tanstack/react-router';

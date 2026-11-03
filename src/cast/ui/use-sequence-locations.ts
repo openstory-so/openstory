@@ -2,7 +2,7 @@
  * Locations as a sequence uses them (#1695): the sequence's list, the one
  * location a detail view shows (through a sequence or from none), and the
  * writes made through a sequence. The team's own list and writes are in
- * `use-team-locations.ts`.
+ * `use-organization-locations.ts`.
  */
 
 import {
@@ -50,7 +50,10 @@ export function useSequenceLocations(sequenceId: string) {
  * page). Null when it is gone or another team's. Through a sequence the
  * detail view uses the sequence list's row instead.
  */
-export function useTeamLocationCurrent(locationDbId: string, enabled: boolean) {
+export function useOrganizationLocationCurrent(
+  locationDbId: string,
+  enabled: boolean
+) {
   return useQuery({
     queryKey: sequenceLocationKeys.detail(null, locationDbId),
     queryFn: () => getLocationFn({ data: { sequenceId: null, locationDbId } }),

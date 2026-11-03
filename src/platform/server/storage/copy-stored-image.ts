@@ -14,7 +14,7 @@ export function requireStoredKey(url: string): string {
   return key;
 }
 
-export function isTeamTalentStoredUrl(
+export function isOrganizationTalentStoredUrl(
   url: string,
   organizationId: string
 ): boolean {

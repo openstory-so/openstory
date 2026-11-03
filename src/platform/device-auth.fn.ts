@@ -12,9 +12,9 @@ import { getRequestHeaders } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { APIError } from 'better-auth/api';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from './middleware.fn';
+import { authWithOrganizationMiddleware } from './middleware.fn';
 import {
-  getUserTeamMembership,
+  getUserOrganizationMembership,
   listUserOrganizations,
   recordDeviceGrantOrganization,
 } from '@/platform/server/db/scoped';
@@ -35,7 +35,7 @@ export type DeviceGrantStatus = 'pending' | 'approved' | 'denied' | 'invalid';
 const grantStatus = z.enum(['pending', 'approved', 'denied']);
 
 export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(codeSchema))
   .handler(
     async ({
@@ -70,7 +70,7 @@ export const lookupDeviceGrantFn = createServerFn({ method: 'GET' })
 
 /** Plugin OAuth error code on failure (e.g. `access_denied` = claimed by another user). */
 export const decideDeviceGrantFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       codeSchema.extend({ approve: z.boolean(), organizationId: ulidSchema })
@@ -82,7 +82,10 @@ export const decideDeviceGrantFn = createServerFn({ method: 'POST' })
     const args = { headers: getRequestHeaders(), body: { userCode } };
     if (
       data.approve &&
-      !(await getUserTeamMembership(context.user.id, data.organizationId))
+      !(await getUserOrganizationMembership(
+        context.user.id,
+        data.organizationId
+      ))
     ) {
       throw new Error('You are not a member of that organization');
     }

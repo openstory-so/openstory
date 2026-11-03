@@ -27,16 +27,16 @@ import {
   creditBatches,
   creditReservations,
   credits,
-  teamBillingSettings,
+  organizationBillingSettings,
   transactions,
 } from '@/platform/server/db/schema/credits';
 import type {
   CreditBatchSource,
-  TeamBillingSetting,
+  OrganizationBillingSetting,
   TransactionType,
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
-import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
+import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
 import {
   giftRedeemHolderReason,
   normalizeGiftCode,
@@ -283,19 +283,21 @@ function createBillingReadMethods(db: Database, organizationId: string) {
     return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
-  async function getBillingSettings(): Promise<TeamBillingSetting> {
+  async function getBillingSettings(): Promise<OrganizationBillingSetting> {
     const [row] = await db
       .select()
-      .from(teamBillingSettings)
-      .where(eq(teamBillingSettings.organizationId, organizationId))
+      .from(organizationBillingSettings)
+      .where(eq(organizationBillingSettings.organizationId, organizationId))
       .limit(1);
 
     if (row) return row;
 
     const [inserted] = await db
-      .insert(teamBillingSettings)
+      .insert(organizationBillingSettings)
       .values({ organizationId })
-      .onConflictDoNothing({ target: teamBillingSettings.organizationId })
+      .onConflictDoNothing({
+        target: organizationBillingSettings.organizationId,
+      })
       .returning();
 
     if (inserted) return inserted;
@@ -303,8 +305,8 @@ function createBillingReadMethods(db: Database, organizationId: string) {
     // Lost the race — peer inserted between our SELECT and INSERT.
     const [existing] = await db
       .select()
-      .from(teamBillingSettings)
-      .where(eq(teamBillingSettings.organizationId, organizationId))
+      .from(organizationBillingSettings)
+      .where(eq(organizationBillingSettings.organizationId, organizationId))
       .limit(1);
     if (!existing) {
       throw new Error(
@@ -333,7 +335,7 @@ export function createBillingMethods(
 ) {
   const read = createBillingReadMethods(db, organizationId);
 
-  async function emitTeamFunds(opts: {
+  async function emitOrganizationFunds(opts: {
     amountMicros: Microdollars;
     transactionId?: string;
     type?: TransactionType;
@@ -350,13 +352,13 @@ export function createBillingMethods(
 
   async function clearAutoTopUpFailure(): Promise<void> {
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: null,
         autoTopUpDeclineCode: null,
         updatedAt: new Date(),
       })
-      .where(eq(teamBillingSettings.organizationId, organizationId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
   }
 
   /**
@@ -374,33 +376,35 @@ export function createBillingMethods(
       updatedAt: new Date(),
     };
     const claimed = await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set(paused)
       .where(
         and(
-          eq(teamBillingSettings.organizationId, organizationId),
-          isNull(teamBillingSettings.autoTopUpFailedAt)
+          eq(organizationBillingSettings.organizationId, organizationId),
+          isNull(organizationBillingSettings.autoTopUpFailedAt)
         )
       )
-      .returning({ organizationId: teamBillingSettings.organizationId });
+      .returning({
+        organizationId: organizationBillingSettings.organizationId,
+      });
 
     if (claimed.length === 0) {
       // Already paused. Refresh the cooldown window anyway — otherwise a
       // decline after the first cooldown expires would leave the stale
       // timestamp in place and the next debit would charge again (#1334).
       await db
-        .update(teamBillingSettings)
+        .update(organizationBillingSettings)
         .set(paused)
-        .where(eq(teamBillingSettings.organizationId, organizationId));
+        .where(eq(organizationBillingSettings.organizationId, organizationId));
       return;
     }
 
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
 
     try {
       const { available } = await read.getAvailable();
       await notifyAutoTopUpFailed({
-        to: await createTeamManagementMethods(
+        to: await createOrganizationManagementMethods(
           db,
           organizationId
         ).getOwnerEmail(),
@@ -507,7 +511,7 @@ export function createBillingMethods(
     });
 
     const newBalance = micros(updated.balance);
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros,
       transactionId,
       type: txType,
@@ -524,10 +528,10 @@ export function createBillingMethods(
 
   async function saveStripeCustomerId(stripeCustomerId: string): Promise<void> {
     await db
-      .insert(teamBillingSettings)
+      .insert(organizationBillingSettings)
       .values({ organizationId, stripeCustomerId })
       .onConflictDoUpdate({
-        target: teamBillingSettings.organizationId,
+        target: organizationBillingSettings.organizationId,
         set: {
           stripeCustomerId,
           updatedAt: new Date(),
@@ -682,7 +686,7 @@ export function createBillingMethods(
     }
 
     if (isNewCharge) {
-      await emitTeamFunds({
+      await emitOrganizationFunds({
         amountMicros: negateMicros(chargedAmount),
         transactionId,
         type: 'credit_usage',
@@ -849,7 +853,7 @@ export function createBillingMethods(
       return { ok: false };
     }
 
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros: signedAmount,
       transactionId,
       type: txType,
@@ -995,7 +999,7 @@ export function createBillingMethods(
       return { ok: false };
     }
 
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
     return {
       ok: true,
       reservationId: created.id,
@@ -1057,7 +1061,7 @@ export function createBillingMethods(
       .returning({ remaining: creditReservations.remainingAmount });
 
     if (!updated) return { ok: false };
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
     return { ok: true, remaining: micros(updated.remaining) };
   }
 
@@ -1246,7 +1250,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     const newBalance = micros(balanceRow?.balance ?? 0);
 
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros: negateMicros(captured),
       transactionId: inserted.id,
       type: txType,
@@ -1277,7 +1281,7 @@ export function createBillingMethods(
           eq(creditReservations.organizationId, organizationId)
         )
       );
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
   }
 
   async function updateAutoTopUpSettings(settings: {
@@ -1306,7 +1310,7 @@ export function createBillingMethods(
     }
 
     await db
-      .insert(teamBillingSettings)
+      .insert(organizationBillingSettings)
       .values({
         organizationId,
         autoTopUpEnabled: settings.enabled,
@@ -1316,7 +1320,7 @@ export function createBillingMethods(
         autoTopUpDeclineCode: null,
       })
       .onConflictDoUpdate({
-        target: teamBillingSettings.organizationId,
+        target: organizationBillingSettings.organizationId,
         set: {
           autoTopUpEnabled: settings.enabled,
           ...(settings.thresholdMicros !== undefined && {
@@ -1560,7 +1564,7 @@ export function createBillingMethods(
       return { status: 'refused', reason: 'expired' };
     }
 
-    const teamRedemption = async () => {
+    const organizationRedemption = async () => {
       const [holder] = await db
         .select({ userId: giftTokenRedemptions.userId })
         .from(giftTokenRedemptions)
@@ -1574,7 +1578,7 @@ export function createBillingMethods(
       return holder ?? null;
     };
 
-    const ownRedemption = await teamRedemption();
+    const ownRedemption = await organizationRedemption();
     if (ownRedemption) {
       return {
         status: 'refused',
@@ -1606,7 +1610,7 @@ export function createBillingMethods(
       .returning();
 
     if (!inserted) {
-      const holder = await teamRedemption();
+      const holder = await organizationRedemption();
       return {
         status: 'refused',
         reason: holder

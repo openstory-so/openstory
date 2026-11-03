@@ -102,7 +102,7 @@ export async function getStudioEditHistory(
  * Draft a prompt from the attached references. Billed like element vision:
  * credit-gated on the platform key, charged from reported usage.
  */
-export async function draftStudioPromptForTeam(
+export async function draftStudioPromptForOrganization(
   scopedDb: ScopedDb,
   data: StudioPromptDraftInput
 ): Promise<{ prompt: string }> {

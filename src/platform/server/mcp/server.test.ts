@@ -26,7 +26,7 @@ const user = {
 const auth = {
   user,
   organizationId: 'team_1',
-  teamName: "Ada's Team",
+  organizationName: "Ada's Team",
   session: null,
   oauth: null,
   kind: 'api_key' as const,

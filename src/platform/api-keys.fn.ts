@@ -9,7 +9,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { API_KEY_PROVIDERS } from '@/platform/server/db/schema';
-import { teamAdminAccessMiddleware } from './middleware.fn';
+import { organizationAdminAccessMiddleware } from './middleware.fn';
 
 const providerSchema = z.enum(API_KEY_PROVIDERS);
 
@@ -25,7 +25,7 @@ const listApiKeysInputSchema = z.object({
  * List all API keys for a team (metadata only, no decrypted keys).
  */
 export const listApiKeysFn = createServerFn({ method: 'GET' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(listApiKeysInputSchema))
   .handler(async ({ context }) => {
     return context.scopedDb.apiKeys.listKeys();
@@ -46,7 +46,7 @@ const saveApiKeyInputSchema = z.object({
  * Validates the key against the provider before saving.
  */
 export const saveApiKeyFn = createServerFn({ method: 'POST' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(saveApiKeyInputSchema))
   .handler(async ({ data, context }) => {
     // Validate the key first
@@ -81,7 +81,7 @@ const deleteApiKeyInputSchema = z.object({
  * Falls back to platform key after deletion.
  */
 export const deleteApiKeyFn = createServerFn({ method: 'POST' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(deleteApiKeyInputSchema))
   .handler(async ({ data, context }) => {
     await context.scopedDb.apiKeys.deleteKey(data.provider);
@@ -99,7 +99,7 @@ const checkApiKeyStatusInputSchema = z.object({
  * Check which providers have user-provided keys vs. platform keys.
  */
 export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(checkApiKeyStatusInputSchema))
   .handler(async ({ context }) => {
     const [hasOpenRouter, hasFal, hasXai, hasGoogle, hasLlmtr, hasUploadPost] =
@@ -137,7 +137,7 @@ const revalidateApiKeyInputSchema = z.object({
  * row so subsequent billing-gate reads reflect the current state.
  */
 export const revalidateApiKeyFn = createServerFn({ method: 'POST' })
-  .middleware([teamAdminAccessMiddleware])
+  .middleware([organizationAdminAccessMiddleware])
   .validator(zodValidator(revalidateApiKeyInputSchema))
   .handler(async ({ data, context }) => {
     return context.scopedDb.apiKeys.revalidateStoredKey(data.provider);

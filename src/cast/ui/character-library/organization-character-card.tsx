@@ -1,4 +1,4 @@
-import type { TeamCharacter } from '@/cast/server/db/characters';
+import type { OrganizationCharacter } from '@/cast/server/db/characters';
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Card } from '@/ui/shadcn/card';
@@ -7,7 +7,7 @@ import { User } from 'lucide-react';
 import type React from 'react';
 
 /** Which sequences cast a character, in a line. */
-function castLine(sequences: TeamCharacter['sequences']): string {
+function castLine(sequences: OrganizationCharacter['sequences']): string {
   const [latest] = sequences;
   if (!latest) return 'Not in a sequence';
   if (sequences.length === 1) return latest.title;
@@ -18,9 +18,9 @@ function castLine(sequences: TeamCharacter['sequences']): string {
  * One of the team's characters (#2017). The picture is its default look's
  * sheet.
  */
-export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
-  character,
-}) => {
+export const OrganizationCharacterCard: React.FC<{
+  character: OrganizationCharacter;
+}> = ({ character }) => {
   // The portrait drawn from the sheet; a sheet from before portraits is cropped.
   const portraitUrl = character.sheetPortraitUrl;
   const sheetUrl = portraitUrl ?? character.sheetImageUrl;

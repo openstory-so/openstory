@@ -68,7 +68,7 @@ import {
   responseContentType,
 } from '@/platform/server/api-v1/safe-fetch';
 import { generateId } from '@/platform/id';
-import { teamUserUploadStoragePath } from '@/cast/server/team-user-upload';
+import { organizationUserUploadStoragePath } from '@/cast/server/organization-user-upload';
 import type { PortraitAttestation } from '@/cast/upload-rights';
 
 const logger = getLogger(['openstory', 'shots', 'media-upload']);
@@ -846,7 +846,7 @@ function uploadTarget(
     // The composer's key (`presignTalentUploadFn`), which list_studio_uploads reads.
     return {
       bucket: STORAGE_BUCKETS.TALENT,
-      path: teamUserUploadStoragePath(organizationId, id, ext),
+      path: organizationUserUploadStoragePath(organizationId, id, ext),
     };
   }
   if (!sequenceId) {

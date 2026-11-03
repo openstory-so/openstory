@@ -14,7 +14,7 @@ import {
   getPathFromUrl,
 } from '@/platform/server/storage/buckets';
 
-export const TEAM_USER_UPLOAD_PREFIX = 'uploads';
+export const ORGANIZATION_USER_UPLOAD_PREFIX = 'uploads';
 const LEGACY_TEMP_PREFIX = 'temp';
 
 const USER_UPLOAD_BUCKETS = [
@@ -24,35 +24,35 @@ const USER_UPLOAD_BUCKETS = [
 
 export type UserUploadBucket = (typeof USER_UPLOAD_BUCKETS)[number];
 
-export function isTeamUserUploadUrl(
+export function isOrganizationUserUploadUrl(
   url: string,
   bucket: UserUploadBucket,
   organizationId: string
 ): boolean {
-  const uploads = `/r2/${bucket}/${organizationId}/${TEAM_USER_UPLOAD_PREFIX}/`;
+  const uploads = `/r2/${bucket}/${organizationId}/${ORGANIZATION_USER_UPLOAD_PREFIX}/`;
   const temp = `/r2/${bucket}/${organizationId}/${LEGACY_TEMP_PREFIX}/`;
   return url.startsWith(uploads) || url.startsWith(temp);
 }
 
-export function teamUserUploadStoragePath(
+export function organizationUserUploadStoragePath(
   organizationId: string,
   uploadId: string,
   ext: string
 ): string {
-  return `${organizationId}/${TEAM_USER_UPLOAD_PREFIX}/${uploadId}.${ext}`;
+  return `${organizationId}/${ORGANIZATION_USER_UPLOAD_PREFIX}/${uploadId}.${ext}`;
 }
 
 /**
  * Prove a client-supplied talent/location URL may back a row: this team's
  * `uploads/` (or leftover `temp/`), actually present in R2.
  */
-export async function assertTeamUserUploadAttachable(params: {
+export async function assertOrganizationUserUploadAttachable(params: {
   url: string;
   bucket: UserUploadBucket;
   organizationId: string;
 }): Promise<{ path: string; url: string }> {
   const { url, bucket, organizationId } = params;
-  if (!isTeamUserUploadUrl(url, bucket, organizationId)) {
+  if (!isOrganizationUserUploadUrl(url, bucket, organizationId)) {
     throw new ValidationError('Invalid storage path');
   }
   const path = getPathFromUrl(url, bucket);

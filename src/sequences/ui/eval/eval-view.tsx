@@ -10,7 +10,7 @@ import {
   useSequencesWithShots,
   type SequenceWithShots,
 } from '@/sequences/ui/use-sequences-with-shots';
-import { useTeamDivergentSequenceVariants } from '@/audio/ui/use-sequence-variants';
+import { useOrganizationDivergentSequenceVariants } from '@/audio/ui/use-sequence-variants';
 import { useStyles } from '@/look/ui/use-styles';
 import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useQuery, useInfiniteQuery, useQueries } from '@tanstack/react-query';
@@ -278,18 +278,19 @@ export const EvalView: React.FC<EvalViewProps> = ({
 
   // Team-scoped divergence flags so own-data rows show a "variants available"
   // dot. In support mode rows belong to other organizations, so the flag is irrelevant.
-  const { data: divergentByTeam } = useTeamDivergentSequenceVariants(
-    !supportMode && loadShots && sequences.length > 0
-  );
+  const { data: divergentByOrganization } =
+    useOrganizationDivergentSequenceVariants(
+      !supportMode && loadShots && sequences.length > 0
+    );
   const divergenceMap = useMemo(() => {
     const map = new Map<string, { hasMusic: boolean }>();
-    for (const row of divergentByTeam ?? []) {
+    for (const row of divergentByOrganization ?? []) {
       map.set(row.sequenceId, {
         hasMusic: row.hasMusic,
       });
     }
     return map;
-  }, [divergentByTeam]);
+  }, [divergentByOrganization]);
 
   // Deep link wins: when a specific user is requested, never hide them.
   const effectiveHideInternal =

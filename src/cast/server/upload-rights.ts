@@ -22,8 +22,8 @@
 
 import type { Likeness } from '@/cast/likeness';
 import {
-  analyzeTalentClipForTeam,
-  analyzeTalentMediaForTeam,
+  analyzeTalentClipForOrganization,
+  analyzeTalentMediaForOrganization,
   type VisionBillingDb,
 } from '@/cast/server/talent/analyze-talent-media';
 import type { TalentVisionResult } from '@/cast/server/talent-vision';
@@ -186,7 +186,7 @@ function analyzeUpload(opts: {
   // classifier could be cleared on bytes it cannot read.
   const mimeType = getMimeTypeFromExtension(getExtensionFromUrl(opts.url));
   if (mimeType.startsWith('image/')) {
-    return analyzeTalentMediaForTeam({
+    return analyzeTalentMediaForOrganization({
       scopedDb: opts.scopedDb,
       userId: opts.userId,
       imageUrls: [opts.url],
@@ -206,7 +206,7 @@ function analyzeUpload(opts: {
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
   }
-  return analyzeTalentClipForTeam({
+  return analyzeTalentClipForOrganization({
     scopedDb: opts.scopedDb,
     userId: opts.userId,
     key,

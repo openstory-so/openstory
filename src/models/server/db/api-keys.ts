@@ -30,7 +30,10 @@ import {
   encryptApiKey,
   getKeyHint,
 } from '@/platform/server/crypto/api-key-encryption';
-import { type ApiKeyProvider, teamApiKeys } from '@/platform/server/db/schema';
+import {
+  type ApiKeyProvider,
+  organizationApiKeys,
+} from '@/platform/server/db/schema';
 
 import { getLogger, serializeError } from '@/platform/logger';
 
@@ -114,32 +117,32 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
   async function listKeys(): Promise<ApiKeyInfo[]> {
     const rows = await db
       .select({
-        id: teamApiKeys.id,
-        provider: teamApiKeys.provider,
-        keyHint: teamApiKeys.keyHint,
-        source: teamApiKeys.source,
-        isActive: teamApiKeys.isActive,
-        isInvalid: teamApiKeys.isInvalid,
-        invalidReason: teamApiKeys.invalidReason,
-        lastValidatedAt: teamApiKeys.lastValidatedAt,
-        addedBy: teamApiKeys.addedBy,
-        createdAt: teamApiKeys.createdAt,
+        id: organizationApiKeys.id,
+        provider: organizationApiKeys.provider,
+        keyHint: organizationApiKeys.keyHint,
+        source: organizationApiKeys.source,
+        isActive: organizationApiKeys.isActive,
+        isInvalid: organizationApiKeys.isInvalid,
+        invalidReason: organizationApiKeys.invalidReason,
+        lastValidatedAt: organizationApiKeys.lastValidatedAt,
+        addedBy: organizationApiKeys.addedBy,
+        createdAt: organizationApiKeys.createdAt,
       })
-      .from(teamApiKeys)
-      .where(eq(teamApiKeys.organizationId, organizationId));
+      .from(organizationApiKeys)
+      .where(eq(organizationApiKeys.organizationId, organizationId));
 
     return rows;
   }
 
   async function hasKey(provider: ApiKeyProvider): Promise<boolean> {
     const [row] = await db
-      .select({ id: teamApiKeys.id })
-      .from(teamApiKeys)
+      .select({ id: organizationApiKeys.id })
+      .from(organizationApiKeys)
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider),
-          eq(teamApiKeys.isActive, true)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider),
+          eq(organizationApiKeys.isActive, true)
         )
       )
       .limit(1);
@@ -153,14 +156,14 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
   // must not bypass a credit check or render as covering generation.
   async function hasUsableKey(provider: ApiKeyProvider): Promise<boolean> {
     const [row] = await db
-      .select({ id: teamApiKeys.id })
-      .from(teamApiKeys)
+      .select({ id: organizationApiKeys.id })
+      .from(organizationApiKeys)
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider),
-          eq(teamApiKeys.isActive, true),
-          eq(teamApiKeys.isInvalid, false)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider),
+          eq(organizationApiKeys.isActive, true),
+          eq(organizationApiKeys.isInvalid, false)
         )
       )
       .limit(1);
@@ -170,14 +173,14 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
 
   async function hasInvalidKey(provider: ApiKeyProvider): Promise<boolean> {
     const [row] = await db
-      .select({ id: teamApiKeys.id })
-      .from(teamApiKeys)
+      .select({ id: organizationApiKeys.id })
+      .from(organizationApiKeys)
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider),
-          eq(teamApiKeys.isActive, true),
-          eq(teamApiKeys.isInvalid, true)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider),
+          eq(organizationApiKeys.isActive, true),
+          eq(organizationApiKeys.isInvalid, true)
         )
       )
       .limit(1);
@@ -209,18 +212,18 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
   ): Promise<CachedKeyLookup> {
     const [row] = await db
       .select({
-        encryptedKey: teamApiKeys.encryptedKey,
-        keyIv: teamApiKeys.keyIv,
-        keyTag: teamApiKeys.keyTag,
-        isInvalid: teamApiKeys.isInvalid,
-        invalidReason: teamApiKeys.invalidReason,
+        encryptedKey: organizationApiKeys.encryptedKey,
+        keyIv: organizationApiKeys.keyIv,
+        keyTag: organizationApiKeys.keyTag,
+        isInvalid: organizationApiKeys.isInvalid,
+        invalidReason: organizationApiKeys.invalidReason,
       })
-      .from(teamApiKeys)
+      .from(organizationApiKeys)
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider),
-          eq(teamApiKeys.isActive, true)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider),
+          eq(organizationApiKeys.isActive, true)
         )
       )
       .limit(1);
@@ -279,7 +282,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
         error: err,
       });
       await db
-        .update(teamApiKeys)
+        .update(organizationApiKeys)
         .set({
           isInvalid: true,
           invalidReason: reason,
@@ -288,8 +291,8 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
         })
         .where(
           and(
-            eq(teamApiKeys.organizationId, organizationId),
-            eq(teamApiKeys.provider, provider)
+            eq(organizationApiKeys.organizationId, organizationId),
+            eq(organizationApiKeys.provider, provider)
           )
         );
       // Flip the cached lookup to invalid so other calls in this scope skip the
@@ -344,17 +347,17 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       return key ? { key, source: 'platform' } : undefined;
     }
 
-    const teamProvider: ApiKeyProvider = provider;
+    const organizationProvider: ApiKeyProvider = provider;
 
     function platformFallback(
       fallbackReason?: string
     ): ResolvedApiKey | undefined {
-      const platformKey = platformKeyFor(teamProvider);
+      const platformKey = platformKeyFor(organizationProvider);
       if (!platformKey) return undefined;
       return { key: platformKey, source: 'platform', fallbackReason };
     }
 
-    const lookup = await readKeyRowLogged(teamProvider);
+    const lookup = await readKeyRowLogged(organizationProvider);
 
     if (!lookup.found) return platformFallback();
 
@@ -390,7 +393,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
 
   // Resolve the team key for a gateway that only fronts *some* models, given
   // the row already read. Returns the key, or the reason it was skipped.
-  async function teamGatewayKey(
+  async function organizationGatewayKey(
     provider: ApiKeyProvider,
     lookup: CachedKeyLookup
   ): Promise<{ key: string } | { skippedReason?: string }> {
@@ -436,7 +439,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     }
 
     if (model && llmtrTextModel(model)) {
-      const result = await teamGatewayKey(
+      const result = await organizationGatewayKey(
         'llmtr',
         await readKeyRowLogged('llmtr')
       );
@@ -633,7 +636,7 @@ export function createApiKeysMethods(
     reason: string
   ): Promise<void> => {
     await db
-      .update(teamApiKeys)
+      .update(organizationApiKeys)
       .set({
         isInvalid: true,
         invalidReason: reason,
@@ -642,8 +645,8 @@ export function createApiKeysMethods(
       })
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider)
         )
       );
     readMethods.invalidateResolveKeyCache(provider);
@@ -651,7 +654,7 @@ export function createApiKeysMethods(
 
   const markKeyValid = async (provider: ApiKeyProvider): Promise<void> => {
     await db
-      .update(teamApiKeys)
+      .update(organizationApiKeys)
       .set({
         isInvalid: false,
         invalidReason: null,
@@ -660,8 +663,8 @@ export function createApiKeysMethods(
       })
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider)
         )
       );
     readMethods.invalidateResolveKeyCache(provider);
@@ -672,16 +675,16 @@ export function createApiKeysMethods(
   ): Promise<{ valid: boolean; error?: string; hasKey: boolean }> => {
     const [row] = await db
       .select({
-        encryptedKey: teamApiKeys.encryptedKey,
-        keyIv: teamApiKeys.keyIv,
-        keyTag: teamApiKeys.keyTag,
+        encryptedKey: organizationApiKeys.encryptedKey,
+        keyIv: organizationApiKeys.keyIv,
+        keyTag: organizationApiKeys.keyTag,
       })
-      .from(teamApiKeys)
+      .from(organizationApiKeys)
       .where(
         and(
-          eq(teamApiKeys.organizationId, organizationId),
-          eq(teamApiKeys.provider, provider),
-          eq(teamApiKeys.isActive, true)
+          eq(organizationApiKeys.organizationId, organizationId),
+          eq(organizationApiKeys.provider, provider),
+          eq(organizationApiKeys.isActive, true)
         )
       )
       .limit(1);
@@ -732,16 +735,16 @@ export function createApiKeysMethods(
       const now = new Date();
 
       await db
-        .delete(teamApiKeys)
+        .delete(organizationApiKeys)
         .where(
           and(
-            eq(teamApiKeys.organizationId, organizationId),
-            eq(teamApiKeys.provider, params.provider)
+            eq(organizationApiKeys.organizationId, organizationId),
+            eq(organizationApiKeys.provider, params.provider)
           )
         );
 
       const [row] = await db
-        .insert(teamApiKeys)
+        .insert(organizationApiKeys)
         .values({
           organizationId,
           provider: params.provider,
@@ -784,11 +787,11 @@ export function createApiKeysMethods(
 
     deleteKey: async (provider: ApiKeyProvider): Promise<void> => {
       await db
-        .delete(teamApiKeys)
+        .delete(organizationApiKeys)
         .where(
           and(
-            eq(teamApiKeys.organizationId, organizationId),
-            eq(teamApiKeys.provider, provider)
+            eq(organizationApiKeys.organizationId, organizationId),
+            eq(organizationApiKeys.provider, provider)
           )
         );
       readMethods.invalidateResolveKeyCache(provider);

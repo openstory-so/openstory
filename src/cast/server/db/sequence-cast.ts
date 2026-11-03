@@ -23,7 +23,7 @@ import { ConflictError, NotFoundError } from '@/platform/errors';
 /**
  * The one meaning of "a sequence casts this character" (#2017): a cast link
  * that is not removed, in a sequence that is not archived. `exceptSequenceId`
- * leaves one sequence out. `selectTeam` joins on the same two conditions, so
+ * leaves one sequence out. `selectOrganization` joins on the same two conditions, so
  * the list, the character page and the voice release agree.
  */
 export const castElsewhere = (

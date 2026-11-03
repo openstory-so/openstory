@@ -370,7 +370,7 @@ export function createAssistantMethods(
   );
   return {
     /** The team's display name, for the system prompt and `whoami`. */
-    teamName: async (): Promise<string> => {
+    organizationName: async (): Promise<string> => {
       const rows = await db
         .select({ name: organization.name })
         .from(organization)

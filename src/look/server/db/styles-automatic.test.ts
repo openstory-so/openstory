@@ -159,14 +159,16 @@ describe('automatic styles', () => {
   it('getById/listByIds hide another team’s bound row but resolve library rows', async () => {
     const { style } = await createAutoSequence();
     const library = await seedLibraryStyle('Noir');
-    const otherTeam = createStylesMethods(db, generateId(), userId);
+    const otherOrganization = createStylesMethods(db, generateId(), userId);
 
-    expect(await otherTeam.getById(style.id)).toBeNull();
-    expect(await otherTeam.getById(library.id)).toMatchObject({
+    expect(await otherOrganization.getById(style.id)).toBeNull();
+    expect(await otherOrganization.getById(library.id)).toMatchObject({
       id: library.id,
     });
     expect(
-      (await otherTeam.listByIds([style.id, library.id])).map((s) => s.id)
+      (await otherOrganization.listByIds([style.id, library.id])).map(
+        (s) => s.id
+      )
     ).toEqual([library.id]);
     const own = createStylesMethods(db, organizationId, userId);
     expect(await own.getById(style.id)).toMatchObject({ id: style.id });

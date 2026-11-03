@@ -10,7 +10,7 @@
  * `url` a page: anyone with it can watch.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { API_V1_BASE, getLink, withLinks } from '@/platform/server/api-v1/hal';
 import { stitchCutSchema } from '@/stitches/cut';
@@ -26,7 +26,7 @@ const bodySchema = z.object({ cut: stitchCutSchema });
 
 export const Route = createFileRoute('/api/v1/stitches')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ request, context }) =>
         runApiV1Handler(async () => {

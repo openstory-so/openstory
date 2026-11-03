@@ -44,7 +44,7 @@ import {
   selectCharacterSheetVersion,
   updateCharacter,
   updateCharacterLook,
-  updateTeamCharacterLook,
+  updateOrganizationCharacterLook,
 } from '@/cast/server/cast-edit';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
@@ -306,7 +306,7 @@ describe('cast', () => {
   });
 
   /** One of the team's locations, with a completed sheet when `sheet`. */
-  async function teamLocation(name: string, sheet: boolean) {
+  async function organizationLocation(name: string, sheet: boolean) {
     const id = generateId();
     await db.insert(locations).values({
       id,
@@ -333,9 +333,9 @@ describe('cast', () => {
     });
 
   it('refuses to switch to a team location with no reference image', async () => {
-    const locationId = await teamLocation('Office', true);
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const libraryLocationId = await teamLocation('Bare office', false);
+    const libraryLocationId = await organizationLocation('Bare office', false);
     expect(
       await call('recast_location', {
         sequenceId,
@@ -350,9 +350,9 @@ describe('cast', () => {
   });
 
   it('recast_location re-points the sequence at another team location and draws no sheet (#1695)', async () => {
-    const locationId = await teamLocation('Office', true);
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const libraryLocationId = await teamLocation('Loft', true);
+    const libraryLocationId = await organizationLocation('Loft', true);
     expect(
       await data('recast_location', {
         sequenceId,
@@ -374,7 +374,9 @@ describe('cast', () => {
     ).toMatchObject({ name: 'Loft', locationId: 'loc_001', attached: true });
     expect(await scopedDb.locations.getById(sequenceId, locationId)).toBe(null);
     expect(
-      (await scopedDb.locations.listTeam()).map((location) => location.id)
+      (await scopedDb.locations.listOrganization()).map(
+        (location) => location.id
+      )
     ).toEqual(expect.arrayContaining([locationId, libraryLocationId]));
     expect(await scopedDb.locations.getCurrent(locationId)).toMatchObject({
       referenceStatus: 'completed',
@@ -383,16 +385,18 @@ describe('cast', () => {
   });
 
   it('does not switch to another team\u2019s location', async () => {
-    const locationId = await teamLocation('Office', true);
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const foreignTeam = generateId();
-    await db
-      .insert(organization)
-      .values({ id: foreignTeam, name: 'Foreign', slug: foreignTeam });
+    const foreignOrganization = generateId();
+    await db.insert(organization).values({
+      id: foreignOrganization,
+      name: 'Foreign',
+      slug: foreignOrganization,
+    });
     const foreign = generateId();
     await db.insert(locations).values({
       id: foreign,
-      organizationId: foreignTeam,
+      organizationId: foreignOrganization,
       legacyName: 'Vault',
     });
     expect(
@@ -514,7 +518,7 @@ describe('a character that must be a person is stored as one, on every path (#20
       .update(characterBibleVersions)
       .set({ isPerson: false, legacyDistinguishingFeatures: 'scar' })
       .where(eq(characterBibleVersions.characterId, id));
-    await updateTeamCharacterLook(scopedDb, actor(), id, id, {
+    await updateOrganizationCharacterLook(scopedDb, actor(), id, id, {
       styling: 'hair down',
     });
     expect(await scopedDb.characters.getCurrent(id)).toMatchObject({

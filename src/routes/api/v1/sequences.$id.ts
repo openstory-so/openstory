@@ -11,7 +11,7 @@
  * agent without a sleep tool can create→watch in one call.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import {
   buildSequenceState,
@@ -25,7 +25,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/sequences/$id')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context, request }) =>
         runApiV1Handler(async () => {

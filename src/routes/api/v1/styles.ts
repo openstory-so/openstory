@@ -8,7 +8,7 @@
  * GET lists this team's library styles plus the public templates — never sequence-bound automatic styles.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { createStyleLink } from '@/platform/server/api-v1/discovery';
 import {
@@ -23,7 +23,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/styles')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ context }) =>
         runApiV1Handler(async () => {
