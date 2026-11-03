@@ -34,7 +34,6 @@ import {
   session,
   styles,
   member,
-  teamMembers,
   organization,
   user,
   verification,
@@ -116,12 +115,6 @@ export async function createTestUser(
     updatedAt: now,
   });
 
-  await db.insert(teamMembers).values({
-    organizationId,
-    userId,
-    role: 'owner',
-    joinedAt: now,
-  });
   await db.insert(member).values({
     id: userId,
     organizationId,
@@ -291,7 +284,6 @@ export async function cleanupTestUser(
 
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(member).where(eq(member.userId, userId));
-  await db.delete(teamMembers).where(eq(teamMembers.userId, userId));
   await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
   // A team delete is refused while it has locations (#1695).
   await deleteTestLocations(eq(locations.organizationId, organizationId));

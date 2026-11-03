@@ -32,7 +32,7 @@ import {
   saveApiKeyFn,
 } from '@/platform/api-keys.fn';
 import { initiateOpenRouterOAuthFn } from '@/platform/openrouter-oauth.fn';
-import { getCurrentUserProfileFn } from '@/platform/user.fn';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -61,33 +61,34 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
-  const { data: profile } = useQuery({
-    queryKey: ['currentUserProfile'],
-    queryFn: () => getCurrentUserProfileFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: session, isPending } = useAuthSession();
 
-  if (!profile?.organizationId) {
-    return <ApiKeySettingsLoading />;
+  if (isPending) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-10 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
   }
 
-  return (
-    <ApiKeySettingsContent organizationId={profile.organizationId} {...props} />
-  );
-}
+  const organizationId = session?.session.activeOrganizationId;
+  if (!organizationId) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>
+          No active organization on this session.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
-function ApiKeySettingsLoading() {
-  return (
-    <Card>
-      <CardHeader>
-        <Skeleton className="h-10 w-48" />
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-      </CardContent>
-    </Card>
-  );
+  return <ApiKeySettingsContent organizationId={organizationId} {...props} />;
 }
 
 const RETURN_KEY = 'openstory:billing-return';

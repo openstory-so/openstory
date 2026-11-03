@@ -78,10 +78,6 @@ import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-ma
 import { and, asc, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 import { apiKeyMetadataSchema } from '@/platform/server/auth/public-api-key';
 
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'db', 'scoped']);
-
 export type { UserActivityRow } from '@/platform/server/db/scoped/admin';
 
 /**
@@ -329,9 +325,8 @@ export async function getSequenceByIdUnscoped(
 }
 
 /**
- * Create a user's default organization with them as owner. The one place the
- * sign-up bootstrap SQL lives: the Better Auth `user.create` hook and
- * `ensureUserAndTeam` both call it. The membership id is the user id because
+ * Create a user's default organization with them as owner. Called from the Better Auth
+ * `user.create` hook. The membership id is the user id because
  * this is their only membership.
  */
 export async function createDefaultTeam(input: {
@@ -375,81 +370,6 @@ export async function getUserIdentity(
     .where(eq(user.id, userId))
     .limit(1);
   return row ?? null;
-}
-
-/**
- * Ensure user exists in database with team membership.
- * Creates user record, team, and membership if they don't exist.
- * Bootstrap function — does not require a scopedDb instance.
- */
-export async function ensureUserAndTeam(authUser: {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-}): Promise<{
-  success: boolean;
-  data?: User & {
-    teamMembers?: Array<{ organizationId: string; role: string }>;
-  };
-  error?: string;
-}> {
-  try {
-    const db = getDb();
-
-    const foundUser = await db.query.user.findFirst({
-      where: { id: authUser.id },
-    });
-
-    if (foundUser) {
-      const memberships = await db
-        .select({ organizationId: member.organizationId, role: member.role })
-        .from(member)
-        .where(eq(member.userId, authUser.id));
-
-      if (memberships.length > 0) {
-        return {
-          success: true,
-          data: { ...foundUser, teamMembers: memberships },
-        };
-      }
-    }
-
-    await db
-      .insert(user)
-      .values({
-        id: authUser.id,
-        name: authUser.name || 'Anonymous',
-        email: authUser.email || `${authUser.id}@anonymous.local`,
-      })
-      .onConflictDoNothing();
-
-    const team = await createDefaultTeam({
-      userId: authUser.id,
-      teamName: authUser.name
-        ? `${authUser.name}'s Organization`
-        : `Anonymous Organization ${authUser.id.slice(0, 8)}`,
-    });
-
-    const createdUser = await db.query.user.findFirst({
-      where: { id: authUser.id },
-    });
-
-    if (!createdUser) throw new Error('Failed to retrieve created user');
-
-    return {
-      success: true,
-      data: {
-        ...createdUser,
-        teamMembers: [{ organizationId: team.id, role: 'owner' }],
-      },
-    };
-  } catch (error) {
-    logger.error('Error:', { err: error });
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unexpected error',
-    };
-  }
 }
 
 /**

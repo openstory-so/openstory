@@ -23,26 +23,6 @@ export const relations = defineRelations(schema, (r) => ({
     user: r.one.user({ from: r.passkey.userId, to: r.user.id }),
   },
 
-  // ---- Teams ----
-  organization: {
-    members: r.many.teamMembers(),
-    invitations: r.many.teamInvitations(),
-  },
-  teamMembers: {
-    team: r.one.organization({
-      from: r.teamMembers.organizationId,
-      to: r.organization.id,
-    }),
-    user: r.one.user({ from: r.teamMembers.userId, to: r.user.id }),
-  },
-  teamInvitations: {
-    team: r.one.organization({
-      from: r.teamInvitations.organizationId,
-      to: r.organization.id,
-    }),
-    user: r.one.user({ from: r.teamInvitations.invitedBy, to: r.user.id }),
-  },
-
   // ---- Sequences ----
   sequences: {
     team: r.one.organization({
