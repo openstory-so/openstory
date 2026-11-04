@@ -1,10 +1,10 @@
 /**
  * Scoped generated_assets CRUD (#458 — direct model access).
  *
- * Rows are flat, team-scoped runs of arbitrary fal endpoints. They accumulate
+ * Rows are flat, organization-scoped runs of arbitrary fal endpoints. They accumulate
  * (no primary/variant split, no selection pointer): the list IS the asset
  * library. Every read filters on the injected `organizationId`; writes inject
- * `organizationId`/`userId` so callers can't cross team boundaries.
+ * `organizationId`/`userId` so callers can't cross organization boundaries.
  *
  * Status lifecycle: `queued` (row reserved by the server fn) → `running`
  * (workflow picked it up) → `completed` (outputs uploaded to R2) / `failed`.
@@ -21,7 +21,7 @@ import {
 } from '@/platform/server/db/schema';
 import { and, asc, desc, eq, gt, lt, type SQL } from 'drizzle-orm';
 
-/** Filters + keyset pagination for team-scoped listing. */
+/** Filters + keyset pagination for organization-scoped listing. */
 export type ListGeneratedAssetsOptions = {
   activity?: GeneratedAsset['activity'];
   endpointId?: string;
@@ -55,7 +55,7 @@ export function createGeneratedAssetsMethods(
       return row;
     },
 
-    /** Team-scoped list with optional filters + keyset cursor. */
+    /** Organization-scoped list with optional filters + keyset cursor. */
     list: async (
       options: ListGeneratedAssetsOptions = {}
     ): Promise<{ assets: GeneratedAsset[]; nextCursor: string | null }> => {
@@ -236,11 +236,13 @@ export function createGeneratedAssetsMethods(
 
 /**
  * A status/run-id UPDATE that matched no row means the id doesn't exist for
- * this team — without this check the workflow would "succeed" with nothing
- * persisted (deleted row, cross-team id).
+ * this organization — without this check the workflow would "succeed" with nothing
+ * persisted (deleted row, cross-organization id).
  */
 function assertUpdated(updated: Array<{ id: string }>, id: string): void {
   if (updated.length === 0) {
-    throw new Error(`generated_assets row ${id} not found for this team`);
+    throw new Error(
+      `generated_assets row ${id} not found for this organization`
+    );
   }
 }

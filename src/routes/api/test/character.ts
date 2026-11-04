@@ -7,7 +7,7 @@ import {
 } from '@/platform/server/test/seed';
 import { testOnlyGuard } from './route';
 
-// `preset` makes the team character the full-sequence e2e casts.
+// `preset` makes the organization character the full-sequence e2e casts.
 const CreateCharacterSchema = z.union([
   z.object({
     sequenceId: z.string(),

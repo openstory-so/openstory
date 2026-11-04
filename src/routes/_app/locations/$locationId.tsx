@@ -39,13 +39,13 @@ export const Route = createFileRoute('/_app/locations/$locationId')({
 function OrganizationLocationContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
   const { data: location } = useOrganizationLocation(id);
-  // Gone or another team's. Reached from a stale link.
+  // Gone or another organization's. Reached from a stale link.
   if (!location) {
     return (
       <EmptyState
         icon={<MapPin className="h-12 w-12" />}
         title="Location not found"
-        description="It was deleted, or it belongs to another team."
+        description="It was deleted, or it belongs to another organization."
         action={
           <Button variant="outline" asChild>
             <Link to="/locations">Back to Locations</Link>
@@ -135,7 +135,7 @@ function OrganizationLocationContent({ id }: { id: string }) {
       ) : (
         <div className="min-h-0 flex-1">
           <LocationDetailView
-            key={shown?.id ?? 'team'}
+            key={shown?.id ?? 'organization'}
             sequenceId={shown?.id ?? null}
             locationId={id}
             header="none"
@@ -155,7 +155,7 @@ function OrganizationLocationPage() {
       <EmptyState
         icon={<MapPin className="h-12 w-12" />}
         title="Sign in to see this location"
-        description="Locations belong to your team."
+        description="Locations belong to your organization."
         action={<SignInButton />}
       />
     );

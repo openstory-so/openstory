@@ -19,7 +19,7 @@ export type ShotContext = OrganizationContext & ShotTarget;
 
 /**
  * Shot access middleware
- * Loads shot with its sequence and verifies team access
+ * Loads shot with its sequence and verifies organization access
  * Requires sequenceId and shotId in input data
  */
 export const shotAccessMiddleware = createMiddleware({ type: 'function' })

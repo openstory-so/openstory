@@ -52,7 +52,7 @@ export type PlanReferences = {
   /**
    * The wave's price at the click. Its children have no preflight of their
    * own, so the run checks the balance against this before it spawns them.
-   * Split because a team's fal key pays for sheets, never for voices.
+   * Split because an organization's fal key pays for sheets, never for voices.
    */
   cost: { sheets: Microdollars; voices: Microdollars };
 };

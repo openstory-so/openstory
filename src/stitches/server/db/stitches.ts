@@ -1,8 +1,8 @@
 /**
- * Scoped `stitches` rows (#2127). A team creates and publishes; anyone with
+ * Scoped `stitches` rows (#2127). An organization creates and publishes; anyone with
  * the id reads a published row, through the unscoped `createPublicStitchReads`
  * the composition root exposes as `getPublicStitch` — the page at
- * /stitch/<id> has no team.
+ * /stitch/<id> has no organization.
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -52,7 +52,7 @@ export function createStitchesMethods(
       return rows[0] ?? null;
     },
 
-    /** Mark the row published; null when it is not this team's or already is. */
+    /** Mark the row published; null when it is not this organization's or already is. */
     publish: async (id: string): Promise<Stitch | null> => {
       const rows = await db
         .update(stitches)

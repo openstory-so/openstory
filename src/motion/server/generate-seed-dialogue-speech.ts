@@ -262,7 +262,7 @@ export async function generateSeedDialogueSpeech(input: {
       take.wav,
       { contentType: 'audio/wav', upsert: true }
     );
-    // ponytail: only the kept take is billed to the team; the platform eats
+    // ponytail: only the kept take is billed to the organization; the platform eats
     // the tries it threw away.
     return {
       speechId,

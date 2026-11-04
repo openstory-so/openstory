@@ -49,7 +49,7 @@ const FounderCreditRequestEmail: React.FC<FounderCreditRequestEmailProps> = ({
           <strong>Email:</strong> {userEmail}
         </Text>
         <Text style={detailRowStyle}>
-          <strong>Team:</strong> {organizationId}
+          <strong>Organization:</strong> {organizationId}
         </Text>
         <Text style={detailRowStyle}>
           <strong>Balance:</strong> {balanceDisplay}

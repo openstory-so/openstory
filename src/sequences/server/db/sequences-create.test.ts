@@ -1,7 +1,7 @@
 /**
  * `sequences.create` must PERSIST the settings the composer chose.
  *
- * `generateStartFrames` shipped validated, capability-checked against the team's
+ * `generateStartFrames` shipped validated, capability-checked against the organization's
  * vias, and priced into the credit estimate — and then not written. The column
  * default is 0, so every sequence came back with the mode off and ran the full
  * image pipeline. Nothing threw anywhere along the way; the only symptom was a

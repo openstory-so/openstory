@@ -2,7 +2,7 @@
  * Scoped Characters Sub-module
  * Character CRUD, sheet generation, and shot-character matching.
  *
- * A character belongs to the team; a sequence uses it through a cast link
+ * A character belongs to the organization; a sequence uses it through a cast link
  * (#2017). Every sequence read here comes through that link and returns the
  * character at its current version with the link's own fields — the script
  * id and the removal — under the names the character's own columns had.
@@ -253,7 +253,7 @@ const {
   legacyConsistencyTag: _consistencyTag,
   legacyInLibrary: _inLibrary,
   // A cast read's `deletedAt` is its link's `removedAt`.
-  deletedAt: _teamDeletedAt,
+  deletedAt: _organizationDeletedAt,
   legacySheetStatus: _sheetStatus,
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
@@ -333,7 +333,7 @@ const organizationCastSchema = z.array(
 );
 
 /**
- * One of the team's characters as the team sees it (#2017): its current
+ * One of the organization's characters as the organization sees it (#2017): its current
  * bible, its default look's sheet and the sequences that cast it.
  */
 export type OrganizationCharacter = {
@@ -475,7 +475,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
   const inOrganization = eq(characters.organizationId, organizationId);
 
   /**
-   * The team's characters as their sequences cast them, and the joins they
+   * The organization's characters as their sequences cast them, and the joins they
    * depend on, looks not yet resolved. One row per cast link.
    */
   const selectRows = () =>
@@ -495,7 +495,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         characterVoiceVersions,
         eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
       );
-  /** The team's characters read from no sequence (#2017): one row each. */
+  /** The organization's characters read from no sequence (#2017): one row each. */
   const selectOwnRows = () =>
     db
       .select(ownCharacterColumns)
@@ -599,7 +599,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       return { ...character, castId, sequenceId, characterId };
     });
 
-  /** The team's resolved characters as one sequence casts them. */
+  /** The organization's resolved characters as one sequence casts them. */
   const selectCharacters = async (
     sequenceId: string,
     where: SQL | undefined
@@ -873,7 +873,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
   };
 
   /**
-   * The team's characters with the sequences that cast them, in ONE grouped
+   * The organization's characters with the sequences that cast them, in ONE grouped
    * read over the cast links: nothing about a sequence is stored on the
    * character. A removed link and an archived sequence do not count.
    *
@@ -1094,21 +1094,21 @@ export function createCharactersMethods(db: Database, organizationId: string) {
 
   return {
     /**
-     * The team's characters (#2017), sorted by use; see {@link selectOrganization}.
+     * The organization's characters (#2017), sorted by use; see {@link selectOrganization}.
      */
-    // ponytail: the whole list in one read; page it when a team passes a few thousand characters.
+    // ponytail: the whole list in one read; page it when an organization passes a few thousand characters.
     listOrganization: async (): Promise<OrganizationCharacter[]> =>
       await selectOrganization(undefined),
 
-    /** One of the team's characters, with the sequences that cast it. */
+    /** One of the organization's characters, with the sequences that cast it. */
     getOrganizationCharacter: async (
       id: string
     ): Promise<OrganizationCharacter | null> =>
       (await selectOrganization(eq(characters.id, id)))[0] ?? null,
 
     /**
-     * One of the team's characters at its current version, with its looks
-     * ({@link CurrentCharacter}); null when it is gone or another team's.
+     * One of the organization's characters at its current version, with its looks
+     * ({@link CurrentCharacter}); null when it is gone or another organization's.
      */
     getCurrent: async (id: string): Promise<CharacterWithSheet | null> =>
       await currentOf(id),
@@ -1184,7 +1184,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Cast one of the team's characters into `sequenceId` (#2050, #2065):
+     * Cast one of the organization's characters into `sequenceId` (#2050, #2065):
      * one link. Nothing is copied: the sequence reads her bible, voice,
      * looks and sheets as they are.
      *
@@ -1223,7 +1223,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         );
       }
       const { name } = character;
-      // The sequence must be this team's too: the db method refuses, not
+      // The sequence must be this organization's too: the db method refuses, not
       // only its callers.
       const [sequence] = await db
         .select({ id: sequences.id })
@@ -1512,7 +1512,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
             .update(sequenceCast)
             .set({ removedAt: null })
             .where(eq(sequenceCast.id, existing.castId)),
-          // Cast again, so back in the team too, as `restore` does (#2065).
+          // Cast again, so back in the organization too, as `restore` does (#2065).
           db
             .update(characters)
             .set({ updatedAt: now, deletedAt: null })
@@ -1659,7 +1659,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Stamp every history row holding this voice id — any character, any team,
+     * Stamp every history row holding this voice id — any character, any organization,
      * the id belongs to the ElevenLabs account — the moment the id is deleted
      * at the provider (#1657). Older rows keep the dead id, so without this
      * mark selecting one would 404 at TTS. Write-only: the release path calls
@@ -1814,7 +1814,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Rows (any team — the id is the ElevenLabs account's) still pointing at
+     * Rows (any organization — the id is the ElevenLabs account's) still pointing at
      * a voice ({@link voiceReferences}): a character's current version
      * (#1788). A character's current pointer counts
      * whether or not a sequence casts it: a soft-remove stamps the link and
@@ -1855,8 +1855,8 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       ),
 
     /**
-     * Hard-delete one of the team's characters with everything keyed to it.
-     * Every statement names the team's character, so another team's id
+     * Hard-delete one of the organization's characters with everything keyed to it.
+     * Every statement names the organization's character, so another organization's id
      * deletes nothing. Nothing is deleted, and `false` comes back, while a
      * sequence (archived ones included) has a cast link to it that is not
      * removed: the condition is in every statement of the batch, so a link
@@ -2222,7 +2222,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       await assertNameFree(db, sequenceId, existing.name, id);
       const now = new Date();
       await db.batch([
-        // Bringing it back into a sequence brings it back to the team too.
+        // Bringing it back into a sequence brings it back to the organization too.
         db
           .update(characters)
           .set({ updatedAt: now, deletedAt: null })
@@ -2269,7 +2269,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Delete one of the team's characters (#2065): soft, so it leaves the
+     * Delete one of the organization's characters (#2065): soft, so it leaves the
      * Characters page and the `@` picker and every row of it stays. One
      * guarded UPDATE: nothing is written, and `false` comes back, while a
      * sequence (archived ones included) has a cast link to it that is not
@@ -2310,7 +2310,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     /**
      * Whether any sequence, archived ones included, has a cast link to the
      * character that is not removed. A delete would leave that sequence
-     * casting a character the team no longer lists, so it is refused while
+     * casting a character the organization no longer lists, so it is refused while
      * one exists (#2065).
      */
     getCastInAnySequenceOrArchive: async (id: string): Promise<boolean> => {
@@ -2324,7 +2324,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       return Boolean(row.cast);
     },
 
-    /** One bible version of one of the team's characters, by id. */
+    /** One bible version of one of the organization's characters, by id. */
     getBibleVersion: async (versionId: string) => {
       const [row] = await db
         .select(getTableColumns(characterBibleVersions))

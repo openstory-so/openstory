@@ -141,7 +141,7 @@ export type SavedPaymentMethod = {
 };
 
 /**
- * Saved cards for the team's Stripe customer. Checkout
+ * Saved cards for the organization's Stripe customer. Checkout
  * (`setup_future_usage: 'off_session'`) saves one on a first purchase. The add-credits dialog falls back to Checkout when
  * none are on file.
  *

@@ -98,9 +98,9 @@ export const NewLocationDialog: React.FC<{
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="new-team-location-name">Name</Label>
+            <Label htmlFor="new-organization-location-name">Name</Label>
             <Input
-              id="new-team-location-name"
+              id="new-organization-location-name"
               name="name"
               autoComplete="off"
               placeholder="Coffee shop…"
@@ -108,11 +108,11 @@ export const NewLocationDialog: React.FC<{
             />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="new-team-location-description">
+            <Label htmlFor="new-organization-location-description">
               Description (optional)
             </Label>
             <Textarea
-              id="new-team-location-description"
+              id="new-organization-location-description"
               name="description"
               rows={3}
             />

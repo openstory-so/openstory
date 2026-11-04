@@ -12,7 +12,7 @@
  * Collapsed (icon rail): wallet icon only + tooltip with amount — never the
  * dollar string, so it cannot overlap the avatar.
  *
- * Subscribes to team billing SSE only while visible and signed in.
+ * Subscribes to organization billing SSE only while visible and signed in.
  */
 
 import { cn } from '@/ui/utils';

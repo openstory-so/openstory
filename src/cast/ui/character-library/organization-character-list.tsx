@@ -7,7 +7,7 @@ import { User } from 'lucide-react';
 import type React from 'react';
 
 /**
- * The team's characters as a grid (#2017). Every sequence's one-off
+ * The organization's characters as a grid (#2017). Every sequence's one-off
  * characters are here too, so the rows are virtualized against the page's
  * scroller.
  */

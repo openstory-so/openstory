@@ -14,7 +14,7 @@ import { loadComplianceState } from '@/platform/server/compliance/generation-gat
  */
 const ORGANIZATION_MEMO_TTL_MS = 5_000;
 export type ResolvedOrganization = {
-  team: Awaited<ReturnType<typeof getUserOrganizationMembership>>;
+  organization: Awaited<ReturnType<typeof getUserOrganizationMembership>>;
   compliance: Awaited<ReturnType<typeof loadComplianceState>> | null;
 };
 const organizationMemo = new Map<
@@ -36,11 +36,14 @@ export async function resolveOrganizationAndCompliance(
   for (const [key, entry] of organizationMemo)
     if (entry.until <= now) organizationMemo.delete(key);
   const value = (async () => {
-    const team = await getUserOrganizationMembership(userId, organizationId);
+    const membership = await getUserOrganizationMembership(
+      userId,
+      organizationId
+    );
     return {
-      team,
-      compliance: team
-        ? await loadComplianceState(userId, team.organizationId)
+      organization: membership,
+      compliance: membership
+        ? await loadComplianceState(userId, membership.organizationId)
         : null,
     };
   })();

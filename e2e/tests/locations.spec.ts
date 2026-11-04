@@ -1,6 +1,6 @@
 /**
  * Locations E2E Tests
- * The team's locations (#1695): the list, making one with no sequence, and
+ * The organization's locations (#1695): the list, making one with no sequence, and
  * its page.
  */
 

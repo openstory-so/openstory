@@ -53,7 +53,7 @@ Same shape as native Grok: Gemini chat (`google/gemini-4-argon`,
 `google/gemini-3-flash-preview`), **Nano Banana** stills (`nano_banana_2`,
 `nano_banana_2_lite`, `nano_banana_pro`), and **Gemini Omni Flash** video
 (`gemini_omni_flash`) go to Google's own Gemini API via `@tanstack/ai-gemini`
-when a Google key resolves (team `google` key → platform `GEMINI_API_KEY` →
+when a Google key resolves (organization `google` key → platform `GEMINI_API_KEY` →
 neither, which falls back to OpenRouter/fal unchanged). e2e never sets
 `GEMINI_API_KEY`, so fixtures keep exercising the fallback;
 `GEMINI_BASE_URL` is the aimock hook for the native path.
@@ -103,14 +103,14 @@ that 429s while the same bytes as`inlineData`succeed.`toVisionImageSource(..., {
 - `src/models/google-region.ts` marks the isolate for an hour on that refusal and re-runs the call once on the no-key via (OpenRouter for text, fal for Nano Banana and Omni Flash).
 - Every new-call key resolver skips Google while marked: `resolveLlmKey`, `getPlatformLlmKey`, `resolveGoogleKeyForNewCall`.
 - Retry points: `withRegionFallback`, `callLLMStream`, `generateImageWithProvider`, `submitMotionJob`, `submitStudioVideoJob`. The mark is read before the attempt, so a fan-out refused at once all retries.
-- A retry never changes who pays: a team's Google key is not swapped for the platform key.
+- A retry never changes who pays: an organization's Google key is not swapped for the platform key.
 - Not a provider hop: the refusal arrives before any job, spend or via stamp. A job stamped `google` is still polled on Google (`resolveGoogleKeyForStampedJob`).
 - Watching a clip and the clip likeness check need the Files API, which has no other via: a refusal marks the isolate and says "Gemini isn't available from this region."
 
 ## Native Grok (xAI)
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of
-OpenRouter/fal when an xAI key resolves (team `xai` key → platform
+OpenRouter/fal when an xAI key resolves (organization `xai` key → platform
 `XAI_API_KEY` → neither, which falls back to the old path unchanged). e2e sets
 a mock `XAI_API_KEY` and points `XAI_BASE_URL` at a second aimock instance
 (:4011), so Grok replays the native path from `fixtures/recorded/xai`.
@@ -135,8 +135,8 @@ OpenRouter Speakeasy client, whose chunk schema rejects LLMTR's SSE as
 "Response validation failed". Every OpenAI model (and Grok) uses
 Responses; posting those to Chat Completions 400s. `llmtrCompatibleApi`
 picks the endpoint. UI:
-**Settings → API Keys → LLMTR**. Team BYOK only — there is no platform
-LLMTR key; without a team key, resolution falls through to OpenRouter/fal.
+**Settings → API Keys → LLMTR**. Organization BYOK only — there is no platform
+LLMTR key; without an organization key, resolution falls through to OpenRouter/fal.
 Keep its API key row last, below OpenRouter.
 
 **LLMTR must not block model upgrades.** If its catalog is unreachable or
@@ -168,8 +168,8 @@ rates as assumed LLMTR prices.
   `max_output_tokens` / `reasoning.effort`.
 
 Resolution order (`resolveLlmKey`): native xAI (Grok) → native Google
-(Gemini) → **team LLMTR when `llmtrTextModel` maps** → team OpenRouter →
-team fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`). A team that adds
+(Gemini) → **organization LLMTR when `llmtrTextModel` maps** → organization OpenRouter →
+organization fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`). An organization that adds
 an LLMTR key chose that gateway, so it outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
 is public and answers 200 for a bogus key — so validation is a 1-token
 completion on a $0 model and requires `response.ok`.

@@ -15,7 +15,7 @@ function studioReferenceImages(input: StudioCreateInput): string[] {
       return [input.startImageUrl, input.endImageUrl].filter(
         (url): url is string => Boolean(url)
       );
-    // The source of an edit is a clip this team generated, not an upload.
+    // The source of an edit is a clip this organization generated, not an upload.
     // Reference clips are gated in `studioLikenessMedia`.
     case 'edit':
     case 'text':

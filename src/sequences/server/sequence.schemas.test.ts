@@ -141,8 +141,8 @@ describe('createSequenceSchema', () => {
       aspectRatio: '16:9',
       elementUploads: [
         {
-          tempPath: 'elements/team-1/uploads/up-1.png',
-          tempPublicUrl: '/r2/elements/team-1/uploads/up-1.png',
+          tempPath: 'elements/organization-1/uploads/up-1.png',
+          tempPublicUrl: '/r2/elements/organization-1/uploads/up-1.png',
           filename: 'logo.png',
         },
       ],

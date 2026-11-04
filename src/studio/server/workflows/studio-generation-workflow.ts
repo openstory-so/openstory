@@ -537,7 +537,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       }
     });
 
-    // Charge only for a clip the team can see: a failed upload fails the run
+    // Charge only for a clip the organization can see: a failed upload fails the run
     // and onFailure zeroes the reservation.
     if (videoCost > 0 && !job.usedOwnKey) {
       await step.do('deduct-video-credits', async () => {

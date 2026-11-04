@@ -1,13 +1,13 @@
 /**
  * /api/v1/sequences — public sequence collection.
  *
- *   GET  — list this team's sequences (most recent first, cursor-paginated).
+ *   GET  — list this organization's sequences (most recent first, cursor-paginated).
  *   POST — one-shot sequence creation.
  *
  * Authenticated via `authWithOrganizationRequestMiddleware`: an API key
  * (`Authorization: Bearer <key>` or `x-api-key`, resolved to its owner by the
  * Better Auth apiKey plugin) or, equivalently, a dashboard session cookie. Both
- * verbs are team-scoped, so a key only ever sees its own team's sequences.
+ * verbs are organization-scoped, so a key only ever sees its own organization's sequences.
  *
  * GET returns a compact summary per sequence (status-document scalars + a
  * `counts` block, but not the full per-shot array) with a HAL `self` link to

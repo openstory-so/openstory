@@ -46,7 +46,7 @@ type StyleBadgeProps = {
   /**
    * The sequence the badge sits on. When its style is an automatic one bound
    * to this sequence (#1213), the badge becomes a menu: view the derived
-   * recipe, or add it to the team library.
+   * recipe, or add it to the organization library.
    */
   sequenceId?: string;
   /** `sequence.styleConfig == null`: the automatic recipe isn't derived yet. */
@@ -55,7 +55,7 @@ type StyleBadgeProps = {
 
 /**
  * Shows a sequence's style name as a deterministically-colored badge (#886).
- * Resolves the name from the team+public style catalogue already cached by
+ * Resolves the name from the organization+public style catalogue already cached by
  * `useStyles`, so rendering many badges costs a single query; a style outside
  * that list (an automatic one) is fetched by id.
  */
@@ -67,7 +67,7 @@ export const StyleBadge: React.FC<StyleBadgeProps> = ({
   const { data: styles } = useStyles();
   const listed = styleId ? styles?.find((s) => s.id === styleId) : undefined;
   // Off-list style (an automatic one): resolve through the sequence when we
-  // have it so an admin's view of another team's sequence still gets a name.
+  // have it so an admin's view of another organization's sequence still gets a name.
   const needsLookup = !!styleId && !!styles && !listed;
   const { data: bySequence } = useSequenceStyle(
     needsLookup && sequenceId ? sequenceId : ''

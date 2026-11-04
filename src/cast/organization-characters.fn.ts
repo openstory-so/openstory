@@ -1,5 +1,5 @@
 /**
- * The team's characters (#2017): the Characters page list, one character
+ * The organization's characters (#2017): the Characters page list, one character
  * with the sequences that cast it, its delete, and the writes made with no
  * sequence (#2065): create, bible and looks.
  */
@@ -40,7 +40,7 @@ export const getOrganizationCharacterFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(characterIdSchema))
   .handler(async ({ context, data }) => {
     // Null, not an error: the page says "not found" for a character that is
-    // gone or another team's.
+    // gone or another organization's.
     return await context.scopedDb.characters.getOrganizationCharacter(
       data.characterId
     );

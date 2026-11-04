@@ -14,7 +14,7 @@ type LocationRecastConfirmDialogProps = {
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   locationName: string;
-  /** The team location the sequence will use instead. */
+  /** The organization location the sequence will use instead. */
   withLocationName: string;
   affectedShotCount: number;
   isLoading: boolean;
@@ -22,7 +22,7 @@ type LocationRecastConfirmDialogProps = {
 
 /**
  * Confirm a Replace (#1695): the sequence is re-pointed at another of the
- * team's locations and the shots set here re-render. No sheet is drawn.
+ * organization's locations and the shots set here re-render. No sheet is drawn.
  */
 export const LocationRecastConfirmDialog: React.FC<
   LocationRecastConfirmDialogProps

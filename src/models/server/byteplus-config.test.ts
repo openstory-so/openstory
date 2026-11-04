@@ -54,10 +54,10 @@ describe('claimBytePlusVia', () => {
     );
   });
 
-  // The BYOK rule is a billing invariant, not a preference: a team on its own
+  // The BYOK rule is a billing invariant, not a preference: an organization on its own
   // fal key is paying fal, so sending their work to our Ark account would move
   // the charge onto us silently.
-  it('keeps a BYOK team on fal even when Ark is configured', () => {
+  it('keeps a BYOK organization on fal even when Ark is configured', () => {
     env.ARK_API_KEY = 'ark-test';
     expect(
       claimBytePlusVia({

@@ -37,7 +37,7 @@ const createLocationSchema = z.object({
 });
 
 /**
- * The locations panel's one way in. It opens on the team's locations
+ * The locations panel's one way in. It opens on the organization's locations
  * (#1695): picking one is the same attach the `@` picker makes, one link,
  * nothing copied. New location swaps the list for the manual create (#1108
  * Phase 2): name and type plus an optional description; the rest of the

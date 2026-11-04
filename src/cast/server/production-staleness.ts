@@ -33,7 +33,7 @@ import {
   uploadedLocationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
 
-/** What a sheet verdict takes of the sequence; null from the team pages. */
+/** What a sheet verdict takes of the sequence; null from the organization pages. */
 type SheetSequence = Pick<
   Sequence,
   'id' | 'imageModel' | 'styleId' | 'styleConfig'

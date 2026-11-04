@@ -42,7 +42,7 @@ export type ShotTarget = {
   script: Scene['originalScript'] | null;
 };
 
-/** A shot edit's context: the target plus who acts, in which team. */
+/** A shot edit's context: the target plus who acts, in which organization. */
 export type ShotEditContext = ShotTarget & {
   scopedDb: ScopedDb;
   user: Pick<User, 'id'>;
@@ -51,7 +51,7 @@ export type ShotEditContext = ShotTarget & {
 
 /**
  * Load a shot of this sequence (live or soft-deleted, as the editor does) with
- * its anchor frame and scene. Callers check the sequence's team first.
+ * its anchor frame and scene. Callers check the sequence's organization first.
  */
 export async function loadShotTarget(
   scopedDb: ScopedDb,

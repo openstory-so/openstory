@@ -46,7 +46,7 @@ function getStoredUserInfo(): TestUser {
 }
 
 /**
- * Create a test user with team directly in the database
+ * Create a test user with organization directly in the database
  */
 export async function createTestUser(
   options: { name?: string } = {}

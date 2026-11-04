@@ -1,6 +1,6 @@
 /**
  * The list document for `GET /api/v1/sequences` — a cursor-paginated, most-
- * recent-first page of the team's sequences.
+ * recent-first page of the organization's sequences.
  *
  * Each entry is a compact *summary* (the same scalar fields as the single-
  * sequence status document, minus the per-shot array) plus a `counts` block

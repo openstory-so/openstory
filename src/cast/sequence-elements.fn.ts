@@ -108,7 +108,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
     const { scopedDb } = context;
     const llmKeyInfo =
       await scopedDb.apiKeys.resolveLlmKey(ELEMENT_VISION_MODEL);
-    if (llmKeyInfo.source !== 'team') {
+    if (llmKeyInfo.source !== 'organization') {
       const estimatedCost = estimateLLMCost(1);
       const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
       if (!canAfford) {

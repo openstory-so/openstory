@@ -59,7 +59,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
 
     if (!sequenceId || !organizationId || !userId) {
       throw new WorkflowValidationError(
-        'Sequence ID, team ID, and user ID are required'
+        'Sequence ID, organization ID, and user ID are required'
       );
     }
     const seq = scopedDb.sequence(sequenceId);

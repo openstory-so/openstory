@@ -19,7 +19,7 @@
  *      job: refuse.
  *
  * The lease is the load-bearing part. Slots are per BytePlus ACCOUNT, shared
- * by every team, and an in-flight Seedance job pins every `asset://` it
+ * by every organization, and an in-flight Seedance job pins every `asset://` it
  * submitted — deleting one mid-poll 400s that job. Workers hold nothing
  * between requests, so each run's lease is a D1 row keyed by (still, run) and
  * released by run (#1531); every statement lives in `scopedDb.bytePlusAssets`.

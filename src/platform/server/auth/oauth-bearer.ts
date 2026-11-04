@@ -25,7 +25,7 @@ const logger = getLogger(['openstory', 'auth', 'oauth-bearer']);
 /** Verified, normalised access-token claims. */
 export type OAuthAccessToken = {
   userId: string;
-  /** The team stamped at consent; null when consent had no `referenceId`. */
+  /** The organization stamped at consent; null when consent had no `referenceId`. */
   organizationId: string | null;
   clientId: string | null;
   scopes: readonly string[];

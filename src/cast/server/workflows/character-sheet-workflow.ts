@@ -99,7 +99,7 @@ async function landSheet(
   });
 }
 
-/** Where a run's sheet is stored: under its sequence, or the team's own. */
+/** Where a run's sheet is stored: under its sequence, or the organization's own. */
 const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
@@ -185,7 +185,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Destination is resolved BEFORE generating, because the image is stored
     // inside the generating step (#1645). A run from the Characters page has
-    // no sequence (#2017): it stores under the team and reports on the
+    // no sequence (#2017): it stores under the organization and reports on the
     // character's own channel.
     const characterDbId = input.characterDbId;
     const organizationId = input.organizationId;
@@ -235,7 +235,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
 
-    // Deduct credits for image generation (skip if team used own fal key)
+    // Deduct credits for image generation (skip if organization used own fal key)
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
         scopedDb,

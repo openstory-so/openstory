@@ -125,7 +125,7 @@ export async function createCheckoutSession(
           unit_amount: creditCents,
           product_data: {
             name: `Credits — $${creditUsd.toFixed(2)}`,
-            description: `Add $${creditUsd.toFixed(2)} to your team wallet`,
+            description: `Add $${creditUsd.toFixed(2)} to your organization wallet`,
           },
         },
         quantity: 1,

@@ -1,7 +1,7 @@
 /**
  * Images and Videos (#1274).
  *
- * Team-scoped create/list/favorite/delete for studio `generated_assets`.
+ * Organization-scoped create/list/favorite/delete for studio `generated_assets`.
  * Always on — unlike `/models` this is not gated by MODELS_ENABLED. The work
  * lives in `@/studio/server/` (shared with the MCP Studio tools, #1985) so
  * the Start compiler does not ship the workflow client into the browser
@@ -61,7 +61,7 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Everything this team has uploaded to the composer, newest first. Uploads
+ * Everything this organization has uploaded to the composer, newest first. Uploads
  * have no DB row: the R2 prefix is the record, and the ULID key orders them
  * by time.
  */

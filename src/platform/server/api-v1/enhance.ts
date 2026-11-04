@@ -43,7 +43,7 @@ export type EnhanceContext = {
 
 /**
  * The model the enhancer shapes the script for: the caller's, else what a new
- * sequence would start on for this team — so an enhanced script fits the
+ * sequence would start on for this organization — so an enhanced script fits the
  * model `POST /sequences` then defaults to.
  */
 export async function resolveEnhanceVideoModel(

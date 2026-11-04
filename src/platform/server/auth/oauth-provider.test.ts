@@ -1,6 +1,6 @@
 /**
  * OAuth provider wiring (#1456): issuer resolution and the plugin options
- * that tie a grant to a team.
+ * that tie a grant to an organization.
  */
 
 import { readFileSync } from 'node:fs';
@@ -168,10 +168,10 @@ describe('createOAuthProviderPlugins', () => {
 
     expect(
       await options.customAccessTokenClaims?.({
-        referenceId: 'team_1',
+        referenceId: 'organization_1',
         scopes: [],
       })
-    ).toEqual({ organization_id: 'team_1' });
+    ).toEqual({ organization_id: 'organization_1' });
     expect(await options.customAccessTokenClaims?.({ scopes: [] })).toEqual({});
     expect(
       await options.postLogin?.shouldRedirect({

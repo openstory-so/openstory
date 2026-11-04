@@ -1,6 +1,6 @@
 /**
  * Location Fixture for E2E Tests
- * Creates team locations (#1695) for the Locations page and the pipeline.
+ * Creates organization locations (#1695) for the Locations page and the pipeline.
  */
 
 import { z } from 'zod';
@@ -31,7 +31,7 @@ async function postLocation(body: Record<string, string>) {
   return createdSchema.parse(await res.json());
 }
 
-/** A team location with a placeholder sheet. */
+/** An organization location with a placeholder sheet. */
 export async function createTestLocation(
   organizationId: string,
   name: string
@@ -40,7 +40,7 @@ export async function createTestLocation(
 }
 
 /**
- * The team location the full-pipeline run picks: named and described like
+ * The organization location the full-pipeline run picks: named and described like
  * the "Sunlit Loft Studio" the location-match fixture was recorded against,
  * with a real R2 sheet the workflows can read.
  */

@@ -7,7 +7,7 @@ function getStylePreviewUrl(styleName: string): string {
   return `https://${getPublicAssetsDomain()}/styles/${styleSlug(styleName)}/thumbnail.webp`;
 }
 
-// Default style templates that can be imported into any team.
+// Default style templates that can be imported into any organization.
 // The new optional fields (sampleVideos, recommendedImageModel,
 // recommendedVideoModel, defaultAspectRatio, useCases) can be set per-template
 // where the style has an opinion; the mapper below fills in safe defaults for
@@ -3333,6 +3333,6 @@ export const MOCK_SYSTEM_STYLES: Style[] = DEFAULT_SYSTEM_STYLES.map(
   (style) => ({
     ...style,
     id: style.name.replace(/\s+/g, '-').toLowerCase(),
-    organizationId: 'mock-system-team-id', // Mock team ID for testing
+    organizationId: 'mock-system-organization-id', // Mock organization ID for testing
   })
 );

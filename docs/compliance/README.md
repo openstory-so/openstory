@@ -17,7 +17,7 @@ real.
 > AI-generated content and preventing deepfakes?_
 
 **Tracing.** Every instrumented generation writes a `content_provenance` row at
-the moment its asset lands in R2: team, user, provider, model, provider request
+the moment its asset lands in R2: organization, user, provider, model, provider request
 id, prompt hash, reference-image count, workflow run id, and storage key. The
 row's ULID is the public trace id (`OS-…`) quoted in takedown correspondence.
 A `contentSha256` column exists for byte-level matching but is **not populated
@@ -72,7 +72,7 @@ rather than only asserted in a policy document:
   the server (`classifyUpload`, `src/cast/server/upload-rights.ts`). The
   upload route starts the check as `UploadCheckWorkflow` when the bytes land
   (#2192), so a closed tab cannot cut it off; Studio's create checks any
-  upload of the team's still without a verdict instead of refusing it. An image
+  upload of the organization's still without a verdict instead of refusing it. An image
   that shows one cannot be used until the uploader ticks the portrait-rights
   statement and names the basis for the authorization. Stored in
   `upload_attestations` with a SHA-256 of the exact statement text shown, so a
@@ -100,7 +100,7 @@ are built on that basis.
 > violation-handling capability for end users?_
 
 **Real-name authentication** (overseas tool platform, confirmed with BytePlus
-GTM 2026-08-13): users are email-authenticated; paying teams have a card on
+GTM 2026-08-13): users are email-authenticated; paying organizations have a card on
 file via Stripe (cardholder name + last 4). We do **not** collect government
 IDs or run liveness checks.
 

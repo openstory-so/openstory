@@ -3,7 +3,7 @@
  *
  * `createGeneratedAsset` is the trust + billing boundary, so the ordering is
  * what we pin: live-schema validation FIRST (a rejected input must never
- * reach `requireCredits`), the credit gate SECOND (a broke team leaves no
+ * reach `requireCredits`), the credit gate SECOND (a broke organization leaves no
  * row), then row insert → workflow trigger → run-id persistence.
  *
  * Uses the house vi.doMock + dynamic-import pattern: `#db-client` is a real

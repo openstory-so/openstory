@@ -1,11 +1,11 @@
 /**
- * /api/v1/styles — the team's style library (#1227).
+ * /api/v1/styles — the organization's style library (#1227).
  *
- * POST creates a team-owned library style from a complete v2 `config`. Responds 201 with
+ * POST creates an organization-owned library style from a complete v2 `config`. Responds 201 with
  * the full document and a `create-sequence` affordance pre-filled with the new
  * style id. 409 when the name's slug collides with a visible style.
  *
- * GET lists this team's library styles plus the public templates — never sequence-bound automatic styles.
+ * GET lists this organization's library styles plus the public templates — never sequence-bound automatic styles.
  */
 
 import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';

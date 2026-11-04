@@ -149,7 +149,7 @@ describe('createCastRecords', () => {
         locationId: 'loc_1',
         referenceStatus: 'pending',
         rendering: 'Photoreal live action',
-        // Not matched to a team location: analysis makes it here.
+        // Not matched to an organization location: analysis makes it here.
         boundTo: null,
       }),
     ]);
@@ -383,23 +383,23 @@ describe('buildLocationInsert (#1695)', () => {
     firstMention: { sceneId: 'scene_1', text: 'INT. CAFE', lineNumber: 4 },
   };
 
-  test('a script location matching bound to a team location is linked to it', () => {
+  test('a script location matching bound to an organization location is linked to it', () => {
     expect(
       buildLocationInsert({
         sequenceId: 'seq_1',
         location,
         libraryMatch: {
           locationId: 'loc_1',
-          libraryLocationId: 'team-loc-9',
-          libraryLocationName: 'Team Cafe',
-          referenceImageUrl: '/r2/team/cafe.png',
+          libraryLocationId: 'organization-loc-9',
+          libraryLocationName: 'Organization Cafe',
+          referenceImageUrl: '/r2/organization/cafe.png',
         },
         referenceStatus: 'pending',
       })
     ).toMatchObject({
       sequenceId: 'seq_1',
       locationId: 'loc_1',
-      boundTo: 'team-loc-9',
+      boundTo: 'organization-loc-9',
       firstMentionSceneId: 'scene_1',
       firstMentionLine: 4,
     });

@@ -9,7 +9,7 @@ import { isLoopbackOrBareIp } from '@/platform/server/env/environment';
 
 /**
  * The export must belong to the sequence the middleware just authorised —
- * `getById` alone would let a caller publish another team's file — and be a
+ * `getById` alone would let a caller publish another organization's file — and be a
  * finished render.
  */
 export function assertPublishableExport<

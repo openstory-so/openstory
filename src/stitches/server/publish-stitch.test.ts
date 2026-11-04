@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 describe('publishStitch (#2127)', () => {
-  it('404s a stitch the team does not have', async () => {
+  it('404s a stitch the organization does not have', async () => {
     getById.mockResolvedValue(null);
     await expect(publishStitch(args)).rejects.toMatchObject({
       code: 'NOT_FOUND',

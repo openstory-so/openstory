@@ -8,7 +8,7 @@ import {
   SEARCH_MIN_LENGTH,
 } from '@/platform/search';
 
-/** Everything of the team's that holds `query` (#2100). */
+/** Everything of the organization's that holds `query` (#2100). */
 export const searchFn = createServerFn({ method: 'GET' })
   .middleware([authWithOrganizationMiddleware])
   .validator(

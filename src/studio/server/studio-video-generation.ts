@@ -266,10 +266,10 @@ async function submitFalStudioVideoJob(
   threadId: string
 ): Promise<StudioVideoJobSubmission> {
   // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
-  // offered where Ark is claimed, so this is a BYOK-fal team or a bug.
+  // offered where Ark is claimed, so this is a BYOK-fal organization or a bug.
   if (mode === 'edit') {
     throw new Error(
-      `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this team`
+      `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this organization`
     );
   }
   if (mode !== 'text') {
@@ -293,7 +293,7 @@ async function submitFalStudioVideoJob(
       modelKey,
       endpointId,
       via: 'fal',
-      usedOwnKey: key.source === 'team',
+      usedOwnKey: key.source === 'organization',
       threadId,
     };
   }
@@ -320,7 +320,7 @@ async function submitFalStudioVideoJob(
     modelKey,
     endpointId,
     via: 'fal',
-    usedOwnKey: key.source === 'team',
+    usedOwnKey: key.source === 'organization',
     threadId,
   };
 }
@@ -523,7 +523,7 @@ async function submitStudioVideoJobOnce(
     const falKey = await resolveOptionalFalKey(options.credentials);
     via = claimBytePlusVia({
       native: true,
-      usingOwnFalKey: falKey?.source === 'team',
+      usingOwnFalKey: falKey?.source === 'organization',
     });
   } else {
     via = 'fal';
@@ -536,7 +536,7 @@ async function submitStudioVideoJobOnce(
   const draft = Boolean(options.draft) && supportsDraftMode(modelKey);
   if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
     throw new Error(
-      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this team`
+      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this organization`
     );
   }
 
@@ -591,7 +591,7 @@ async function submitStudioVideoJobOnce(
           modelKey,
           endpointId: NATIVE_GROK_VIDEO_MODEL,
           via: 'xai',
-          usedOwnKey: xaiKey.source === 'team',
+          usedOwnKey: xaiKey.source === 'organization',
           threadId,
         };
       }
@@ -617,7 +617,7 @@ async function submitStudioVideoJobOnce(
         modelKey,
         endpointId: NATIVE_GROK_VIDEO_MODEL,
         via: 'xai',
-        usedOwnKey: xaiKey.source === 'team',
+        usedOwnKey: xaiKey.source === 'organization',
         threadId,
       };
     }
@@ -667,7 +667,7 @@ async function submitStudioVideoJobOnce(
           modelKey,
           endpointId: NATIVE_GEMINI_VIDEO_MODEL,
           via: 'google',
-          usedOwnKey: googleKey.source === 'team',
+          usedOwnKey: googleKey.source === 'organization',
           threadId,
         };
       }
@@ -695,7 +695,7 @@ async function submitStudioVideoJobOnce(
         modelKey,
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
         via: 'google',
-        usedOwnKey: googleKey.source === 'team',
+        usedOwnKey: googleKey.source === 'organization',
         threadId,
       };
     }

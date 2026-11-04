@@ -38,7 +38,7 @@ describe('on-demand sequence shots', () => {
     );
     expect(html).toContain('Previous comparison request failed');
   });
-  it('disables both own-team queries in support mode, even with cached sequence ids', () => {
+  it('disables both own-organization queries in support mode, even with cached sequence ids', () => {
     renderToStaticMarkup(<Probe enabled={false} loadShots />);
     expect(useSequences).toHaveBeenCalledWith(undefined, { enabled: false });
     expect(shotQuery).toHaveBeenCalledWith(

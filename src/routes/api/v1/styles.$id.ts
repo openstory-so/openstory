@@ -1,6 +1,6 @@
 /**
- * GET /api/v1/styles/$id — one style's full document (#1227). Team-scoped:
- * resolves the team's own library rows and public templates.
+ * GET /api/v1/styles/$id — one style's full document (#1227). Organization-scoped:
+ * resolves the organization's own library rows and public templates.
  */
 
 import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
@@ -16,7 +16,7 @@ export const Route = createFileRoute('/api/v1/styles/$id')({
       GET: async ({ params, context }) =>
         runApiV1Handler(async () => {
           const style = await context.scopedDb.styles.getById(params.id);
-          // getById also resolves a sequence-bound row the team owns; those are
+          // getById also resolves a sequence-bound row the organization owns; those are
           // outside the library and not addressable here.
           if (!style || style.sequenceId) {
             throw new NotFoundError('Style not found');

@@ -90,7 +90,7 @@ async function createAutoSequence() {
 }
 
 describe('automatic styles', () => {
-  it('are excluded from the team and public library lists', async () => {
+  it('are excluded from the organization and public library lists', async () => {
     await seedLibraryStyle('Noir');
     const { stylesDb, style } = await createAutoSequence();
 
@@ -156,7 +156,7 @@ describe('automatic styles', () => {
     );
   });
 
-  it('getById/listByIds hide another team’s bound row but resolve library rows', async () => {
+  it('getById/listByIds hide another organization’s bound row but resolve library rows', async () => {
     const { style } = await createAutoSequence();
     const library = await seedLibraryStyle('Noir');
     const otherOrganization = createStylesMethods(db, generateId(), userId);

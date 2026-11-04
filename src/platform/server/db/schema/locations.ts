@@ -1,5 +1,5 @@
 /**
- * Locations (#1695): a place belongs to the team.
+ * Locations (#1695): a place belongs to the organization.
  *
  * A sequence never copies a location and never keeps a version of one: it
  * holds a link (`sequence_location_links`) and reads the location's current
@@ -32,7 +32,7 @@ const REFERENCE_STATUSES = [
 ] as const;
 export type ReferenceStatus = (typeof REFERENCE_STATUSES)[number];
 
-/** One of the team's places, with its sheet. */
+/** One of the organization's places, with its sheet. */
 export const locations = snakeCase.table(
   'sequence_locations',
   {
@@ -40,7 +40,7 @@ export const locations = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    // No action, not cascade: a team delete is refused while it has
+    // No action, not cascade: an organization delete is refused while it has
     // locations, as it is for characters (the #612 rebuild trap).
     organizationId: text()
       .notNull()
@@ -75,7 +75,7 @@ export const locations = snakeCase.table(
     selectedReferenceVersionId: text(),
     // The reference claim (#1113) — see `characters.pendingPromoteSheetVersionId`.
     pendingPromoteReferenceVersionId: text(),
-    // Deleted from the team (soft, undoable). Not a sequence's remove: that
+    // Deleted from the organization (soft, undoable). Not a sequence's remove: that
     // is the link's `removedAt`.
     deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
@@ -111,7 +111,7 @@ export const sequenceLocationLinks = snakeCase.table(
     // Scene environment tags resolve through it.
     scriptLocationId: text().notNull(),
     // The tag the script knows the place by, when that is not the location's
-    // own: matching bound a script location to a team location, or the link
+    // own: matching bound a script location to an organization location, or the link
     // was re-pointed. Scenes keep the script's tag, so a read through the
     // link answers with it. Null when the location's own tag is the script's.
     scriptConsistencyTag: text(),
@@ -210,7 +210,7 @@ export type LocationLink = {
  * A location with its bible resolved from the selected
  * `location_bible_versions` row (#1600). Carries no reference image — see
  * {@link LocationWithReference}. `deletedAt` is the row's own (deleted from
- * the team) on a read from no sequence, and the link's `removedAt` on a read
+ * the organization) on a read from no sequence, and the link's `removedAt` on a read
  * through one.
  */
 export type Location = Omit<LocationRow, LegacyLocationBibleColumn> &
@@ -233,7 +233,7 @@ export type LocationWithReference = Location & LiveReference;
  * A location read through a sequence's link.
  *
  * `deletedAt` on this read is the link's `removedAt`, and `consistencyTag`
- * is the script's tag when the link stored one. Neither is the team row's
+ * is the script's tag when the link stored one. Neither is the organization row's
  * own field. A bible write diffs the location's own row; do not pass this
  * read to `updateBible` (`LocationBibleUpdate` refuses `linkId`).
  */

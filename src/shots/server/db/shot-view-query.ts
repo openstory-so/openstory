@@ -103,7 +103,7 @@ export function selectShotViewRows(
       // columns and every shot read in prod started failing.
       //
       // Naming the tables also caps the cost of a caller's own join. Under a
-      // bare select, joining `sequences` for a team filter pushed the same
+      // bare select, joining `sequences` for an organization filter pushed the same
       // query another ~12 columns wider.
       .select({
         shots,

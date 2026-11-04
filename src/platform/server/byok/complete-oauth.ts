@@ -23,7 +23,7 @@ type OAuthScopedDb = {
 const DOUBLE_DELIVERY_WINDOW_MS = 2 * 60 * 1000;
 
 type CompleteOAuthParams = {
-  /** Team resolved from the authenticated session on the callback request. */
+  /** Organization resolved from the authenticated session on the callback request. */
   organizationId: string;
   /** Authorization code from OpenRouter's redirect. */
   code: string;
@@ -39,7 +39,7 @@ type CompleteOAuthParams = {
  * Complete the OpenRouter OAuth PKCE flow.
  * Called by the callback route after OpenRouter redirects back.
  * Reads the encrypted PKCE state cookie set during initiation and verifies
- * it against the session team and the echoed CSRF state. Throws on failure;
+ * it against the session organization and the echoed CSRF state. Throws on failure;
  * the route clears the cookie on every outcome.
  */
 export async function completeOpenRouterOAuth(
@@ -59,7 +59,7 @@ export async function completeOpenRouterOAuth(
   }
 
   if (state.organizationId !== organizationId) {
-    throw new Error('OAuth state does not match the active team');
+    throw new Error('OAuth state does not match the active organization');
   }
 
   if (!csrfState || state.csrfState !== csrfState) {

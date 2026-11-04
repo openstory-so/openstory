@@ -119,7 +119,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     styleId = generateId();
   await db
     .insert(organization)
-    .values({ id: organizationId, name: 'Team', slug: organizationId });
+    .values({ id: organizationId, name: 'Organization', slug: organizationId });
   await db
     .insert(user)
     .values({ id: actorId, name: 'User', email: 'persist@example.com' });

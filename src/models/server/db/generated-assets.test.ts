@@ -3,7 +3,7 @@
  * real migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), mirroring the `video-variants.test.ts`
  * harness.
  *
- * Pins the team boundary (reads filter on organizationId, writes inject
+ * Pins the organization boundary (reads filter on organizationId, writes inject
  * organizationId/userId), newest-first listing with activity/endpoint filters +
  * keyset cursor, and the status lifecycle
  * (`queued` → `running` → `completed`/`failed`).
@@ -91,7 +91,7 @@ describe('insert', () => {
 });
 
 describe('list', () => {
-  it('is team-scoped and newest-first', async () => {
+  it('is organization-scoped and newest-first', async () => {
     const first = await methods.insert(assetInput());
     const second = await methods.insert(assetInput());
     await otherOrganizationMethods.insert(assetInput());
@@ -149,7 +149,7 @@ describe('list', () => {
 });
 
 describe('getById', () => {
-  it('returns own-team rows and hides other organizations', async () => {
+  it('returns own-organization rows and hides other organizations', async () => {
     const row = await methods.insert(assetInput());
     const foreign = await otherOrganizationMethods.insert(assetInput());
 
@@ -197,13 +197,13 @@ describe('status lifecycle', () => {
     expect(current?.outputs).toBeNull();
   });
 
-  it('scopes writes to the team (a foreign markFailed throws, row untouched)', async () => {
+  it('scopes writes to the organization (a foreign markFailed throws, row untouched)', async () => {
     const row = await methods.insert(assetInput());
     // Throwing (not a silent no-op) — a zero-row status write means the
     // workflow would otherwise "succeed" with nothing persisted.
     await expect(
-      otherOrganizationMethods.markFailed(row.id, 'cross-team write')
-    ).rejects.toThrow(/not found for this team/);
+      otherOrganizationMethods.markFailed(row.id, 'cross-organization write')
+    ).rejects.toThrow(/not found for this organization/);
 
     const current = await methods.getById(row.id);
     expect(current?.status).toBe('queued');
@@ -213,6 +213,6 @@ describe('status lifecycle', () => {
   it('throws on status writes to a nonexistent row', async () => {
     await expect(
       methods.markRunning('01J00000000000000000000000')
-    ).rejects.toThrow(/not found for this team/);
+    ).rejects.toThrow(/not found for this organization/);
   });
 });

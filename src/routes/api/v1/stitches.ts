@@ -3,9 +3,9 @@
  *
  * The body is the CLI's cut.json, with every media URL a bundle name
  * (`media/<n>.<ext>`). The row stores the cut with those names rewritten to
- * team storage under `stitches/<organizationId>/<id>/`, unpublished. The response
+ * organization storage under `stitches/<organizationId>/<id>/`, unpublished. The response
  * carries the templated upload link the CLI PUTs each file to (the ordinary
- * `/api/storage/upload`, which checks the team on the path) and the publish
+ * `/api/storage/upload`, which checks the organization on the path) and the publish
  * link it POSTs last, which checks the files and the images and makes the
  * `url` a page: anyone with it can watch.
  */

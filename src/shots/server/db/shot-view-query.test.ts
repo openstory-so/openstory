@@ -212,7 +212,7 @@ it('projects pendingUpscaleUrl from a generating pending-promote version', async
  */
 it('projects fewer columns than D1 accepts, including a caller join', async () => {
   const { sql } = selectShotViewRows(db)
-    // A caller team filter. Under a bare `db.select()` this join dragged in
+    // A caller organization filter. Under a bare `db.select()` this join dragged in
     // every `sequences` column too.
     .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
     .toSQL();

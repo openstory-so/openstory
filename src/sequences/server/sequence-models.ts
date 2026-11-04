@@ -355,7 +355,7 @@ export async function addModelToSequence(
     }
     // The added model runs on every eligible shot, so one reference-only
     // shot among them decides what can be added at all — the same question
-    // the menu filters by, asked again here against the team's real keys.
+    // the menu filters by, asked again here against the organization's real keys.
     const shotIsReferenceOnly = (shot: ShotView) =>
       rendersReferenceOnly(shot, sequence);
     const anyReferenceOnly = eligible.some(shotIsReferenceOnly);

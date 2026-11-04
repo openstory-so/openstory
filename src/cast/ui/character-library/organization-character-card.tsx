@@ -15,7 +15,7 @@ function castLine(sequences: OrganizationCharacter['sequences']): string {
 }
 
 /**
- * One of the team's characters (#2017). The picture is its default look's
+ * One of the organization's characters (#2017). The picture is its default look's
  * sheet.
  */
 export const OrganizationCharacterCard: React.FC<{

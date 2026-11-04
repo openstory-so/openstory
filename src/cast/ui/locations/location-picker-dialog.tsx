@@ -25,7 +25,7 @@ export function locationUseLine(
 }
 
 /**
- * Pick the team location that replaces this one in the sequence (#1695).
+ * Pick the organization location that replaces this one in the sequence (#1695).
  * Only locations with a sheet are offered: the shots set here re-render
  * from it, and Replace draws none.
  */

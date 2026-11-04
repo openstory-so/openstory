@@ -1,6 +1,6 @@
 /**
  * Locations made and fed from no sequence (#1695): the Locations page, the
- * public API and the MCP tools. A location is the team's; any number of
+ * public API and the MCP tools. A location is the organization's; any number of
  * uploaded photos are input to its sheet, and the sheet is drawn by the same
  * `/location-sheet` run a sequence starts.
  */
@@ -14,7 +14,7 @@ import type { LocationWithReference } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 
-const logger = getLogger(['openstory', 'locations', 'team-locations']);
+const logger = getLogger(['openstory', 'locations', 'organization-locations']);
 
 export type ProcessedImage = { url: string; path: string };
 

@@ -1,7 +1,7 @@
 /**
  * The attached cast in script analysis (#2050). Pure.
  *
- * Analysis reads only the characters cast into the sequence, never the team
+ * Analysis reads only the characters cast into the sequence, never the organization
  * library. The trigger snapshots them (`AttachedCastSnapshot`); the bibles
  * call sees them as a `<CAST>` block shaped like `<ELEMENTS>` and echoes
  * their ids; a name it cannot place is a new character. For a character the

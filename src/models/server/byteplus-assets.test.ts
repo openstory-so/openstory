@@ -112,7 +112,7 @@ describe('ingestAigcAsset', () => {
     );
 
     const uri = await ingestAigcAsset(config, {
-      identity: '/r2/team/still.png',
+      identity: '/r2/organization/still.png',
       publicUrl: 'https://cdn.example.com/still.png',
       assetType: 'Image',
       sleep: async () => undefined,
@@ -162,7 +162,7 @@ describe('ingestAigcAsset', () => {
     };
 
     const uri = await ingestAigcAsset(config, {
-      identity: '/r2/team/still.png',
+      identity: '/r2/organization/still.png',
       publicUrl: 'https://cdn.example.com/still.png',
       assetType: 'Image',
       sleep: async () => undefined,
@@ -182,7 +182,7 @@ describe('ingestAigcAsset', () => {
   });
 
   it('reuses an Active asset with the same identity instead of creating another', async () => {
-    const identity = '/r2/team/still.png';
+    const identity = '/r2/organization/still.png';
     const namePrefix = `os-${await hashAssetIdentity(identity)}`.slice(0, 64);
     const calls: string[] = [];
     const config = configWith(

@@ -148,8 +148,8 @@ export async function reconcileFalBilling(
   for (const event of events) {
     const tx = txByRequestId.get(event.requestId);
     if (!tx) {
-      // Legitimate: BYOK bills the team's own account (never seen here),
-      // scripts/e2e charge no team, and unpriced endpoints charge $0.
+      // Legitimate: BYOK bills the organization's own account (never seen here),
+      // scripts/e2e charge no organization, and unpriced endpoints charge $0.
       summary.unmatchedEvents++;
       continue;
     }

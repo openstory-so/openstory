@@ -31,7 +31,7 @@ export const createGiftTokenFn = createServerFn({ method: 'POST' })
       ? new Date(Date.now() + data.expiresInDays * MS_PER_DAY)
       : undefined;
 
-    // Admin ops use a dummy organizationId since they're not team-scoped
+    // Admin ops use a dummy organizationId since they're not organization-scoped
     return context.adminScopedDb.admin.createGiftToken({
       createdByUserId: context.user.id,
       amountUsd: data.amountUsd,

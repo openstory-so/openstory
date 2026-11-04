@@ -84,7 +84,7 @@ import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
-// Locations (the team's places) and the links sequences hold to them
+// Locations (the organization's places) and the links sequences hold to them
 import {
   locationReferencePhotos,
   locations,
@@ -404,7 +404,7 @@ export type {
   SheetStatus,
 } from './characters';
 
-// Locations (the team's places) and the links sequences hold to them
+// Locations (the organization's places) and the links sequences hold to them
 export { locations, sequenceLocationLinks, locationReferencePhotos };
 
 export type {
@@ -458,7 +458,7 @@ export { creditReservations, credits, transactions };
  */
 export { creditBatches, organizationBillingSettings, welcomeCardClaims };
 
-// Team API Keys
+// Organization API Keys
 export { organizationApiKeys };
 
 export { API_KEY_PROVIDERS } from './organization-api-keys';
@@ -470,7 +470,7 @@ export { giftTokens, giftTokenRedemptions };
 // App Metadata (key/value bookkeeping, e.g. system-template seed hash)
 export { appMetadata };
 
-// Generated Assets (#458 — direct model access; flat team-scoped runs of
+// Generated Assets (#458 — direct model access; flat organization-scoped runs of
 // arbitrary fal endpoints, decoupled from the sequence graph)
 export { generatedAssets };
 
@@ -606,7 +606,7 @@ export const schema = {
   organizationBillingSettings,
   welcomeCardClaims,
 
-  // Team API Keys
+  // Organization API Keys
   organizationApiKeys,
 
   // Gift Tokens

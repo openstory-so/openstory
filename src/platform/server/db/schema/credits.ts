@@ -21,7 +21,7 @@ const TRANSACTION_TYPES = [
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 /**
- * Team credit balance, in microdollars. Decremented in place on every
+ * Organization credit balance, in microdollars. Decremented in place on every
  * deduction (see `deductCredits`), not derived from the ledger.
  *
  * The CHECK is the backstop under the application-level gates
@@ -77,13 +77,13 @@ export const transactions = snakeCase.table(
   (table) => [
     index('idx_transactions_created_at').on(table.createdAt),
     index('idx_transactions_type').on(table.type),
-    // Team ledger newest first — the history page (#1881). Also serves every
-    // team_id lookup, so there is no single-column team index.
+    // Organization ledger newest first — the history page (#1881). Also serves every
+    // organization_id lookup, so there is no single-column organization index.
     index('idx_transactions_organization_created').on(
       table.organizationId,
       table.createdAt
     ),
-    // Team ledger by type, newest first — the typed history page (#1881).
+    // Organization ledger by type, newest first — the typed history page (#1881).
     index('idx_transactions_organization_type_created').on(
       table.organizationId,
       table.type,

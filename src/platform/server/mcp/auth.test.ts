@@ -39,14 +39,14 @@ const { authenticateMcpRequest } = await import('./auth');
 
 const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
-const team = {
-  organizationId: 'team_1',
+const membership = {
+  organizationId: 'organization_1',
   organizationName: 'Ada',
   role: 'owner',
 };
 const oauth = {
   userId: 'user_1',
-  organizationId: 'team_1',
+  organizationId: 'organization_1',
   clientId: 'c1',
   scopes: ['sequences:read'],
   audience: ['https://openstory.test/mcp'],
@@ -65,8 +65,8 @@ beforeEach(() => {
   loadComplianceState.mockResolvedValue({
     enforcement: { canAccess: true, canWrite: true },
   });
-  getApiKeyOrganizationId.mockResolvedValue('team_1');
-  getUserOrganizationMembership.mockResolvedValue(team);
+  getApiKeyOrganizationId.mockResolvedValue('organization_1');
+  getUserOrganizationMembership.mockResolvedValue(membership);
 });
 
 describe('authenticateMcpRequest', () => {
@@ -97,7 +97,7 @@ describe('authenticateMcpRequest', () => {
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('api_key');
     expect(ctx.user.id).toBe('user_1');
-    expect(ctx.organizationId).toBe('team_1');
+    expect(ctx.organizationId).toBe('organization_1');
     expect(ctx.keyHint).toBe('osk_…XXXX');
     expect(getApiKeyOrganizationId).toHaveBeenCalledWith('key_1');
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe('authenticateMcpRequest', () => {
     expect(ctx).not.toBeInstanceOf(Response);
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('oauth');
-    expect(ctx.organizationId).toBe('team_1');
+    expect(ctx.organizationId).toBe('organization_1');
     expect(ctx.keyHint).toBe('jwt:jti_1');
     expect(verifyOAuthAccessToken).toHaveBeenCalledWith(
       jwt,
@@ -123,7 +123,7 @@ describe('authenticateMcpRequest', () => {
     );
     expect(getUserOrganizationMembership).toHaveBeenCalledWith(
       'user_1',
-      'team_1'
+      'organization_1'
     );
     expect(getSession).not.toHaveBeenCalled();
   });

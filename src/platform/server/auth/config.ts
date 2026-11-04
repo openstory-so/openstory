@@ -294,7 +294,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
         // Per-key rate limit: 10 requests/second. Enforced on every `/api/v1`
         // request (via the session-from-key validation), stored per key. This
         // is the abuse throttle, sized to comfortably allow normal create +
-        // status-poll traffic (incl. parallel per-sequence polls); per-team
+        // status-poll traffic (incl. parallel per-sequence polls); per-organization
         // *cost* is separately bounded by the credit pre-flight in
         // `createSequences`.
         rateLimit: {
@@ -314,7 +314,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       // OpenStory for hosted MCP clients, forks, and agents. Options and the
       // rest of the wiring live in `src/platform/server/auth/oauth-provider.ts`.
       ...createOAuthProviderPlugins(),
-      // Teams sub-feature stays off: a tenant is an organization (#813).
+      // Organizations sub-feature stays off: a tenant is an organization (#813).
       organization({
         ac: organizationAc,
         roles: organizationRoles,
@@ -359,9 +359,9 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       user: {
         create: {
           after: async (user) => {
-            // Team + owner membership (#1047; preflight fixed in #1062). The SQL lives in db/scoped so this file never
+            // Organization + owner membership (#1047; preflight fixed in #1062). The SQL lives in db/scoped so this file never
             // writes a table directly.
-            const team = await createDefaultOrganization({
+            const created = await createDefaultOrganization({
               userId: user.id,
               organizationName: user.name
                 ? `${user.name}'s Organization`
@@ -378,7 +378,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
               properties: {
                 email: user.email,
                 name: user.name,
-                team_id: team.id,
+                team_id: created.id,
               },
               personProperties: {
                 email: user.email,

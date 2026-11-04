@@ -26,13 +26,13 @@ describe('serveStoredMedia', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
 
     const response = await serveStoredMedia(
-      'videos/team/v.mp4',
-      new Request('https://app.example.com/r2/videos/team/v.mp4')
+      'videos/organization/v.mp4',
+      new Request('https://app.example.com/r2/videos/organization/v.mp4')
     );
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(
-      'https://storage.example.com/videos/team/v.mp4'
+      'https://storage.example.com/videos/organization/v.mp4'
     );
     expect(serveFile).not.toHaveBeenCalled();
   });
@@ -69,8 +69,10 @@ describe('serveStoredMedia ?download', () => {
     serveFile.mockResolvedValue(new Response('bytes'));
 
     const response = await serveStoredMedia(
-      'videos/team/v.mp4',
-      new Request('https://app.example.com/r2/videos/team/v.mp4?download')
+      'videos/organization/v.mp4',
+      new Request(
+        'https://app.example.com/r2/videos/organization/v.mp4?download'
+      )
     );
 
     expect(response.status).toBe(200);

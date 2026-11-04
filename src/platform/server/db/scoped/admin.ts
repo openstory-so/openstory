@@ -1,7 +1,7 @@
 /**
  * Scoped Admin Sub-module
  * Admin-only operations: gift token creation, listing, and redemption.
- * Not team-scoped (admin operations span all organizations).
+ * Not organization-scoped (admin operations span all organizations).
  */
 
 import { withSequencePosters } from '@/sequences/server/db/sequence-poster';
@@ -165,7 +165,7 @@ export function createAdminMethods(db: Database) {
     }));
   }
 
-  // ---- Support: cross-team sequence/shot access ----
+  // ---- Support: cross-organization sequence/shot access ----
 
   type SequenceWithCreator = Sequence & {
     creatorName: string | null;
@@ -181,11 +181,11 @@ export function createAdminMethods(db: Database) {
 
     const trimmed = search?.trim().toLowerCase();
 
-    // Resolve a person via TEAM MEMBERSHIP, not the sequence creator. Support
-    // ("show me this customer's account") means their whole team's work, and
+    // Resolve a person via ORGANIZATION MEMBERSHIP, not the sequence creator. Support
+    // ("show me this customer's account") means their whole organization's work, and
     // `sequences.createdBy` is not a reliable handle for it: it is nullable and
     // `ON DELETE SET NULL`, so a `user`-table rebuild nulls it wholesale (the
-    // #612-class incident that stranded 174 prod sequences). Matching any team
+    // #612-class incident that stranded 174 prod sequences). Matching any organization
     // member keeps lookup working even when the creator column is lost again.
     const memberUser = alias(user, 'member_user');
     const searchClause = trimmed
@@ -232,7 +232,7 @@ export function createAdminMethods(db: Database) {
     return assembleShotViews(db, rows);
   }
 
-  // ---- Support: cross-team studio images/videos (#1568) ----
+  // ---- Support: cross-organization studio images/videos (#1568) ----
 
   type StudioAssetWithCreator = GeneratedAsset & {
     creatorName: string | null;
@@ -329,7 +329,7 @@ export function createAdminMethods(db: Database) {
   // ---- User activity reporting ----
 
   async function listUserActivity(): Promise<UserActivityRow[]> {
-    // Subquery: sequence stats per team (count, failures, avg duration)
+    // Subquery: sequence stats per organization (count, failures, avg duration)
     const seqStatsSq = db
       .select({
         organizationId: sequences.organizationId,
@@ -347,7 +347,7 @@ export function createAdminMethods(db: Database) {
       .groupBy(sequences.organizationId)
       .as('seq_stats');
 
-    // Subquery: credit spending, purchases, and gifts per team
+    // Subquery: credit spending, purchases, and gifts per organization
     const txSumsSq = db
       .select({
         organizationId: transactions.organizationId,

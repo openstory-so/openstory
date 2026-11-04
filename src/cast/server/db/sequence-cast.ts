@@ -1,5 +1,5 @@
 /**
- * Sequence cast (#2017): the links between a sequence and the team
+ * Sequence cast (#2017): the links between a sequence and the organization
  * characters it uses.
  *
  * A link holds only what is the sequence's: the script id, the soft-remove
@@ -116,7 +116,7 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
   [db.delete(sequenceCast).where(where)] as const;
 
 /**
- * The team's characters that go when a sequence is hard-deleted: the ones
+ * The organization's characters that go when a sequence is hard-deleted: the ones
  * only it ever cast and the writer did not attach. Read before the delete, because the links that say so
  * are deleted first. A condition on `characters`.
  */
@@ -133,7 +133,7 @@ export const charactersOnlyIn = async (
       and(
         eq(sequenceCast.sequenceId, sequenceId),
         eq(characters.organizationId, organizationId),
-        // An attached character is the team's, whoever else casts it (#2065).
+        // An attached character is the organization's, whoever else casts it (#2065).
         eq(sequenceCast.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`
       )

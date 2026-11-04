@@ -123,7 +123,7 @@ export type LookSheetSnapshot = {
 };
 
 /**
- * The looks of the team's characters, each at its current version with its
+ * The looks of the organization's characters, each at its current version with its
  * sheet.
  */
 const selectLooks = async (
@@ -619,7 +619,7 @@ export function createCharacterLooksMethods(
       return rows;
     },
 
-    /** Definition history of one of the team's looks, newest first. */
+    /** Definition history of one of the organization's looks, newest first. */
     listVersions: async (lookId: string): Promise<CharacterLookVersion[]> =>
       await db
         .select(getTableColumns(characterLookVersions))
@@ -878,7 +878,7 @@ export function createCharacterLooksMethods(
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
-      // The team and link check; nothing of the link is written.
+      // The organization and link check; nothing of the link is written.
       await ownerOf(db, organizationId, sequenceId, characterId);
       const own = await db
         .select({
@@ -955,7 +955,7 @@ export function createCharacterLooksMethods(
       );
       // A character with no look yet gets its default first, so the new one
       // is never the only look and never mistaken for the default. It is
-      // also the team check.
+      // also the organization check.
       await requireLook(db, organizationId, characterId);
       await requireFreeName(
         db,

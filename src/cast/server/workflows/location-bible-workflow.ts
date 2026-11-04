@@ -4,7 +4,7 @@
  * Mid-tier orchestrator: rather than generating each location reference image
  * inline, it fans out to child `LocationSheetWorkflow` instances via Pattern 3
  * (`spawnAndAwaitChild`). A script location matching bound to one of the
- * team's is linked to it and gets no sheet run (#1695). A location analysis
+ * organization's is linked to it and gets no sheet run (#1695). A location analysis
  * held (`createBulk`'s `held`: attached here, or used by another sequence)
  * keeps the sheet it already has.
  */
@@ -72,7 +72,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
       async () => {
         // Upsert on the sequence's script ids: the Script stage already
         // created these rows sheet-less, so this keeps their ids. An entry
-        // matching bound to a team location is linked to it, not created.
+        // matching bound to an organization location is linked to it, not created.
         // The status is NOT refreshed on conflict (a step replay must not
         // clobber the child's `completed`), so a placeholder reads `pending`
         // until the sheet child writes its terminal status.
@@ -132,7 +132,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
 
     // Step 2: Spawn one LocationSheetWorkflow per location this run made, in
     // parallel. A location the sequence only links to (matching bound it, the
-    // writer attached it, or another sequence has used it) is the team's as
+    // writer attached it, or another sequence has used it) is the organization's as
     // it is: no sheet is drawn. `held` is the upsert's decision, taken in
     // that step, so this fan-out does not ask again.
     // `Promise.all` for the spawn fan-out so a single spawn error fails fast;
@@ -265,7 +265,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
 
         if (outcome?.status === 'fulfilled') {
           const childResult = outcome.value;
-          // Linked, not drawn: the team location's sheet as it is.
+          // Linked, not drawn: the organization location's sheet as it is.
           if (childResult === null) {
             return {
               ...base,

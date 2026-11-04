@@ -10,7 +10,7 @@ import { MapPin } from 'lucide-react';
 import type React from 'react';
 
 /**
- * The team's locations as a grid (#1695), most recently used first. Every
+ * The organization's locations as a grid (#1695), most recently used first. Every
  * sequence's one-off locations are here too, so the rows are virtualized
  * against the page's scroller.
  */

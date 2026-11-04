@@ -245,7 +245,7 @@ test.describe('Sequences', () => {
     );
     await page.reload();
     await waitForScriptEditor(page);
-    // Signed-in `/` hydrates the team style list after the public prefetch;
+    // Signed-in `/` hydrates the organization style list after the public prefetch;
     // Action tiles are the proof that Surprise me has a sample to pick (#1384).
     await expect(
       page.getByRole('button', { name: 'View Action details' })

@@ -92,7 +92,7 @@ type CastUploadContext = Omit<SequenceUploadContext, 'sequence'> & {
 /**
  * Resolve a finalize-time `publicUrl` to the bucket-relative `storagePath` the
  * variant tables store, or reject. A bad path here is bad INPUT (a URL outside
- * the caller's team namespace, or not one of ours) — `ValidationError` rides
+ * the caller's organization namespace, or not one of ours) — `ValidationError` rides
  * the serialization adapter to the client as a typed 400 instead of surfacing
  * as a 500 the user can't act on.
  */
@@ -119,7 +119,7 @@ function requireUploadedStoragePath(
   );
   if (!storagePath) {
     throw new ValidationError(
-      'Uploaded file is not in this team’s storage namespace'
+      'Uploaded file is not in this organization’s storage namespace'
     );
   }
   return storagePath;
@@ -835,7 +835,7 @@ function uploadTarget(
 ): { bucket: StorageBucket; path: string } {
   const id = generateId();
   if (target.use === 'stitch') {
-    // Beside the stitch CLI's uploads: `stitches/<team>/<stitch>/<file>`.
+    // Beside the stitch CLI's uploads: `stitches/<organization>/<stitch>/<file>`.
     return {
       bucket: STORAGE_BUCKETS.STITCHES,
       path: `${organizationId}/${target.stitchId}/${id}.${ext}`,
@@ -850,7 +850,7 @@ function uploadTarget(
     };
   }
   if (!sequenceId) {
-    // A location is the team's (#1695): its sheet upload needs no sequence.
+    // A location is the organization's (#1695): its sheet upload needs no sequence.
     if (use === 'location_sheet') {
       return {
         bucket: STORAGE_BUCKETS.LOCATIONS,
@@ -887,7 +887,7 @@ function uploadTarget(
         path: `${inSequence}/uploads/${id}.${ext}`,
       };
     case 'element':
-      // `presignElementUploadFn`'s key: `elements/<team>/<sequence>/<id>`.
+      // `presignElementUploadFn`'s key: `elements/<organization>/<sequence>/<id>`.
       return {
         bucket: STORAGE_BUCKETS.ELEMENTS,
         path: `${organizationId}/${sequenceId}/${id}.${ext}`,
@@ -908,7 +908,7 @@ function extensionFor(use: StoreUse, mediaType: string): string {
 export type UploadSource = { url: string } | { data: string; mimeType: string };
 
 /**
- * Store an agent's file for `use` in this sequence (or the team's Studio) and
+ * Store an agent's file for `use` in this sequence (or the organization's Studio) and
  * check it for a real person (images only, as every editor surface does): the
  * classifier's verdict is recorded on the likeness ledger, and a real person
  * needs the portrait sign-off, which is recorded here. Returns the stored
@@ -919,7 +919,7 @@ export async function storeUpload(
     scopedDb: ScopedDb;
     userId: string;
     /**
-     * Null for a Studio upload, which belongs to the team, and for the sheet
+     * Null for a Studio upload, which belongs to the organization, and for the sheet
      * of a location worked on from no sequence.
      */
     sequenceId: string | null;

@@ -233,12 +233,12 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
         ...makeEvent(false),
         payload: asStub<TestPayload>({
           userId: 'u1',
-          teamId: 'legacy-team',
+          teamId: 'legacy-organization',
         }),
       },
       makeStep()
     );
-    expect(seen).toBe('legacy-team');
+    expect(seen).toBe('legacy-organization');
   });
 
   test.each([ENGINE_ABORT, DO_RESET])(

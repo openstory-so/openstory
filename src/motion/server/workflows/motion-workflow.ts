@@ -355,7 +355,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
-    // Step 0: Estimate cost and check the team can afford it. The estimate only
+    // Step 0: Estimate cost and check the organization can afford it. The estimate only
     // gates affordability — the exact charge is computed from fal's billed
     // units after the clip completes (see actualCost below).
     const { duration, usedOwnKey: gatedUsedOwnKey } = await step.do(
@@ -386,7 +386,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         });
 
         const falKeyInfo = await scopedDb.credentials.resolveKey('fal');
-        const usedOwnKey = falKeyInfo.source === 'team';
+        const usedOwnKey = falKeyInfo.source === 'organization';
         if (cost > 0 && !usedOwnKey && !input.reservationId) {
           const canAfford =
             await scopedDb.liveRead.billing.hasEnoughCredits(cost);
@@ -870,7 +870,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // flags `body.image_urls` (a reference sheet, not a still), which
         // matches `flaggedInputs`' image test — so without this check the
         // rescue would swap to Grok, commit the model onto `video_variants`,
-        // and then die inside `resolveMotionEndpoint` on a team with no xAI
+        // and then die inside `resolveMotionEndpoint` on an organization with no xAI
         // key. `canRenderReferenceOnly` knows the via, so Grok still rescues
         // the shot wherever it genuinely can.
         const fallbackCanServe =
@@ -1570,7 +1570,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       : undefined;
     if (storageResult) videoUrl = storageResult.url;
 
-    // Charge only for a clip the team can see: a failed upload fails the run
+    // Charge only for a clip the organization can see: a failed upload fails the run
     // and onFailure zeroes the reservation (#1845).
     //
     // Settle the spawn-time reservation against fal's billed cost. If this

@@ -136,8 +136,8 @@ export const createSequences = createServerOnlyFn(
     context: CreateSequencesContext
   ): Promise<CreateSequencesResult> => {
     // The scoped DB IS the authorization boundary: middleware resolved the
-    // caller's team and built `context.scopedDb`/`context.organizationId` for it, so
-    // every write below is already team-authorized. (The old `data.organizationId`
+    // caller's organization and built `context.scopedDb`/`context.organizationId` for it, so
+    // every write below is already organization-authorized. (The old `data.organizationId`
     // override was vestigial — writes always went through the scoped db anyway.)
     const organizationId = context.organizationId;
 
@@ -244,7 +244,7 @@ export const createSequences = createServerOnlyFn(
       );
     }
 
-    // Reference-only, re-asked against THIS team's real keys. `createSequenceSchema`
+    // Reference-only, re-asked against THIS organization's real keys. `createSequenceSchema`
     // is isomorphic so it could only ask the widest question (capable on some
     // via) — which lets Grok Imagine through. Grok renders reference-only shots
     // on the native xAI route only; without an xAI key it falls back to a fal
@@ -263,7 +263,7 @@ export const createSequences = createServerOnlyFn(
       }
       if (incapable.length > 0) {
         throw new ValidationError(
-          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this team.)`
+          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this organization.)`
         );
       }
     }
@@ -320,8 +320,8 @@ export const createSequences = createServerOnlyFn(
       pricing: await getEffectiveFalPricing(),
     });
 
-    // Team characters the script references (#2050) are checked before any
-    // row is written: every pick must be the team's, and no two may share
+    // Organization characters the script references (#2050) are checked before any
+    // row is written: every pick must be the organization's, and no two may share
     // a name, or the attach after the insert would leave an empty sequence.
     if (castCharacterIds?.length) {
       const library = await context.scopedDb.characters.listOrganization();
@@ -394,7 +394,7 @@ export const createSequences = createServerOnlyFn(
                 : undefined,
             });
 
-            // Team characters the script references (#2050) are cast
+            // Organization characters the script references (#2050) are cast
             // before the trigger, so the launcher's cast snapshot has them.
             for (const characterId of castCharacterIds ?? []) {
               await attachLibraryCharacter(

@@ -3,8 +3,8 @@
  *
  * Returns the shared state document (overall status, per-shot image/video
  * status + URLs, music, poster, counts) derived from the DB, with a `_links`
- * affordance catalog attached. Team-scoped via the API key's owner, so a key can
- * only read its own team's sequences.
+ * affordance catalog attached. Organization-scoped via the API key's owner, so a key can
+ * only read its own organization's sequences.
  *
  * Pass `?wait=60s` (also `30`, `2m`, `1500ms`; capped 90s) to long-poll: the
  * request blocks until the sequence changes or reaches a terminal state, so an

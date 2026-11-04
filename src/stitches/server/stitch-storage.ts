@@ -1,8 +1,8 @@
 /**
  * Where a shared stitch's files live (#2127): `stitches/<organizationId>/<id>/<file>`.
- * The CLI names a file `<n>.<ext>`; `create_stitch` mints a ULID. The team id
+ * The CLI names a file `<n>.<ext>`; `create_stitch` mints a ULID. The organization id
  * leads the path, which is what `resolveUploadTarget` checks, so the CLI's
- * PUTs can only land inside the team that created the row.
+ * PUTs can only land inside the organization that created the row.
  */
 
 import {

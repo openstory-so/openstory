@@ -1,6 +1,6 @@
 /**
  * Scoped Styles Sub-module
- * Team-scoped style library CRUD (includes public styles in listing).
+ * Organization-scoped style library CRUD (includes public styles in listing).
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -31,7 +31,7 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'db', 'styles']);
 
-// `listByIds` chunks its id list per query. It binds only id params (no team
+// `listByIds` chunks its id list per query. It binds only id params (no organization
 // filter), so it could go to D1's 100-bound-parameter ceiling; we hold it at 90
 // to match the sibling sequences.listShotsByIds batch size.
 const STYLES_BY_IDS_BATCH = 90;
@@ -47,7 +47,7 @@ function boundRowsOwnedBy(organizationId: string) {
   );
 }
 
-/** The team's library: own + public rows, never a sequence-bound one. */
+/** The organization's library: own + public rows, never a sequence-bound one. */
 function libraryVisibleTo(organizationId: string) {
   return and(
     or(eq(styles.organizationId, organizationId), eq(styles.isPublic, true)),
@@ -58,9 +58,9 @@ function libraryVisibleTo(organizationId: string) {
 /**
  * A style's URL/asset slug is derived from its name (`styleSlug`) and is the key
  * the `?style=<slug>` composer prefill (and every style asset path) resolves on.
- * A team only ever sees its own styles plus public ones, so the slug must be
+ * An organization only ever sees its own styles plus public ones, so the slug must be
  * unique within that union — otherwise a slug would be ambiguous for that
- * account. Enforced here (no DB constraint can express "unique across this team
+ * account. Enforced here (no DB constraint can express "unique across this organization
  * ∪ all public") on create + rename. `excludeId` skips the row being renamed.
  *
  * This guards against the future where organizations can author styles; public styles
@@ -111,7 +111,7 @@ function createStylesReadMethods(db: Database, organizationId: string) {
         .orderBy(...order);
     },
 
-    /** The automatic style bound to one of this team's sequences, if any. */
+    /** The automatic style bound to one of this organization's sequences, if any. */
     getBoundToSequence: async (sequenceId: string): Promise<Style | null> => {
       const result = await db
         .select()
@@ -128,7 +128,7 @@ function createStylesReadMethods(db: Database, organizationId: string) {
 
     /**
      * Library rows resolve by id alone (a sequence may reference a public
-     * style); a sequence-bound one is private to its team.
+     * style); a sequence-bound one is private to its organization.
      */
     getById: async (styleId: string): Promise<Style | null> => {
       const result = await db
@@ -170,8 +170,8 @@ function createStylesReadMethods(db: Database, organizationId: string) {
 }
 
 /**
- * Public (anonymous) styles reads. Takes no team scope at all, so this code
- * path cannot express a team-scoped query — the isPublic filter is the entire
+ * Public (anonymous) styles reads. Takes no organization scope at all, so this code
+ * path cannot express an organization-scoped query — the isPublic filter is the entire
  * data boundary for the unauthenticated style-catalogue endpoint.
  */
 export function createPublicStylesReadMethods(db: Database) {
@@ -213,7 +213,9 @@ export function createStylesMethods(
         .returning();
       const style = result[0];
       if (!style) {
-        throw new Error(`Failed to create Style for team ${organizationId}`);
+        throw new Error(
+          `Failed to create Style for organization ${organizationId}`
+        );
       }
       return style;
     },
@@ -297,7 +299,7 @@ export function createStylesMethods(
     },
 
     /**
-     * Promote a sequence-bound style into the team library: clears the
+     * Promote a sequence-bound style into the organization library: clears the
      * binding under the library's slug-uniqueness rule. The sequence keeps
      * pointing at the same row, so nothing downstream re-snapshots.
      */

@@ -372,7 +372,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     );
   }, [regenerateSheet, sequenceId, locationId, sheetModel]);
 
-  // Replace (#1695): the sequence is re-pointed at another team location,
+  // Replace (#1695): the sequence is re-pointed at another organization location,
   // so this page's location is no longer in it. Open the one it uses now.
   const handleRecastConfirm = () => {
     if (!replacement || sequenceId === null) return;

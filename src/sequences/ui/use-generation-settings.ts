@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   imageModel: TURBO_DEFAULT_IMAGE,
   imageModels: [TURBO_DEFAULT_IMAGE],
   // Seedance 2.5, drafted first (#2004). The composer swaps it for the Turbo
-  // default where the team cannot reach BytePlus.
+  // default where the organization cannot reach BytePlus.
   motionModel: NEW_SEQUENCE_VIDEO_MODEL,
   videoModels: [NEW_SEQUENCE_VIDEO_MODEL],
   // Stop once the dialogue is recorded (#2004): hear the film before paying

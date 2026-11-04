@@ -4,7 +4,7 @@
  * The upload route starts it when the bytes land, so a closed tab, a reload
  * or a trip to checkout cannot cut it off. The browser only reads the
  * result: the ledger row once there is one, else the run's state. One run
- * per team and URL (the dedup id is their hash); a retry after a failed run is a
+ * per organization and URL (the dedup id is their hash); a retry after a failed run is a
  * new attempt, up to the trigger's generation cap.
  */
 
@@ -71,7 +71,7 @@ function checksOnUpload(bucket: StorageBucket, contentType: string): boolean {
   return false;
 }
 
-/** Per team: two organization may check the same raw URL, each on its own run. */
+/** Per organization: two organizations may check the same raw URL, each on its own run. */
 async function checkKey(organizationId: string, url: string): Promise<string> {
   return sha256Hex(`${organizationId}:${url}`);
 }
@@ -268,7 +268,7 @@ function isRunning(run: CheckRun): boolean {
  * first instead of refused (#2192). For a request that takes URLs the
  * caller may never have checked: a past upload, a raw URL, an upload behind
  * a reused clip. An upload whose run is still going is refused as still
- * checking, so the vision call never runs (and bills) twice. Another team's
+ * checking, so the vision call never runs (and bills) twice. Another organization's
  * file is never checked; with no row it is refused. A failed check throws;
  * a real person still needs the sign-off.
  */

@@ -52,10 +52,10 @@ beforeEach(async () => {
     .values({ id: organizationId, name: 'T', slug: 't' });
 });
 
-function scoped(team = organizationId) {
+function scoped(id = organizationId) {
   return {
-    styles: createStylesMethods(db, team, userId),
-    sequences: createSequencesMethods(db, team, userId),
+    styles: createStylesMethods(db, id, userId),
+    sequences: createSequencesMethods(db, id, userId),
   };
 }
 
@@ -124,7 +124,7 @@ describe('resolveStyleSource', () => {
     );
   });
 
-  it("another team's automatic style is not found", async () => {
+  it("another organization's automatic style is not found", async () => {
     const style = await createAutoSequence(true);
     await expect(
       resolveStyleSource(scoped(generateId()), style.id)

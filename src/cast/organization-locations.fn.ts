@@ -1,5 +1,5 @@
 /**
- * The team's locations (#1695): the Locations page list, one location with
+ * The organization's locations (#1695): the Locations page list, one location with
  * the sequences that use it and its photos, its delete, and the writes made
  * with no sequence: create, bible and photos.
  */
@@ -47,24 +47,24 @@ export const getOrganizationLocationFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(locationIdSchema))
   .handler(async ({ context, data }) => {
     const { locations } = context.scopedDb;
-    const [location, team, photos] = await Promise.all([
+    const [location, organization, photos] = await Promise.all([
       locations.getCurrent(data.locationId),
       locations.getOrganizationLocation(data.locationId),
       locations.listPhotos(data.locationId),
     ]);
     // Null, not an error: the page says "not found" for a location that is
-    // gone or another team's.
-    if (!location || !team) return null;
+    // gone or another organization's.
+    if (!location || !organization) return null;
     return {
       ...location,
-      lastUsedAt: team.lastUsedAt,
-      usedAnywhere: team.usedAnywhere,
-      sequences: team.sequences,
+      lastUsedAt: organization.lastUsedAt,
+      usedAnywhere: organization.usedAnywhere,
+      sequences: organization.sequences,
       photos,
     };
   });
 
-/** Live divergent sheet alternates across the team's locations: the card dots. */
+/** Live divergent sheet alternates across the organization's locations: the card dots. */
 export const getOrganizationLocationDivergentVariantsFn = createServerFn({
   method: 'GET',
 })

@@ -1,5 +1,5 @@
 /**
- * The team's characters (#2017): the Characters page list, one character
+ * The organization's characters (#2017): the Characters page list, one character
  * with the sequences that cast it, its delete, and the writes made with no
  * sequence (#2065).
  */
@@ -22,7 +22,7 @@ import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 
 export const organizationCharacterKeys = {
-  all: ['team-characters'] as const,
+  all: ['organization-characters'] as const,
   current: (id: string) =>
     [...organizationCharacterKeys.all, 'current', id] as const,
   list: () => [...organizationCharacterKeys.all, 'list'] as const,
@@ -32,7 +32,7 @@ export const organizationCharacterKeys = {
     [...organizationCharacterKeys.all, 'shot-counts', id] as const,
 };
 
-/** The team's characters, sorted by use. Signed-in only. */
+/** The organization's characters, sorted by use. Signed-in only. */
 export function useOrganizationCharacters() {
   return useSuspenseQuery({
     queryKey: organizationCharacterKeys.list(),
@@ -42,7 +42,7 @@ export function useOrganizationCharacters() {
 }
 
 /**
- * The team's characters for the `@` picker (#2050): never suspends the
+ * The organization's characters for the `@` picker (#2050): never suspends the
  * composer, and asks nothing while signed out.
  */
 export function useLibraryCharacters(enabled: boolean) {
@@ -152,8 +152,8 @@ export function useRestoreOrganizationCharacter() {
 }
 
 /**
- * Cast a team character into a sequence (#2050). The sequence's cast and
- * the team list (sort and sequence counts) both move.
+ * Cast an organization character into a sequence (#2050). The sequence's cast and
+ * the organization list (sort and sequence counts) both move.
  */
 export function useAttachLibraryCharacter() {
   const queryClient = useQueryClient();

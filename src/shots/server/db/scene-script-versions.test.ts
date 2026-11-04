@@ -46,7 +46,7 @@ beforeEach(async () => {
 
   await db.insert(organization).values({
     id: organizationId,
-    name: 'Test Team',
+    name: 'Test Organization',
     slug: `test-${organizationId}`,
   });
   const [style] = await db

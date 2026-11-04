@@ -58,7 +58,7 @@ export function createCharacterSheetVariantsMethods(
   db: Database,
   organizationId: string
 ) {
-  /** Sheets of the team's characters: every read and write here carries it. */
+  /** Sheets of the organization's characters: every read and write here carries it. */
   const ofOrganization = () =>
     inArray(
       characterSheetVariants.characterId,

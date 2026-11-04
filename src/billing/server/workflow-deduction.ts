@@ -36,17 +36,17 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'billing', 'workflow-deduction']);
 
 type WorkflowDeductionOpts = {
-  /** Scoped DB context for the team. Skips deduction if undefined (e.g., anonymous workflows). */
+  /** Scoped DB context for the organization. Skips deduction if undefined (e.g., anonymous workflows). */
   scopedDb: WorkflowScopedDb | undefined;
   costMicros: Microdollars;
-  /** Set to true if the team used their own API key for this generation */
+  /** Set to true if the organization used their own API key for this generation */
   usedOwnKey: boolean;
   description: string;
   /**
    * Stable key making this deduction idempotent across `step.do` retries.
    * Convention: `${event.instanceId}:<charge-name>` — the workflow instance
    * id is replay-stable, so a retried step recovers the original transaction
-   * instead of double-charging the team.
+   * instead of double-charging the organization.
    */
   idempotencyKey: string;
   metadata?: Record<string, unknown>;

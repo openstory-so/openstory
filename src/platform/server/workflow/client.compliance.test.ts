@@ -13,7 +13,7 @@ vi.doMock('#env', () => ({
 const { triggerWorkflow } = await import('./client');
 
 const USER_ID = 'user_1';
-const ORGANIZATION_ID = 'team_1';
+const ORGANIZATION_ID = 'organization_1';
 const NOW = new Date('2026-08-12T12:00:00Z');
 
 function row(action: 'generation_suspended' | 'account_suspended') {

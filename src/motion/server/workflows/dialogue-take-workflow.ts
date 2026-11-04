@@ -91,7 +91,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
       }
 
       // Billed only once the take fits: one that cannot be used costs the
-      // team nothing, as for a Seed take that failed its check.
+      // organization nothing, as for a Seed take that failed its check.
       await step.do('charge', async () => {
         const callKey = `${workflowRunId}:dialogue-take`;
         for (const charge of take.charges) {

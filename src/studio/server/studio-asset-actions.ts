@@ -21,7 +21,7 @@ import {
 
 const logger = getLogger(['openstory', 'studio', 'assets']);
 
-/** This team's studio row, or not found. */
+/** This organization's studio row, or not found. */
 async function requireStudioAsset(scopedDb: ScopedDb, id: string) {
   const asset = await scopedDb.generatedAssets.getById(id);
   if (!asset || asset.source !== 'studio') {
@@ -107,7 +107,7 @@ export async function draftStudioPromptForOrganization(
   data: StudioPromptDraftInput
 ): Promise<{ prompt: string }> {
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(STUDIO_DRAFT_MODEL);
-  if (llmKey.source !== 'team') {
+  if (llmKey.source !== 'organization') {
     const canAfford = await scopedDb.billing.hasEnoughCredits(
       estimateLLMCost(1)
     );

@@ -27,7 +27,7 @@ type PromoteStyleDialogProps = {
 };
 
 /**
- * Add a sequence's automatic style to the team library (#1213). The derived
+ * Add a sequence's automatic style to the organization library (#1213). The derived
  * name is the default; the library's slug-uniqueness rule can reject it, in
  * which case the server's message names the clash.
  */

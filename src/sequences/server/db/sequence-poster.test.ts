@@ -36,12 +36,12 @@ beforeAll(async () => {
 afterAll(() => closeDb());
 beforeEach(async () => {
   // Separate organizations keep FK fixtures isolated without depending on deletion order.
-  const [team] = await db
+  const [seedOrganization] = await db
     .insert(organization)
     .values({ name: 'Test', slug: crypto.randomUUID() })
     .returning();
-  if (!team) throw new Error('Missing team');
-  organizationId = team.id;
+  if (!seedOrganization) throw new Error('Missing organization');
+  organizationId = seedOrganization.id;
   const [style] = await db
     .insert(styles)
     .values({
@@ -242,7 +242,7 @@ describe('sequence posters follow the first shot', () => {
     await still(first.frame.id, '/r2/new-selection.png');
     expect(await poster()).toBe('/r2/new-selection.png');
   });
-  it('resolves existing media for support and team lists without writing a poster', async () => {
+  it('resolves existing media for support and organization lists without writing a poster', async () => {
     const { frame } = await makeShot();
     await still(frame.id);
     expect(await poster()).toBe('/r2/start.png');

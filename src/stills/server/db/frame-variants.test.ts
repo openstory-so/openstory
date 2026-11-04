@@ -98,18 +98,18 @@ async function seed() {
 }
 
 /**
- * A second sequence in the same team, with its own shot + anchor frame. Used to
+ * A second sequence in the same organization, with its own shot + anchor frame. Used to
  * prove the sequence-scoped reads don't leak across sequences.
  */
 async function seedSecondSequence() {
-  const [team] = await db.select().from(organization);
+  const [org] = await db.select().from(organization);
   const [style] = await db.select().from(styles);
-  if (!team || !style) throw new Error('test setup: seed() must run first');
+  if (!org || !style) throw new Error('test setup: seed() must run first');
 
   const otherSequenceId = generateId();
   await db.insert(sequences).values({
     id: otherSequenceId,
-    organizationId: team.id,
+    organizationId: org.id,
     title: 'Other',
     styleId: style.id,
   });
@@ -760,7 +760,7 @@ describe('frameVariants.listSelectedModelsBySequence (#1066)', () => {
 
   it('never returns a shot from another sequence', async () => {
     // This read decides which model a user is BILLED for — a missing sequence
-    // filter would leak another team's shots into the map.
+    // filter would leak another organization's shots into the map.
     const m = createFrameVariantsMethods(db);
     const v = await m.appendVersion(variantInput());
     await m.select(frameId, v.id, { actorId: null });

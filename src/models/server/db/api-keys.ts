@@ -1,7 +1,7 @@
 /**
  * Scoped API Keys Sub-module
- * Team-scoped API key management for external providers. Handles CRUD
- * operations and key resolution (team key -> platform fallback). `via` is
+ * Organization-scoped API key management for external providers. Handles CRUD
+ * operations and key resolution (organization key -> platform fallback). `via` is
  * which API the resolved key belongs to.
  */
 
@@ -39,7 +39,7 @@ import { getLogger, serializeError } from '@/platform/logger';
 
 /**
  * Platform-only providers that `resolveKey` can spend but that are NOT on
- * `API_KEY_PROVIDERS` — no team row, no Settings UI, no BYOK. Designed
+ * `API_KEY_PROVIDERS` — no organization row, no Settings UI, no BYOK. Designed
  * ElevenLabs voices live in the account that created them (#1552); Seed
  * Speech is the BytePlus account's (#1765).
  */
@@ -60,15 +60,15 @@ type ApiKeyInfo = {
   createdAt: Date;
 };
 
-// `fallbackReason` is set when a team key existed but was skipped (invalid
+// `fallbackReason` is set when an organization key existed but was skipped (invalid
 // or undecryptable); callers use it to surface the BYOK fallback.
 export type ResolvedApiKey =
-  | { key: string; source: 'team' }
+  | { key: string; source: 'organization' }
   | { key: string; source: 'platform'; fallbackReason?: string };
 
 // LLM-call key resolution. `via` says which API the call must be routed
 // through: 'openrouter' = OpenRouter directly (Bearer auth), 'fal' = fal's
-// OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
+// OpenAI-compatible OpenRouter endpoint (`Key` auth) so an organization with only a
 // fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
 // API for Grok models (issue #1167), 'google' = Google's own Gemini API for
 // Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
@@ -103,7 +103,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
   // We cache only the *encrypted* row (ciphertext + invalid flag), never the
   // decrypted key — `resolveKey` decrypts fresh on each call, so the plaintext
   // key lives only for the duration of one call rather than the whole run. The
-  // cache is in-isolate heap, scoped to one team, and never persisted.
+  // cache is in-isolate heap, scoped to one organization, and never persisted.
   const keyLookupCache = new Map<ApiKeyProvider, Promise<CachedKeyLookup>>();
 
   // Drop a cached lookup so the next resolveKey re-reads from D1. Called by the
@@ -317,10 +317,10 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       case 'google':
         return env.GEMINI_API_KEY || undefined;
       case 'llmtr':
-        // Team BYOK only — OpenRouter/fal cover platform LLM calls.
+        // Organization BYOK only — OpenRouter/fal cover platform LLM calls.
         return undefined;
       case 'upload_post':
-        // Publishing always posts to the team's OWN social accounts, so
+        // Publishing always posts to the organization's OWN social accounts, so
         // there is deliberately no platform-level fallback (#1267).
         return undefined;
       default: {
@@ -362,19 +362,20 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     if (!lookup.found) return platformFallback();
 
     if (lookup.isInvalid) {
-      const reason = lookup.invalidReason ?? 'Team API key marked invalid';
+      const reason =
+        lookup.invalidReason ?? 'Organization API key marked invalid';
       const fallback = platformFallback(reason);
       logger.warn(
         fallback
           ? 'Falling back to platform key'
-          : 'Team API key marked invalid; no platform key',
+          : 'Organization API key marked invalid; no platform key',
         { provider, organizationId, reason }
       );
       return fallback;
     }
 
     const result = await decryptOrMarkInvalid(provider, lookup);
-    if ('key' in result) return { key: result.key, source: 'team' };
+    if ('key' in result) return { key: result.key, source: 'organization' };
     return platformFallback(result.skippedReason);
   }
 
@@ -391,7 +392,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     return resolved;
   }
 
-  // Resolve the team key for a gateway that only fronts *some* models, given
+  // Resolve the organization key for a gateway that only fronts *some* models, given
   // the row already read. Returns the key, or the reason it was skipped.
   async function organizationGatewayKey(
     provider: ApiKeyProvider,
@@ -401,26 +402,26 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     if (lookup.isInvalid) {
       return {
         skippedReason:
-          lookup.invalidReason ?? `Team ${provider} key marked invalid`,
+          lookup.invalidReason ?? `Organization ${provider} key marked invalid`,
       };
     }
     return decryptOrMarkInvalid(provider, lookup);
   }
 
   // Resolve the key for an LLM call. Preference order:
-  //   0. xAI key (team, else platform) when `model` is a Grok model — the
+  //   0. xAI key (organization, else platform) when `model` is a Grok model — the
   //      first-party API, no reseller in front of it (issue #1167); a Google
   //      key the same way when `model` is a Gemini model
-  //   1. team LLMTR key, when LLMTR carries `model` — a team that added an
+  //   1. organization LLMTR key, when LLMTR carries `model` — an organization that added an
   //      LLMTR key chose that gateway deliberately. Models it doesn't carry
   //      fall through to OpenRouter/fal below rather than being silently
   //      swapped for a near neighbour.
-  //   2. team OpenRouter key (direct OpenRouter)
-  //   3. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
-  //      team still covers LLM calls on their own key (issue #895)
+  //   2. organization OpenRouter key (direct OpenRouter)
+  //   3. organization fal key (routed through fal's OpenRouter endpoint) — a fal-only
+  //      organization still covers LLM calls on their own key (issue #895)
   //   4. platform key (OPENROUTER_KEY, else FAL_KEY)
   // A skipped OpenRouter key that a working fal key supersedes returns
-  // `source: 'team'` with no fallbackReason — the reason only surfaces when
+  // `source: 'organization'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
   // Omitting `model` means no gateway routing — a caller that can't name the
   // model can't promise it's a Grok/Gemini one, nor that LLMTR carries it.
@@ -444,7 +445,7 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
         await readKeyRowLogged('llmtr')
       );
       if ('key' in result) {
-        return { key: result.key, source: 'team', via: 'llmtr' };
+        return { key: result.key, source: 'organization', via: 'llmtr' };
       }
       fallbackReason = result.skippedReason;
     }
@@ -455,11 +456,12 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     if (orLookup.found) {
       if (orLookup.isInvalid) {
         fallbackReason ??=
-          orLookup.invalidReason ?? 'Team OpenRouter key marked invalid';
+          orLookup.invalidReason ??
+          'Organization OpenRouter key marked invalid';
       } else {
         const result = await decryptOrMarkInvalid('openrouter', orLookup);
         if ('key' in result) {
-          return { key: result.key, source: 'team', via: 'openrouter' };
+          return { key: result.key, source: 'organization', via: 'openrouter' };
         }
         fallbackReason ??= result.skippedReason;
       }
@@ -469,11 +471,11 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     if (falLookup.found) {
       if (falLookup.isInvalid) {
         fallbackReason ??=
-          falLookup.invalidReason ?? 'Team fal key marked invalid';
+          falLookup.invalidReason ?? 'Organization fal key marked invalid';
       } else {
         const result = await decryptOrMarkInvalid('fal', falLookup);
         if ('key' in result) {
-          return { key: result.key, source: 'team', via: 'fal' };
+          return { key: result.key, source: 'organization', via: 'fal' };
         }
         fallbackReason ??= result.skippedReason;
       }
@@ -765,7 +767,7 @@ export function createApiKeysMethods(
 
       if (!row) {
         throw new Error(
-          `saveKey: insert returned no row for team ${organizationId}, provider ${params.provider}`
+          `saveKey: insert returned no row for organization ${organizationId}, provider ${params.provider}`
         );
       }
 

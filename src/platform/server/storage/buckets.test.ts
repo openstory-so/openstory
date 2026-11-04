@@ -24,8 +24,8 @@ function setEnv(values: Record<string, string | undefined>) {
 describe('getPublicUrl', () => {
   it('returns an origin-relative /r2/ URL regardless of env', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
-    expect(getPublicUrl('thumbnails', 'team/shot.png')).toBe(
-      '/r2/thumbnails/team/shot.png'
+    expect(getPublicUrl('thumbnails', 'organization/shot.png')).toBe(
+      '/r2/thumbnails/organization/shot.png'
     );
     setEnv({});
     expect(getPublicUrl('videos', 'a/b.mp4')).toBe('/r2/videos/a/b.mp4');
@@ -34,8 +34,8 @@ describe('getPublicUrl', () => {
 
 describe('r2KeyFromUrl', () => {
   it('extracts the key from the canonical relative form', () => {
-    expect(r2KeyFromUrl('/r2/thumbnails/team/shot.png')).toBe(
-      'thumbnails/team/shot.png'
+    expect(r2KeyFromUrl('/r2/thumbnails/organization/shot.png')).toBe(
+      'thumbnails/organization/shot.png'
     );
   });
 
@@ -52,7 +52,9 @@ describe('r2KeyFromUrl', () => {
     expect(r2KeyFromUrl('https://v3.fal.media/files/b/abc/out.png')).toBeNull();
     // Legacy CDN rows have no /r2/ prefix — they stay absolute and fetchable.
     expect(
-      r2KeyFromUrl('https://storage.openstory.so/thumbnails/team/shot.png')
+      r2KeyFromUrl(
+        'https://storage.openstory.so/thumbnails/organization/shot.png'
+      )
     ).toBeNull();
     expect(r2KeyFromUrl('/cdn-cgi/image/trim=0;1;2;3/r2/x.png')).toBeNull();
     expect(r2KeyFromUrl('data:image/png;base64,AAAA')).toBeNull();
@@ -62,8 +64,8 @@ describe('r2KeyFromUrl', () => {
 describe('toCdnUrl', () => {
   it('absolutizes stored URLs against the CDN domain when configured', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
-    expect(toCdnUrl('/r2/thumbnails/team/shot.png')).toBe(
-      'https://storage.example.com/thumbnails/team/shot.png'
+    expect(toCdnUrl('/r2/thumbnails/organization/shot.png')).toBe(
+      'https://storage.example.com/thumbnails/organization/shot.png'
     );
     expect(toCdnUrl('http://localhost:3000/r2/videos/a.mp4')).toBe(
       'https://storage.example.com/videos/a.mp4'
@@ -72,7 +74,7 @@ describe('toCdnUrl', () => {
 
   it('returns null without a CDN domain (local serving)', () => {
     setEnv({});
-    expect(toCdnUrl('/r2/thumbnails/team/shot.png')).toBeNull();
+    expect(toCdnUrl('/r2/thumbnails/organization/shot.png')).toBeNull();
   });
 
   it('returns null in e2e even with a domain configured', () => {
@@ -81,7 +83,7 @@ describe('toCdnUrl', () => {
       E2E_TEST: 'true',
     });
     expect(isLocalStorageServing()).toBe(true);
-    expect(toCdnUrl('/r2/thumbnails/team/shot.png')).toBeNull();
+    expect(toCdnUrl('/r2/thumbnails/organization/shot.png')).toBeNull();
   });
 
   it('returns null for URLs that are not ours', () => {
@@ -95,15 +97,15 @@ describe('toShareableUrl', () => {
 
   it('prefers the CDN domain for stored URLs when configured', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
-    expect(toShareableUrl('/r2/videos/team/v.mp4', origin)).toBe(
-      'https://storage.example.com/videos/team/v.mp4'
+    expect(toShareableUrl('/r2/videos/organization/v.mp4', origin)).toBe(
+      'https://storage.example.com/videos/organization/v.mp4'
     );
   });
 
   it('absolutizes relative URLs against the origin when no CDN (local serving)', () => {
     setEnv({});
-    expect(toShareableUrl('/r2/videos/team/v.mp4', origin)).toBe(
-      'https://app.example.com/r2/videos/team/v.mp4'
+    expect(toShareableUrl('/r2/videos/organization/v.mp4', origin)).toBe(
+      'https://app.example.com/r2/videos/organization/v.mp4'
     );
     // Trailing slash on the origin is tolerated.
     expect(toShareableUrl('/r2/videos/v.mp4', 'https://app.example.com/')).toBe(
@@ -133,15 +135,15 @@ describe('toShareableUrl', () => {
 
 describe('getPathFromUrl', () => {
   it('extracts the bucket-relative path from relative and legacy URLs', () => {
-    expect(getPathFromUrl('/r2/talent/team/temp/x.png', 'talent')).toBe(
-      'team/temp/x.png'
+    expect(getPathFromUrl('/r2/talent/organization/temp/x.png', 'talent')).toBe(
+      'organization/temp/x.png'
     );
     expect(
       getPathFromUrl(
-        'http://localhost:3000/r2/talent/team/temp/x.png',
+        'http://localhost:3000/r2/talent/organization/temp/x.png',
         'talent'
       )
-    ).toBe('team/temp/x.png');
+    ).toBe('organization/temp/x.png');
   });
 
   it('throws when the URL is not in the expected bucket', () => {

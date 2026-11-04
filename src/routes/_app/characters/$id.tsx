@@ -65,13 +65,13 @@ function ShotCount({
 function OrganizationCharacterContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
   const { data: character } = useOrganizationCharacter(id);
-  // Gone or another team's. Reached from a stale link.
+  // Gone or another organization's. Reached from a stale link.
   if (!character) {
     return (
       <EmptyState
         icon={<User className="h-12 w-12" />}
         title="Character not found"
-        description="It was deleted, or it belongs to another team."
+        description="It was deleted, or it belongs to another organization."
         action={
           <Button variant="outline" asChild>
             <Link to="/characters" search={librarySearchFor()}>
@@ -202,7 +202,7 @@ function OrganizationCharacterPage() {
       <EmptyState
         icon={<User className="h-12 w-12" />}
         title="Sign in to see this character"
-        description="Characters belong to your team."
+        description="Characters belong to your organization."
         action={<SignInButton />}
       />
     );

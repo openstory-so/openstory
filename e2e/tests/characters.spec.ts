@@ -1,5 +1,5 @@
 /**
- * Characters page E2E (#2017, #2065): the team's characters, one character's
+ * Characters page E2E (#2017, #2065): the organization's characters, one character's
  * page, and deleting one no sequence casts. Nothing here generates anything.
  */
 
@@ -236,7 +236,7 @@ test.describe('Characters page', () => {
       timeout: HYDRATION_TIMEOUT,
     });
 
-    // Listed with the team's characters, and deletable: nothing casts it.
+    // Listed with the organization's characters, and deletable: nothing casts it.
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page
       .getByRole('alertdialog', { name: `Delete ${name}?` })
@@ -245,7 +245,7 @@ test.describe('Characters page', () => {
     await expect(page.getByText(`Deleted ${name}`)).toBeVisible();
   });
 
-  test('a new sequence picks a team character in the Cast picker (#2017)', async ({
+  test('a new sequence picks an organization character in the Cast picker (#2017)', async ({
     page,
   }) => {
     await page.goto('/sequences/new');

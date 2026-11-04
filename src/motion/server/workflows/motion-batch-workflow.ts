@@ -107,7 +107,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     //
     // Reads through `scopedDb.liveRead.bytePlusAssets.getAdmission` (the live
     // hatch): occupancy is shared across organizations and cannot be snapshotted at
-    // trigger — a run that froze it would evict slots another team leased
+    // trigger — a run that froze it would evict slots another organization leased
     // minutes later.
     await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
@@ -259,7 +259,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
    * is fatal — each child claim fails immediately on a full leased pool
    * (`NonRetryableError`); there is no public-URL or fal fallback. A still
    * another run is creating waits ~20 minutes (40 × 30s) then fails if that
-   * create never lands. A BYOK-fal team never touches the pool but is not
+   * create never lands. A BYOK-fal organization never touches the pool but is not
    * excluded here (that needs a credential read for a check that only ever
    * costs a `count(*)`); it can be delayed by other organizations' traffic, which the
    * `deferred` event will show if it ever matters.

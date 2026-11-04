@@ -9,7 +9,7 @@ import {
  * as divergent (Stage 2 of workflow snapshots). A sheet is the location's,
  * whichever sequence drew it (#1695), so nothing here takes a sequence except
  * the one write that records a sequence event. Every statement is scoped to
- * the team through the location.
+ * the organization through the location.
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -36,7 +36,7 @@ export function createLocationSheetVariantsMethods(
   db: Database,
   organizationId: string
 ) {
-  /** The row belongs to one of this team's locations. */
+  /** The row belongs to one of this organization's locations. */
   const ofOrganization = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.organization_id = ${organizationId})`;
   const ofLocation = (locationId: string) =>
     and(eq(locationSheetVariants.locationId, locationId), ofOrganization);

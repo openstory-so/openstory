@@ -191,7 +191,7 @@ export const applyEnforcementFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     if (!data.subjectUserId && !data.subjectOrganizationId) {
       throw new ValidationError(
-        'An enforcement action needs a subject user or team'
+        'An enforcement action needs a subject user or organization'
       );
     }
 

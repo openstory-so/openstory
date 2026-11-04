@@ -12,7 +12,7 @@ import type { CharacterSheetVariant } from '@/platform/server/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 /** Null is the Characters page (#2017): the same sheets, no sequence. */
-const scope = (sequenceId: string | null) => sequenceId ?? 'team';
+const scope = (sequenceId: string | null) => sequenceId ?? 'organization';
 
 export const characterSheetVariantKeys = {
   all: ['character-sheet-variants'] as const,

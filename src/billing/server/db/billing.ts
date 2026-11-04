@@ -1,6 +1,6 @@
 /**
  * Scoped Billing Sub-module
- * Team-scoped credit operations: balance, deductions, transactions, settings.
+ * Organization-scoped credit operations: balance, deductions, transactions, settings.
  * All monetary values are in Microdollars (1 USD = 1,000,000).
  */
 
@@ -238,7 +238,7 @@ function createBillingReadMethods(db: Database, organizationId: string) {
     return available >= estimatedCostMicros;
   }
 
-  /** One page of the team ledger, newest first. `hasMore` comes from reading
+  /** One page of the organization ledger, newest first. `hasMore` comes from reading
    *  one extra row — a `count(*)` would read every ledger row (#1881). */
   async function getTransactionHistory(
     opts: { limit?: number; offset?: number; type?: TransactionType } = {}
@@ -310,7 +310,7 @@ function createBillingReadMethods(db: Database, organizationId: string) {
       .limit(1);
     if (!existing) {
       throw new Error(
-        `getBillingSettings: row missing for team ${organizationId} after onConflictDoNothing`
+        `getBillingSettings: row missing for organization ${organizationId} after onConflictDoNothing`
       );
     }
     return existing;
@@ -458,7 +458,7 @@ export function createBillingMethods(
 
     if (!updated) {
       throw new Error(
-        `addCredits: update returned no row for team ${organizationId}`
+        `addCredits: update returned no row for organization ${organizationId}`
       );
     }
 
@@ -496,7 +496,7 @@ export function createBillingMethods(
     const insertedRow = rows[0];
     if (!insertedRow) {
       throw new Error(
-        `addCredits: transaction insert returned no row for team ${organizationId}`
+        `addCredits: transaction insert returned no row for organization ${organizationId}`
       );
     }
     const transactionId = insertedRow.id;
@@ -546,7 +546,7 @@ export function createBillingMethods(
    * Pass `opts.idempotencyKey` (convention: `${workflowInstanceId}:<charge-name>`)
    * from any retryable context — a workflow `step.do` that throws partway
    * re-runs its closure, and without the key every replay double-debits the
-   * team and writes a duplicate ledger row. The balance UPDATE and the
+   * organization and writes a duplicate ledger row. The balance UPDATE and the
    * transaction INSERT run in one atomic `db.batch`; the UPDATE is guarded on
    * "no transaction with this key exists yet" and the INSERT dedupes via the
    * partial unique index on `(team_id, idempotency_key)`. A replay is a no-op
@@ -650,7 +650,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     if (!balanceRow) {
       throw new Error(
-        `deductCredits: credits row missing for team ${organizationId} after batch`
+        `deductCredits: credits row missing for organization ${organizationId} after batch`
       );
     }
     const newBalance = micros(balanceRow.balance);
@@ -662,7 +662,7 @@ export function createBillingMethods(
     if (!transactionId) {
       if (!idempotencyKey) {
         throw new Error(
-          `deductCredits: transaction insert returned no row for team ${organizationId}`
+          `deductCredits: transaction insert returned no row for organization ${organizationId}`
         );
       }
       // Replay of an already-applied deduction — recover the original
@@ -679,7 +679,7 @@ export function createBillingMethods(
         .limit(1);
       if (!existing) {
         throw new Error(
-          `deductCredits: no transaction row for team ${organizationId} key ${idempotencyKey} after conflict no-op`
+          `deductCredits: no transaction row for organization ${organizationId} key ${idempotencyKey} after conflict no-op`
         );
       }
       transactionId = existing.id;
@@ -834,7 +834,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     if (!balanceRow) {
       throw new Error(
-        `tryDebit: credits row missing for team ${organizationId} after batch`
+        `tryDebit: credits row missing for organization ${organizationId} after batch`
       );
     }
     const newBalance = micros(balanceRow.balance);
@@ -1343,7 +1343,7 @@ export function createBillingMethods(
 
     // `== null`, not falsy: a threshold of 0 ("top up when I hit zero") is a
     // legitimate setting, and treating it as "unset" would silently disable
-    // auto-top-up for a team whose settings page says it is on.
+    // auto-top-up for an organization whose settings page says it is on.
     if (
       !settings.autoTopUpEnabled ||
       !settings.stripeCustomerId ||
@@ -1389,7 +1389,7 @@ export function createBillingMethods(
       const elapsed = Date.now() - recentAutoTopUp.createdAt.getTime();
       if (elapsed < AUTO_TOPUP_COOLDOWN_MS) {
         logger.info(
-          `Cooldown active for team ${organizationId}, skipping (${Math.round(elapsed / 1000)}s ago)`
+          `Cooldown active for organization ${organizationId}, skipping (${Math.round(elapsed / 1000)}s ago)`
         );
         return;
       }
@@ -1404,7 +1404,7 @@ export function createBillingMethods(
     const stripe = getStripeOrThrow();
     const amountCents = totalCheckoutCents(topUpMicros);
 
-    // Every exit below leaves auto-top-up silently dead for this team while
+    // Every exit below leaves auto-top-up silently dead for this organization while
     // the settings page still advertises it as on — so each one logs (#1099).
     const customer = await stripe.customers.retrieve(settings.stripeCustomerId);
     if (customer.deleted) {
@@ -1526,11 +1526,11 @@ export function createBillingMethods(
   }
 
   /**
-   * Redeem a gift token for a team. Adds credits via the billing sub-module.
+   * Redeem a gift token for an organization. Adds credits via the billing sub-module.
    * Caller must provide an addCredits function (from billing sub-module) to avoid
    * circular dependency.
    *
-   * Known refusals return `{ status: 'refused' }` (#2033). A code this team
+   * Known refusals return `{ status: 'refused' }` (#2033). A code this organization
    * already holds is "already redeemed" / "once per account" even when the
    * cap is also full — that check comes before the cap, so a single-use code
    * the caller used does not come back as "fully redeemed".

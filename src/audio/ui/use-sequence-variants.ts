@@ -21,7 +21,7 @@ export const sequenceVariantKeys = {
   divergentMusic: (sequenceId: string) =>
     ['sequence-divergent-music', sequenceId] as const,
   divergentByOrganization: (organizationId?: string) =>
-    ['sequence-divergent-by-team', organizationId ?? null] as const,
+    ['sequence-divergent-by-organization', organizationId ?? null] as const,
 };
 
 // ── Read hooks ─────────────────────────────────────────────────────────────
@@ -43,9 +43,9 @@ export function useSequenceDivergentMusicVariants(
 }
 
 /**
- * Aggregate read for the team's sequences-list dashboard. Returns one row per
+ * Aggregate read for the organization's sequences-list dashboard. Returns one row per
  * sequence that has at least one live divergent music alternate. The `enabled`
- * arg should be true once the team dashboard has loaded; the server function
+ * arg should be true once the organization dashboard has loaded; the server function
  * uses the session's active organization.
  */
 export function useOrganizationDivergentSequenceVariants(enabled = true) {

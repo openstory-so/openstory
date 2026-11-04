@@ -6,7 +6,7 @@
  * with an `idempotencyKey`, the balance UPDATE and the transaction INSERT run
  * in one atomic `db.batch` guarded by the partial unique index on
  * `(team_id, idempotency_key)` — a replay is a no-op that recovers the
- * original transaction id instead of double-debiting the team.
+ * original transaction id instead of double-debiting the organization.
  */
 
 import { micros, negateMicros } from '@/billing/money';
@@ -149,7 +149,7 @@ describe('deductCredits with an idempotencyKey', () => {
     expect(credit?.balance).toBe(STARTING_BALANCE - 2 * rawCost);
   });
 
-  it('the same key under a different team charges both organizations (key is team-scoped)', async () => {
+  it('the same key under a different organization charges both organizations (key is organization-scoped)', async () => {
     const otherOrganizationId = generateId();
     await db
       .insert(organization)
@@ -290,7 +290,7 @@ describe('getAvailable asOfMs (#1881)', () => {
     expect(second.balance).toBe(STARTING_BALANCE - 1_000_000);
   });
 
-  it('reads a team with no credits row as zero', async () => {
+  it('reads an organization with no credits row as zero', async () => {
     const otherOrganizationId = generateId();
     await db
       .insert(organization)

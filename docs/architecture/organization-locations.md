@@ -1,24 +1,24 @@
-# Team locations (#1695)
+# Organization locations (#1695)
 
-A location belongs to the team. A sequence never copies one and never keeps
+A location belongs to the organization. A sequence never copies one and never keeps
 a version of one: it holds a **link**, and reads the location as it is now.
 A set used in 100 episodes is one location, with one bible and one sheet. An
 edit from any sequence changes it in every sequence; what that edit stales
 in each one is staleness's job (`prompt-staleness-dependency-graph.md`),
 never a pointer's.
 
-This is the location twin of team characters (`team-characters.md`, #2017).
+This is the location twin of organization characters (`organization-characters.md`, #2017).
 The old location library is gone: a library location became a location.
 There are no rooms or looks. A room is its own location.
 
 ## Data
 
 - **`locations`** (the SQL table is still `sequence_locations`; a rename
-  would rebuild the bible versions that point at it). Identity: `teamId`,
+  would rebuild the bible versions that point at it). Identity: `organizationId`,
   the current bible version (`selectedBibleVersionId`), the sheet pointer
   (`selectedReferenceVersionId`), the sheet claim
   (`pendingPromoteReferenceVersionId`), `referenceStatus`, `referenceError`,
-  and `deletedAt` (deleted from the team). Bible versions, sheet versions and
+  and `deletedAt` (deleted from the organization). Bible versions, sheet versions and
   photos are keyed by the location id.
   `legacyLibraryReferenceHash` is read only to verify an old sheet digest
   (see § Migration).
@@ -30,7 +30,7 @@ There are no rooms or looks. A room is its own location.
     `removedAt`, `attached`, `createdAt`.
   - `scriptConsistencyTag`: the tag the script knows the place by, when that
     is not the location's own. Set when matching bound a script location to
-    a team location, and when a link was re-pointed by Replace. Scenes keep
+    an organization location, and when a link was re-pointed by Replace. Scenes keep
     the script's tag, so a read through the link answers with it. Null when
     the location's own tag is the script's.
   - `attached`: the writer picked the location for this sequence, added
@@ -50,12 +50,12 @@ parent now.
 
 Every foreign key into `locations` is `restrict` or `no action`, and so is
 the link's key to `sequences`: deletes are done in app code (the #612
-rebuild trap). A team delete is refused while the team has locations.
+rebuild trap). An organization delete is refused while the organization has locations.
 
 ## One read shape
 
 `scopedDb.locations` (`src/cast/server/db/locations.ts`) is scoped to the
-team in every statement. A read through a sequence returns the location at
+organization in every statement. A read through a sequence returns the location at
 its current version plus the link's own fields, under the names the
 location's own columns had, so callers did not change:
 
@@ -77,12 +77,12 @@ scenes keep the tag the script gave the place (`continuity.environmentTag`),
 and `matchLocationsToScene` finds the location by it after a bind or a
 Replace. An attach leaves it null. A bible edit made through a sequence
 diffs against the location's own bible (`ownOf`), so the script's tag is
-never written into the team's bible.
+never written into the organization's bible.
 
 A read from no sequence (`getCurrent`, `getCurrentByIds`, `get(null, id)`)
 is the same without the link fields, and its `consistencyTag` is the
 location's own. Its `deletedAt` is the location's own
-(deleted from the team), and a deleted location is not returned.
+(deleted from the organization), and a deleted location is not returned.
 
 **A method takes `sequenceId` only when the answer or the write is the
 link's, or when it records a sequence event.**
@@ -101,7 +101,7 @@ link's, or when it records a sequence event.**
   sheet claim (`claimReference`, `claimReferenceIfUnmoved`,
   `failReferenceClaim`), `softDeleteForOrganization`, `restoreForOrganization`.
 
-Another team's location is not found by any of them.
+Another organization's location is not found by any of them.
 
 What follows from one location in two sequences:
 
@@ -125,7 +125,7 @@ nothing is drawn: the sequence reads the bible and the sheet as they are.
 - Attaching a location the sequence already uses returns it as it is.
   Attaching one the sequence removed brings the link back and sets
   `attached`: the writer picked it again.
-- Refused unless the sequence is the team's (`NotFoundError`, checked in the
+- Refused unless the sequence is the organization's (`NotFoundError`, checked in the
   db method), and while a live location of the sequence already has its name
   (`ConflictError`, `assertNameFree`): a scene names its place in the
   slugline, and two of one name could not be told apart. Restore and Replace
@@ -133,7 +133,7 @@ nothing is drawn: the sequence reads the bible and the sheet as they are.
 
 ## Replace (recast)
 
-"Replace" re-points the link at another of the team's locations
+"Replace" re-points the link at another of the organization's locations
 (`locations.replace`, called by `recastLocation` in
 `src/cast/server/cast-generation.ts`).
 
@@ -157,7 +157,7 @@ Script analysis still matches script locations against the locations the
 writer picked for the sequence (`sequences.suggestedLocationIds`): the same
 LLM call and prompt (`LocationMatchingWorkflow`). A match is now a link.
 
-- `buildLocationInsert` (`cast-records.ts`) puts the matched team location's
+- `buildLocationInsert` (`cast-records.ts`) puts the matched organization location's
   id on the entry as `boundTo`.
 - `locations.createBulk` links a `boundTo` entry and makes nothing. The link
   is `attached`, takes the script id and the first mention, and stores the
@@ -165,7 +165,7 @@ LLM call and prompt (`LocationMatchingWorkflow`). A match is now a link.
 - The script id can name one location in a sequence. A link that held it
   for another location is taken over (when the sequence had no link to the
   bound location) or deleted (when it had). That other location stays the
-  team's.
+  organization's.
 - `LocationBibleWorkflow` draws no sheet for a bound or attached location,
   or for one `createBulk` marks `held` (another sequence has used it). The
   flag is the upsert's own decision, carried on that step's result.
@@ -219,7 +219,7 @@ sheet hash read no sequence style.
 
 ## Locations page and runs from no sequence
 
-- `/locations` lists the team's locations (`locations.listOrganization`): one
+- `/locations` lists the organization's locations (`locations.listOrganization`): one
   grouped read over the links, with no stored column. Order: the most
   recently changed sequence using it, then how many sequences use it. A
   removed link and an archived sequence do not count. A location nothing
@@ -232,15 +232,15 @@ sheet hash read no sequence style.
   (`LocationSheetWorkflowInput`). What changes:
   - It reports on the location's own channel, `locationChannelId(null, id)`
     = `location:<id>`. Through a sequence the channel is the sequence's.
-  - It stores under `<team>/team/<location>/`.
+  - It stores under `<organization>/team/<location>/`.
   - The image model is the live sheet version's, else the default.
   - No sequence event is written (the bible edit, the sheet pick).
 
 ## Deletes
 
 - **Remove from a sequence** is soft: the link's `removedAt`
-  (`softDelete`). **Restore** clears it, and clears a team delete too.
-- **Delete from the team** (`deleteOrganizationLocation` → `softDeleteForOrganization`) is
+  (`softDelete`). **Restore** clears it, and clears an organization delete too.
+- **Delete from the organization** (`deleteOrganizationLocation` → `softDeleteForOrganization`) is
   soft: `deletedAt` is stamped and the location leaves the list, the pickers
   and every read from no sequence. Refused while any sequence, archived
   ones included, has a link to it that is not removed. The write is one
@@ -267,12 +267,12 @@ rebuild. In order:
    medium, else the medium its system template gets, matched by style name,
    else "Photoreal live action". The same rule as the character backfill.
 3. `sequence_locations` is rebuilt without its sequence columns and with
-   the team (the location's sequence's team). This is the guard-and-defer
+   the organization (the location's sequence's organization). This is the guard-and-defer
    rebuild from `AGENTS.md` § D1 table-rebuild trap: a guard that fails the
    file if any foreign key into the table acts on delete,
    `PRAGMA defer_foreign_keys = ON`, then copy out, drop, create again and
    copy back with named columns.
-4. Each team library location becomes a location under its library row's
+4. Each organization library location becomes a location under its library row's
    ULID, with a bible version (name, description, photoreal). Its current
    image becomes a sheet version under the same id. Its uploaded images
    become `location_reference_photos`.
@@ -303,9 +303,9 @@ scratch SQLite, and through `wrangler d1 migrations apply --local` on a
 scratch local D1 that had every earlier migration and hand-made rows of
 each kind: a location with a bible version and a selected sheet, one from
 before bible history, one removed from its sequence, one drawn from a
-library reference, a team library location with two uploaded images and a
+library reference, an organization library location with two uploaded images and a
 parked sheet, one with no image, and a public template with a parked sheet.
-Both runs: every location kept its id and got its sequence's team; one link
+Both runs: every location kept its id and got its sequence's organization; one link
 each, the remove carried to `removed_at`; every bible version has a
 rendering; the library locations became locations with their sheet and
 photos; the template and its parked sheet are gone; `foreign_key_check`
@@ -319,9 +319,9 @@ rows). That export's last recorded migration is
 `20261006232126_loosen_character_children` through this one were applied
 after the load, each file as one transaction. Load had no foreign-key
 violations. After: 2,732 sequence locations each kept its id, took its
-sequence's team, and got one link (the old `deleted_at` on
+sequence's organization, and got one link (the old `deleted_at` on
 `removed_at`, none `attached`, the location's own `deleted_at` null, bible
-pointer `coalesce(selected, own id)`). 27 team library locations became
+pointer `coalesce(selected, own id)`). 27 organization library locations became
 locations under their own ids; the 23 that had an image became a sheet
 version; 43 uploaded images became reference photos. 3 public or template
 library rows were not carried. Bible versions went from 2,735 to 2,762,
@@ -343,7 +343,7 @@ before the change fails once at the top of the run
 
 ## Known limits
 
-- **The team list is not paged.** `listOrganization` loads every location.
+- **The organization list is not paged.** `listOrganization` loads every location.
 - **Two locations of one plain name.** Attach, Restore and Replace refuse a
   name a live location of the sequence already has. Analysis does not pass
   through that check and may still make two.

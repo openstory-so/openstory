@@ -1,8 +1,8 @@
 /**
  * In-memory DB tests for `sequences.listShotsByIds` (#957).
  *
- * The sequences/eval list pages fetch shots for every sequence on a team in
- * one batched call. Once a team grew past ~500 sequences the request tripped a
+ * The sequences/eval list pages fetch shots for every sequence in an organization in
+ * one batched call. Once an organization grew past ~500 sequences the request tripped a
  * `z.array().max(500)` cap, and the underlying `inArray` would overflow D1's
  * 100-bound-parameter limit. `listShotsByIds` now chunks the ids; these tests
  * cover a list larger than the chunk size to prove every shot still comes back
@@ -171,10 +171,10 @@ describe('listShotsByIds', () => {
     ]);
   });
 
-  it('never leaks shots from another team', async () => {
+  it('never leaks shots from another organization', async () => {
     const mySeqIds = await seedSequences(styleId, 2);
 
-    // A second team with its own sequence — its id is requested but must not
+    // A second organization with its own sequence — its id is requested but must not
     // resolve, because the join filters on organizationId.
     const otherOrganizationId = generateId();
     await db

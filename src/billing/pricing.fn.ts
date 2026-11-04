@@ -46,7 +46,7 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
       ...buildPricingCatalog({
         falPricing,
         falUpdatedAt,
-        // Platform keys only — the page is public, so no team BYOK applies.
+        // Platform keys only — the page is public, so no organization BYOK applies.
         vias: {
           byteplus: isBytePlusConfigured(),
           xai: Boolean(getEnv().XAI_API_KEY),

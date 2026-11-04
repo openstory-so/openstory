@@ -69,7 +69,7 @@ export async function analyzeTalentMediaForOrganization(
 
 /**
  * The same check on a stored clip (#1930): Gemini watches the whole clip
- * through its Files API. Needs a native Google key (the team's or the
+ * through its Files API. Needs a native Google key (the organization's or the
  * platform's); with none the clip is refused, never judged by another model.
  */
 export async function analyzeTalentClipForOrganization(input: {
@@ -125,7 +125,7 @@ async function requireVisionCredits(
   scopedDb: VisionBillingDb,
   llmKey: ResolvedLlmKey
 ): Promise<void> {
-  if (llmKey.source === 'team') return;
+  if (llmKey.source === 'organization') return;
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));
   if (!canAfford) {
     throw new InsufficientCreditsError(

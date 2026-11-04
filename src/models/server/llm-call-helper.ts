@@ -286,7 +286,7 @@ export type DurableLLMCallContext = {
    * can't double-charge.
    */
   workflowRunId: string;
-  /** Scoped DB context for resolving team API keys + deducting credits. */
+  /** Scoped DB context for resolving organization API keys + deducting credits. */
   scopedDb?: WorkflowScopedDb;
   /** Run envelope to capture against when the parent held one (#1310). */
   reservationId?: string;
@@ -300,10 +300,10 @@ export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
   };
 };
 
-type LlmKeySource = 'team' | 'platform';
+type LlmKeySource = 'organization' | 'platform';
 
 /**
- * Resolve the key for the LLM call — the team's key via ScopedDb, or the
+ * Resolve the key for the LLM call — the organization's key via ScopedDb, or the
  * platform key for anonymous workflows. MUST be awaited INSIDE the LLM
  * `step.do`: it reads (and, via `decryptOrMarkInvalid`, writes) mutable D1
  * state, so resolving between steps would re-execute on replay while the LLM
@@ -512,7 +512,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
       await deductWorkflowCredits({
         scopedDb,
         costMicros,
-        usedOwnKey: keySource === 'team',
+        usedOwnKey: keySource === 'organization',
         description: `LLM analysis (${modelId})`,
         idempotencyKey: `${callContext.workflowRunId}:llm-${name}`,
         reservationId: callContext.reservationId,
@@ -743,7 +743,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
       await deductWorkflowCredits({
         scopedDb,
         costMicros,
-        usedOwnKey: keySource === 'team',
+        usedOwnKey: keySource === 'organization',
         description: `LLM analysis (${modelId})`,
         idempotencyKey: `${callContext.workflowRunId}:llm-${name}`,
         reservationId: callContext.reservationId,

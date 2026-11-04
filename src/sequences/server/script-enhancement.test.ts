@@ -22,10 +22,13 @@ const { streamScriptEnhancement, enhanceScriptToString } =
   await import('./script-enhancement');
 
 function context() {
-  // only the team-key billing preflight is reached
+  // only the organization-key billing preflight is reached
   const scopedDb = asStub<ScopedDb>({
     apiKeys: {
-      resolveLlmKey: vi.fn(async () => ({ source: 'team', via: 'openrouter' })),
+      resolveLlmKey: vi.fn(async () => ({
+        source: 'organization',
+        via: 'openrouter',
+      })),
     },
   });
   return { scopedDb, userId: 'u1', organizationId: 't1' };

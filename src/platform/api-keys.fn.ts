@@ -1,8 +1,8 @@
 /**
  * API Key Server Functions
- * End-to-end type-safe functions for managing team API keys
+ * End-to-end type-safe functions for managing organization API keys
  *
- * Only team admins/owners can manage API keys.
+ * Only organization admins/owners can manage API keys.
  */
 
 import { createServerFn } from '@tanstack/react-start';
@@ -22,7 +22,7 @@ const listApiKeysInputSchema = z.object({
 });
 
 /**
- * List all API keys for a team (metadata only, no decrypted keys).
+ * List all API keys for an organization (metadata only, no decrypted keys).
  */
 export const listApiKeysFn = createServerFn({ method: 'GET' })
   .middleware([organizationAdminAccessMiddleware])
@@ -42,7 +42,7 @@ const saveApiKeyInputSchema = z.object({
 });
 
 /**
- * Save (or update) an API key for a team.
+ * Save (or update) an API key for an organization.
  * Validates the key against the provider before saving.
  */
 export const saveApiKeyFn = createServerFn({ method: 'POST' })
@@ -77,7 +77,7 @@ const deleteApiKeyInputSchema = z.object({
 });
 
 /**
- * Delete a team's API key for a specific provider.
+ * Delete an organization's API key for a specific provider.
  * Falls back to platform key after deletion.
  */
 export const deleteApiKeyFn = createServerFn({ method: 'POST' })
@@ -113,12 +113,12 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
       ]);
 
     return {
-      openrouter: hasOpenRouter ? 'team' : 'platform',
-      fal: hasFal ? 'team' : 'platform',
-      xai: hasXai ? 'team' : 'platform',
-      google: hasGoogle ? 'team' : 'platform',
-      llmtr: hasLlmtr ? 'team' : 'none',
-      upload_post: hasUploadPost ? 'team' : 'none',
+      openrouter: hasOpenRouter ? 'organization' : 'platform',
+      fal: hasFal ? 'organization' : 'platform',
+      xai: hasXai ? 'organization' : 'platform',
+      google: hasGoogle ? 'organization' : 'platform',
+      llmtr: hasLlmtr ? 'organization' : 'none',
+      upload_post: hasUploadPost ? 'organization' : 'none',
     } as const;
   });
 
@@ -132,7 +132,7 @@ const revalidateApiKeyInputSchema = z.object({
 });
 
 /**
- * Re-run the provider's validation check against the currently stored team
+ * Re-run the provider's validation check against the currently stored organization
  * key. Persists the result (isInvalid + invalidReason) on the organization_api_keys
  * row so subsequent billing-gate reads reflect the current state.
  */

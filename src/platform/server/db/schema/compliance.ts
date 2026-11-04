@@ -63,7 +63,7 @@ export type ProvenanceAssetKind = (typeof PROVENANCE_ASSET_KINDS)[number];
  * One generated artifact, recorded at the moment it lands in R2.
  *
  * This is the table an abuse report resolves against: given a URL, an R2 key,
- * or the bytes of a file someone sent us, find the team, the user, the model,
+ * or the bytes of a file someone sent us, find the organization, the user, the model,
  * the prompt, and the time. The row's own `id` doubles as the public trace id
  * quoted in takedown correspondence — it is a ULID, so it leaks nothing beyond
  * a timestamp, and it can be handed to a complainant without exposing internal
@@ -404,7 +404,7 @@ export const ENFORCEMENT_ACTIONS = [
 export type EnforcementActionType = (typeof ENFORCEMENT_ACTIONS)[number];
 
 /**
- * One enforcement decision against a user or team. Append-only except for
+ * One enforcement decision against a user or organization. Append-only except for
  * revocation, so an account's disciplinary history survives an appeal being
  * granted — `revokedAt` lifts the action's effect without erasing that it
  * happened.

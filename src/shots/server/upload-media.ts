@@ -65,7 +65,7 @@ export function uploadExtensionList(surface: UploadMediaSurface): string {
 
 /**
  * Parse a finalize-time media URL back to its bucket-relative `storagePath`
- * (the form the variant tables store), enforcing the team namespace: the key
+ * (the form the variant tables store), enforcing the organization namespace: the key
  * must live exactly under `<bucket>/teams/<organizationId>/` with no empty or `..`
  * segments (same boundary as `isValidElementStoragePath`). Returns null when
  * the URL is not a stored `/r2/` URL or escapes the namespace.

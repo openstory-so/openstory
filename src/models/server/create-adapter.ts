@@ -7,7 +7,7 @@
  * the OpenAI-compatible Chat Completions adapter (`openaiCompatibleText`).
  * Everything else — and Grok/Gemini with no native key — goes to OpenRouter,
  * either directly or through fal's OpenAI-compatible OpenRouter endpoint (so a
- * team with only a fal key still covers LLM calls — issue #895).
+ * organization with only a fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
@@ -72,7 +72,7 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
  * XAI_API_KEY (#1167) and a Gemini model GEMINI_API_KEY; otherwise
- * OPENROUTER_KEY, then FAL_KEY (issue #895). LLMTR is team BYOK only —
+ * OPENROUTER_KEY, then FAL_KEY (issue #895). LLMTR is organization BYOK only —
  * there is no platform LLMTR key. Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
@@ -277,7 +277,7 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   }
 
   // OPENROUTER_BASE_URL (aimock in e2e) wins over fal's proxy so tests stay
-  // hermetic regardless of which OpenRouter-shaped key the team resolved.
+  // hermetic regardless of which OpenRouter-shaped key the organization resolved.
   const serverURL =
     env.OPENROUTER_BASE_URL ??
     (via === 'fal' ? FAL_OPENROUTER_BASE_URL : undefined);

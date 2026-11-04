@@ -36,7 +36,7 @@ const characterFormSchema = z.object({
     .optional(),
 });
 
-/** The fields the form seeds from; a cast read and a team read both have them. */
+/** The fields the form seeds from; a cast read and an organization read both have them. */
 type BibleFormCharacter = Pick<
   CharacterWithSheet,
   | 'id'

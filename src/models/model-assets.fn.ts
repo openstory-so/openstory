@@ -1,7 +1,7 @@
 /**
  * Generated Asset Server Functions (#458 — direct model access).
  *
- * Create/list/get for `generated_assets`: flat, team-scoped runs of arbitrary
+ * Create/list/get for `generated_assets`: flat, organization-scoped runs of arbitrary
  * fal endpoints picked from the live modelschemas catalog. The create path is
  * the trust boundary: it re-fetches the endpoint's input JSON Schema
  * SERVER-SIDE (never trusting a client-sent schema), validates the input
@@ -72,7 +72,7 @@ const listGeneratedAssetsInputSchema = z.object({
   cursor: ulidSchema.optional(),
 });
 
-/** Team-scoped newest-first list, filterable by activity / endpoint. */
+/** Organization-scoped newest-first list, filterable by activity / endpoint. */
 export const listGeneratedAssetsFn = createServerFn({ method: 'GET' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(listGeneratedAssetsInputSchema.optional()))

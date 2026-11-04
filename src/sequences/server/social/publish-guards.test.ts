@@ -1,7 +1,7 @@
 /**
  * The pre-send guards of `publishSequenceExportFn`. `sequenceExports.getById`
- * does not filter by team, so the sequence check here is the only thing
- * stopping a caller from publishing another team's render.
+ * does not filter by organization, so the sequence check here is the only thing
+ * stopping a caller from publishing another organization's render.
  */
 
 import { describe, expect, it } from 'vitest';

@@ -10,7 +10,7 @@
  *   registers apps by hand.
  * - **Forks and self-hosts** — "login with OpenStory", the OpenRouter pattern
  *   inverted: the fork is the OAuth client, upstream OpenStory is the server,
- *   and the fork holds a refresh token as a team credential.
+ *   and the fork holds a refresh token as an organization credential.
  * - **Anything else** that can run authorization-code + PKCE against
  *   `/api/auth/oauth2/authorize`. Skills and CLIs keep the device-code login
  *   (#1219), which mints an `osk_` key instead of a token.

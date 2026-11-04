@@ -2,7 +2,7 @@
  * Story-order pages of scenes and shots over the editor's shot view query.
  * Keyset-paged on (scene order, shot number, id) because ULID order is creation
  * order, not story order. Callers authorise ids through `productionAccess`;
- * the team join here only keeps a foreign sequence id from returning rows.
+ * the organization join here only keeps a foreign sequence id from returning rows.
  */
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';

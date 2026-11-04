@@ -1,10 +1,10 @@
 /**
  * Publish to social (#1267) — server functions behind the Download menu's
  * "Publish to social…". Everything goes through Upload-Post
- * (`server/social/upload-post.ts`) on the team's own key (`organization_api_keys`,
+ * (`server/social/upload-post.ts`) on the organization's own key (`organization_api_keys`,
  * provider `upload_post`), resolved server-side; it never reaches the browser.
  *
- *   - `getSocialPublishingFn`     — `{ enabled }`: whether the team has an
+ *   - `getSocialPublishingFn`     — `{ enabled }`: whether the organization has an
  *                                   active, valid key. The menu item only
  *                                   exists when it does.
  *   - `listSocialProfilesFn`      — profiles + their connected platforms.
@@ -80,8 +80,8 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
     // Every refusal here happens before anything is sent, so it is `not_sent`
     // — the dialog treats a thrown error as "maybe sent" and keeps tracking.
     try {
-      // A system admin opening another team's sequence gets that team's
-      // scopedDb (and key). Reading is an admin power; posting on the team's
+      // A system admin opening another organization's sequence gets that organization's
+      // scopedDb (and key). Reading is an admin power; posting on the organization's
       // own social accounts is not.
       await requireOrganizationMemberAccess(
         context.user.id,

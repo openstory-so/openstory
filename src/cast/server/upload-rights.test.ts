@@ -188,7 +188,7 @@ describe('classifyUpload', () => {
     );
   });
 
-  it('refuses another team’s stored clip, and reads nothing', async () => {
+  it('refuses another organization’s stored clip, and reads nothing', async () => {
     const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const clip = `/r2/talent/${generateId()}/uploads/01CLIP.mp4`;
 

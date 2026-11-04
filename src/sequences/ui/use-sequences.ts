@@ -286,7 +286,7 @@ export function useCreateSequence() {
   });
 }
 
-/** Archived sequences for the team (#1108 Phase 4). */
+/** Archived sequences for the organization (#1108 Phase 4). */
 export function useArchivedSequences() {
   return useQuery<Sequence[]>({
     queryKey: ['archived-sequences'],

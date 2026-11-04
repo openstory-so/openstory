@@ -194,7 +194,7 @@ describe('deductWorkflowCredits', () => {
     );
   });
 
-  it('skips when the team used its own key', async () => {
+  it('skips when the organization used its own key', async () => {
     const { scopedDb, tryDeductCredits, captureReservation } = makeScopedDb();
 
     await deductWorkflowCreditsImpl({

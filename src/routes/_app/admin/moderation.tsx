@@ -439,7 +439,7 @@ const TraceTab: React.FC = () => {
               <Field label="Account">
                 {row.userEmail ?? row.userName ?? row.userId ?? 'Unknown user'}
               </Field>
-              <Field label="Team">
+              <Field label="Organization">
                 {row.organizationName ?? row.organizationId}
               </Field>
               <Field label="Model">

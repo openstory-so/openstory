@@ -1,5 +1,5 @@
 /**
- * Team API Keys Schema
+ * Organization API Keys Schema
  * Encrypted storage for user-provided API keys.
  * Add a provider by appending to `API_KEY_PROVIDERS` — the Zod schema, key
  * resolver, and validate switch are derived from that list so a missing case
@@ -26,7 +26,7 @@ export const API_KEY_PROVIDERS = [
   'xai',
   'google',
   'llmtr',
-  // Social publishing (#1267): the team's own Upload-Post account. Not a
+  // Social publishing (#1267): the organization's own Upload-Post account. Not a
   // model provider, so it never takes part in generation key resolution.
   'upload_post',
 ] as const;
@@ -36,8 +36,8 @@ const API_KEY_SOURCES = ['oauth', 'manual'] as const;
 export type ApiKeySource = (typeof API_KEY_SOURCES)[number];
 
 /**
- * Team API Keys table
- * Stores encrypted API keys per team per provider
+ * Organization API Keys table
+ * Stores encrypted API keys per organization per provider
  */
 export const organizationApiKeys = snakeCase.table(
   'organization_api_keys',
@@ -67,7 +67,7 @@ export const organizationApiKeys = snakeCase.table(
 
     // Validity — set false + invalidReason when a workflow or re-validation
     // check finds the key rejected by the provider (e.g. 401/403). When
-    // invalid, resolveKey() skips the team key and falls back to platform.
+    // invalid, resolveKey() skips the organization key and falls back to platform.
     isInvalid: integer({ mode: 'boolean' }).default(false).notNull(),
     invalidReason: text(),
     lastValidatedAt: integer({ mode: 'timestamp' }),
@@ -84,7 +84,7 @@ export const organizationApiKeys = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    // One active key per team per provider
+    // One active key per organization per provider
     uniqueIndex('idx_organization_api_keys_organization_provider').on(
       table.organizationId,
       table.provider

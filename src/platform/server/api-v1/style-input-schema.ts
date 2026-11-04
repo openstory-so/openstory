@@ -1,5 +1,5 @@
 /**
- * Public request schema for `POST /api/v1/styles` — create a team-owned
+ * Public request schema for `POST /api/v1/styles` — create an organization-owned
  * library style from a complete v2 `StyleConfig`. Drizzle-free so
  * discovery/OpenAPI can import it. Server-managed columns (`isPublic`,
  * `isTemplate`, `sequenceId`, `usageCount`, `sortOrder`, `version`, …) are
@@ -15,7 +15,7 @@ const tagList = z.array(z.string().trim().min(1).max(60)).max(20);
 export const apiCreateStyleSchema = z.object({
   name: z.string().trim().min(1).max(255).meta({
     description:
-      'Style name (unique per team — its URL slug must not collide with an existing library style).',
+      'Style name (unique per organization — its URL slug must not collide with an existing library style).',
   }),
   description: z.string().trim().max(1000).optional(),
   category: z.string().trim().min(1).max(100).optional().meta({

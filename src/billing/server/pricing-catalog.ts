@@ -51,7 +51,7 @@ type PricingVia =
 /**
  * Which native vias the PLATFORM key reaches (#1519). Advisory, like
  * `getViaAvailabilityFn`: the page is public, so this is the platform's
- * route, not a team's BYOK one.
+ * route, not an organization's BYOK one.
  */
 export type PlatformVias = { byteplus: boolean; xai: boolean; google: boolean };
 

@@ -1,7 +1,7 @@
 /**
  * Shared stitches (#2127): a cut shared by `stitch share` or the
  * `create_stitch` MCP tool. The row is the whole cut, with media URLs already
- * pointing at team storage (`stitches/<organizationId>/<id>/…`). The page at
+ * pointing at organization storage (`stitches/<organizationId>/<id>/…`). The page at
  * /stitch/<id> is public: the id is a ULID and is the only credential, like a
  * stored media URL. `publishedAt` is null while the CLI is still uploading
  * the files; the page 404s until the publish call has checked every file is

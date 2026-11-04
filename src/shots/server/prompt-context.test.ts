@@ -499,7 +499,7 @@ describe('character bible round-trip — stamp matches verify (#867)', () => {
     styling: null,
     // Cast in its sequence (#2017).
     castId: 'cast-1',
-    organizationId: 'team-1',
+    organizationId: 'org-1',
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,

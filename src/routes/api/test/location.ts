@@ -9,7 +9,7 @@ import {
 } from '@/platform/server/test/seed';
 import { testOnlyGuard } from './route';
 
-// `preset` makes the team location the full-sequence e2e picks.
+// `preset` makes the organization location the full-sequence e2e picks.
 const CreateLocationSchema = z.union([
   z.object({ organizationId: z.string().min(1), name: z.string().min(1) }),
   z.object({
@@ -40,7 +40,7 @@ export const Route = createFileRoute('/api/test/location')({
 
         /**
          * DELETE /api/test/location
-         * Supports: {organizationId} (all for team), {locationId}, or {organizationId, name}
+         * Supports: {organizationId} (all for organization), {locationId}, or {organizationId, name}
          */
         DELETE: async ({ request }) => {
           const body = DeleteLocationSchema.parse(await request.json());

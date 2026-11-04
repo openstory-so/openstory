@@ -26,7 +26,7 @@ export type TestCharacter = {
 };
 
 /**
- * Create a test style for the team (required by sequence)
+ * Create a test style for the organization (required by sequence)
  */
 export async function createTestStyle(organizationId: string): Promise<string> {
   const res = await fetch('http://localhost:3020/api/test/style', {
@@ -53,8 +53,8 @@ export async function createTestSequence(
 ): Promise<TestSequence> {
   // No style is created here on purpose: the API route already creates the
   // sequence's own style, and `cleanupSequenceById` only deletes that one — so
-  // a second style here leaked an orphan row onto the shared team on every
-  // call, permanently widening the team's style catalog mid-run.
+  // a second style here leaked an orphan row onto the shared organization on every
+  // call, permanently widening the organization's style catalog mid-run.
   const res = await fetch('http://localhost:3020/api/test/sequence', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -105,7 +105,7 @@ export async function createTestShot(
 }
 
 /**
- * The team character the full-sequence e2e casts as SCARLETT. No sheet: the
+ * The organization character the full-sequence e2e casts as SCARLETT. No sheet: the
  * run draws it.
  */
 export async function createScarlettCharacter(
@@ -267,7 +267,7 @@ export async function getTestSequenceStatus(sequenceId: string): Promise<{
 }
 
 /**
- * Clean up all test sequences and related data for a team (use only when test isolation isn't needed)
+ * Clean up all test sequences and related data for an organization (use only when test isolation isn't needed)
  */
 export async function cleanupTestSequences(
   organizationId: string

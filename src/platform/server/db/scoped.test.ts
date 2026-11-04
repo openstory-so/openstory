@@ -177,7 +177,7 @@ vi.doMock('#db-client', () => ({
 
 const { createScopedDb } = await import('./scoped');
 
-const ORGANIZATION_ID = 'team_01';
+const ORGANIZATION_ID = 'organization_01';
 const USER_ID = 'user_01';
 
 describe('createScopedDb', () => {
@@ -395,7 +395,7 @@ describe('createScopedDb', () => {
   });
 
   describe('locations', () => {
-    it('is built for the team: every statement is team-scoped (#1695)', () => {
+    it('is built for the organization: every statement is organization-scoped (#1695)', () => {
       createScopedDb(ORGANIZATION_ID, USER_ID);
 
       expect(mockCreateLocationsMethods).toHaveBeenCalledWith(
@@ -454,7 +454,7 @@ describe('createScopedDb', () => {
       expect(result).toEqual(sentinel);
     });
 
-    it('listOrganization() delegates to sub-module, taking no team argument', async () => {
+    it('listOrganization() delegates to sub-module, taking no organization argument', async () => {
       const sentinel = [{ id: 'loc_01', usedAnywhere: false }];
       mockLocationsListOrganization.mockResolvedValue(sentinel);
 

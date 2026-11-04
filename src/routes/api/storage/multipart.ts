@@ -24,7 +24,7 @@ import { z } from 'zod';
  *   POST ?action=complete ?uploadId  (body = { parts })  → { publicUrl }
  *   POST ?action=abort    ?uploadId   (cleanup on failure)
  *
- * Every phase re-validates the team-scoped target via resolveUploadTarget, the
+ * Every phase re-validates the organization-scoped target via resolveUploadTarget, the
  * same check the single-shot upload route uses.
  */
 

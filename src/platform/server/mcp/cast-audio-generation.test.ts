@@ -19,7 +19,7 @@ import { createMCPServer } from '@tanstack/ai-mcp/server';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real organization-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -305,7 +305,7 @@ describe('cast', () => {
     ).toEqual({ cancelled: false });
   });
 
-  /** One of the team's locations, with a completed sheet when `sheet`. */
+  /** One of the organization's locations, with a completed sheet when `sheet`. */
   async function organizationLocation(name: string, sheet: boolean) {
     const id = generateId();
     await db.insert(locations).values({
@@ -332,7 +332,7 @@ describe('cast', () => {
       attached: false,
     });
 
-  it('refuses to switch to a team location with no reference image', async () => {
+  it('refuses to switch to an organization location with no reference image', async () => {
     const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
     const libraryLocationId = await organizationLocation('Bare office', false);
@@ -349,7 +349,7 @@ describe('cast', () => {
     );
   });
 
-  it('recast_location re-points the sequence at another team location and draws no sheet (#1695)', async () => {
+  it('recast_location re-points the sequence at another organization location and draws no sheet (#1695)', async () => {
     const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
     const libraryLocationId = await organizationLocation('Loft', true);
@@ -368,7 +368,7 @@ describe('cast', () => {
     expect(vi.mocked(triggerWorkflow).mock.calls.map(([path]) => path)).toEqual(
       ['/recast-location']
     );
-    // The link moved and kept its script id; the old location is the team's.
+    // The link moved and kept its script id; the old location is the organization's.
     expect(
       await scopedDb.locations.getById(sequenceId, libraryLocationId)
     ).toMatchObject({ name: 'Loft', locationId: 'loc_001', attached: true });
@@ -384,7 +384,7 @@ describe('cast', () => {
     });
   });
 
-  it('does not switch to another team\u2019s location', async () => {
+  it('does not switch to another organization\u2019s location', async () => {
     const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
     const foreignOrganization = generateId();

@@ -109,7 +109,7 @@ function capabilitiesFor(action: EnforcementActionType | null): {
 /**
  * Resolve every action against a subject into one effective state.
  *
- * Pass every row for the user AND their team — a team-level action covers the
+ * Pass every row for the user AND their organization — an organization-level action covers the
  * shared workspace, a user-level action follows the person — and let severity
  * decide. `now` is injected rather than read from the clock so expiry is
  * testable.

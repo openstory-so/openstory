@@ -25,7 +25,7 @@ export const relations = defineRelations(schema, (r) => ({
 
   // ---- Sequences ----
   sequences: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.sequences.organizationId,
       to: r.organization.id,
     }),
@@ -289,7 +289,7 @@ export const relations = defineRelations(schema, (r) => ({
 
   // ---- Locations ----
   locations: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.locations.organizationId,
       to: r.organization.id,
     }),
@@ -323,21 +323,21 @@ export const relations = defineRelations(schema, (r) => ({
 
   // ---- Libraries ----
   styles: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.styles.organizationId,
       to: r.organization.id,
     }),
     user: r.one.user({ from: r.styles.createdBy, to: r.user.id }),
   },
   vfx: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.vfx.organizationId,
       to: r.organization.id,
     }),
     user: r.one.user({ from: r.vfx.createdBy, to: r.user.id }),
   },
   audio: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.audio.organizationId,
       to: r.organization.id,
     }),
@@ -346,26 +346,26 @@ export const relations = defineRelations(schema, (r) => ({
 
   // ---- Credits & Billing ----
   credits: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.credits.organizationId,
       to: r.organization.id,
     }),
   },
   transactions: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.transactions.organizationId,
       to: r.organization.id,
     }),
     user: r.one.user({ from: r.transactions.userId, to: r.user.id }),
   },
   organizationBillingSettings: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.organizationBillingSettings.organizationId,
       to: r.organization.id,
     }),
   },
   creditBatches: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.creditBatches.organizationId,
       to: r.organization.id,
     }),
@@ -375,7 +375,7 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   creditReservations: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.creditReservations.organizationId,
       to: r.organization.id,
     }),
@@ -385,9 +385,9 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
-  // ---- Team API Keys ----
+  // ---- Organization API Keys ----
   organizationApiKeys: {
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.organizationApiKeys.organizationId,
       to: r.organization.id,
     }),
@@ -411,7 +411,7 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.giftTokenRedemptions.giftTokenId,
       to: r.giftTokens.id,
     }),
-    team: r.one.organization({
+    organization: r.one.organization({
       from: r.giftTokenRedemptions.organizationId,
       to: r.organization.id,
     }),

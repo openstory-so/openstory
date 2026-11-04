@@ -260,7 +260,7 @@ describe('captureCheckoutCanceledFromSession', () => {
     });
   });
 
-  it('does not fire when the session already paid or belongs to another team', () => {
+  it('does not fire when the session already paid or belongs to another organization', () => {
     captureProductEvent.mockClear();
     captureCheckoutCanceledFromSession(
       {

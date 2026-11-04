@@ -149,7 +149,7 @@ export const characterReadSchema = createSelectSchema(characters)
     looks: z.array(characterLookReadSchema),
   });
 /**
- * A location as a sequence uses it (#1695): the team's location at its
+ * A location as a sequence uses it (#1695): the organization's location at its
  * current bible, plus the sequence's link. `locationId` is the script id.
  */
 export const locationReadSchema = createSelectSchema(locations)

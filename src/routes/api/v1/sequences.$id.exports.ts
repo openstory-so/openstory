@@ -11,8 +11,8 @@
  *          the `ready` URL. `?wait=60s` long-polls until nothing is
  *          `processing`.
  *
- * Team-scoped via `authWithOrganizationRequestMiddleware`; a key only sees its own
- * team's sequences. Theatre Download/Copy POST this same route; a ready MP4
+ * Organization-scoped via `authWithOrganizationRequestMiddleware`; a key only sees its own
+ * organization's sequences. Theatre Download/Copy POST this same route; a ready MP4
  * whose `sourceShotsHash` matches is reused (#1406).
  */
 

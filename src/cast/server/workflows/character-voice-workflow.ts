@@ -374,7 +374,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
                 scopedDb.credentials.resolveKey('elevenlabs'),
               ]);
               // ponytail: a take that fails the check is re-recorded by the
-              // step retry and not billed to the team; the platform eats it.
+              // step retry and not billed to the organization; the platform eats it.
               const made = await recordRangeRead({
                 seedKey: seed.key,
                 elevenLabsKey: eleven.key,

@@ -61,7 +61,7 @@ const logger = getLogger(['openstory', 'mcp']);
 const whoami = toolDefinition({
   name: 'whoami',
   description:
-    "Return the authenticated caller's user and team. Use this as a connectivity check before calling other OpenStory tools.",
+    "Return the authenticated caller's user and organization. Use this as a connectivity check before calling other OpenStory tools.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     user: z.object({

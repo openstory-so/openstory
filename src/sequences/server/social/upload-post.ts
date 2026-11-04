@@ -19,7 +19,7 @@
  * Status replies follow https://docs.upload-post.com/api/upload-status/. A
  * reply in any other shape throws rather than being guessed at.
  *
- * Server-only: the caller resolves the team's `upload_post` key and passes it
+ * Server-only: the caller resolves the organization's `upload_post` key and passes it
  * in. Nothing here touches D1.
  */
 

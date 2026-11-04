@@ -3,7 +3,7 @@
  *
  * Each row is ONE run of an arbitrary fal endpoint (picked from the live
  * modelschemas catalog), decoupled from the sequence→scene→shot→frame graph:
- * a flat, team-scoped asset. `input` snapshots exactly what the user submitted
+ * a flat, organization-scoped asset. `input` snapshots exactly what the user submitted
  * (validated against the endpoint's live JSON Schema before the credit gate),
  * so a run can be inspected later without re-fetching the schema. `outputs`
  * are R2 uploads with origin-relative `/r2/<key>` URLs (#894). Catalog runs
@@ -116,7 +116,7 @@ export const generatedAssets = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    // Team-scoped newest-first listing: order by id (ULID ≈ creation time).
+    // Organization-scoped newest-first listing: order by id (ULID ≈ creation time).
     index('idx_generated_assets_organization').on(
       table.organizationId,
       table.id
@@ -127,7 +127,7 @@ export const generatedAssets = snakeCase.table(
       table.endpointId,
       table.id
     ),
-    // Studio library: team + source (catalog vs studio) + recency.
+    // Studio library: organization + source (catalog vs studio) + recency.
     index('idx_generated_assets_organization_source').on(
       table.organizationId,
       table.source,

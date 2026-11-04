@@ -377,7 +377,7 @@ export const oauthAccessToken = snakeCase.table(
   ]
 );
 
-/** A user's grant to a client, keyed by the team it bills to (`referenceId`). */
+/** A user's grant to a client, keyed by the organization it bills to (`referenceId`). */
 export const oauthConsent = snakeCase.table(
   'oauth_consent',
   {

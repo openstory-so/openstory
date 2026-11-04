@@ -22,7 +22,7 @@ Until the current cut has been rendered, the menu offers **Render MP4 on server*
 
 ### Publish to social
 
-If your team has added an Upload-Post key in **Settings → API Keys**, the Download menu also offers **Publish to social…** once the current cut has been rendered. Pick an Upload-Post profile, the platforms to post to (only the accounts connected to that profile are listed), a caption and an optional description. YouTube uploads default to private; TikTok uses your account's default unless you pick "Only me".
+If your organization has added an Upload-Post key in **Settings → API Keys**, the Download menu also offers **Publish to social…** once the current cut has been rendered. Pick an Upload-Post profile, the platforms to post to (only the accounts connected to that profile are listed), a caption and an optional description. YouTube uploads default to private; TikTok uses your account's default unless you pick "Only me".
 
 You review exactly what will be posted before anything is sent, then follow each platform's result — a link to the post, or the reason it failed. Publishing exactly the same post again is detected and not sent twice. If Upload-Post doesn't confirm a post, the dialog keeps checking on it — even after you close and reopen it — rather than letting you send it again.
 

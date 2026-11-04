@@ -8,7 +8,7 @@
  * row of another sequence (live or soft-deleted rows both pass, so restore
  * can reach them). The `…OrganizationCharacter…` and `…OrganizationLocation…` ones are the
  * Characters and Locations pages' (#2065, #1695): no sequence, scoped to the
- * team.
+ * organization.
  */
 import { renderingOfStyle } from '@/cast/rendering';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
@@ -130,7 +130,7 @@ function defaultLookOf<
 
 /**
  * The character, when it belongs to this sequence (live or soft-deleted),
- * or, from no sequence (null), one of the team's at its current version
+ * or, from no sequence (null), one of the organization's at its current version
  * (#2017). Only a read through a sequence carries the link.
  */
 export async function requireCharacter(
@@ -310,7 +310,7 @@ export async function updateOrganizationCharacter(
 }
 
 /**
- * Cast a team character into a sequence (#2050): the `@` picker and the
+ * Cast an organization character into a sequence (#2050): the `@` picker and the
  * cast panel's Add Character. One link pinning her current version, a cast
  * look per look; nothing is copied and no generation starts. Refused while a
  * live cast member has her name (`characters.attach`).
@@ -373,7 +373,7 @@ export async function updateCharacter(
 /**
  * Soft-remove a character from the sequence (undoable). Scene continuity
  * tags are kept, so a restore is lossless. The character, its voice
- * included, is the team's and stays as it is (#2017).
+ * included, is the organization's and stays as it is (#2017).
  */
 export async function deleteCharacter(
   scopedDb: ScopedDb,
@@ -405,7 +405,7 @@ export async function restoreCharacter(
 const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
 
 /**
- * Delete one of the team's characters (#2065). Soft: it leaves the
+ * Delete one of the organization's characters (#2065). Soft: it leaves the
  * Characters page and the `@` picker, and `restoreOrganizationCharacter` brings it
  * back. Refused while a sequence, archived ones included, still casts it;
  * the db write carries the same condition, so a sequence that casts it
@@ -709,7 +709,7 @@ export async function selectCharacterLookVersion(
 
 // ── Looks from no sequence (#2065) ──────────────────────────────────────────
 
-/** A look of one of the team's characters, at its current version. */
+/** A look of one of the organization's characters, at its current version. */
 async function requireOrganizationLook(
   scopedDb: Pick<ScopedDb, 'characters'>,
   characterId: string,
@@ -810,7 +810,7 @@ export async function restoreOrganizationCharacterLook(
 
 /**
  * The location, when this sequence uses it (live or removed), or, from no
- * sequence (null), one of the team's at its current version (#1695). Only a
+ * sequence (null), one of the organization's at its current version (#1695). Only a
  * read through a sequence carries the link.
  */
 export async function requireLocation(
@@ -886,7 +886,7 @@ export async function createLocation(
 }
 
 /**
- * Use one of the team's locations in a sequence (#1695): one link, nothing
+ * Use one of the organization's locations in a sequence (#1695): one link, nothing
  * copied and no generation started. Refused while a live location of the
  * sequence has its name (`locations.attach`).
  */
@@ -903,7 +903,7 @@ export async function attachLocation(
 
 /**
  * Edit a location's bible fields; only the sent fields change. The location
- * is the team's: every sequence that uses it reads the edit. From no
+ * is the organization's: every sequence that uses it reads the edit. From no
  * sequence (null) the same write records no event.
  */
 export async function updateLocation(
@@ -923,7 +923,7 @@ export async function updateLocation(
 
 /**
  * Soft-remove a location from the sequence (undoable; continuity tags are
- * kept). The location stays the team's.
+ * kept). The location stays the organization's.
  */
 export async function deleteLocation(
   scopedDb: ScopedDb,
@@ -952,7 +952,7 @@ export async function restoreLocation(
 }
 
 /**
- * Delete one of the team's locations (#1695). Soft: it leaves the Locations
+ * Delete one of the organization's locations (#1695). Soft: it leaves the Locations
  * page and the pickers, and `restoreOrganizationLocation` brings it back. Refused
  * while a sequence, archived ones included, still uses it: the db write
  * carries the condition.
@@ -975,7 +975,7 @@ export async function restoreOrganizationLocation(
   locationDbId: string
 ) {
   await scopedDb.locations.restoreForOrganization(locationDbId);
-  // Another team's id, or one that never existed, restored nothing.
+  // Another organization's id, or one that never existed, restored nothing.
   await requireLocation(scopedDb, null, locationDbId);
   return { locationDbId };
 }
@@ -1009,7 +1009,7 @@ export async function selectLocationSheetVersion(
 
 /**
  * A sheet version of a location this sequence uses or, from no sequence, of
- * one of the team's.
+ * one of the organization's.
  */
 async function requireLocationSheetVersion(
   scopedDb: ScopedDb,

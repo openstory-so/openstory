@@ -3,15 +3,15 @@
  *
  * Three factories, split by who is allowed to call them:
  *
- *  - `createComplianceMethods(db, organizationId, userId)` — team-scoped. What a normal
+ *  - `createComplianceMethods(db, organizationId, userId)` — organization-scoped. What a normal
  *    request may do: record provenance for its own generations, attest to its
  *    own uploads, file a report.
  *  - `createComplianceReadMethods(db)` — unscoped enforcement reads for the
- *    request path. Not team-scoped because enforcement follows the person, and
- *    the gate has to work before we know which team they are acting for.
- *  - `createModerationMethods(db)` — cross-team, admin only. The triage queue,
+ *    request path. Not organization-scoped because enforcement follows the person, and
+ *    the gate has to work before we know which organization they are acting for.
+ *  - `createModerationMethods(db)` — cross-organization, admin only. The triage queue,
  *    enforcement, and trace lookup. Reached via `createSystemAdminScopedDb`,
- *    so a team-scoped caller cannot get at it.
+ *    so an organization-scoped caller cannot get at it.
  *
  * Method naming matters here: the workflow write surface
  * (`src/platform/server/db/scoped-workflow.ts`) strips anything whose name starts with
@@ -60,7 +60,7 @@ function intakePriority(reason: ContentReportReason): number {
 }
 
 // ============================================================================
-// Team-scoped
+// Organization-scoped
 // ============================================================================
 
 /**
@@ -82,7 +82,7 @@ export function createProvenanceMethods(
     /**
      * Insert one provenance row. `organizationId` is injected from scope, but a row may
      * legitimately carry a different `userId` (a workflow triggered by one
-     * member producing an asset in a shared team), so the caller's value wins
+     * member producing an asset in a shared organization), so the caller's value wins
      * when supplied.
      */
     async record(
@@ -109,7 +109,7 @@ export function createComplianceMethods(
 ) {
   return {
     attestations: {
-      /** Record a rights attestation for an upload this team just made. */
+      /** Record a rights attestation for an upload this organization just made. */
       async record(input: {
         subjectType: AttestationSubjectType;
         subjectId: string;
@@ -204,9 +204,9 @@ export function createComplianceMethods(
     },
 
     /**
-     * Live enforcement rows for this user + team. On the request path the
+     * Live enforcement rows for this user + organization. On the request path the
      * unscoped `createComplianceReadMethods` version is used (the gate may
-     * run before a team is resolved). Workflows reach this one through
+     * run before an organization is resolved). Workflows reach this one through
      * `scopedDb.liveRead` as a spawn-time billing-guard analogue.
      */
     async listEnforcementFor(
@@ -220,7 +220,7 @@ export function createComplianceMethods(
     },
 
     reports: {
-      /** File a report as a signed-in member of this team. */
+      /** File a report as a signed-in member of this organization. */
       async create(input: {
         targetType: ContentReportTargetType;
         targetId: string;
@@ -247,15 +247,15 @@ export function createComplianceMethods(
 /**
  * Enforcement reads used by the generation gate.
  *
- * Not team-scoped: an action against a person applies wherever they are acting,
- * and pretending otherwise would let a suspended user open a second team and
+ * Not organization-scoped: an action against a person applies wherever they are acting,
+ * and pretending otherwise would let a suspended user open a second organization and
  * carry on.
  */
 export function createComplianceReadMethods(db: Database) {
   return {
     /**
      * Every enforcement action bearing on a user, including actions against the
-     * team they are acting for. Returns unrevoked rows only; expiry is resolved
+     * organization they are acting for. Returns unrevoked rows only; expiry is resolved
      * in `resolveEnforcementState` so the caller controls "now".
      */
     async listEnforcementFor(
@@ -327,7 +327,7 @@ async function insertReport(
  * misused is precisely the person who does not have an account, and a takedown
  * channel only open to paying customers is not a takedown channel. Exposed as
  * its own factory taking no scope at all, so this code path cannot express a
- * team-scoped query even by accident.
+ * organization-scoped query even by accident.
  */
 export function createPublicReportIntake(db: Database) {
   return {
@@ -348,7 +348,7 @@ export function createPublicReportIntake(db: Database) {
 }
 
 // ============================================================================
-// Admin / moderation (cross-team)
+// Admin / moderation (cross-organization)
 // ============================================================================
 
 export type ReportQueueRow = ContentReport & {
@@ -386,7 +386,7 @@ export function createModerationMethods(db: Database) {
   // same pattern as the admin support queries.
   const reporterUser = alias(user, 'reporter_user');
   const subjectUser = alias(user, 'subject_user');
-  const subjectOrganization = alias(organization, 'subject_team');
+  const subjectOrganization = alias(organization, 'subject_organization');
 
   async function listReports(opts?: {
     statuses?: ContentReportStatus[];
@@ -495,7 +495,7 @@ export function createModerationMethods(db: Database) {
   }): Promise<EnforcementAction> {
     if (!input.subjectUserId && !input.subjectOrganizationId) {
       throw new ValidationError(
-        'An enforcement action needs a subject user or team'
+        'An enforcement action needs a subject user or organization'
       );
     }
     const [inserted] = await db

@@ -34,7 +34,7 @@ describe('captureProductEvent', () => {
       properties: {
         email: 'a@b.com',
         name: 'Ada',
-        team_id: 'team_1',
+        team_id: 'organization_1',
       },
       personProperties: {
         email: 'a@b.com',
@@ -51,7 +51,7 @@ describe('captureProductEvent', () => {
       properties: {
         email: 'a@b.com',
         name: 'Ada',
-        team_id: 'team_1',
+        team_id: 'organization_1',
         $set: { email: 'a@b.com', name: 'Ada' },
       },
     });

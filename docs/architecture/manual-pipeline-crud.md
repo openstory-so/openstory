@@ -91,7 +91,7 @@ and the history query so the new version appears without a page reload.
 
 All uploads: presign (`getSignedUploadUrl` → client PUT to
 `/api/storage/upload`) → finalize. Finalize validates the `publicUrl` against
-the caller's team namespace (`<bucket>/teams/<teamId>/…`, no traversal) and the
+the caller's organization namespace (`<bucket>/teams/<organizationId>/…`, no traversal) and the
 presign enforces a per-surface extension allow-list (an `.svg` under `/r2/`
 would be stored XSS). `USER_UPLOAD_MODEL = 'user-upload'` is never a valid
 generation model id — every model-resolution tier skips it by design.
@@ -174,7 +174,7 @@ The finalize logic lives in `src/shots/server/media-upload.ts`, shared with the 
 
 | Fn                                                                                                | Input → output                                                                                  | Rule enforced                                                    |
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, team-namespace path                        |
+| `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, organization-namespace path                |
 | `presignSequenceMusicUploadFn` / `presignCharacterSheetUploadFn` / `presignLocationSheetUploadFn` | `{sequenceId, filename (+characterId/locationDbId)}` → same                                     | same                                                             |
 | `replaceFrameContentFn`                                                                           | `{…, frameId?, promptText?, publicUrl}` → `{shotId, versionId, promptVersionId, promptChanged}` | §1.3 B (omit/unchanged prompt) + C (atomic)                      |
 | `setShotVideoFromUploadFn`                                                                        | `{…, publicUrl, durationSeconds?}` → `{shotId, versionId, videoUrl}`                            | manifest snapshot; duration re-snap; rejects multi-shot segments |

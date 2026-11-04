@@ -4,7 +4,7 @@
  * name (`media/<n>.<ext>`), to the MCP tool each is a URL or inline bytes,
  * and in the row each is the stored `/r2/...` URL. The server rewrites names
  * and sources to stored URLs before the row is written, so a stored cut never
- * points at a file the team did not upload.
+ * points at a file the organization did not upload.
  */
 
 import { z } from 'zod';

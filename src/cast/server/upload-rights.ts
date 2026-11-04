@@ -171,7 +171,7 @@ export async function recordLikenessFinding(
 
 /**
  * One classifier call for the upload: Claude on a still, Gemini watching the
- * whole clip (#1930). A clip that is not this team's stored object is
+ * whole clip (#1930). A clip that is not this organization's stored object is
  * refused, never waved through.
  */
 function analyzeUpload(opts: {
@@ -200,7 +200,7 @@ function analyzeUpload(opts: {
     );
   }
   const key = r2KeyFromUrl(opts.url);
-  // Only this team's own objects: the check streams the bytes to Gemini.
+  // Only this organization's own objects: the check streams the bytes to Gemini.
   if (key === null || !key.split('/').includes(opts.scopedDb.organizationId)) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
@@ -216,9 +216,9 @@ function analyzeUpload(opts: {
 }
 
 /**
- * A raw URL, or one of this team's own stored objects. Ownership is the
+ * A raw URL, or one of this organization's own stored objects. Ownership is the
  * key's owner segment, read the way the upload route reads it
- * (`<bucket>/<team>/…` or `<bucket>/teams/<team>/…`), never a substring.
+ * (`<bucket>/<organization>/…` or `<bucket>/teams/<organization>/…`), never a substring.
  */
 export function isCheckable(url: string, organizationId: string): boolean {
   const key = r2KeyFromUrl(url);
@@ -228,7 +228,7 @@ export function isCheckable(url: string, organizationId: string): boolean {
   return (path[0] === 'teams' ? path[1] : path[0]) === organizationId;
 }
 
-/** Refuse a URL {@link isCheckable} rejects: another team's file. */
+/** Refuse a URL {@link isCheckable} rejects: another organization's file. */
 export function requireCheckable(url: string, organizationId: string): void {
   if (!isCheckable(url, organizationId)) {
     throw new ValidationError('This file is not an upload of yours');
@@ -239,9 +239,9 @@ export function requireCheckable(url: string, organizationId: string): void {
  * The rights for one upload: what the ledger already says, or one vision
  * call whose verdict is written so the next ask is free. Never defaults to
  * human, never defaults to cleared: a classifier failure throws and leaves
- * no row, so the gate keeps refusing. Only this team's own objects, or a
- * raw URL, are checked: a verdict on another team's file would let this
- * team use it.
+ * no row, so the gate keeps refusing. Only this organization's own objects, or a
+ * raw URL, are checked: a verdict on another organization's file would let this
+ * organization use it.
  */
 export async function classifyUpload(opts: {
   scopedDb: LikenessCheckDb;

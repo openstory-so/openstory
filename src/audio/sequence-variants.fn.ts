@@ -42,7 +42,7 @@ export const getDivergentSequenceMusicVariantsFn = createServerFn({
   });
 
 /**
- * Aggregate read for the team's sequences-list dashboard. Returns one row per
+ * Aggregate read for the organization's sequences-list dashboard. Returns one row per
  * sequence that has at least one live divergent music alternate.
  */
 export const getOrganizationDivergentSequenceVariantsFn = createServerFn({

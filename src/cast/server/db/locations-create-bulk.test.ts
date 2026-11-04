@@ -7,10 +7,10 @@
  * replay converges, keeps each location's id and leaves the reference to
  * the sheet run that owns it.
  *
- * A location is the team's (#1695), so analysis rewrites only one this
+ * A location is the organization's (#1695), so analysis rewrites only one this
  * sequence made and nothing else uses. One the writer attached, or that
  * another sequence links, is linked and left as it is. An entry matching
- * bound to a team location (`boundTo`) links to it and makes nothing.
+ * bound to an organization location (`boundTo`) links to it and makes nothing.
  */
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
@@ -131,7 +131,7 @@ const versionsOf = (id: string) =>
 /** A location made on the Locations page: no link. */
 const organizationLocation = (
   name: string,
-  description = 'as the team wrote it'
+  description = 'as the organization wrote it'
 ) =>
   locs().createForOrganization(
     {
@@ -163,7 +163,7 @@ describe('createBulk', () => {
     expect(await db.select().from(locationBibleVersions)).toHaveLength(4);
   });
 
-  it('makes each location the team’s, linked and not attached', async () => {
+  it('makes each location the organization’s, linked and not attached', async () => {
     const [created] = await bulk([
       entry('loc_001', {
         firstMentionSceneId: 'scene_001',
@@ -231,7 +231,7 @@ describe('createBulk', () => {
     await expect(bulk([])).resolves.toEqual([]);
   });
 
-  it("refuses another team's sequence", async () => {
+  it("refuses another organization's sequence", async () => {
     await expect(
       createLocationsMethods(db, otherOrganizationId).createBulk(
         [entry('loc_001')],
@@ -277,7 +277,7 @@ describe('createBulk never rewrites a location that is not this sequence’s', (
     expect(result).toMatchObject({
       id: diner.id,
       name: 'Diner',
-      description: 'as the team wrote it',
+      description: 'as the organization wrote it',
       rendering: '2D cel animation',
       selectedBibleVersionId: diner.selectedBibleVersionId,
       attached: true,
@@ -303,7 +303,7 @@ describe('createBulk never rewrites a location that is not this sequence’s', (
       id: diner.id,
       linkId: attached.linkId,
       deletedAt: null,
-      description: 'as the team wrote it',
+      description: 'as the organization wrote it',
     });
     expect(await versionsOf(diner.id)).toHaveLength(1);
   });
@@ -399,7 +399,7 @@ describe('createBulk never rewrites a location that is not this sequence’s', (
   });
 });
 
-describe('createBulk with an entry bound to a team location', () => {
+describe('createBulk with an entry bound to an organization location', () => {
   it('links and makes nothing', async () => {
     const diner = await organizationLocation('Diner');
 
@@ -421,9 +421,9 @@ describe('createBulk with an entry bound to a team location', () => {
       locationId: 'loc_001',
       attached: true,
       deletedAt: null,
-      // The team location's bible, not the entry's.
+      // The organization location's bible, not the entry's.
       name: 'Diner',
-      description: 'as the team wrote it',
+      description: 'as the organization wrote it',
       rendering: '2D cel animation',
       selectedBibleVersionId: diner.selectedBibleVersionId,
       referenceStatus: 'pending',
@@ -456,7 +456,7 @@ describe('createBulk with an entry bound to a team location', () => {
     expect(await linksOf()).toHaveLength(1);
   });
 
-  it("a bible edit through the sequence never writes the script's tag into the team's bible", async () => {
+  it("a bible edit through the sequence never writes the script's tag into the organization's bible", async () => {
     const diner = await organizationLocation('Diner');
     await bulk([
       entry('loc_001', { consistencyTag: 'script_diner', boundTo: diner.id }),
@@ -504,7 +504,7 @@ describe('createBulk with an entry bound to a team location', () => {
       { locationId: diner.id, scriptLocationId: 'loc_001' },
     ]);
     // The place analysis made before is out of the sequence. Nothing uses
-    // it, so it leaves the team list too; its rows stay.
+    // it, so it leaves the organization list too; its rows stay.
     expect(await locs().getById(sequenceId, made.id)).toBeNull();
     expect(await locs().getCurrent(made.id)).toBeNull();
     expect(await versionsOf(made.id)).toHaveLength(1);
@@ -559,7 +559,7 @@ describe('createBulk with an entry bound to a team location', () => {
     expect(result).toMatchObject({ id: diner.id, deletedAt: null });
   });
 
-  it("refuses another team's location, and one deleted from the team", async () => {
+  it("refuses another organization's location, and one deleted from the organization", async () => {
     const theirs = await createLocationsMethods(
       db,
       otherOrganizationId

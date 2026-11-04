@@ -9,7 +9,7 @@ import {
 describe('isValidElementStoragePath', () => {
   const organizationId = 'organizationA';
 
-  it('accepts a well-formed path under the team prefix', () => {
+  it('accepts a well-formed path under the organization prefix', () => {
     expect(
       isValidElementStoragePath(
         'elements/organizationA/file.png',
@@ -18,7 +18,7 @@ describe('isValidElementStoragePath', () => {
     ).toBe(true);
   });
 
-  it('accepts nested paths under the team prefix', () => {
+  it('accepts nested paths under the organization prefix', () => {
     expect(
       isValidElementStoragePath(
         'elements/organizationA/sub/dir/file.png',
@@ -27,7 +27,7 @@ describe('isValidElementStoragePath', () => {
     ).toBe(true);
   });
 
-  it('rejects a `..` segment that traverses out of the team namespace', () => {
+  it('rejects a `..` segment that traverses out of the organization namespace', () => {
     expect(
       isValidElementStoragePath(
         'elements/organizationA/../organizationB/file.png',
@@ -45,13 +45,13 @@ describe('isValidElementStoragePath', () => {
     ).toBe(false);
   });
 
-  it('rejects an empty rest after the team prefix (path equals the prefix)', () => {
+  it('rejects an empty rest after the organization prefix (path equals the prefix)', () => {
     expect(
       isValidElementStoragePath('elements/organizationA/', organizationId)
     ).toBe(false);
   });
 
-  it('rejects another team prefix even with a valid-looking suffix', () => {
+  it('rejects another organization prefix even with a valid-looking suffix', () => {
     expect(
       isValidElementStoragePath(
         'elements/organizationB/file.png',
@@ -60,7 +60,7 @@ describe('isValidElementStoragePath', () => {
     ).toBe(false);
   });
 
-  it('rejects a prefix-collision team id (organizationAB starts with organizationA but is different)', () => {
+  it('rejects a prefix-collision organization id (organizationAB starts with organizationA but is different)', () => {
     expect(
       isValidElementStoragePath(
         'elements/organizationAB/file.png',

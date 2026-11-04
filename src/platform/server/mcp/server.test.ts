@@ -25,8 +25,8 @@ const user = {
 
 const auth = {
   user,
-  organizationId: 'team_1',
-  organizationName: "Ada's Team",
+  organizationId: 'organization_1',
+  organizationName: "Ada's Organization",
   session: null,
   oauth: null,
   kind: 'api_key' as const,
@@ -296,7 +296,7 @@ describe('tools/list and whoami', () => {
       'openstory.update_style',
       'openstory.delete_style',
     ]);
-    expect(tools[0]?.description).toMatch(/user and team/i);
+    expect(tools[0]?.description).toMatch(/user and organization/i);
     const batch = tools.find(
       (tool) => tool.name === 'openstory.apply_sequence_edits'
     );
@@ -451,7 +451,7 @@ describe('tools/list and whoami', () => {
     }
   });
 
-  it('whoami returns the caller user and team', async () => {
+  it('whoami returns the caller user and organization', async () => {
     const { status, body } = await rpc('tools/call', {
       name: 'whoami',
       arguments: {},
@@ -459,7 +459,7 @@ describe('tools/list and whoami', () => {
     expect(status).toBe(200);
     expect(whoamiResult.parse(body.result).structuredContent).toEqual({
       user: { id: 'user_1', email: 'ada@example.com', name: 'Ada' },
-      team: { id: 'team_1', name: "Ada's Team" },
+      team: { id: 'organization_1', name: "Ada's Organization" },
     });
   });
 
@@ -569,7 +569,7 @@ describe('tools/list and whoami', () => {
       expect(res.status).toBe(200);
       const body = await readRpc(res);
       expect(whoamiResult.parse(body.result).structuredContent.team.id).toBe(
-        'team_1'
+        'organization_1'
       );
     });
 
@@ -631,7 +631,7 @@ afterEach(() => {
 
 describe('production tool authorization', () => {
   it.each(['api_key', 'oauth'] as const)(
-    'builds a fresh DB scoped to the authenticated team for %s',
+    'builds a fresh DB scoped to the authenticated organization for %s',
     async (kind) => {
       const getById = vi.fn(async () => null);
       const createDb = vi
@@ -647,11 +647,11 @@ describe('production tool authorization', () => {
         {
           ...auth,
           kind,
-          organizationId: 'team_2',
+          organizationId: 'organization_2',
           scopes: kind === 'oauth' ? ['sequences:read'] : [],
         }
       );
-      expect(createDb).toHaveBeenCalledWith('team_2', 'user_1');
+      expect(createDb).toHaveBeenCalledWith('organization_2', 'user_1');
       expect(getById).toHaveBeenCalledWith('01J00000000000000000000000');
       expect(body.result).toMatchObject({
         isError: true,
@@ -1142,7 +1142,7 @@ describe('withToolViews passthrough', () => {
 describe('tool argument and result shapes', () => {
   it('takes scalars sent as strings and drops undefined result fields', async () => {
     vi.spyOn(dbModule, 'createScopedDb').mockReturnValue(
-      asStub<ScopedDb>({ organizationId: 'team_1' })
+      asStub<ScopedDb>({ organizationId: 'organization_1' })
     );
     const create = vi.spyOn(createModule, 'runOneShotCreate').mockResolvedValue(
       asStub<createModule.OneShotResult>({

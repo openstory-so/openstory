@@ -22,7 +22,7 @@ import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
 /**
- * Delete one of the team's characters (#2065), with Undo on the toast.
+ * Delete one of the organization's characters (#2065), with Undo on the toast.
  * Offered only while no sequence casts it; the server refuses otherwise.
  */
 export const DeleteCharacterButton: React.FC<{

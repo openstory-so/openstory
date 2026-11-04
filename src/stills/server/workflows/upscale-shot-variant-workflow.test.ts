@@ -110,7 +110,7 @@ describe('persistUpscaleSelection', () => {
       frameId: 'anchor-frame-id',
       versionId: 'ver-1',
       url: 'https://r2/upscaled.png',
-      path: 'team/seq/upscaled.png',
+      path: 'org/seq/upscaled.png',
       actorId: 'user-1',
       generatedAt: NOW,
       emit: async (payload) => {
@@ -135,7 +135,7 @@ describe('persistUpscaleSelection', () => {
     expect(versionUpdate.data).toEqual({
       status: 'completed',
       url: 'https://r2/upscaled.png',
-      storagePath: 'team/seq/upscaled.png',
+      storagePath: 'org/seq/upscaled.png',
       generatedAt: NOW,
       error: null,
     });

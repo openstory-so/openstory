@@ -3,7 +3,7 @@
  * worker runtime (src/server.ts).
  *
  * The sync is idempotent: templates are matched by name within the system
- * team, updated in place, and inserted when missing. A SHA-256 hash of the
+ * organization, updated in place, and inserted when missing. A SHA-256 hash of the
  * template definitions is stored in `app_metadata` after a successful sync,
  * so `ensureSystemTemplatesSeeded` is a single SELECT when nothing changed —
  * cheap enough to run on worker cold start. This replaces the CI seed steps:
@@ -188,7 +188,7 @@ async function syncSystemTemplates(
   db: SeedDb,
   log: SeedLog = () => {}
 ): Promise<void> {
-  // 1. Find or create system team
+  // 1. Find or create system organization
   let [systemOrganization]: { id: string }[] = await db
     .select()
     .from(organization)
@@ -205,7 +205,7 @@ async function syncSystemTemplates(
       updatedAt: new Date(),
     });
     systemOrganization = { id: organizationId };
-    log(`System team created with ID: ${systemOrganization.id}`);
+    log(`System organization created with ID: ${systemOrganization.id}`);
   }
 
   // 2. Rename old template styles

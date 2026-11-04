@@ -4,7 +4,7 @@ import type { MotionRenderShot } from './build-motion-render';
 
 const context = {
   userId: 'user',
-  organizationId: 'team',
+  organizationId: 'org',
   sequenceId: 'sequence',
 };
 const shot = (shotId: string, fullPrompt: string): MotionRenderShot => ({

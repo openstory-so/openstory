@@ -150,14 +150,14 @@ describe('listSequenceAssets', () => {
       ],
       status: 'completed',
       url: 'https://r2/v.mp4',
-      storagePath: `team/${sequenceId}/v.mp4`,
+      storagePath: `organization/${sequenceId}/v.mp4`,
     });
     await db.insert(sequenceElements).values({
       sequenceId,
       uploadedFilename: 'logo.png',
       token: 'LOGO',
-      imageUrl: '/r2/team/logo.png',
-      imagePath: 'team/logo.png',
+      imageUrl: '/r2/organization/logo.png',
+      imagePath: 'organization/logo.png',
     });
     await db.insert(videoVariants).values({
       renderSegmentId: segmentId,
@@ -195,7 +195,7 @@ describe('listSequenceAssets', () => {
       `segments/${videoId}.mp4`,
     ]);
     expect(selected.assets.find((asset) => asset.kind === 'video')?.url).toBe(
-      `/r2/team/${sequenceId}/v.mp4?download`
+      `/r2/organization/${sequenceId}/v.mp4?download`
     );
     expect(selected.assets.some((asset) => asset.kind === 'style')).toBe(false);
 

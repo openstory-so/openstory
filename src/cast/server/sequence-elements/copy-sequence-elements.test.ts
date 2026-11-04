@@ -26,7 +26,7 @@ describe('copySequenceElements', () => {
     const { scopedDb, create } = fakeDb({
       token: 'SMOKE_INK',
       uploadedFilename: 'smoke-ink.mp4',
-      imagePath: 'elements/team-1/seq-a/el-1.mp4',
+      imagePath: 'elements/organization-1/seq-a/el-1.mp4',
       kind: 'video',
       durationSeconds: 22.5,
       visionStatus: 'pending',
@@ -37,7 +37,7 @@ describe('copySequenceElements', () => {
 
     await copySequenceElements({
       scopedDb,
-      organizationId: 'team-1',
+      organizationId: 'organization-1',
       userId: 'user-1',
       sourceSequenceId: 'seq-a',
       targetSequenceId: 'seq-b',

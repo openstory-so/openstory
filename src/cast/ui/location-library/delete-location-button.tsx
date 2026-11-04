@@ -21,7 +21,7 @@ import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
 /**
- * Delete one of the team's locations (#1695), with Undo on the toast.
+ * Delete one of the organization's locations (#1695), with Undo on the toast.
  * Offered only while no sequence uses it; the server refuses otherwise.
  */
 export const DeleteLocationButton: React.FC<{

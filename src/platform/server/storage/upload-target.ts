@@ -3,8 +3,8 @@
  *
  * Both the single-shot `/api/storage/upload` route and the multipart routes
  * accept the destination as query params (bucket, path, contentType) and must
- * enforce the same team-scoping rule: the path's owner segment has to name a
- * team the caller belongs to, so one team can't upload into another team's
+ * enforce the same organization-scoping rule: the path's owner segment has to name a
+ * organization the caller belongs to, so one organization can't upload into another organization's
  * prefix. Keeping this in one place avoids the check drifting between routes.
  */
 
@@ -25,7 +25,7 @@ type UploadTarget = {
   bucket: StorageBucket;
   path: string;
   contentType: string;
-  /** The team the path's owner segment names; the caller is a member. */
+  /** The organization the path's owner segment names; the caller is a member. */
   organizationId: string;
 };
 
@@ -62,10 +62,10 @@ export async function resolveUploadTarget(
   const validBucket = bucketByName.get(bucket);
   if (!validBucket) return fail(`Invalid bucket: ${bucket}`, 400);
 
-  // Anchor the team-scope check. A bare substring test (`path.includes(organizationId)`)
-  // is bypassable: an attacker could put their own team id in the filename and
-  // still write into another team's prefix (e.g.
-  // `teams/<victim>/…/<myOrganizationId>.mp4`). Instead read the team id from the
+  // Anchor the organization-scope check. A bare substring test (`path.includes(organizationId)`)
+  // is bypassable: an attacker could put their own organization id in the filename and
+  // still write into another organization's prefix (e.g.
+  // `teams/<victim>/…/<myOrganizationId>.mp4`). Instead read the organization id from the
   // *leading owner segment* — segment 0, or segment 1 when the path is under a
   // `teams/` prefix (exports use `teams/<id>/…`; talent/location/element use
   // `<id>/…`) — reject traversal / empty segments, and require membership.
@@ -74,18 +74,18 @@ export async function resolveUploadTarget(
   }
   const segments = path.split('/');
   const ownerSegment = segments[0] === 'teams' ? segments[1] : segments[0];
-  // Authorize against the team the PATH names, not "the caller's team": the
-  // reservation that minted this path was scoped to the resource's team (e.g.
-  // `sequenceAccessMiddleware` uses the sequence's), so resolving one team per
-  // user 403'd every upload by a member of more than one team — and every
+  // Authorize against the organization the PATH names, not "the caller's organization": the
+  // reservation that minted this path was scoped to the resource's organization (e.g.
+  // `sequenceAccessMiddleware` uses the sequence's), so resolving one organization per
+  // user 403'd every upload by a member of more than one organization — and every
   // system-admin upload against a customer's sequence, which rides the same
-  // cross-team hatch `sequenceAccessMiddleware` opens to mint the path.
+  // cross-organization hatch `sequenceAccessMiddleware` opens to mint the path.
   if (!ownerSegment) return fail('Invalid upload path', 400);
   const authorized =
     isSystemAdmin(user.email) ||
     (await getUserOrganizationMembership(user.id, ownerSegment)) !== null;
   if (!authorized) {
-    return fail('Path must be within your team prefix', 403);
+    return fail('Path must be within your organization prefix', 403);
   }
 
   // A shared stitch's file is written once (#2127). Its page is public and

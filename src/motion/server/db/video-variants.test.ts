@@ -111,13 +111,13 @@ async function seed() {
 }
 
 /**
- * A second sequence in the same team, with its own scene / segment / shot. Used
+ * A second sequence in the same organization, with its own scene / segment / shot. Used
  * to prove the sequence-scoped reads don't leak across sequences.
  */
 async function seedSecondSequence() {
-  const [team] = await db.select().from(organization);
+  const [org] = await db.select().from(organization);
   const [style] = await db.select().from(styles);
-  if (!team || !style) throw new Error('seed: seed() must run first');
+  if (!org || !style) throw new Error('seed: seed() must run first');
 
   const otherSequenceId = generateId();
   const otherSceneId = generateId();
@@ -127,7 +127,7 @@ async function seedSecondSequence() {
   await db.insert(sequences).values([
     {
       id: otherSequenceId,
-      organizationId: team.id,
+      organizationId: org.id,
       title: 'Other',
       styleId: style.id,
     },
@@ -188,7 +188,7 @@ function versionInput(
     ],
     status: 'completed',
     url: 'https://r2/v.mp4',
-    storagePath: 'team/seq/v.mp4',
+    storagePath: 'org/seq/v.mp4',
     inputHash: videoManifestInputHash('hash-1'),
     ...overrides,
   };
@@ -539,7 +539,7 @@ describe('listSelectedModelsBySequence (#1066)', () => {
 
   it('never returns a shot from another sequence', async () => {
     // This read decides which model a user is BILLED for — a missing sequence
-    // filter would leak another team's shots into the map.
+    // filter would leak another organization's shots into the map.
     const v = await methods.appendVersion(versionInput());
     await methods.select(shotId, v.id, { actorId: ACTOR });
 

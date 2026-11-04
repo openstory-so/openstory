@@ -50,7 +50,7 @@ export async function watchClipForOrganization(
       'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
-  if (llmKey.source !== 'team') {
+  if (llmKey.source !== 'organization') {
     const canAfford = await scopedDb.billing.hasEnoughCredits(
       estimateLLMCost(1)
     );
@@ -119,7 +119,7 @@ async function watchUploadedClip(
         `The clip was answered on ${model}, not ${WATCH_CLIP_MODEL}`
       );
     }
-    if (llmKey.source !== 'team') {
+    if (llmKey.source !== 'organization') {
       const costMicros = llmCostFromUsage(usage, model, via);
       if (costMicros > 0) {
         await scopedDb.billing.deductCredits(costMicros, {

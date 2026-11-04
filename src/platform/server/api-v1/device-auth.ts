@@ -76,7 +76,7 @@ export async function assertDeviceLoginRate(request: Request): Promise<void> {
  * endpoint isn't an existence oracle. Approval consumes the code in the plugin
  * and mints the key here — a second call with the same code is `invalid_grant`
  * to the plugin, which we fold into `expired_token` below. Anything that fails
- * after the plugin consumed the code (team lookup, key creation) burns it: the
+ * after the plugin consumed the code (organization lookup, key creation) burns it: the
  * agent gets one 500, then 410s, and must start again.
  */
 export async function exchangeDeviceCode(
@@ -123,8 +123,12 @@ export async function exchangeDeviceCode(
   if (!organizationId) {
     throw new Error('Device login was approved without an organization');
   }
-  const team = await getUserOrganizationMembership(userId, organizationId);
-  if (!team) throw new Error('Not a member of the device login organization');
+  const membership = await getUserOrganizationMembership(
+    userId,
+    organizationId
+  );
+  if (!membership)
+    throw new Error('Not a member of the device login organization');
 
   const created = await auth.api.createApiKey({
     body: {
@@ -137,6 +141,6 @@ export async function exchangeDeviceCode(
   return {
     status: 'approved',
     apiKey: created.key,
-    team: { id: team.organizationId, name: team.organizationName },
+    team: { id: membership.organizationId, name: membership.organizationName },
   };
 }

@@ -13,7 +13,7 @@ vi.doMock('@/platform/logger', () => ({
 const { reportGiftRedeemRefusal } = await import('./gift-redeem-report');
 
 describe('reportGiftRedeemRefusal', () => {
-  it('logs the code, reason, user, and team, and sends the PostHog event', () => {
+  it('logs the code, reason, user, and organization, and sends the PostHog event', () => {
     captureProductEvent.mockClear();
     warn.mockClear();
 

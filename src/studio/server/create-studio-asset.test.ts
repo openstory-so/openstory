@@ -83,7 +83,7 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
 }));
 // Ark is not configured in this harness; flip this to make the via claim
-// answer 'byteplus' the way a production team on the platform key sees it.
+// answer 'byteplus' the way a production organization on the platform key sees it.
 let bytePlusLive = false;
 vi.doMock('@/models/server/byteplus-config', async (importOriginal) => {
   const actual =
@@ -194,7 +194,7 @@ describe('studioCreateInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('lets Seedance 2.5 through the static schema — the via gate is per team', () => {
+  it('lets Seedance 2.5 through the static schema — the via gate is per organization', () => {
     const result = studioCreateInputSchema.safeParse({
       activity: 'video',
       prompt: 'the fox turns toward camera',
@@ -1320,7 +1320,7 @@ describe('upload rights gate (#1581)', () => {
 
   // The stored key carries its bucket (`videos/teams/…`, #2202). The
   // composer sends the clip id, so the file itself is not checked (#2203).
-  it("takes the team's own clip as a reference without checking its file", async () => {
+  it("takes the organization's own clip as a reference without checking its file", async () => {
     const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const id = generateId();
     const clip = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${id}/video.mp4`;
@@ -1363,7 +1363,7 @@ describe('upload rights gate (#1581)', () => {
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it("another team's clearance does not cover this team", async () => {
+  it("another organization's clearance does not cover this organization", async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');

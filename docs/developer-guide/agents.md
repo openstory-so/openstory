@@ -37,7 +37,7 @@ A missing scope is a tool error with code `INSUFFICIENT_SCOPE` and `details.scop
 - `sequenceId` is required on every production tool; everything below it is checked against it.
 - A **scene** id (`sceneId`) and a **shot** id (`shotId`) are different things. `get_scene` takes a scene id and refuses a shot id; `get_shot` takes a shot id and refuses a scene id. A shot carries its parent `sceneId`, so you can always navigate back up.
 - What a scene or shot shows is its **selected version** (script, prompt, still, clip). Reads return the selected version and its id; `update_scene` asks for the selected script version you read, so an edit never overwrites one you did not see.
-- Ids from another team, another sequence or a deleted row are reported as not found.
+- Ids from another organization, another sequence or a deleted row are reported as not found.
 
 ## Reads, pages and limits
 
@@ -90,7 +90,7 @@ The Studio makes standalone images and videos, outside any sequence. Each genera
 5. **Poll.** `get_generated_asset` with each returned id until `status` is `completed` or `failed`.
 6. **Refine.** `edit_studio_asset` rewrites a finished Seedance clip from a prompt; `get_studio_edit_history` shows the chain. `render_studio_asset_at_quality` turns a finished draft into its 1080p final. `set_studio_asset_favorite` marks keepers; `delete_studio_asset` removes one for good (confirm first).
 
-`watch_clip` answers one question about any stored clip (a shot video, a Studio asset or an upload) by having Gemini watch the whole clip; it uses credits unless the team has its own Gemini key.
+`watch_clip` answers one question about any stored clip (a shot video, a Studio asset or an upload) by having Gemini watch the whole clip; it uses credits unless the organization has its own Gemini key.
 
 ## Not available through MCP yet
 

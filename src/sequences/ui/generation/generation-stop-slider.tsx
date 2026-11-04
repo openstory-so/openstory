@@ -39,7 +39,7 @@ type GenerationStopSliderProps = {
    * Draft first (#1756): the motion pass renders 480p drafts and the run
    * stops there; the 1080p finals are rendered from the scene list once the
    * drafts are approved. Pass `onDraftFirstChange` to offer the switch (a
-   * chosen model has a draft mode and this team can reach Ark).
+   * chosen model has a draft mode and this organization can reach Ark).
    */
   draftFirst?: boolean;
   onDraftFirstChange?: (value: boolean) => void;

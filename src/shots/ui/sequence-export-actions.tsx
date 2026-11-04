@@ -70,7 +70,7 @@ export const SequenceDownloadMenu: React.FC<{
   /** Draft clips in the cut (#1756) — the render would carry 480p shots. */
   draftLabel?: string | null;
   variant: 'toolbar' | 'overlay';
-  /** Enables "Share stitch link", and "Publish to social…" when the team has an Upload-Post key. */
+  /** Enables "Share stitch link", and "Publish to social…" when the organization has an Upload-Post key. */
   publish?: PublishTarget;
 }> = ({ sequenceId, sequenceExport, draftLabel = null, variant, publish }) => {
   const {

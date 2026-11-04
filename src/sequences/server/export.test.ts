@@ -29,7 +29,7 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team-scoped export rows
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real organization-scoped export rows
 import { createScopedDb } from '@/platform/server/db/scoped';
 import { dbSceneId } from '@/shots/scene-id';
 

@@ -1,15 +1,15 @@
 /**
- * `scopedDb.locations` (#1695): a location belongs to the team and a sequence
+ * `scopedDb.locations` (#1695): a location belongs to the organization and a sequence
  * uses one through a link. In-memory libSQL with the real migrations.
  *
  * What is pinned here:
  *   - a read through a sequence answers with the link's own fields;
- *   - every method that takes an id is scoped to the team;
+ *   - every method that takes an id is scoped to the organization;
  *   - attach, replace, the two deletes and restore;
  *   - reference photos and bible edits revoke a sheet run's claim only when
  *     an input of the sheet moved;
  *   - `rendering` is required on every bible write;
- *   - the team list's order.
+ *   - the organization list's order.
  *
  * Analysis (`createBulk`) is in `locations-create-bulk.test.ts`.
  */
@@ -42,7 +42,7 @@ let db: Database;
 let organizationId = '';
 let otherOrganizationId = '';
 let actorId = '';
-/** Two sequences of the team, and one of another team. */
+/** Two sequences of the organization, and one of another organization. */
 let sequenceId = '';
 let secondSequenceId = '';
 let otherOrganizationSequenceId = '';
@@ -110,7 +110,7 @@ beforeEach(async () => {
 const locs = () => createLocationsMethods(db, organizationId);
 const theirs = () => createLocationsMethods(db, otherOrganizationId);
 
-/** A location analysis made in a sequence of the team. */
+/** A location analysis made in a sequence of the organization. */
 const analysed = (name: string, scriptId = 'loc_001', seq = sequenceId) =>
   locs().create(
     {
@@ -200,7 +200,7 @@ describe('a read through a sequence', () => {
     expect((await locs().getById(sequenceId, created.id))?.deletedAt).toEqual(
       removedAt
     );
-    // ...and the location itself is not deleted from the team.
+    // ...and the location itself is not deleted from the organization.
     expect((await rowOf(created.id)).deletedAt).toBeNull();
     expect((await locs().getCurrent(created.id))?.deletedAt).toBeNull();
     expect(await locs().list(sequenceId)).toEqual([]);
@@ -217,7 +217,7 @@ describe('a read through a sequence', () => {
   });
 });
 
-describe("another team's location", () => {
+describe("another organization's location", () => {
   it('is not readable by id', async () => {
     const linked = await analysed('Diner');
     await locs().addPhotos(linked.id, [{ url: '/r2/a.png', path: 'a.png' }]);
@@ -291,7 +291,7 @@ describe("another team's location", () => {
     await expect(
       theirs().restore(sequenceId, linked.id, { actorId })
     ).rejects.toThrow('Location not found');
-    // Nothing links `unlinked`, so only the team stops this delete.
+    // Nothing links `unlinked`, so only the organization stops this delete.
     expect(await theirs().softDeleteForOrganization(unlinked.id)).toBe(false);
     // Into their own sequence, and into ours.
     await expect(
@@ -324,7 +324,7 @@ describe("another team's location", () => {
     ]);
   });
 
-  it('is not brought back by their undo of a team delete', async () => {
+  it('is not brought back by their undo of an organization delete', async () => {
     const unlinked = await organizationLocation('Depot');
     expect(await locs().softDeleteForOrganization(unlinked.id)).toBe(true);
     await theirs().restoreForOrganization(unlinked.id);
@@ -333,7 +333,7 @@ describe("another team's location", () => {
 });
 
 describe('attach', () => {
-  it('links one of the team’s locations and copies nothing', async () => {
+  it('links one of the organization’s locations and copies nothing', async () => {
     const diner = await organizationLocation("Mel's Diner");
     const attached = await locs().attach(sequenceId, diner.id, { actorId });
 
@@ -412,7 +412,7 @@ describe('attach', () => {
     ).resolves.toMatchObject({ id: twin.id });
   });
 
-  it("refuses another team's sequence, and a sequence that does not exist", async () => {
+  it("refuses another organization's sequence, and a sequence that does not exist", async () => {
     const diner = await organizationLocation('Diner');
     await expect(
       locs().attach(otherOrganizationSequenceId, diner.id, { actorId })
@@ -423,7 +423,7 @@ describe('attach', () => {
     expect(await db.select().from(sequenceLocationLinks)).toEqual([]);
   });
 
-  it('refuses a location deleted from the team', async () => {
+  it('refuses a location deleted from the organization', async () => {
     const diner = await organizationLocation('Diner');
     await locs().softDeleteForOrganization(diner.id);
     await expect(
@@ -485,7 +485,7 @@ describe('replace', () => {
     ).toEqual([]);
     expect(await linksOf()).toHaveLength(1);
     expect(await locs().getById(sequenceId, old.id)).toBeNull();
-    // Both stay the team's, each with its own bible and tag.
+    // Both stay the organization's, each with its own bible and tag.
     expect(await locs().getCurrent(old.id)).toMatchObject({
       name: 'Diner',
       consistencyTag: 'diner_chrome',
@@ -550,7 +550,7 @@ describe('replace', () => {
     ]);
   });
 
-  it('refuses a location that is not linked here, or deleted from the team', async () => {
+  it('refuses a location that is not linked here, or deleted from the organization', async () => {
     const unlinked = await organizationLocation('Depot');
     const next = await organizationLocation('Roadhouse');
     await expect(
@@ -566,7 +566,7 @@ describe('replace', () => {
   });
 });
 
-describe('delete from the team', () => {
+describe('delete from the organization', () => {
   it('is refused while a sequence uses the location', async () => {
     const diner = await analysed('Diner');
     expect(await locs().getUsedInAnySequenceOrArchive(diner.id)).toBe(true);
@@ -615,7 +615,7 @@ describe('delete from the team', () => {
 });
 
 describe('restore through a sequence', () => {
-  it('brings the link back and clears a team delete too', async () => {
+  it('brings the link back and clears an organization delete too', async () => {
     const diner = await analysed('Diner');
     await locs().softDelete(sequenceId, diner.id, { actorId });
     expect(await locs().softDeleteForOrganization(diner.id)).toBe(true);
@@ -708,7 +708,7 @@ describe('reference photos', () => {
     expect(await locs().listPhotos(yard.id)).toHaveLength(1);
   });
 
-  it('is refused on a location deleted from the team', async () => {
+  it('is refused on a location deleted from the organization', async () => {
     const depot = await organizationLocation('Depot');
     await locs().softDeleteForOrganization(depot.id);
     await expect(
@@ -884,7 +884,7 @@ describe('a bible edit and the sheet claim', () => {
   });
 });
 
-describe('the team list', () => {
+describe('the organization list', () => {
   const stamp = (id: string, updatedAt: string) =>
     db
       .update(sequences)
@@ -906,7 +906,7 @@ describe('the team list', () => {
     // Its only link is removed.
     const removed = await analysed('Removed', 'loc_003', sequenceId);
     await locs().softDelete(sequenceId, removed.id, { actorId });
-    // Deleted from the team, and another team's.
+    // Deleted from the organization, and another organization's.
     const deleted = await organizationLocation('Deleted');
     await locs().softDeleteForOrganization(deleted.id);
     await theirs().createForOrganization(
@@ -1026,7 +1026,7 @@ const linked = (
 ): SequenceLocationWithReference => ({
   linkId: `link-${overrides.id}`,
   sequenceId: 'seq-1',
-  organizationId: 'team-1',
+  organizationId: 'organization-1',
   type: null,
   description: null,
   architecturalStyle: null,

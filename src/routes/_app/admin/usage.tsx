@@ -149,7 +149,7 @@ function UsageContent() {
         <div className="relative max-w-sm flex-1">
           <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by name, email, or team..."
+            placeholder="Search by name, email, or organization..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -191,7 +191,7 @@ function UsageContent() {
                 Status
               </th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Team
+                Organization
               </th>
               <SortableHeader
                 label="Sequences"

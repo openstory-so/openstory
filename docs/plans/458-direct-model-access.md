@@ -12,7 +12,7 @@
 A new **Models** surface in openstory: browse the full fal.ai catalog (~1,400 models, live from
 modelschemas.com), open any model, get an **auto-generated parameter form from its live JSON
 Schema**, run it through the existing durable generation engine (credits/BYOK/R2), and keep the
-result as an **individual team asset** decoupled from the sequence→scene→shot→frame graph.
+result as an **individual organization asset** decoupled from the sequence→scene→shot→frame graph.
 
 ## Research conclusions (4 scouts)
 
@@ -72,7 +72,7 @@ result as an **individual team asset** decoupled from the sequence→scene→sho
 migration via `bun db:generate` (NEVER hand-written SQL). ULID pk. FKs use `'restrict'`/no
 action — **no ON DELETE CASCADE** (D1 table-rebuild trap).
 
-Columns: `id`, `teamId`, `userId`, `provider` ('fal'), `endpointId` (e.g. `fal-ai/flux-1/dev`),
+Columns: `id`, `organizationId`, `userId`, `provider` ('fal'), `endpointId` (e.g. `fal-ai/flux-1/dev`),
 `activity` ('image'|'video'|'audio'|'chat'|…), `modelName` (display), `input` (typed JSON —
 `Record<string, JsonValue>` with a proper local `JsonValue` type, NOT `unknown`),
 `status` ('queued'|'running'|'completed'|'failed'), `outputs` (typed JSON array:
@@ -82,17 +82,17 @@ Columns: `id`, `teamId`, `userId`, `provider` ('fal'), `endpointId` (e.g. `fal-a
 ### Server fns: `src/models/model-assets.fn.ts` (Agent A owns)
 
 - `createGeneratedAssetFn({ endpointId, activity, modelName, input, inputSchema })` →
-  `{ id, workflowRunId }`. Steps: auth (team member) → `z.fromJSONSchema(inputSchema)`
+  `{ id, workflowRunId }`. Steps: auth (organization member) → `z.fromJSONSchema(inputSchema)`
   safeParse (schema re-fetched server-side via catalog lib — do NOT trust a client-sent schema
   for validation; client may send it only for display) → `requireCredits` → insert row →
   `triggerWorkflow('/asset', payload)` → update row with workflowRunId.
-- `listGeneratedAssetsFn({ activity?, endpointId?, limit?, cursor? })` → team-scoped newest-first.
+- `listGeneratedAssetsFn({ activity?, endpointId?, limit?, cursor? })` → organization-scoped newest-first.
 - `getGeneratedAssetFn({ id })` → single row (poll target).
 
 ### Workflow (Agent A owns)
 
 `src/studio/server/workflows/asset-generation-workflow.ts`, class `AssetGenerationWorkflow` extends
-`OpenStoryWorkflowEntrypoint`. Payload: `{ userId, teamId, assetId, endpointId, activity,
+`OpenStoryWorkflowEntrypoint`. Payload: `{ userId, organizationId, assetId, endpointId, activity,
 input }`. Wire in all 3 places (wrangler.jsonc `workflows[]` binding `ASSET_WORKFLOW`,
 `src/server.ts` re-export, `TRIGGER_TO_BINDING['/asset']`) — `wiring-consistency.test.ts`
 enforces. Follow the existing image/motion workflow structure for fal key resolution, fal queue

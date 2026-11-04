@@ -1,5 +1,5 @@
 /**
- * The team's locations (#1695): the Locations page list, one location with
+ * The organization's locations (#1695): the Locations page list, one location with
  * the sequences that use it and its photos, its delete, and the writes made
  * with no sequence.
  */
@@ -32,7 +32,7 @@ import { putToR2, snapshotFile } from '@/ui/upload';
 
 export { organizationLocationKeys };
 
-/** The team's locations, most recently used first. Signed-in only. */
+/** The organization's locations, most recently used first. Signed-in only. */
 export function useOrganizationLocations() {
   return useSuspenseQuery({
     queryKey: organizationLocationKeys.list(),
@@ -88,7 +88,7 @@ export function useLocationPhotos(locationId: string) {
   });
 }
 
-/** Live divergent sheet alternates across the team's locations: the card dots. */
+/** Live divergent sheet alternates across the organization's locations: the card dots. */
 export function useOrganizationLocationDivergentVariants() {
   return useQuery({
     queryKey: locationSheetVariantKeys.divergentByOrganization(),

@@ -1,6 +1,6 @@
 /**
  * Database Seed Script
- * Seeds the database with initial template styles and system team.
+ * Seeds the database with initial template styles and system organization.
  *
  * The actual sync lives in src/platform/server/db/seed-system-templates.ts and is shared
  * with the worker runtime (src/server.ts), which self-seeds on first request

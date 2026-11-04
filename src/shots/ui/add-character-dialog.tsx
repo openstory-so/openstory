@@ -23,7 +23,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 /**
- * The cast panel's one way in. It opens on the team's characters (#2050):
+ * The cast panel's one way in. It opens on the organization's characters (#2050):
  * picking one is the same attach the `@` picker makes, one link, every look,
  * nothing copied. New character swaps the list for the manual create (#1108
  * Phase 2): a name, then the character's page beside the inspector.

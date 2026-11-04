@@ -1,8 +1,8 @@
 /**
  * One assistant turn (#2155): the signed-in user's message, the page they
- * are on, the MCP tool set under their team, streamed back as SSE and
- * persisted per thread. The LLM is the team's configured one
- * (`resolveLlmKey`); a platform key bills the turn to the team at
+ * are on, the MCP tool set under their organization, streamed back as SSE and
+ * persisted per thread. The LLM is the organization's configured one
+ * (`resolveLlmKey`); a platform key bills the turn to the organization at
  * `llmCostFromUsage`.
  */
 
@@ -112,7 +112,7 @@ export type AssistantCaller = {
   request: Request;
 };
 
-const SYSTEM_PROMPT = `You are the OpenStory assistant, inside the OpenStory app. You help the user make AI video: sequences, scenes, shots, characters, locations, styles, music and the Studio. Every openstory_* tool acts on the user's team, with their permissions and their credits.
+const SYSTEM_PROMPT = `You are the OpenStory assistant, inside the OpenStory app. You help the user make AI video: sequences, scenes, shots, characters, locations, styles, music and the Studio. Every openstory_* tool acts on the user's organization, with their permissions and their credits.
 
 How to work:
 - Read before you write. Use get_* and list_* to find ids; never guess an id.
@@ -147,7 +147,7 @@ function systemPrompts(
 ): string[] {
   const prompts = [
     SYSTEM_PROMPT,
-    `The user is ${caller.user.name} in team "${caller.organizationName}". Today is ${new Date().toISOString().slice(0, 10)}.`,
+    `The user is ${caller.user.name} in organization "${caller.organizationName}". Today is ${new Date().toISOString().slice(0, 10)}.`,
   ];
   if (web) prompts.push(WEB_PROMPT);
   const page = describePageContext(pageContext);
@@ -204,7 +204,7 @@ function lastUserText(
 }
 
 /**
- * Bill the turn to the team unless its own key paid for it. Each model
+ * Bill the turn to the organization unless its own key paid for it. Each model
  * iteration is charged as the provider reports its usage, not once at the
  * end: the run goes on after the browser disconnects, and a run the host
  * drops before its terminal hook has then already paid for every
@@ -294,7 +294,7 @@ export async function handleAssistantChat(
   // The composer's pick; the default when it is missing or not selectable.
   const model = chatModelFor(params.forwardedProps.model, getRequestCountry());
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
-  const usedOwnKey = llmKey.source === 'team';
+  const usedOwnKey = llmKey.source === 'organization';
   // A restricted account may read but not spend (#1180); the request
   // middleware checked access, this checks generation before any credit.
   await requireGenerationAllowed({
@@ -400,7 +400,7 @@ export async function handleAssistantHydrate(
   const status = await caller.scopedDb.assistant.threadStatus(threadId.data);
   // A thread that does not exist yet (the client minted the id, nothing
   // was sent) hydrates empty. One that exists but is not this user's in
-  // this team (a thread id left in the browser by another sign-in) is a
+  // this organization (a thread id left in the browser by another sign-in) is a
   // 404 the client answers by starting a new thread.
   if (status === 'none') {
     return Response.json(

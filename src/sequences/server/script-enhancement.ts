@@ -52,7 +52,7 @@ const logger = getLogger(['openstory', 'serverFn', 'ai']);
 
 /**
  * Check pre-flight billing and resolve the key for the LLM call.
- * `deduct` is undefined when billing is skipped — the team's own key pays,
+ * `deduct` is undefined when billing is skipped — the organization's own key pays,
  * either their OpenRouter key or their fal key routed through fal's
  * OpenRouter endpoint (issue #895).
  */
@@ -68,7 +68,7 @@ export async function prepareBilling(
   const model =
     typeof metadata?.model === 'string' ? metadata.model : undefined;
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
-  if (llmKey.source === 'team') return { llmKey };
+  if (llmKey.source === 'organization') return { llmKey };
 
   const estimatedCost = estimateLLMCost(1);
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);

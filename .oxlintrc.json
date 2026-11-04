@@ -77,7 +77,7 @@
       "error",
       {
         "modules": ["#db-client"],
-        "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (override `boundaries/no-raw-db` below + db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
+        "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (override `boundaries/no-raw-db` below + db-access-allowlist.test.ts). Everything organization-scoped goes through context.scopedDb."
       }
     ],
     "boundaries/no-scoped-factory": [
@@ -166,7 +166,7 @@
       "rules": { "boundaries/no-sql": "off" }
     },
     {
-      // Raw `#db-client` readers: platform-wide (not team-scoped) tables or
+      // Raw `#db-client` readers: platform-wide (not organization-scoped) tables or
       // the scoped-db factory itself. Pinned by db-access-allowlist.test.ts.
       // The four pricing/reconcile jobs + the cron dispatcher are one
       // capability without a db-layer module yet (#1535); they collapse to

@@ -134,7 +134,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
 
               if (result) {
                 logger.info(
-                  `Added $${amountUsd} credits to team ${organizationId}`
+                  `Added $${amountUsd} credits to organization ${organizationId}`
                 );
                 if (organizationId) {
                   const posthog = getPostHogClient();
@@ -162,7 +162,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
 
               if (type === 'auto_top_up') {
                 logger.info(
-                  `Auto-top-up payment succeeded for team ${paymentIntent.metadata.organizationId}`
+                  `Auto-top-up payment succeeded for organization ${paymentIntent.metadata.organizationId}`
                 );
                 break;
               }

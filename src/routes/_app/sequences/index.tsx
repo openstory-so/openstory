@@ -52,7 +52,7 @@ function useSequencesListPrefs(
 export const Route = createFileRoute('/_app/sequences/')({
   validateSearch: sequencesListSearchSchema,
   // Restore remembered prefs before render, on the server for a first visit,
-  // so support mode never paints the team's own list first.
+  // so support mode never paints the organization's own list first.
   beforeLoad: ({ search, preload }) => {
     const remembered = rememberSequencesListPrefs(search, preload);
     if (remembered) {

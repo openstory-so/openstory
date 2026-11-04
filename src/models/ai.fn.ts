@@ -439,7 +439,7 @@ export function rankStyleRecommendations(
 }
 
 /**
- * Rank the team's + public styles against a script (or one-liner) and return a
+ * Rank the organization's + public styles against a script (or one-liner) and return a
  * diverse, popularity-tie-broken shortlist with a short reason each. Powers the
  * "Recommended for your script" picker row. Auth-gated and
  * billed like script enhancement.

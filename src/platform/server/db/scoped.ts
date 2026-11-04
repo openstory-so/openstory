@@ -1,9 +1,9 @@
 /**
  * Scoped Database Context
- * Factory that returns team-scoped query methods, auto-injecting organizationId.
+ * Factory that returns organization-scoped query methods, auto-injecting organizationId.
  * Sub-modules in ./scoped/ contain domain-specific methods.
  * Raw `getDb` readers are allowlisted in `.oxlintrc.json` and pinned by
- * `db-access-allowlist.test.ts`; everything team-scoped goes through here.
+ * `db-access-allowlist.test.ts`; everything organization-scoped goes through here.
  */
 
 import { getDb } from '#db-client';
@@ -81,7 +81,7 @@ import { apiKeyMetadataSchema } from '@/platform/server/auth/public-api-key';
 export type { UserActivityRow } from '@/platform/server/db/scoped/admin';
 
 /**
- * Unscoped by nature (#1219): device codes belong to no team until approved,
+ * Unscoped by nature (#1219): device codes belong to no organization until approved,
  * and Better Auth's plugin only deletes a code when someone polls it after
  * expiry — never-polled codes would accumulate forever.
  */
@@ -297,12 +297,12 @@ export async function getApiKeyOrganizationId(
 /**
  * Public (anonymous) read surface — everything a logged-out visitor can read.
  * Each function delegates to a createPublic*ReadMethods factory that takes no
- * team scope at all, so these code paths cannot express a team-scoped query;
+ * organization scope at all, so these code paths cannot express an organization-scoped query;
  * the isPublic filters inside the factories are the entire data boundary.
  */
 
 /**
- * List publicly-shared styles without any team scoping or auth.
+ * List publicly-shared styles without any organization scoping or auth.
  * Used to populate the style picker for anonymous (logged-out) visitors so
  * they can compose a sequence before being prompted to sign in.
  */
@@ -311,8 +311,8 @@ export async function listPublicStyles() {
 }
 
 /**
- * Get a sequence by ID without team scoping.
- * Only for admin operations where team context isn't available yet.
+ * Get a sequence by ID without organization scoping.
+ * Only for admin operations where organization context isn't available yet.
  */
 export async function getSequenceByIdUnscoped(
   sequenceId: string
@@ -334,27 +334,27 @@ export async function createDefaultOrganization(input: {
   organizationName: string;
 }) {
   const db = getDb();
-  const [team] = await db
+  const [created] = await db
     .insert(organization)
     .values({
       name: input.organizationName,
-      slug: `team-${input.userId.slice(0, 8)}`,
+      slug: `org-${input.userId.slice(0, 8)}`,
     })
     .returning();
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
-  if (!team) {
+  if (!created) {
     throw new Error(
       `Failed to create default organization for user ${input.userId}`
     );
   }
   await db.insert(member).values({
     id: input.userId,
-    organizationId: team.id,
+    organizationId: created.id,
     userId: input.userId,
     role: 'owner',
     createdAt: new Date(),
   });
-  return team;
+  return created;
 }
 
 /** A user row by id, typed like a session's user. Null when missing. */
@@ -431,15 +431,15 @@ export function createScopedDb(organizationId: string, userId: string) {
     characters: createCharactersMethods(db, organizationId),
     sequenceElements: createSequenceElementsMethods(db),
 
-    // Direct model access (#458) — flat team-scoped runs of arbitrary fal
+    // Direct model access (#458) — flat organization-scoped runs of arbitrary fal
     // endpoints, decoupled from the sequence graph.
     generatedAssets: createGeneratedAssetsMethods(db, organizationId, userId),
 
-    // Platform-global pricing telemetry (#1069) — not team-scoped.
+    // Platform-global pricing telemetry (#1069) — not organization-scoped.
     modelUsage: createModelUsageMethods(db),
 
     // BytePlus ACR slot ledger (#1361) — also platform-global: the asset
-    // slots are per BytePlus ACCOUNT, shared by every team, so there is
+    // slots are per BytePlus ACCOUNT, shared by every organization, so there is
     // nothing to scope. Policy lives in `@/models/server/byteplus-asset-pool`.
     bytePlusAssets: createBytePlusAssetsMethods(db),
 
@@ -467,9 +467,9 @@ export function createSystemAdminScopedDb() {
 
   return {
     admin: createAdminMethods(db),
-    // Cross-team moderation (#1180): the report queue, enforcement, and
+    // Cross-organization moderation (#1180): the report queue, enforcement, and
     // trace lookup. Only reachable through the system-admin scope, so a
-    // team-scoped caller cannot read another team's reports.
+    // organization-scoped caller cannot read another organization's reports.
     moderation: createModerationMethods(db),
   };
 }
@@ -478,7 +478,7 @@ export function createSystemAdminScopedDb() {
  * Enforcement rows for one user (#1180).
  *
  * Module-level and unscoped, like `getUserOrganizationMembership` above, for the same reason:
- * the generation gate runs before any team scope is meaningful, and an
+ * the generation gate runs before any organization scope is meaningful, and an
  * enforcement action follows the person rather than the workspace. Returns raw
  * rows; interpretation lives in `@/platform/server/compliance/enforcement`.
  */
@@ -497,7 +497,7 @@ export async function loadComplianceRecords(
  * Module-level with no scope at all — the person whose likeness was misused has
  * no account, and a takedown channel that requires one is not a takedown
  * channel. Mirrors the `listPublic*` factories: the code path cannot express a
- * team-scoped query.
+ * organization-scoped query.
  */
 export async function submitPublicContentReport(
   input: Parameters<ReturnType<typeof createPublicReportIntake>['submit']>[0]
@@ -509,7 +509,7 @@ export async function submitPublicContentReport(
  * One shared stitch by id (#2127), for the public page at /stitch/<id>.
  *
  * Module-level and unscoped, like `submitPublicContentReport`: the viewer has
- * no team, and the ULID is the only credential, as it is for a stored media URL.
+ * no organization, and the ULID is the only credential, as it is for a stored media URL.
  */
 export async function getPublicStitch(id: string) {
   return createPublicStitchReads(getDb()).getById(id);

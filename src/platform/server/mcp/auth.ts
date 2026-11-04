@@ -76,20 +76,23 @@ async function resolveOrganizationContext(
   oauth: OAuthAccessToken | null,
   organizationId: string | null
 ): Promise<McpAuthContext | Response> {
-  const team = organizationId
+  const membership = organizationId
     ? await getUserOrganizationMembership(user.id, organizationId)
     : null;
 
-  if (!team) {
+  if (!membership) {
     return mcpJsonRpcError(
       403,
       oauth
-        ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
-        : 'This key is not linked to a team you belong to.'
+        ? 'This token was issued for an organization you no longer belong to. Re-authorize the app.'
+        : 'This key is not linked to an organization you belong to.'
     );
   }
 
-  const compliance = await loadComplianceState(user.id, team.organizationId);
+  const compliance = await loadComplianceState(
+    user.id,
+    membership.organizationId
+  );
   if (!compliance.enforcement.canAccess) {
     return mcpJsonRpcError(
       403,
@@ -101,8 +104,8 @@ async function resolveOrganizationContext(
   const kind: McpAuthKind = oauth ? 'oauth' : 'api_key';
   return {
     user,
-    organizationId: team.organizationId,
-    organizationName: team.organizationName,
+    organizationId: membership.organizationId,
+    organizationName: membership.organizationName,
     session: null,
     oauth,
     kind,

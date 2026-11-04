@@ -1,7 +1,7 @@
 /**
  * Search read-boundary tests (#2100). Search reads eight kinds of thing
  * across the whole database, so its filters are the data-leak barrier: a hit
- * must belong to the searching team, and must be live.
+ * must belong to the searching organization, and must be live.
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -212,7 +212,7 @@ async function seedAsset(
   return id;
 }
 
-/** A team with one of every searchable kind, each saying `word`. */
+/** An organization with one of every searchable kind, each saying `word`. */
 async function seedOrganization(word: string) {
   const organizationId = generateId();
   const userId = generateId();
@@ -263,7 +263,7 @@ const find = (organizationId: string, query: string) =>
   createSearchMethods(db, organizationId).find(query, 50);
 
 describe('search', () => {
-  it('returns every kind of the team’s own, and nothing of another team’s', async () => {
+  it('returns every kind of the organization’s own, and nothing of another organization’s', async () => {
     const mine = await seedOrganization('zebra');
     const theirs = await seedOrganization('zebra');
 
@@ -293,7 +293,7 @@ describe('search', () => {
     expect(theirIds).not.toContain(mine.sequence);
   });
 
-  it('never reads another team’s text through a stray version pointer', async () => {
+  it('never reads another organization’s text through a stray version pointer', async () => {
     const mine = await seedOrganization('heron');
     const theirs = await seedOrganization('giraffe');
 

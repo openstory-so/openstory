@@ -525,7 +525,7 @@ describe('llm-client', () => {
       }
     });
 
-    it("does not move a team's Google key onto the platform key", async () => {
+    it("does not move an organization's Google key onto the platform key", async () => {
       mockChat.mockReturnValueOnce(
         (async function* () {
           yield {
@@ -540,7 +540,11 @@ describe('llm-client', () => {
           callLLM({
             model: 'google/gemini-3.8-flash',
             messages: [{ role: 'user', content: 'test' }],
-            apiKey: { key: 'team-google', via: 'google', source: 'team' },
+            apiKey: {
+              key: 'organization-google',
+              via: 'google',
+              source: 'organization',
+            },
           })
         ).rejects.toThrow('User location is not supported');
         expect(mockChat).toHaveBeenCalledTimes(1);
@@ -566,23 +570,31 @@ describe('llm-client', () => {
           })()
         );
       const resolveApiKey = vi.fn(async () => ({
-        key: 'team-openrouter',
+        key: 'organization-openrouter',
         via: 'openrouter' as const,
-        source: 'team' as const,
+        source: 'organization' as const,
       }));
 
       try {
         await callLLM({
           model: 'google/gemini-3.8-flash',
           messages: [{ role: 'user', content: 'test' }],
-          apiKey: { key: 'team-google', via: 'google', source: 'team' },
+          apiKey: {
+            key: 'organization-google',
+            via: 'google',
+            source: 'organization',
+          },
           resolveApiKey,
         });
         expect(resolveApiKey).toHaveBeenCalledWith('google/gemini-3.8-flash');
         expect(mockCreateAdapter).toHaveBeenNthCalledWith(
           2,
           'google/gemini-3.8-flash',
-          { key: 'team-openrouter', via: 'openrouter', source: 'team' }
+          {
+            key: 'organization-openrouter',
+            via: 'openrouter',
+            source: 'organization',
+          }
         );
       } finally {
         resetGoogleRegionBlock();
@@ -656,14 +668,14 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'k',
         via: 'openrouter' as const,
-        source: 'team' as const,
+        source: 'organization' as const,
       }));
 
       let terminal;
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-opus-5-fast',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'llmtr', source: 'team' },
+        apiKey: { key: 'k', via: 'llmtr', source: 'organization' },
         resolveApiKey,
       })) {
         if (chunk.done) terminal = chunk;
@@ -687,7 +699,7 @@ describe('llm-client', () => {
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'openrouter', source: 'team' },
+        apiKey: { key: 'k', via: 'openrouter', source: 'organization' },
       })) {
         if (chunk.done) terminal = chunk;
       }
@@ -1326,7 +1338,11 @@ describe('llm-client', () => {
           callLLMStream({
             model: 'z-ai/glm-5.3-flash',
             messages: [{ role: 'user', content: 'test' }],
-            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
+            apiKey: {
+              key: 'llmtr-organization',
+              via: 'llmtr',
+              source: 'organization',
+            },
           })
         );
 
@@ -1377,7 +1393,11 @@ describe('llm-client', () => {
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             webSearch: true,
-            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
+            apiKey: {
+              key: 'llmtr-organization',
+              via: 'llmtr',
+              source: 'organization',
+            },
           })
         );
 
@@ -1402,7 +1422,11 @@ describe('llm-client', () => {
             max_tokens: 300,
             temperature: 0.7,
             reasoning: { enabled: true, effort: 'low' },
-            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
+            apiKey: {
+              key: 'llmtr-organization',
+              via: 'llmtr',
+              source: 'organization',
+            },
           })
         );
 
@@ -1426,7 +1450,11 @@ describe('llm-client', () => {
             messages: [{ role: 'user', content: 'test' }],
             max_tokens: 300,
             temperature: 0.7,
-            apiKey: { key: 'llmtr-team', via: 'llmtr', source: 'team' },
+            apiKey: {
+              key: 'llmtr-organization',
+              via: 'llmtr',
+              source: 'organization',
+            },
           })
         );
 

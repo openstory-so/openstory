@@ -149,7 +149,7 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  // Search reads the team's own work, so a visitor has nothing to search.
+  // Search reads the organization's own work, so a visitor has nothing to search.
   const { data: user } = useUser();
   const canSearch = Boolean(user);
 

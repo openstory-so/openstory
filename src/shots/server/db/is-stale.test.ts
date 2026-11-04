@@ -25,7 +25,7 @@ import type { Database } from '@/platform/server/db/client';
 let closeDb: () => Promise<void>;
 let db: Database;
 
-const team = { id: '', name: 'T', slug: 't' };
+const org = { id: '', name: 'T', slug: 't' };
 const userRow = { id: '', name: 'U', email: 'u@example.com' };
 let sequenceId = '';
 
@@ -40,16 +40,16 @@ async function seed() {
   await db.delete(organization);
   await db.delete(user);
 
-  team.id = generateId();
+  org.id = generateId();
   userRow.id = generateId();
   sequenceId = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(organization).values([team]);
+  await db.insert(organization).values([org]);
   const [style] = await db
     .insert(styles)
     .values({
-      organizationId: team.id,
+      organizationId: org.id,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -66,7 +66,7 @@ async function seed() {
   await db.insert(sequences).values([
     {
       id: sequenceId,
-      organizationId: team.id,
+      organizationId: org.id,
       title: 'S',
       styleId: style.id,
     },
@@ -131,7 +131,7 @@ describe('location_sheet_variants.input_hash', () => {
   it('defaults to null and persists when set', async () => {
     const [loc] = await db
       .insert(locations)
-      .values({ organizationId: team.id, legacyName: 'L' })
+      .values({ organizationId: org.id, legacyName: 'L' })
       .returning();
     if (!loc) throw new Error('test setup: location insert returned nothing');
     const [sheet] = await db

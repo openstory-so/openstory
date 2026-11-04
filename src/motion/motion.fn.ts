@@ -234,7 +234,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Via-AWARE, matching `createSequences`, `MotionWorkflow` and the
     // single-shot path above — the model-only check rejected Grok Imagine,
     // which renders reference-only fine on the native xAI route. Resolved once
-    // per distinct model: the answer depends on the team's keys, not the shot.
+    // per distinct model: the answer depends on the organization's keys, not the shot.
     const referenceOnlyModels = new Set(
       eligibleShots
         .filter(shotIsReferenceOnly)

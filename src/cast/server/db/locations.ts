@@ -1,7 +1,7 @@
 /**
  * Scoped Locations Sub-module (#1695)
  *
- * A location belongs to the team. A sequence uses one through a
+ * A location belongs to the organization. A sequence uses one through a
  * `sequence_location_links` row that holds only what is the sequence's: the
  * script id, the first mention, the soft remove and whether the writer
  * attached it. Every sequence reads the location's current bible and sheet;
@@ -11,7 +11,7 @@
  * A method takes a `sequenceId` only when the answer or the write is the
  * link's, or when it records a sequence event; `null` there is a write made
  * from no sequence, which records none. Every statement is scoped to the
- * team.
+ * organization.
  */
 
 import {
@@ -144,7 +144,7 @@ type FirstMention = {
 };
 
 /**
- * One entry of an analysis pass. `boundTo` is the team location matching
+ * One entry of an analysis pass. `boundTo` is the organization location matching
  * bound this script location to (one the writer picked): the sequence links
  * to it and no location is made. Null when analysis makes the place here.
  */
@@ -156,7 +156,7 @@ const organizationUseSchema = z.array(
 );
 
 /**
- * One of the team's locations as the team sees it: its current bible, its
+ * One of the organization's locations as the organization sees it: its current bible, its
  * sheet and the sequences that use it.
  */
 export type OrganizationLocation = {
@@ -198,7 +198,7 @@ const {
 
 /**
  * A location read from no sequence: the row, its current bible and its live
- * reference. `deletedAt` is the row's own (deleted from the team).
+ * reference. `deletedAt` is the row's own (deleted from the organization).
  */
 const ownColumns = {
   ...locationRowColumns,
@@ -259,7 +259,7 @@ export const deleteLocationLinksStatements = (db: Database, where: SQL) =>
   [db.delete(sequenceLocationLinks).where(where)] as const;
 
 /**
- * The team's locations that go when a sequence is hard-deleted: the ones only
+ * The organization's locations that go when a sequence is hard-deleted: the ones only
  * it ever used and the writer did not attach. Read before the delete, because
  * the links that say so are deleted first. A condition on `locations`.
  */
@@ -331,7 +331,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     return row ?? null;
   };
 
-  /** One of the team's locations, not deleted, from no sequence. */
+  /** One of the organization's locations, not deleted, from no sequence. */
   const currentOf = async (
     id: string
   ): Promise<LocationWithReference | null> => {
@@ -368,7 +368,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     return row;
   };
 
-  /** The sequence must be this team's: the db method refuses, not only its callers. */
+  /** The sequence must be this organization's: the db method refuses, not only its callers. */
   const requireSequence = async (sequenceId: string): Promise<void> => {
     const [sequence] = await db
       .select({ id: sequences.id })
@@ -509,12 +509,12 @@ export function createLocationsMethods(db: Database, organizationId: string) {
   };
 
   /**
-   * Bind a script location to one of the team's locations: one link, nothing
+   * Bind a script location to one of the organization's locations: one link, nothing
    * copied. What matching does when it pairs a script location with one the
    * writer picked. The link is `attached`, so analysis never rewrites it.
    *
    * The script id can only name one location in a sequence, so a link that
-   * held it for another location lets it go (that location stays the team's).
+   * held it for another location lets it go (that location stays the organization's).
    */
   const bind = async (
     sequenceId: string,
@@ -572,7 +572,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       await db.insert(sequenceLocationLinks).values({ sequenceId, ...bound });
     }
     // The place analysis made here for this script id has lost its only
-    // link to the writer's pick. Nothing uses it, so it leaves the team's
+    // link to the writer's pick. Nothing uses it, so it leaves the organization's
     // list (soft: its rows stay). One the writer attached is kept.
     if (holder && holder.locationId !== id && !holder.attached) {
       await db
@@ -698,7 +698,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
   };
 
   /**
-   * The team's locations for the Locations page and the pickers: one grouped
+   * The organization's locations for the Locations page and the pickers: one grouped
    * read over the links, with no stored column.
    *
    * Order: the most recently changed sequence using it, then how many
@@ -893,20 +893,20 @@ export function createLocationsMethods(db: Database, organizationId: string) {
 
     // ----- Reads from no sequence -----
 
-    /** Every location of the team, the most recently used first. */
+    /** Every location of the organization, the most recently used first. */
     listOrganization: async (): Promise<OrganizationLocation[]> =>
       await selectOrganization(undefined),
 
-    /** One of the team's locations, with the sequences that use it. */
+    /** One of the organization's locations, with the sequences that use it. */
     getOrganizationLocation: async (
       id: string
     ): Promise<OrganizationLocation | null> =>
       (await selectOrganization(eq(locations.id, id)))[0] ?? null,
 
-    /** One of the team's locations at its current version; null when gone. */
+    /** One of the organization's locations at its current version; null when gone. */
     getCurrent: currentOf,
 
-    /** The team's locations among `ids`, deleted ones left out. */
+    /** The organization's locations among `ids`, deleted ones left out. */
     getCurrentByIds: async (
       ids: readonly string[]
     ): Promise<LocationWithReference[]> => {
@@ -1076,7 +1076,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     /**
      * One analysis pass. Upserts on the sequence's script ids, so a
      * workflow-step retry after a partial commit converges. An entry
-     * matching bound to a team location is linked to it instead
+     * matching bound to an organization location is linked to it instead
      * ({@link AnalysedLocation}). One location per batch: each is its own
      * version append.
      */
@@ -1127,7 +1127,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Use one of the team's locations in `sequenceId`: one link. Nothing is
+     * Use one of the organization's locations in `sequenceId`: one link. Nothing is
      * copied: the sequence reads its bible and sheet as they are.
      *
      * Refused while a live location of the sequence already has its name.
@@ -1178,7 +1178,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Replace the location a sequence uses with another of the team's: the
+     * Replace the location a sequence uses with another of the organization's: the
      * link is re-pointed and keeps its script id, so every scene set there
      * now reads the other place. Nothing is drawn and nothing is copied; the
      * sequence's shots read stale by derivation.
@@ -1423,7 +1423,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
 
     /**
      * Remove from the sequence (undoable): the link's `removedAt`. The
-     * location stays the team's; scene continuity tags are NOT touched.
+     * location stays the organization's; scene continuity tags are NOT touched.
      * Returns the timestamp for the toast Undo; idempotent.
      */
     softDelete: async (
@@ -1483,7 +1483,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Delete from the team (soft, undoable). Refused while any sequence,
+     * Delete from the organization (soft, undoable). Refused while any sequence,
      * archived ones included, still uses it: one UPDATE with that condition,
      * so a sequence that attaches it between a check and this write still
      * stops it. Returns whether it was deleted.
@@ -1505,7 +1505,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       return result.length > 0;
     },
 
-    /** Undo a team delete. */
+    /** Undo an organization delete. */
     restoreForOrganization: async (id: string): Promise<void> => {
       await db
         .update(locations)

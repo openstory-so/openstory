@@ -83,7 +83,7 @@ function signedUpload(
 }
 
 // ---------------------------------------------------------------------------
-// Presign — one per media surface; all write under the caller team's prefix
+// Presign — one per media surface; all write under the caller organization's prefix
 // (`teams/<organizationId>/…`), which `resolveUploadTarget` enforces at PUT time.
 // ---------------------------------------------------------------------------
 
@@ -182,7 +182,7 @@ export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
 // ---------------------------------------------------------------------------
 
 // `sequenceId` null is the Characters page (#2017): the same upload, stored
-// under the team, with no sequence event or channel.
+// under the organization, with no sequence event or channel.
 const characterSheetPresignInput = z.object({
   sequenceId: ulidSchema.nullable(),
   characterId: ulidSchema,
@@ -222,7 +222,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   );
 
 // `sequenceId` null is the Locations page (#1695): the same upload, stored
-// under the team, with no sequence event or channel.
+// under the organization, with no sequence event or channel.
 const locationSheetPresignInput = z.object({
   sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,

@@ -40,7 +40,7 @@ function CharactersPage() {
         title="Characters"
         actions={session ? <NewCharacterDialog /> : undefined}
       >
-        Every character your team has. Use one in a script with @.
+        Every character your organization has. Use one in a script with @.
       </PageIntro>
       <PageContainer padding="none" className="pb-8">
         {session ? (
@@ -76,7 +76,7 @@ function CharactersPage() {
           <EmptyState
             icon={<User className="h-12 w-12" />}
             title="Sign in to see your characters"
-            description="Characters belong to your team."
+            description="Characters belong to your organization."
             action={<SignInButton />}
           />
         )}

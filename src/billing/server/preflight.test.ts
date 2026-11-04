@@ -188,7 +188,7 @@ describe('reserveRunCredits', () => {
     await expect(reserveRunCredits(db, COST)).resolves.toBeUndefined();
   });
 
-  it('creates an envelope when the team can pay', async () => {
+  it('creates an envelope when the organization can pay', async () => {
     const db = fakeScopedDb({ keys: [], canAfford: true });
     await expect(reserveRunCredits(db, COST)).resolves.toBe('res_1');
   });

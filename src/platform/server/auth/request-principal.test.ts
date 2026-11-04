@@ -32,7 +32,7 @@ const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
 const oauth = {
   userId: 'user_1',
-  organizationId: 'team_1',
+  organizationId: 'organization_1',
   clientId: 'c1',
   scopes: ['sequences:read'],
   audience: ['https://openstory.test/api/v1'],

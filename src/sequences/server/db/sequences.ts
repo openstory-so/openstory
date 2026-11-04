@@ -1,6 +1,6 @@
 /**
  * Scoped Sequences Sub-module
- * Team-scoped sequence CRUD and per-sequence update methods.
+ * Organization-scoped sequence CRUD and per-sequence update methods.
  */
 
 import { withSequencePosters } from './sequence-poster';
@@ -229,7 +229,7 @@ const insertStyleVersion = (
 // D1 caps a single query at 100 bound parameters. `listShotsByIds` binds one
 // param per sequence id plus the organizationId filter, so each query must stay under
 // that ceiling. We chunk the ids well below 100 and union the results; without
-// this a team with enough sequences overflows the limit (and previously tripped
+// this an organization with enough sequences overflows the limit (and previously tripped
 // the 500-item request cap on `getShotsForSequencesFn` — see #957).
 const SHOTS_BY_IDS_BATCH = 90;
 
@@ -248,7 +248,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
       return withSequencePosters(db, rows);
     },
 
-    /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */
+    /** The organization's archived sequences — the unarchive picker (#1108 Phase 4). */
     listArchived: async (): Promise<Sequence[]> => {
       return await selectSequences()
         .where(
@@ -261,7 +261,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Keyset-paginated, most-recent-first page of the team's non-archived
+     * Keyset-paginated, most-recent-first page of the organization's non-archived
      * sequences — backs the public `GET /api/v1/sequences` list. Ordered by
      * `(updatedAt, id)` descending so the `id` tiebreaker keeps the order total
      * even when several rows share an `updatedAt` second. Pass the last row's
@@ -295,7 +295,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Every style snapshot of a team sequence, oldest first (#1600).
+     * Every style snapshot of an organization sequence, oldest first (#1600).
      * Staleness causes diff the one live when an artifact was made against
      * the live one.
      */
@@ -346,7 +346,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
      * `shots.listBySequence` round-trips from the sequences list page — the
      * fan-out saturated iOS Chrome's connection pool and crashed the
      * WebProcess once organization accumulated >~50 sequences. organizationId filter is
-     * applied via the join so caller-supplied ids from another team simply
+     * applied via the join so caller-supplied ids from another organization simply
      * return nothing rather than leak.
      */
     listShotsByIds: async (
@@ -356,7 +356,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
       // Chunk the ids to stay under D1's bound-parameter ceiling. Each chunk
       // holds all of a sequence's shots (we split on sequence boundaries), so
       // per-sequence order is preserved; callers regroup by sequence id.
-      // Batches run one at a time so a team-wide list does not hold every
+      // Batches run one at a time so an organization-wide list does not hold every
       // raw page at once (#1897).
       const shotsOut: SequenceListShot[] = [];
       for (let i = 0; i < sequenceIds.length; i += SHOTS_BY_IDS_BATCH) {
@@ -506,7 +506,7 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
             })
             .from(shots)
             // organizationId is filtered through the join, so caller-supplied ids from
-            // another team return nothing rather than leak.
+            // another organization return nothing rather than leak.
             .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
             // Same anchor-frame and selection joins as `selectShotViewRows`:
             // all left, with `discardedAt` in the JOIN condition, so a shot
@@ -826,7 +826,7 @@ export function createSequencesMethods(
       targetDurationSeconds?: number | null;
     }): Promise<Sequence> => {
       // Scoped by organizationId like every other write here — `workflowRunId` in
-      // particular is the generation-mutex column (#839), so a cross-team id
+      // particular is the generation-mutex column (#839), so a cross-organization id
       // must never be able to stomp it.
       const { id, ...values } = params;
       const styleConfig =
@@ -983,8 +983,8 @@ export function createSequencesMethods(
       ),
 
     /**
-     * Hard-delete one of the team's sequences. Every statement names the
-     * team's sequence, so another team's id deletes nothing. Refused while a
+     * Hard-delete one of the organization's sequences. Every statement names the
+     * organization's sequence, so another organization's id deletes nothing. Refused while a
      * saved voice would be stranded: `releasedVoiceIds` are the ids from
      * `getVoiceIdsToReleaseOnDelete` the caller has run through
      * `releaseVoiceIfUnreferenced`.
@@ -1002,7 +1002,7 @@ export function createSequencesMethods(
             eq(sequences.organizationId, organizationId)
           )
         );
-      // A character belongs to the team (#2017): the sequence's cast links
+      // A character belongs to the organization (#2017): the sequence's cast links
       // go, and with them only the characters nothing else holds. Nothing
       // cascades from the sequence to a character, or from a character to
       // its rows, so all of it is deleted here, children first, in one batch.
@@ -1010,7 +1010,7 @@ export function createSequencesMethods(
       const theirs = own
         ? await charactersOnlyIn(db, organizationId, sequenceId)
         : sql`0`;
-      // A location is the team's too (#1695), by the same rule.
+      // A location is the organization's too (#1695), by the same rule.
       const theirLocations = own
         ? await locationsOnlyIn(db, organizationId, sequenceId)
         : sql`0`;

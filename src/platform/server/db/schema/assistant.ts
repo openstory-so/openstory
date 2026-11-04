@@ -1,7 +1,7 @@
 /**
  * In-app assistant (#2155): the chat threads a user holds with the MCP tool
  * set, and the three TanStack AI persistence stores behind them (messages,
- * runs, interrupts). A thread belongs to one user in one team; the stores
+ * runs, interrupts). A thread belongs to one user in one organization; the stores
  * key on TanStack's own ids (`threadId`, `runId`, `interruptId`) through a
  * unique column, while every row's primary key is still an app ULID.
  */

@@ -1,6 +1,6 @@
 /**
  * Server Function Middleware
- * Reusable middleware for authentication, team access, and resource validation
+ * Reusable middleware for authentication, organization access, and resource validation
  */
 
 import { scheduleFlushAnalytics } from '#flush-scheduler';
@@ -206,9 +206,9 @@ export const authRequestMiddleware = createMiddleware().server(
 );
 
 /**
- * Request auth + team middleware — for use with server routes (server.middleware).
+ * Request auth + organization middleware — for use with server routes (server.middleware).
  * Authenticates user, acts for the request's organization, and creates a scoped DB.
- * Throws 401 if no user, 403 if no team, 429 if a key is over its rate limit.
+ * Throws 401 if no user, 403 if no organization, 429 if a key is over its rate limit.
  */
 export const authWithOrganizationRequestMiddleware = createMiddleware().server(
   async ({ next, request }) => {
@@ -232,7 +232,7 @@ export const authWithOrganizationRequestMiddleware = createMiddleware().server(
         );
       }
       // OAuth tokens are scoped (an `osk_` key has the full API) and bill the
-      // team chosen at consent, which must still be one the user belongs to.
+      // organization chosen at consent, which must still be one the user belongs to.
       const { oauth } = principal;
       if (oauth) {
         const scope = requiredOAuthScope(request);
@@ -250,15 +250,15 @@ export const authWithOrganizationRequestMiddleware = createMiddleware().server(
         }
       }
 
-      const { team, compliance } = principal.organizationId
+      const { organization, compliance } = principal.organizationId
         ? await resolveOrganizationAndCompliance(
             principal.user.id,
             request.method,
             principal.organizationId
           )
-        : { team: null, compliance: null };
+        : { organization: null, compliance: null };
 
-      if (!team || !compliance) {
+      if (!organization || !compliance) {
         throw authErrorResponse(
           403,
           'NO_ORGANIZATION',
@@ -289,8 +289,11 @@ export const authWithOrganizationRequestMiddleware = createMiddleware().server(
           user: principal.user,
           session: principal.session,
           oauth: principal.oauth,
-          organizationId: team.organizationId,
-          scopedDb: createScopedDb(team.organizationId, principal.user.id),
+          organizationId: organization.organizationId,
+          scopedDb: createScopedDb(
+            organization.organizationId,
+            principal.user.id
+          ),
         },
       });
     } finally {
@@ -353,13 +356,13 @@ export const authWithOrganizationMiddleware = createMiddleware({
     if (!organizationId) {
       throw new Error('No active organization on this session');
     }
-    const { team, compliance } = await resolveOrganizationAndCompliance(
+    const { organization, compliance } = await resolveOrganizationAndCompliance(
       context.user.id,
       request.method,
       organizationId
     );
 
-    if (!team || !compliance) {
+    if (!organization || !compliance) {
       throw new Error('You are not a member of the active organization');
     }
 
@@ -384,9 +387,9 @@ export const authWithOrganizationMiddleware = createMiddleware({
 
     return next({
       context: {
-        organizationId: team.organizationId,
-        organizationName: team.organizationName,
-        scopedDb: createScopedDb(team.organizationId, context.user.id),
+        organizationId: organization.organizationId,
+        organizationName: organization.organizationName,
+        scopedDb: createScopedDb(organization.organizationId, context.user.id),
       },
     });
   });
@@ -416,7 +419,7 @@ export const systemAdminMiddleware = createMiddleware({ type: 'function' })
 
 /**
  * Sequence access middleware
- * Loads sequence and verifies team access
+ * Loads sequence and verifies organization access
  * Requires sequenceId in input data
  */
 export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
@@ -429,7 +432,7 @@ export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
 /**
  * Cast access (#2017): the sequence a character is worked on through, or
  * none (`sequenceId: null`) when the work is done from the Characters page.
- * `context.sequence` is then null, and the team is the caller's own.
+ * `context.sequence` is then null, and the organization is the caller's own.
  */
 export const castAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithOrganizationMiddleware])
@@ -450,7 +453,7 @@ export const castAccessMiddleware = createMiddleware({ type: 'function' })
     return next({ context: loaded });
   });
 
-/** The sequence, scoped to its team; a system admin reaches any team's. */
+/** The sequence, scoped to its organization; a system admin reaches any organization's. */
 async function loadSequence(
   context: {
     scopedDb: ScopedDb;
@@ -477,8 +480,8 @@ async function loadSequence(
 }
 
 /**
- * Team member access middleware
- * Verifies user has access to the specified team
+ * Organization member access middleware
+ * Verifies user has access to the specified organization
  * Requires organizationId in input data
  */
 export const organizationMemberAccessMiddleware = createMiddleware({
@@ -506,8 +509,8 @@ export const organizationMemberAccessMiddleware = createMiddleware({
   });
 
 /**
- * Team admin access middleware
- * Verifies user has admin access to the specified team
+ * Organization admin access middleware
+ * Verifies user has admin access to the specified organization
  * Requires organizationId in input data
  */
 export const organizationAdminAccessMiddleware = createMiddleware({
@@ -530,8 +533,8 @@ export const organizationAdminAccessMiddleware = createMiddleware({
   });
 
 /**
- * Team owner access middleware
- * Verifies user has owner access to the specified team
+ * Organization owner access middleware
+ * Verifies user has owner access to the specified organization
  * Requires organizationId in input data
  */
 export const organizationOwnerAccessMiddleware = createMiddleware({

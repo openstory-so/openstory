@@ -43,7 +43,7 @@ export function organizationUserUploadStoragePath(
 }
 
 /**
- * Prove a client-supplied talent/location URL may back a row: this team's
+ * Prove a client-supplied talent/location URL may back a row: this organization's
  * `uploads/` (or leftover `temp/`), actually present in R2.
  */
 export async function assertOrganizationUserUploadAttachable(params: {

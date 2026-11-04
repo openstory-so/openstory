@@ -20,7 +20,7 @@ const ORGANIZATION_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
 export type OrganizationMemberRole = (typeof ORGANIZATION_MEMBER_ROLES)[number];
 
 /**
- * Teams table
+ * Organizations table
  * Core organization entity for collaboration
  */
 export const organization = snakeCase.table(
@@ -71,7 +71,7 @@ export const member = snakeCase.table(
   ]
 );
 
-/** Better Auth `invitation`. Replaces `team_invitations` for new invites. */
+/** Better Auth `invitation`. */
 export const invitation = snakeCase.table(
   'invitation',
   {

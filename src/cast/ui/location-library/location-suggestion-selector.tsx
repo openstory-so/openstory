@@ -1,5 +1,5 @@
 /**
- * Where a new sequence is set (#1695): one button, one picker of the team's
+ * Where a new sequence is set (#1695): one button, one picker of the organization's
  * locations. A pick is a suggestion: analysis matches the script's places
  * against the picks and links the sequence to the ones that match.
  */
@@ -24,10 +24,10 @@ import { Check, MapPin, X } from 'lucide-react';
 import { useState } from 'react';
 
 type LocationSuggestionSelectorProps = {
-  /** The team's locations; undefined while they load. */
+  /** The organization's locations; undefined while they load. */
   locations: readonly OrganizationLocation[] | undefined;
   failed: boolean;
-  /** Signed out there is no team, so nothing to pick. */
+  /** Signed out there is no organization, so nothing to pick. */
   signedOut: boolean;
   selectedLocationIds: readonly string[];
   onSelectionChange: (ids: string[]) => void;
@@ -71,7 +71,7 @@ export const LocationSuggestionSelector: React.FC<
     selectedLocationIds.includes(l.id)
   );
   // A pick the list no longer has (deleted since, or a draft from another
-  // team). Shown and removable, not dropped.
+  // organization). Shown and removable, not dropped.
   const gone = locations
     ? selectedLocationIds.filter((id) => !locations.some((l) => l.id === id))
     : [];

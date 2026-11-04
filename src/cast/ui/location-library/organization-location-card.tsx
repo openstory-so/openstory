@@ -7,7 +7,7 @@ import { Link } from '@tanstack/react-router';
 import { MapPin } from 'lucide-react';
 import type React from 'react';
 
-/** One of the team's locations (#1695). The picture is its sheet. */
+/** One of the organization's locations (#1695). The picture is its sheet. */
 export const OrganizationLocationCard: React.FC<{
   location: OrganizationLocation;
   /** A sheet alternate waiting to be compared, shown as a corner dot. */

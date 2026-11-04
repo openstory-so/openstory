@@ -139,7 +139,7 @@ describe('completeOpenRouterOAuth', () => {
     ).rejects.toThrow('OAuth session expired or not found');
   });
 
-  it('throws when the state belongs to a different team', async () => {
+  it('throws when the state belongs to a different organization', async () => {
     await setStateCookie({
       ...validState,
       organizationId: '01JOTHERTEAM000000000000000',
@@ -156,7 +156,7 @@ describe('completeOpenRouterOAuth', () => {
         },
         scopedDb
       )
-    ).rejects.toThrow('OAuth state does not match the active team');
+    ).rejects.toThrow('OAuth state does not match the active organization');
     expect(exchangeCodeForKeyMock).not.toHaveBeenCalled();
   });
 

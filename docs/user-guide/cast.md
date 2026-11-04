@@ -49,13 +49,13 @@ What a character wears is a look: a name, **Clothing**, and **Hair, makeup, inju
 
 The character form has no clothing or distinguishing-features field: both belong to the default look. Text that was in Distinguishing Features shows in the default look's Hair, makeup, injuries. Other looks have only what you write for them. A permanent mark, such as a scar or a tattoo, belongs in Physical Description.
 
-## Your team's characters
+## Your organization's characters
 
-Every character belongs to your team. **Characters** in the main navigation lists all of them, most recently used first. Open a character to see which sequences cast it and how many shots it is in.
+Every character belongs to your organization. **Characters** in the main navigation lists all of them, most recently used first. Open a character to see which sequences cast it and how many shots it is in.
 
 Click **New character** to make one before there is a script: give it a name. Its page opens, the same page a sequence shows for it: fill in the rest of its bible, add, rename, edit or remove looks, generate or upload a sheet for each look, and design or pick a voice. Only what belongs to a sequence (its shots, **Remove**) waits for one. Use it in a script with `@`, or with **Add Character** on a cast panel. Analysis in that sequence keeps the character as you wrote it.
 
-A character stays in the team when a sequence removes it. To take one off the list, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it, and the message that follows has **Undo**. A saved voice stays with the character until it is deleted.
+A character stays in the organization when a sequence removes it. To take one off the list, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it, and the message that follows has **Undo**. A saved voice stays with the character until it is deleted.
 
 ## Using a character in another sequence
 
@@ -65,9 +65,9 @@ A character is reused only when you say so. Three ways:
 - **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast, with every look. Nothing else is stored in the text. On the new-sequence screen this is the same pick as the Cast picker's: deleting the name from the script does not remove it.
 - **On the cast panel**, click **Add Character** and pick the character. No script change. **New character** in the same picker makes one from scratch.
 
-Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into your team's other characters on its own.
+Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into your organization's other characters on its own.
 
-Two characters in one sequence cannot have the same name when one is added from the team: rename one first. If analysis itself makes two characters of one name, rename one before recording dialogue.
+Two characters in one sequence cannot have the same name when one is added from the organization: rename one first. If analysis itself makes two characters of one name, rename one before recording dialogue.
 
 ## Rendered As
 
@@ -87,4 +87,4 @@ Character sheet regeneration happens asynchronously. The UI subscribes to real-t
 
 ## Locations
 
-Locations work the same way: every location belongs to your team, and a sequence uses it rather than copying it. See [Locations](/docs/user-guide/locations).
+Locations work the same way: every location belongs to your organization, and a sequence uses it rather than copying it. See [Locations](/docs/user-guide/locations).

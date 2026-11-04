@@ -48,7 +48,7 @@ describe('exchangeDeviceCode', () => {
     await expect(exchangeDeviceCode('dc')).rejects.toThrow('db down');
   });
 
-  it('swaps the approved session for a team-scoped API key and drops the session', async () => {
+  it('swaps the approved session for an organization-scoped API key and drops the session', async () => {
     deviceToken.mockResolvedValueOnce({ access_token: 'sess-token' });
     findSession.mockResolvedValueOnce({
       user: { id: 'u1' },
@@ -56,14 +56,14 @@ describe('exchangeDeviceCode', () => {
     });
     getUserOrganizationMembership.mockResolvedValueOnce({
       organizationId: 't1',
-      organizationName: 'Team One',
+      organizationName: 'Organization One',
     });
     createApiKey.mockResolvedValueOnce({ key: 'osk_secret' });
 
     await expect(exchangeDeviceCode('dc')).resolves.toEqual({
       status: 'approved',
       apiKey: 'osk_secret',
-      team: { id: 't1', name: 'Team One' },
+      team: { id: 't1', name: 'Organization One' },
     });
     expect(deleteSession).toHaveBeenCalledWith('sess-token');
     expect(createApiKey).toHaveBeenCalledWith({

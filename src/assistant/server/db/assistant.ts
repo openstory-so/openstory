@@ -1,5 +1,5 @@
 /**
- * Scoped assistant rows (#2155): a user's threads in a team, and the
+ * Scoped assistant rows (#2155): a user's threads in an organization, and the
  * TanStack AI persistence stores (messages, runs, interrupts) behind one
  * thread. Every store is built for a thread this user owns, so a store can
  * never read or write across threads.
@@ -369,20 +369,20 @@ export function createAssistantMethods(
     eq(assistantThreads.userId, userId)
   );
   return {
-    /** The team's display name, for the system prompt and `whoami`. */
+    /** The organization's display name, for the system prompt and `whoami`. */
     organizationName: async (): Promise<string> => {
       const rows = await db
         .select({ name: organization.name })
         .from(organization)
         .where(eq(organization.id, organizationId))
         .limit(1);
-      // The team middleware resolved this team a moment ago.
-      if (!rows[0]) throw new Error(`team ${organizationId} not found`);
+      // The organization middleware resolved this organization a moment ago.
+      if (!rows[0]) throw new Error(`organization ${organizationId} not found`);
       return rows[0].name;
     },
 
     /**
-     * Whether `id` is this user's thread in this team, another's, or no
+     * Whether `id` is this user's thread in this organization, another's, or no
      * thread at all. A client holds a thread id across sign-ins, so the
      * difference decides between an empty hydrate and a 404.
      */
@@ -459,7 +459,7 @@ export function createAssistantMethods(
         .from(assistantThreads)
         .where(and(own, eq(assistantThreads.id, id)))
         .limit(1);
-      // The id exists but is not this user's in this team: a 404, which the
+      // The id exists but is not this user's in this organization: a 404, which the
       // client answers by starting a new thread.
       if (!existing[0]) {
         throw new NotFoundError('This chat is not yours.', {

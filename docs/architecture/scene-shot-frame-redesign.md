@@ -44,7 +44,7 @@ projects the newest non-discarded one as `previewThumbnailUrl` and
 
 ## Sequence preview
 
-The team and support lists resolve a sequence preview on read, from its first
+The organization and support lists resolve a sequence preview on read, from its first
 non-deleted shot (scene order, then shot number, then id). A narrow, batched
 query returns only that shot's selected video and anchor-frame image URLs.
 Priority: video's first frame, selected start frame, newest completed storyboard
@@ -319,10 +319,10 @@ through the variant manifest to that shot. A character link needs the
 character still cast on this sequence. A deleted target keeps its label and
 drops the link.
 
-A team-character edit, or a sheet, voice or bible started with no sequence
+An organization-character edit, or a sheet, voice or bible started with no sequence
 (`sequenceId` null, Characters page, #2017), writes no sequence event and is
 not fanned out to every sequence that casts the character. Location claims
-are not sequence-scoped. There is no team-level log.
+are not sequence-scoped. There is no organization-level log.
 
 ## Backfill & migration safety
 

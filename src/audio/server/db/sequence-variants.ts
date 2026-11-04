@@ -555,7 +555,7 @@ export function createSequenceVariantsMethods(db: Database) {
 
     // ── Divergent (parked) tracks ─────────────────────────────────────────
     /**
-     * Aggregate parked-track counts across a team's sequences. Powers the
+     * Aggregate parked-track counts across an organization's sequences. Powers the
      * corner-dot indicator on the sequence dashboard — a single round-trip
      * keyed by `organizationId` instead of N per-sequence calls.
      */

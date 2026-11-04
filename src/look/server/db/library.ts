@@ -1,6 +1,6 @@
 /**
  * Scoped Library Sub-module
- * Team-scoped library resource aggregation (styles, vfx, audio).
+ * Organization-scoped library resource aggregation (styles, vfx, audio).
  */
 
 import { asc, desc, eq } from 'drizzle-orm';

@@ -23,7 +23,7 @@ import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 let closeDb: () => Promise<void>;
 let db: Database;
 
-const team = { id: '', name: 'T', slug: 't' };
+const seedOrganization = { id: '', name: 'T', slug: 't' };
 const userRow = { id: '', name: 'U', email: 'u@example.com' };
 let sequenceId = '';
 
@@ -35,16 +35,16 @@ async function seed() {
   await db.delete(organization);
   await db.delete(user);
 
-  team.id = generateId();
+  seedOrganization.id = generateId();
   userRow.id = generateId();
   sequenceId = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(organization).values([team]);
+  await db.insert(organization).values([seedOrganization]);
   const [style] = await db
     .insert(styles)
     .values({
-      organizationId: team.id,
+      organizationId: seedOrganization.id,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -61,7 +61,7 @@ async function seed() {
   await db.insert(sequences).values([
     {
       id: sequenceId,
-      organizationId: team.id,
+      organizationId: seedOrganization.id,
       title: 'S',
       styleId: style.id,
     },
@@ -454,10 +454,10 @@ describe('music claim lifecycle (#1115)', () => {
 });
 
 describe('listDivergentByOrganization', () => {
-  it('excludes variants belonging to a different team and excludes discarded rows', async () => {
+  it('excludes variants belonging to a different organization and excludes discarded rows', async () => {
     const methods = createSequenceVariantsMethods(db);
 
-    // Build a second team with its own sequence sharing the same style.
+    // Build a second organization with its own sequence sharing the same style.
     const otherOrganizationId = generateId();
     await db.insert(organization).values({
       id: otherOrganizationId,
@@ -490,25 +490,25 @@ describe('listDivergentByOrganization', () => {
       styleId: otherStyle.id,
     });
 
-    // Add a second sequence on the seed team so we can test the
+    // Add a second sequence on the seed organization so we can test the
     // "two sequences => two rows" axis.
     const secondSeedSequenceId = generateId();
     const [seedStyle] = await db
       .select()
       .from(styles)
-      .where(eq(styles.organizationId, team.id));
+      .where(eq(styles.organizationId, seedOrganization.id));
     if (!seedStyle)
       throw new Error('test setup: seedStyle lookup returned nothing');
     await db.insert(sequences).values({
       id: secondSeedSequenceId,
-      organizationId: team.id,
+      organizationId: seedOrganization.id,
       title: 'S2',
       styleId: seedStyle.id,
     });
 
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
-    // Live divergent music on the seed team's primary sequence.
+    // Live divergent music on the seed organization's primary sequence.
     await db.insert(sequenceMusicVariants).values({
       sequenceId,
       model: 'cassette',
@@ -518,7 +518,7 @@ describe('listDivergentByOrganization', () => {
       divergedAt,
     });
 
-    // Live divergent music on the second seed-team sequence (separate row).
+    // Live divergent music on the second seed-organization sequence (separate row).
     await db.insert(sequenceMusicVariants).values({
       sequenceId: secondSeedSequenceId,
       model: 'cassette',
@@ -528,7 +528,7 @@ describe('listDivergentByOrganization', () => {
       divergedAt,
     });
 
-    // Discarded divergent music on the seed team — must be excluded.
+    // Discarded divergent music on the seed organization — must be excluded.
     await db.insert(sequenceMusicVariants).values({
       sequenceId: secondSeedSequenceId,
       model: 'cassette',
@@ -539,7 +539,7 @@ describe('listDivergentByOrganization', () => {
       discardedAt: new Date('2026-04-30T00:00:00Z'),
     });
 
-    // Live divergent music on the OTHER team — must be excluded by team scope.
+    // Live divergent music on the OTHER organization — must be excluded by organization scope.
     await db.insert(sequenceMusicVariants).values({
       sequenceId: otherSequenceId,
       model: 'cassette',
@@ -549,7 +549,7 @@ describe('listDivergentByOrganization', () => {
       divergedAt,
     });
 
-    const rows = await methods.listDivergentByOrganization(team.id);
+    const rows = await methods.listDivergentByOrganization(seedOrganization.id);
     const byId = new Map(rows.map((r) => [r.sequenceId, r]));
 
     expect(rows).toHaveLength(2);
@@ -561,7 +561,7 @@ describe('listDivergentByOrganization', () => {
       sequenceId: secondSeedSequenceId,
       hasMusic: true,
     });
-    // Other team's sequence must not appear.
+    // Other organization's sequence must not appear.
     expect(byId.has(otherSequenceId)).toBe(false);
   });
 });

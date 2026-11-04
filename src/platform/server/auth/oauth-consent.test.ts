@@ -23,7 +23,7 @@ vi.doMock('./config', () => ({
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
   getUserOrganizationMembership,
-  listUserOrganizations: async () => [{ id: 'team_1', name: 'T' }],
+  listUserOrganizations: async () => [{ id: 'organization_1', name: 'T' }],
   revokeOAuthGrantTokens,
 }));
 
@@ -52,7 +52,7 @@ beforeEach(() => {
   revokeOAuthGrantTokens.mockReset();
   getUserOrganizationMembership.mockReset();
   getUserOrganizationMembership.mockResolvedValue({
-    organizationId: 'team_1',
+    organizationId: 'organization_1',
     organizationName: 'T',
   });
 });
@@ -72,14 +72,14 @@ describe('loadOAuthConsentContext', () => {
     );
     const result = await loadOAuthConsentContext({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       clientId: 'gone',
       scope: '',
       headers: new Headers(),
     });
     expect(result.client).toBeNull();
-    expect(result.organizations).toEqual([{ id: 'team_1', name: 'T' }]);
-    expect(result.activeOrganizationId).toBe('team_1');
+    expect(result.organizations).toEqual([{ id: 'organization_1', name: 'T' }]);
+    expect(result.activeOrganizationId).toBe('organization_1');
   });
 
   it('rethrows non-404 client lookup errors', async () => {
@@ -89,7 +89,7 @@ describe('loadOAuthConsentContext', () => {
     await expect(
       loadOAuthConsentContext({
         userId: 'user_1',
-        organizationId: 'team_1',
+        organizationId: 'organization_1',
         clientId: 'c1',
         scope: '',
         headers: new Headers(),
@@ -202,17 +202,17 @@ describe('decideOAuthConsent', () => {
     });
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin }),
     });
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
     // The grant is stamped with the picked organization, not the active one.
-    expect(picked).toBe('team_1');
+    expect(picked).toBe('organization_1');
     expect(getUserOrganizationMembership).toHaveBeenCalledWith(
       'user_1',
-      'team_1'
+      'organization_1'
     );
   });
 
@@ -224,7 +224,7 @@ describe('decideOAuthConsent', () => {
     );
     await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
       headers: new Headers({ origin }),
@@ -245,7 +245,7 @@ describe('decideOAuthConsent', () => {
     );
     await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({
@@ -271,7 +271,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin }),
@@ -287,7 +287,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: 'client_id=c1',
       headers: new Headers({ origin: 'http://localhost:3002' }),
@@ -304,7 +304,7 @@ describe('decideOAuthConsent', () => {
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
-      organizationId: 'team_1',
+      organizationId: 'organization_1',
       accept: true,
       oauthQuery: signedQuery,
       headers: new Headers({ origin }),
@@ -325,7 +325,7 @@ describe('decideOAuthConsent', () => {
     await expect(
       decideOAuthConsent({
         userId: 'user_1',
-        organizationId: 'team_1',
+        organizationId: 'organization_1',
         accept: true,
         oauthQuery: 'client_id=c1',
         headers: new Headers({ origin }),

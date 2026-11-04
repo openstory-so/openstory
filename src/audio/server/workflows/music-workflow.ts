@@ -133,7 +133,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         : // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           (input.duration ?? 60);
 
-    // Deduct credits (skip if team used own fal key)
+    // Deduct credits (skip if organization used own fal key)
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     const musicCostMicros = audioResult.metadata?.cost ?? ZERO_MICROS;
     // Before the deduction guard — see recordFalUsageStep (#1069). Guarded

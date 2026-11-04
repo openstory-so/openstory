@@ -60,7 +60,7 @@ export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
           <strong>Email:</strong> {userEmail}
         </Text>
         <Text style={detailRowStyle}>
-          <strong>Team:</strong> {organizationId}
+          <strong>Organization:</strong> {organizationId}
         </Text>
       </Section>
 

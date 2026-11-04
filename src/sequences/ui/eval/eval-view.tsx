@@ -239,7 +239,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
   );
 
   // Styles let search match a style's name and resolve ids → names for the
-  // filter dropdown. The list covers the team's styles plus public ones.
+  // filter dropdown. The list covers the organization's styles plus public ones.
   const { data: styles } = useStyles();
   const styleNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -261,9 +261,9 @@ export const EvalView: React.FC<EvalViewProps> = ({
   const error = supportMode ? adminData.error : ownData.error;
 
   // Only offer styles that actually appear in the loaded sequences — listing
-  // every team/public style would clutter the filter with options that match
+  // every organization/public style would clutter the filter with options that match
   // nothing. Fall back to the raw styleId when a name isn't resolvable (e.g. a
-  // cross-team style in support mode) so the option still filters correctly.
+  // cross-organization style in support mode) so the option still filters correctly.
   const styleOptions = useMemo(() => {
     const seen = new Map<string, string>();
     for (const seq of sequences) {
@@ -276,7 +276,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
     return [{ value: 'all', label: 'All Styles' }, ...options];
   }, [sequences, styleNameById]);
 
-  // Team-scoped divergence flags so own-data rows show a "variants available"
+  // Organization-scoped divergence flags so own-data rows show a "variants available"
   // dot. In support mode rows belong to other organizations, so the flag is irrelevant.
   const { data: divergentByOrganization } =
     useOrganizationDivergentSequenceVariants(
@@ -454,7 +454,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
         </Button>
       )}
       {/* Archived strip (#1108 Phase 4) — own-data only; renders nothing when
-          the team has no archived sequences. */}
+          the organization has no archived sequences. */}
       {!supportMode && <ArchivedSequences />}
     </div>
   );

@@ -125,7 +125,7 @@ describe('reconcileFalBilling', () => {
     const id = `tx-${opts.requestId}`;
     await db.insert(transactions).values({
       id,
-      organizationId: 'team-1',
+      organizationId: 'organization-1',
       type: 'credit_usage',
       amount: -opts.costMicros,
       balanceAfter: 0,
@@ -142,7 +142,7 @@ describe('reconcileFalBilling', () => {
     // transactions.organizationId FK needs a parent row.
     await db
       .insert(organization)
-      .values({ id: 'team-1', name: 't', slug: 'team-1-slug' })
+      .values({ id: 'organization-1', name: 't', slug: 'organization-1-slug' })
       .onConflictDoNothing();
     await db.delete(modelPricing);
     await db.delete(modelPricingHistory);

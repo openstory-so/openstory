@@ -1,13 +1,13 @@
 /**
- * Query keys for locations (#1695). A location is the team's, so one edit
- * can move the team list, every sequence's list and the sheet lists:
+ * Query keys for locations (#1695). A location is the organization's, so one edit
+ * can move the organization list, every sequence's list and the sheet lists:
  * `invalidateLocations` refetches them all.
  */
 import type { QueryClient } from '@tanstack/react-query';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 
-/** A read made from no sequence (the Locations page) is keyed `team`. */
-const scope = (sequenceId: string | null) => sequenceId ?? 'team';
+/** A read made from no sequence (the Locations page) is keyed `organization`. */
+const scope = (sequenceId: string | null) => sequenceId ?? 'organization';
 
 export const sequenceLocationKeys = {
   all: ['sequence-locations'] as const,
@@ -32,7 +32,7 @@ export const sequenceLocationKeys = {
 };
 
 export const organizationLocationKeys = {
-  all: ['team-locations'] as const,
+  all: ['organization-locations'] as const,
   list: () => [...organizationLocationKeys.all, 'list'] as const,
   detail: (id: string) =>
     [...organizationLocationKeys.all, 'detail', id] as const,
@@ -40,7 +40,7 @@ export const organizationLocationKeys = {
 
 export const locationSheetVariantKeys = {
   all: ['location-sheet-variants'] as const,
-  /** Every divergent-alternate list: one location's and the team's. */
+  /** Every divergent-alternate list: one location's and the organization's. */
   divergent: () => [...locationSheetVariantKeys.all, 'divergent'] as const,
   divergentByLocation: (sequenceId: string | null, locationDbId: string) =>
     [
@@ -49,7 +49,7 @@ export const locationSheetVariantKeys = {
       locationDbId,
     ] as const,
   divergentByOrganization: () =>
-    [...locationSheetVariantKeys.divergent(), 'team'] as const,
+    [...locationSheetVariantKeys.divergent(), 'organization'] as const,
   history: (sequenceId: string | null, locationDbId: string) =>
     [
       ...locationSheetVariantKeys.all,
@@ -60,7 +60,7 @@ export const locationSheetVariantKeys = {
 };
 
 /**
- * Refetch everything a location write can move: the team list, every
+ * Refetch everything a location write can move: the organization list, every
  * sequence's locations, the sheet versions and the staleness dots. Returns
  * the sequence refetch so a caller can stay pending until it lands.
  */

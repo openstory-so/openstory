@@ -1,6 +1,6 @@
 /**
  * Agent plan → execute → status (#1460) on migrated SQLite, so sequence,
- * scene and shot access is the real team scope. The editor's planners,
+ * scene and shot access is the real organization scope. The editor's planners,
  * pricing, credit check and launchers are mocked: their behaviour has its
  * own tests; these pin the contract around them.
  */
@@ -28,7 +28,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team scope, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real organization scope, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import { dbSceneId } from '@/shots/scene-id';
 import { asStub } from '@/test/as-stub';
@@ -507,7 +507,7 @@ describe('get_operation_status', () => {
     expect(getWorkflowRunOutcome).not.toHaveBeenCalled();
   });
 
-  it('refuses a run id that is not this sequence’s, and another team’s sequence', async () => {
+  it('refuses a run id that is not this sequence’s, and another organization’s sequence', async () => {
     await expect(
       status([`local_update-stale-shots_${generateId()}-plan-k`])
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });

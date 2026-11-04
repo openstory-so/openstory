@@ -38,7 +38,7 @@ export function applyBalanceEvent(
 }
 
 /**
- * @param organizationId - Active team; subscription is a no-op while undefined
+ * @param organizationId - Active organization; subscription is a no-op while undefined
  * @param enabled - True only while the credit pill is on-screen
  */
 export function useBillingBalanceRealtime(

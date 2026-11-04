@@ -54,7 +54,7 @@ export function giftRedeemOffersTopUp(reason: GiftRedeemReason): boolean {
 }
 
 /**
- * A row already exists for this team. The person who redeemed it hears that
+ * A row already exists for this organization. The person who redeemed it hears that
  * they did; anyone else on the account hears the one-per-account limit.
  * A missing holder (deleted user) is the account limit.
  */

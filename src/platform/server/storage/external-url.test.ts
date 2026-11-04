@@ -38,8 +38,10 @@ describe('ensureExternallyFetchableUrl', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
 
     await expect(
-      ensureExternallyFetchableUrl('/r2/thumbnails/team/shot.png')
-    ).resolves.toBe('https://storage.example.com/thumbnails/team/shot.png');
+      ensureExternallyFetchableUrl('/r2/thumbnails/organization/shot.png')
+    ).resolves.toBe(
+      'https://storage.example.com/thumbnails/organization/shot.png'
+    );
 
     expect(readStorageObject).not.toHaveBeenCalled();
     expect(falUpload).not.toHaveBeenCalled();
@@ -68,8 +70,8 @@ describe('ensureExternallyFetchableUrl', () => {
     setEnv({ E2E_TEST: 'true' });
 
     await expect(
-      ensureExternallyFetchableUrl('/r2/elements/team/el.png')
-    ).resolves.toBe('/r2/elements/team/el.png');
+      ensureExternallyFetchableUrl('/r2/elements/organization/el.png')
+    ).resolves.toBe('/r2/elements/organization/el.png');
 
     expect(readStorageObject).not.toHaveBeenCalled();
     expect(falUpload).not.toHaveBeenCalled();
@@ -84,10 +86,12 @@ describe('ensureExternallyFetchableUrl', () => {
     falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.png');
 
     await expect(
-      ensureExternallyFetchableUrl('/r2/thumbnails/team/shot.png')
+      ensureExternallyFetchableUrl('/r2/thumbnails/organization/shot.png')
     ).resolves.toBe('https://v3.fal.media/files/b/abc/shot.png');
 
-    expect(readStorageObject).toHaveBeenCalledWith('thumbnails/team/shot.png');
+    expect(readStorageObject).toHaveBeenCalledWith(
+      'thumbnails/organization/shot.png'
+    );
     const uploaded = falUpload.mock.calls[0]?.[0];
     expect(uploaded?.name).toBe('shot.png');
     expect(uploaded?.type).toBe('image/png');
@@ -104,13 +108,13 @@ describe('ensureExternallyFetchableUrl', () => {
 
     await expect(
       ensureExternallyFetchableUrl(
-        '/r2/thumbnails/team/shot.png',
-        'byok-team-key'
+        '/r2/thumbnails/organization/shot.png',
+        'byok-organization-key'
       )
     ).resolves.toBe('https://v3.fal.media/files/b/abc/shot.png');
 
     expect(createFalClient).toHaveBeenCalledWith({
-      credentials: 'byok-team-key',
+      credentials: 'byok-organization-key',
     });
   });
 
@@ -122,7 +126,7 @@ describe('ensureExternallyFetchableUrl', () => {
     });
     falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.png');
 
-    await ensureExternallyFetchableUrl('/r2/thumbnails/team/shot.png');
+    await ensureExternallyFetchableUrl('/r2/thumbnails/organization/shot.png');
 
     expect(createFalClient).toHaveBeenCalledWith({
       credentials: 'platform-key',
@@ -133,7 +137,7 @@ describe('ensureExternallyFetchableUrl', () => {
     readStorageObject.mockResolvedValue(null);
 
     await expect(
-      ensureExternallyFetchableUrl('/r2/thumbnails/team/missing.png')
+      ensureExternallyFetchableUrl('/r2/thumbnails/organization/missing.png')
     ).rejects.toThrow(/not found/);
 
     expect(falUpload).not.toHaveBeenCalled();
@@ -146,11 +150,11 @@ describe('ensureExternallyFetchableUrls', () => {
 
     await expect(
       ensureExternallyFetchableUrls([
-        '/r2/talent/team/ref.png',
+        '/r2/talent/organization/ref.png',
         'https://v3.fal.media/files/b/abc/out.png',
       ])
     ).resolves.toEqual([
-      'https://storage.example.com/talent/team/ref.png',
+      'https://storage.example.com/talent/organization/ref.png',
       'https://v3.fal.media/files/b/abc/out.png',
     ]);
   });
@@ -164,12 +168,12 @@ describe('ensureExternallyFetchableUrls', () => {
     falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/ref.png');
 
     await ensureExternallyFetchableUrls(
-      ['/r2/talent/team/ref.png'],
-      'byok-team-key'
+      ['/r2/talent/organization/ref.png'],
+      'byok-organization-key'
     );
 
     expect(createFalClient).toHaveBeenCalledWith({
-      credentials: 'byok-team-key',
+      credentials: 'byok-organization-key',
     });
   });
 });
@@ -179,10 +183,10 @@ describe('toVisionImageSource', () => {
     setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.png')
+      toVisionImageSource('/r2/elements/organization/el.png')
     ).resolves.toEqual({
       type: 'url',
-      value: 'https://storage.example.com/elements/team/el.png',
+      value: 'https://storage.example.com/elements/organization/el.png',
     });
     expect(readStorageObject).not.toHaveBeenCalled();
   });
@@ -200,8 +204,11 @@ describe('toVisionImageSource', () => {
     setEnv({ E2E_TEST: 'true' });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.png')
-    ).resolves.toEqual({ type: 'url', value: '/r2/elements/team/el.png' });
+      toVisionImageSource('/r2/elements/organization/el.png')
+    ).resolves.toEqual({
+      type: 'url',
+      value: '/r2/elements/organization/el.png',
+    });
     expect(readStorageObject).not.toHaveBeenCalled();
   });
 
@@ -214,7 +221,7 @@ describe('toVisionImageSource', () => {
     falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/el.jpg');
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.jpg')
+      toVisionImageSource('/r2/elements/organization/el.jpg')
     ).resolves.toEqual({
       type: 'url',
       value: 'https://v3.fal.media/files/b/abc/el.jpg',
@@ -228,13 +235,15 @@ describe('toVisionImageSource', () => {
     });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.png')
+      toVisionImageSource('/r2/elements/organization/el.png')
     ).resolves.toEqual({
       type: 'data',
       value: Buffer.from(PNG_BYTES).toString('base64'),
       mimeType: 'image/png',
     });
-    expect(readStorageObject).toHaveBeenCalledWith('elements/team/el.png');
+    expect(readStorageObject).toHaveBeenCalledWith(
+      'elements/organization/el.png'
+    );
     expect(falUpload).not.toHaveBeenCalled();
   });
 
@@ -248,7 +257,7 @@ describe('toVisionImageSource', () => {
     });
 
     await expect(
-      toVisionImageSource('/r2/thumbnails/team/shot.jpg')
+      toVisionImageSource('/r2/thumbnails/organization/shot.jpg')
     ).resolves.toMatchObject({ type: 'data', mimeType: 'image/png' });
   });
 
@@ -260,7 +269,7 @@ describe('toVisionImageSource', () => {
     });
     falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.jpg');
 
-    await toVisionImageSource('/r2/thumbnails/team/shot.jpg');
+    await toVisionImageSource('/r2/thumbnails/organization/shot.jpg');
 
     expect(falUpload.mock.calls[0]?.[0].type).toBe('image/png');
   });
@@ -269,7 +278,7 @@ describe('toVisionImageSource', () => {
     readStorageObject.mockResolvedValue({ bytes: PNG_BYTES, contentType: '' });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.png')
+      toVisionImageSource('/r2/elements/organization/el.png')
     ).resolves.toMatchObject({ type: 'data', mimeType: 'image/png' });
   });
 
@@ -277,7 +286,7 @@ describe('toVisionImageSource', () => {
     readStorageObject.mockResolvedValue(null);
 
     await expect(
-      toVisionImageSource('/r2/elements/team/missing.png')
+      toVisionImageSource('/r2/elements/organization/missing.png')
     ).rejects.toThrow(/not found/);
   });
 
@@ -292,7 +301,7 @@ describe('toVisionImageSource', () => {
     });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.png', undefined, {
+      toVisionImageSource('/r2/elements/organization/el.png', undefined, {
         inline: true,
       })
     ).resolves.toEqual({

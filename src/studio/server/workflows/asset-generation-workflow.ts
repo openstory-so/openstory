@@ -2,7 +2,7 @@
  * Asset generation workflow (#458 — direct model access).
  *
  * Runs an ARBITRARY fal endpoint (validated + credit-gated upstream in
- * `createGeneratedAssetFn`) and lands the outputs as a flat team asset:
+ * `createGeneratedAssetFn`) and lands the outputs as a flat organization asset:
  *
  *   1. set-running — flips the reserved `generated_assets` row to 'running'.
  *   2. submit-asset-job — submits to the fal queue (raw `@fal-ai/client`
@@ -197,7 +197,7 @@ export type AssetPersistScopedDb = {
 };
 
 /**
- * Resolve the fal key (BYOK via team key, platform fallback) and apply it to
+ * Resolve the fal key (BYOK via organization key, platform fallback) and apply it to
  * the `fal` singleton — the same singleton `configureFalProxyFromEnv` routes
  * through the e2e proxy, and the same `fal.config({ credentials })` call the
  * @tanstack/ai-fal adapters make. Called inside every step that talks to fal,

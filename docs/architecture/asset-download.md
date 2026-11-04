@@ -16,7 +16,7 @@ A row is downloadable when its status is `completed` and the bytes are in R2. Th
 
 `selected` is the current pointers. A discarded row stays out even when a pointer still names it. `history` adds every completed stored still, clip, sheet, voice take, speech, and music row, including discarded ones (`discarded: true`). It does not add older scripts or prompts: both scopes use the current script and each shot's selected motion prompt. History is opt-in.
 
-Cast, location, and style files are `shared: true`. They belong to the team. The sequence folder still holds a copy. The CLI keeps one team cache at `~/.openstory/assets/` and hard-links it into the folder (a copy when the link crosses devices). The cache file is named from the stored `/r2` path, so a sheet and its portrait never share bytes. A text row with no url is named from its `versionId` and extension.
+Cast, location, and style files are `shared: true`. They belong to the organization. The sequence folder still holds a copy. The CLI keeps one organization cache at `~/.openstory/assets/` and hard-links it into the folder (a copy when the link crosses devices). The cache file is named from the stored `/r2` path, so a sheet and its portrait never share bytes. A text row with no url is named from its `versionId` and extension.
 
 ## Folder
 

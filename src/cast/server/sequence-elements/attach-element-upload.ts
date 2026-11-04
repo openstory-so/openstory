@@ -43,7 +43,7 @@ async function triggerElementVision(params: {
 }
 
 /**
- * Prove a client-supplied element key may back a row: inside the team's
+ * Prove a client-supplied element key may back a row: inside the organization's
  * namespace, actually present in R2, and — for an image or a clip — cleared or signed
  * on the likeness ledger (#1581). The existence check is not paranoia —
  * the move it replaced (#1471) was the only thing proving the object existed,
@@ -62,7 +62,7 @@ async function assertElementUploadAttachable(params: {
   const { scopedDb, path, filename, organizationId } = params;
   if (!isValidElementStoragePath(path, organizationId)) {
     throw new ValidationError(
-      `Element "${filename}" could not be attached: its upload is outside this team's storage.`
+      `Element "${filename}" could not be attached: its upload is outside this organization's storage.`
     );
   }
   if (!(await fileExists(STORAGE_BUCKETS.ELEMENTS, elementBucketPath(path)))) {

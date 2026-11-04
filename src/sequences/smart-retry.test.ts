@@ -473,7 +473,7 @@ function resetMocks() {
 }
 
 describe('executeSmartRetry — music credits', () => {
-  test('blocks native music for a fal BYOK team with insufficient credits', async () => {
+  test('blocks native music for a fal BYOK organization with insufficient credits', async () => {
     resetMocks();
     reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
     const { context, createReservation, claimMusic } = makeContext(
@@ -1183,7 +1183,7 @@ describe('executeSmartRetry — planned retry (#1461)', () => {
     );
     const plan = await executeSmartRetry(context, { dryRun: true });
     expect(plan.planned.music).toBe(true);
-    // ElevenLabs music spends the platform key: no team key waives the plan.
+    // ElevenLabs music spends the platform key: no organization key waives the plan.
     expect(plan.creditProviders).toEqual([]);
     expect(claimMusic).not.toHaveBeenCalled();
     expect(createReservation).not.toHaveBeenCalled();

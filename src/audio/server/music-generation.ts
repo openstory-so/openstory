@@ -386,7 +386,7 @@ async function callFalAudio(
       duration: billedDuration,
       cost,
       generatedAt: new Date().toISOString(),
-      usedOwnKey: falApiKeyInfo.source === 'team',
+      usedOwnKey: falApiKeyInfo.source === 'organization',
     },
   };
 }

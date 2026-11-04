@@ -1,6 +1,6 @@
-# Team characters (#2017)
+# Organization characters (#2017)
 
-A character belongs to the team. A sequence (an episode) never copies one and
+A character belongs to the organization. A sequence (an episode) never copies one and
 never keeps a version of one: it holds a **cast link**, and reads the
 character as it is now. A lead who is in 100 episodes is one character, with
 one bible, one voice, one set of looks and one sheet per look. An edit from
@@ -9,19 +9,19 @@ is staleness's job (`prompt-staleness-dependency-graph.md`), never a
 pointer's.
 
 This doc covers the tables, every read and write going through the cast
-link, the Characters page, attaching a team character to a sequence and
+link, the Characters page, attaching an organization character to a sequence and
 what analysis does with the attached cast (#2050), and making and editing a
 character with no sequence (#2065).
 
-Locations work the same way since #1695: a location belongs to the team and
-a sequence holds a link to it. See `team-locations.md`.
+Locations work the same way since #1695: a location belongs to the organization and
+a sequence holds a link to it. See `organization-locations.md`.
 
 ## Data
 
-- **`characters`** — identity: `teamId`, the current bible version
+- **`characters`** — identity: `organizationId`, the current bible version
   (`selectedBibleVersionId`), the current voice version
   (`selectedVoiceVersionId`) and its claim, `useVoice`, and `deletedAt`
-  (deleted from the team, #2065). Bible versions, looks, sheets and voice
+  (deleted from the organization, #2065). Bible versions, looks, sheets and voice
   versions are keyed by the character id.
 - **`character_bible_versions`** carries `rendering` (`src/cast/rendering.ts`): what the
   character is rendered as, required unless voice-only (`renderingFor`, in
@@ -56,7 +56,7 @@ Both FKs on `sequence_cast` are `restrict`: deletes are done in app code
 ## One read shape
 
 `scopedDb.characters` reads come through the cast link and are scoped to the
-team. Each returns the character at its current version plus the link's own
+organization. Each returns the character at its current version plus the link's own
 fields, under the names the character's own columns had, so callers did not
 change:
 
@@ -119,7 +119,7 @@ What follows from one character in two sequences:
 
 ## Characters page
 
-- **`/characters`** is on the sidebar. It lists the team's characters, all
+- **`/characters`** is on the sidebar. It lists the organization's characters, all
   of them. Signed out, the page asks to sign in.
 - **The list** is `characters.listOrganization`: one grouped read over the cast
   links, with no stored column.
@@ -152,7 +152,7 @@ What follows from one character in two sequences:
     (`resolveSheetImageModel` with no sequence model); the sheet reads no
     style anyway (`rendering`). A digest stamped before `rendering` reads
     stale there, since there is no style to verify it with.
-  - The run stores under `<team>/team/<character>/` and reports on the
+  - The run stores under `<organization>/team/<character>/` and reports on the
     character's own channel, `castChannelId(null, id)` =
     `character:<id>`; the page listens on the same id. Through a sequence
     the channel is the sequence's, as before. `CharacterSheetWorkflowInput`
@@ -184,7 +184,7 @@ What follows from one character in two sequences:
   archived ones included, casts the character (`OrganizationCharacter.castAnywhere`,
   the server's own condition). It is soft: `characters.deleted_at` is
   stamped, the character leaves the list, the `@` picker and every other
-  team read (`selectOrganization`, `attach`, the no-sequence writes), and every row
+  organization read (`selectOrganization`, `attach`, the no-sequence writes), and every row
   of it stays. The toast's Undo clears the stamp (`restoreOrganizationCharacterFn`).
   - Refused while any sequence, archived ones included, has a link to it
     that is not removed (`getCastInAnySequenceOrArchive`). The write
@@ -199,13 +199,13 @@ What follows from one character in two sequences:
     there (`characters.create`).
   - `characters.deleted_at` is not `sequence_cast.removed_at`. A cast read's
     `deletedAt` is still its link's `removedAt`.
-- **Every team character** is on the list, in `list_library_characters`
+- **Every organization character** is on the list, in `list_library_characters`
   and in the `@` picker (#2065). The tool keeps its name.
 
 ## Attach and `@` references (#2050)
 
 A character is reused only when the writer says so. Analysis never reads the
-team's other characters; a character reaches a sequence by an attach, and
+organization's other characters; a character reaches a sequence by an attach, and
 the script then names her like any cast member.
 
 - **Nothing is stored in the text.** The script holds her name in capitals,
@@ -220,14 +220,14 @@ the script then names her like any cast member.
   back a removed link through the attach sets `attached` too, whatever it
   was: the writer picked her again. (A `restore` from the bin, and an
   analysis revive, leave it.)
-- **Refused** unless the sequence is the team's (`NotFoundError`, checked in
+- **Refused** unless the sequence is the organization's (`NotFoundError`, checked in
   the db method, not only by its callers), and while a live cast member of
   the sequence already has her name (`ConflictError`, `assertNameFree`): the
   text could not tell two ADAs apart. The same check runs before a removed
   link is brought back, by an attach or by Restore. Two characters may still
   share a plain name when analysis made them; nothing refuses that.
   Attaching a character the sequence already casts is idempotent.
-- **Surfaces.** The script editor's `@` dropdown lists the team's characters
+- **Surfaces.** The script editor's `@` dropdown lists the organization's characters
   not cast here, most recently used first (`libraryMentionItems`, the
   `listOrganization` order), as pick-only rows: picking one inserts her name in
   capitals and attaches her (`attachLibraryCharacterFn`); on the create
@@ -238,7 +238,7 @@ the script then names her like any cast member.
   the draft is cast, named in the script or not. A pick-only row never
   pills: a plain name is prose until she is attached. The cast panel's
   **Add Character** attaches with no script change. API: a string in
-  `create_sequence`'s `characters` names a team character (id or name). Two
+  `create_sequence`'s `characters` names an organization character (id or name). Two
   characters of one name is a `CONFLICT` that asks for the id. MCP:
   `add_character_to_sequence`.
 - **Detach** is the existing Remove (soft, the link's `removedAt`).
@@ -293,14 +293,14 @@ the script then names her like any cast member.
   one so dialogue knows who speaks"); scene tags (`reconcileSceneTags`) tag
   both wherever the name appears. A known limit until a scene tag can name
   the cast link; rename one of them.
-- **A character the page cannot list** (another team's, deleted, or gone)
+- **A character the page cannot list** (another organization's, deleted, or gone)
   reads "Character not found" with a way back, not an error.
 - MCP: `list_library_characters`.
 
 ## Writes
 
 - **New character** (`characters.create`): one batch inserts the character
-  (with the team), its first bible version, the cast link, the default look
+  (with the organization), its first bible version, the cast link, the default look
   and its first look version.
 - **New character with no sequence** (`characters.createForOrganization`, #2065):
   the same batch without the cast link.
@@ -315,7 +315,7 @@ the script then names her like any cast member.
   `character-looks.md` § Sheets and claims.
 - **Deleting a sequence** removes its cast links, then only the characters
   no other sequence ever cast and the writer did not attach
-  (`charactersOnlyIn`): an attached character is the team's. No app path
+  (`charactersOnlyIn`): an attached character is the organization's. No app path
   hard-deletes a sequence today. The ids are read before the batch, because
   the links that say so go first. See § Hard deletes.
 
@@ -330,10 +330,10 @@ delete that forgets a child fails instead of taking rows with it.
   looks, sheet variants, voice versions, then the character. The cast links
   go before it (`deleteCastStatements`).
 - Two methods use it, each in one batch: `characters.delete` (one of the
-  team's characters) and `sequences.delete` (the characters that sequence
+  organization's characters) and `sequences.delete` (the characters that sequence
   alone holds). Neither has a caller in the app today: a sequence is
   archived, not deleted.
-- **Team.** Both are scoped to the team in every statement. Another team's
+- **Organization.** Both are scoped to the organization in every statement. Another organization's
   id deletes nothing.
 - **Voices.** A saved voice is an account-wide provider slot, freed only
   through `releaseVoiceIfUnreferenced` (`elevenlabs.md`), which a db method

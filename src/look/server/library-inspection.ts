@@ -72,7 +72,7 @@ const LIST_FIELDS = {
   vfx: ['id', 'name', 'previewUrl'],
 } satisfies Record<LibraryReadKind, string[]>;
 
-/** The team's library through the reads the app uses: own + public styles, own audio / VFX. */
+/** The organization's library through the reads the app uses: own + public styles, own audio / VFX. */
 async function libraryRows(
   scopedDb: ScopedDb,
   kind: LibraryReadKind

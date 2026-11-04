@@ -84,7 +84,7 @@ describe('sequences landing page loading', () => {
     );
     expect(shotsQueries).toHaveBeenCalledWith({ queries: [] });
   });
-  it('loads support results without own-team or per-sequence shot requests', () => {
+  it('loads support results without own-organization or per-sequence shot requests', () => {
     const html = renderToStaticMarkup(
       <EvalView
         search={{ support: true }}

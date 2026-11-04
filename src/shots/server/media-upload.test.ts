@@ -364,20 +364,20 @@ beforeEach(async () => {
 });
 
 describe('parseUploadedStoragePath', () => {
-  const ownOrganization = '01TEAM';
-  it('accepts a stored URL under the team prefix and strips the bucket', () => {
+  const ownOrganization = '01ORG';
+  it('accepts a stored URL under the organization prefix and strips the bucket', () => {
     expect(
       parseUploadedStoragePath(
-        '/r2/thumbnails/teams/01TEAM/sequences/s/frames/f/x.png',
+        '/r2/thumbnails/teams/01ORG/sequences/s/frames/f/x.png',
         'thumbnails',
         ownOrganization
       )
-    ).toBe('teams/01TEAM/sequences/s/frames/f/x.png');
+    ).toBe('teams/01ORG/sequences/s/frames/f/x.png');
   });
-  it('rejects the wrong bucket, wrong team, traversal, and external URLs', () => {
+  it('rejects the wrong bucket, wrong organization, traversal, and external URLs', () => {
     expect(
       parseUploadedStoragePath(
-        '/r2/videos/teams/01TEAM/x.mp4',
+        '/r2/videos/teams/01ORG/x.mp4',
         'thumbnails',
         ownOrganization
       )
@@ -391,7 +391,7 @@ describe('parseUploadedStoragePath', () => {
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
-        '/r2/thumbnails/teams/01TEAM/../OTHER/x.png',
+        '/r2/thumbnails/teams/01ORG/../OTHER/x.png',
         'thumbnails',
         ownOrganization
       )
@@ -843,7 +843,7 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
         .status
     ).toBe('stale');
-    // The ledger row holds the team; the next seed deletes organization.
+    // The ledger row holds the organization; the next seed deletes organization.
     await db.delete(uploadAttestations);
   });
 });

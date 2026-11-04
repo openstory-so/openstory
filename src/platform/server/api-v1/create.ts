@@ -4,10 +4,10 @@
  * to the shared `createSequences` core:
  *
  *   ingest hosted refs (no DB) → enhance (optional) →
- *   insert team characters/locations without billed sheets →
+ *   insert organization characters/locations without billed sheets →
  *   validate via createSequenceSchema → createSequences →
  *   enqueue location sheets → response. On failure after insert, the inline
- *   characters and team locations are deleted so a hung fetch cannot leave
+ *   characters and organization locations are deleted so a hung fetch cannot leave
  *   charged sheets. A character's sheet is drawn with the sequence.
  *
  * Returns the created sequence ids + workflow run ids (generation is async) and
@@ -141,7 +141,7 @@ function inlineCreates<T>(items: readonly (string | T)[] | undefined): T[] {
   return items.filter((item): item is T => typeof item !== 'string');
 }
 
-/** Ingest hosted reference image URLs into the team's `uploads/` folder. */
+/** Ingest hosted reference image URLs into the organization's `uploads/` folder. */
 async function ingestReferenceImages(
   urls: string[] | undefined,
   bucket: StorageBucket,
@@ -220,7 +220,7 @@ async function rollbackInlineCreates(
   locationIds: string[]
 ): Promise<void> {
   const results = await Promise.allSettled([
-    // Nothing uses a character or location this request made, so the team
+    // Nothing uses a character or location this request made, so the organization
     // delete holds.
     ...characterIds.map((id) =>
       ctx.scopedDb.characters.softDeleteForOrganization(id)
@@ -304,7 +304,7 @@ export async function runOneShotCreate(
 
   // 2. Insert inline cast + locations without triggering billed sheets.
   //    Sheets enqueue only after `createSequences` succeeds so a later
-  //    failure cannot charge the team for work that produced no sequence.
+  //    failure cannot charge the organization for work that produced no sequence.
   const createdCharacterIds: string[] = [];
   const createdLocationIds: string[] = [];
 
@@ -337,7 +337,7 @@ export async function runOneShotCreate(
         {
           locations: ctx.scopedDb.locations,
           createLocation: async (item) => {
-            // A team location (#1695). Rendered as the sequence's style
+            // An organization location (#1695). Rendered as the sequence's style
             // says, unless the caller said.
             const location = await createOrganizationLocation(
               ctx.scopedDb,
@@ -384,7 +384,7 @@ export async function runOneShotCreate(
       // Voices are not a caller choice (#2067). Omitted here, createSequences
       // turns them on wherever voice design is configured.
       generateStartFrames: input.startFrames,
-      // Like the composer: Draft first only where this team reaches BytePlus.
+      // Like the composer: Draft first only where this organization reaches BytePlus.
       // A draft that lands on fal is refused, not rendered.
       draftMotion: input.draftMotion && videoDefaults.byteplus,
       audioModels: input.audioModels,

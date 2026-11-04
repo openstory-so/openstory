@@ -1,5 +1,5 @@
 /**
- * Deleting a team character and its voice (#2065), on real SQLite with the
+ * Deleting an organization character and its voice (#2065), on real SQLite with the
  * provider stubbed: refused while any sequence casts it, otherwise the saved
  * voice is released, provider first and row second. A link in an archived
  * sequence is not a holder of the voice (#2017).
@@ -57,7 +57,7 @@ vi.mock('@/models/server/elevenlabs-config', () => ({
   isElevenLabsConfigured: () => true,
 }));
 
-// One per test: a voice id is counted across every team's rows.
+// One per test: a voice id is counted across every organization's rows.
 let VOICE = '';
 let closeDb: () => Promise<void>;
 let db: Database;
@@ -225,7 +225,7 @@ describe('deleteOrganizationCharacter', () => {
     ).rejects.toThrow('Character not found');
   });
 
-  it('restoring it in the sequence that removed it brings it back to the team', async () => {
+  it('restoring it in the sequence that removed it brings it back to the organization', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     mockDelete.mockResolvedValue(undefined);
@@ -238,7 +238,7 @@ describe('deleteOrganizationCharacter', () => {
     ]);
   });
 
-  it('a re-analysis that revives it in the sequence that removed it brings it back to the team', async () => {
+  it('a re-analysis that revives it in the sequence that removed it brings it back to the organization', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     mockDelete.mockResolvedValue(undefined);

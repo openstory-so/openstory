@@ -13,8 +13,8 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { NotFoundError } from '@/platform/errors';
 
 const schemas = {
-  // One of the team's locations at its current bible, with its live sheet
-  // (#1695: the location library became the team's locations).
+  // One of the organization's locations at its current bible, with its live sheet
+  // (#1695: the location library became the organization's locations).
   location: createSelectSchema(locations, {
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -95,7 +95,7 @@ const notFound = () => new NotFoundError('Library resource not found.');
 
 /**
  * Every row of one library collection, through the reads the library UI uses.
- * Locations are the team's, so resolving the parent through them is what
+ * Locations are the organization's, so resolving the parent through them is what
  * authorises its children.
  */
 async function libraryRows(

@@ -12,7 +12,7 @@ export function createOrganizationManagementMethods(
   organizationId: string
 ) {
   /**
-   * Billing contact = the team owner, not whichever member tripped the
+   * Billing contact = the organization owner, not whichever member tripped the
    * debit — they may not be the one holding the card (#1499).
    */
   async function getOwnerEmail(): Promise<string | null> {
@@ -28,8 +28,8 @@ export function createOrganizationManagementMethods(
   }
 
   /**
-   * Email for a team member, snapshotted onto workflow payloads at trigger
-   * time (#1276). Null if they left the team or have no address.
+   * Email for an organization member, snapshotted onto workflow payloads at trigger
+   * time (#1276). Null if they left the organization or have no address.
    */
   async function getMemberEmail(memberUserId: string): Promise<string | null> {
     const [row] = await db

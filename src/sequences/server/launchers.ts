@@ -190,7 +190,7 @@ async function resolveStoryboardPayload(
   // never for the name and description it matches on.
   //
   // The locations matching may bind a script location to (#1695) are the
-  // team's: the ones the writer picked for this run, then the ones already
+  // organization's: the ones the writer picked for this run, then the ones already
   // attached to the sequence.
   const attachedLocations = (await scopedDb.locations.list(sequenceId)).filter(
     (l) => l.attached

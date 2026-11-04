@@ -40,7 +40,7 @@ import type {
  * A character's own keys take the sequence it is read through, or null from
  * the Characters page (#2017), where the same sheets and voice are shown.
  */
-const scope = (sequenceId: string | null) => sequenceId ?? 'team';
+const scope = (sequenceId: string | null) => sequenceId ?? 'organization';
 
 export const sequenceCharacterKeys = {
   all: ['sequence-characters'] as const,

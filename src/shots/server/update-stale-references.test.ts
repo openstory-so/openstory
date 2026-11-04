@@ -82,9 +82,9 @@ async function references(
     distinguishingFeatures: '',
     ...overrides,
   });
-  // this sheet-only plan only reads the character list and team id
+  // this sheet-only plan only reads the character list and organization id
   const scopedDb = asStub<ScopedDb>({
-    organizationId: 'team',
+    organizationId: 'org',
     characters: { list: async () => [character] },
     characterSheetVariants: { findReusable },
   });

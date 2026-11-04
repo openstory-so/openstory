@@ -60,7 +60,7 @@ import type { User } from '@/platform/server/auth/config';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real organization-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -332,7 +332,7 @@ beforeEach(async () => {
   queries.length = 0;
 });
 
-describe('entity identity and team ownership', () => {
+describe('entity identity and organization ownership', () => {
   it.each([
     'get_sequence',
     'get_sequence_status',
@@ -340,7 +340,7 @@ describe('entity identity and team ownership', () => {
     'get_scene',
     'list_shots',
     'get_shot',
-  ])('%s rejects a foreign team before child reads', async (name) => {
+  ])('%s rejects a foreign organization before child reads', async (name) => {
     scopedDb = createScopedDb(generateId(), generateId());
     const args = {
       sequenceId,
@@ -353,7 +353,7 @@ describe('entity identity and team ownership', () => {
     });
     expect(queries).toHaveLength(1);
   });
-  it('lists only the current team', async () => {
+  it('lists only the current organization', async () => {
     expect(await data('list_sequences', {})).toMatchObject({
       sequences: [{ id: sequenceId }],
       nextCursor: null,
@@ -960,7 +960,7 @@ describe('complete production reads', () => {
       )
     ).toEqual([]);
   });
-  it('every new tool rejects a foreign team', async () => {
+  it('every new tool rejects a foreign organization', async () => {
     scopedDb = createScopedDb(generateId(), generateId());
     for (const [name, args] of reads()) {
       expect(await call(name, { sequenceId, ...args }), name).toMatchObject({
@@ -1293,7 +1293,7 @@ describe('complete production reads', () => {
     expect(firstDoc.document.nextOffset).toBe(4000);
   });
   it('reads a location only through a sequence that uses it, and excludes deleted entities and deleted parents', async () => {
-    // One of the team's locations that this sequence has no link to (#1695).
+    // One of the organization's locations that this sequence has no link to (#1695).
     const unlinked = generateId();
     await db
       .insert(locations)
@@ -1600,7 +1600,7 @@ describe('Studio, Gallery and library reads', () => {
       name: 'Foreign',
       slug: foreignOrganizationId,
     });
-    // One of the team's locations, used by no sequence (#1695).
+    // One of the organization's locations, used by no sequence (#1695).
     await db.insert(locations).values({
       id: libraryLocationId,
       organizationId,
@@ -1754,7 +1754,7 @@ describe('Studio, Gallery and library reads', () => {
       listResult.parse(await data('list_library_locations', {})).items
     ).toEqual([]);
   });
-  it('lists every location of the team, used or not, with the sequences using them (#1695)', async () => {
+  it('lists every location of the organization, used or not, with the sequences using them (#1695)', async () => {
     const used = await scopedDb.locations.create(
       {
         sequenceId,
@@ -1805,7 +1805,7 @@ describe('Studio, Gallery and library reads', () => {
       sequences: [{ id: sequenceId }],
     });
     expect(detail).not.toHaveProperty('organizationId');
-    // Deleted from the team: gone from both reads.
+    // Deleted from the organization: gone from both reads.
     await scopedDb.locations.softDeleteForOrganization(libraryLocationId);
     expect(
       page
@@ -1844,7 +1844,7 @@ describe('Studio, Gallery and library reads', () => {
       gallery.samples.find((x) => x.styleId === galleryStyleId)?.video.url
     ).toBe('https://openstory.test/r2/styles/noir/canonical.mp4');
   });
-  it('binds cursors to collection, team and parent and keeps large fields out of lists', async () => {
+  it('binds cursors to collection, organization and parent and keeps large fields out of lists', async () => {
     const gallery = await scopedDb.styles.getById(galleryStyleId);
     if (!gallery) throw new Error('Missing gallery style');
     await db.insert(styles).values({
@@ -1902,7 +1902,7 @@ describe('Studio, Gallery and library reads', () => {
         expect(item).not.toHaveProperty('input');
       }
   });
-  it('lists every character of the team, with the sequences casting them, and pages them', async () => {
+  it('lists every character of the organization, with the sequences casting them, and pages them', async () => {
     const [ada, bea, cy] = [
       await castCharacter({
         rendering: 'Photoreal live action',
@@ -1962,7 +1962,7 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_styles', { cursor: first.nextCursor })).isError
     ).toBe(true);
 
-    // Another team sees none of them, and cannot use this team's cursor.
+    // Another organization sees none of them, and cannot use this organization's cursor.
     scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(page.parse(await data('list_library_characters', {})).items).toEqual(
       []
@@ -2063,7 +2063,7 @@ describe('Studio, Gallery and library reads', () => {
         ).isError
       ).toBe(true);
   });
-  it('continues past filtered upload pages and binds storage cursors to team', async () => {
+  it('continues past filtered upload pages and binds storage cursors to organization', async () => {
     vi.mocked(listFilesPage).mockResolvedValueOnce({
       files: [
         {
@@ -2397,7 +2397,7 @@ describe('structure edits (#1979)', () => {
     ).toMatchObject({ title: 'Renamed', targetDurationSeconds: null });
   });
 
-  it('refuses an empty update and another team’s sequence', async () => {
+  it('refuses an empty update and another organization’s sequence', async () => {
     expect(await call('update_sequence', { sequenceId })).toMatchObject({
       isError: true,
       structuredContent: { error: { code: 'VALIDATION_ERROR' } },
@@ -2946,7 +2946,7 @@ describe('cast and music edits (#1979)', () => {
     return id;
   }
 
-  it('add_character_to_sequence casts a team character into another sequence, once (#2050)', async () => {
+  it('add_character_to_sequence casts an organization character into another sequence, once (#2050)', async () => {
     const ada = await castCharacter({
       rendering: 'Photoreal live action',
       sequenceId,
@@ -3002,7 +3002,7 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject(refusal('CONFLICT'));
   });
 
-  it('add_location_to_sequence links a team location into another sequence, once (#1695)', async () => {
+  it('add_location_to_sequence links an organization location into another sequence, once (#1695)', async () => {
     const pier = await scopedDb.locations.create(
       {
         sequenceId,
@@ -3076,7 +3076,7 @@ describe('cast and music edits (#1979)', () => {
         locationId: quay.id,
       })
     ).toMatchObject(refusal('CONFLICT'));
-    // Another team's location, or one that does not exist.
+    // Another organization's location, or one that does not exist.
     expect(
       await call('add_location_to_sequence', {
         sequenceId,
@@ -4488,7 +4488,7 @@ describe('Studio create and edit (#1985)', () => {
     );
   });
 
-  it('favourites and deletes only this team’s Studio assets', async () => {
+  it('favourites and deletes only this organization’s Studio assets', async () => {
     const id = await studioVideo({});
     expect(
       await data('set_studio_asset_favorite', { id, isFavorite: true })
@@ -4542,7 +4542,7 @@ describe('Studio create and edit (#1985)', () => {
     });
   });
 
-  it('refuses a prompt draft the team cannot pay for', async () => {
+  it('refuses a prompt draft the organization cannot pay for', async () => {
     vi.stubEnv('OPENROUTER_KEY', 'or-test');
     expect(
       await call('draft_studio_prompt', { activity: 'image' })
@@ -4553,7 +4553,7 @@ describe('Studio create and edit (#1985)', () => {
     vi.stubEnv('OPENROUTER_KEY', 'or-test');
     expect(
       await call('watch_clip', {
-        url: '/r2/uploads/team/clip.mp4',
+        url: '/r2/uploads/organization/clip.mp4',
         question: 'What happens in this clip?',
       })
     ).toMatchObject(refusal('VALIDATION_ERROR'));
@@ -5081,7 +5081,7 @@ describe('library styles', () => {
     isError: true,
     structuredContent: { error: { code } },
   });
-  it('creates, edits and deletes a team style; delete needs an admin', async () => {
+  it('creates, edits and deletes an organization style; delete needs an admin', async () => {
     const created = z
       .object({ id: z.string(), name: z.string(), isTemplate: z.boolean() })
       .parse(

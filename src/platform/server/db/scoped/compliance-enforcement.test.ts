@@ -1,6 +1,6 @@
 /**
  * `listEnforcementFor` is the query both gates run. User-level bans have a
- * null team id; if the predicate becomes AND, every user-level suspension
+ * null organization id; if the predicate becomes AND, every user-level suspension
  * silently stops matching.
  */
 
@@ -19,8 +19,16 @@ let closeDb: () => Promise<void>;
 let db: Database;
 
 const userA = { id: '', name: 'A', email: 'a@example.com' };
-const organizationA = { id: '', name: 'Team A', slug: 'team-a' };
-const organizationB = { id: '', name: 'Team B', slug: 'team-b' };
+const organizationA = {
+  id: '',
+  name: 'Organization A',
+  slug: 'organization-a',
+};
+const organizationB = {
+  id: '',
+  name: 'Organization B',
+  slug: 'organization-b',
+};
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -62,7 +70,7 @@ describe('listEnforcementFor', () => {
     expect(rows[0]?.action).toBe('generation_suspended');
   });
 
-  it('returns a team-level action only for that team', async () => {
+  it('returns an organization-level action only for that organization', async () => {
     await db.insert(enforcementActions).values({
       id: generateId(),
       subjectUserId: null,

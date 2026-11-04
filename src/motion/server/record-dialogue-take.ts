@@ -460,7 +460,7 @@ async function convertWithSeed(
       ],
     };
   }
-  // ponytail: failed takes are not billed to the team.
+  // ponytail: failed takes are not billed to the organization.
   throw new NonRetryableError(
     `Seed Audio did not say the line in ${SEED_TAKE_ATTEMPTS} takes (last: ${lastProblem}). Try the take again.`
   );

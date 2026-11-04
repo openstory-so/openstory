@@ -4,7 +4,7 @@
  * look edit re-stales its sheet and the shots of the scenes that wear it.
  *
  * `sequenceId` null is the Characters page editing a character no sequence
- * casts (#2065): the write goes to the team fns and no pin moves.
+ * casts (#2065): the write goes to the organization fns and no pin moves.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';

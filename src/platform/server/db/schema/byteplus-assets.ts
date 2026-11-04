@@ -2,7 +2,7 @@
  * BytePlus ACR asset pool ledger (#1361, #1531).
  *
  * Advanced Creation Rights gives the *account* a fixed number of resident
- * asset slots (see `BYTEPLUS_ASSET_SLOTS`), shared by every OpenStory team.
+ * asset slots (see `BYTEPLUS_ASSET_SLOTS`), shared by every OpenStory organization.
  * `CreateAsset` only ever fails once they are full, so the pool needs
  * eviction — and eviction needs facts Ark cannot give us:
  *
@@ -19,7 +19,7 @@
  *     re-ingest) or a talent/location sheet (used by every shot). We evict
  *     frames first, so we have to record which is which.
  *
- * Platform-global, like `model_pricing`: no team column, no FKs, fully
+ * Platform-global, like `model_pricing`: no organization column, no FKs, fully
  * rebuildable — losing it costs a round of `CreateAsset` calls, nothing else.
  * `identity` is SHA-256 of the *stored* URL (R2 key / CDN path), the same
  * value hashed into the Ark asset Name, so the ledger and Ark agree on what

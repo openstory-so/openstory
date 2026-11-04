@@ -1,7 +1,7 @@
 /**
  * Management server functions for PUBLIC-API keys — the keys external callers
  * use to authenticate against `/api/v1/*`. Distinct from `api-keys.ts`, which
- * manages a team's *provider* keys (OpenRouter/Fal) for server-side model
+ * manages an organization's *provider* keys (OpenRouter/Fal) for server-side model
  * calls.
  *
  * Thin wrappers over the Better Auth `apiKey` plugin endpoints, run under the
