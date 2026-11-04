@@ -115,7 +115,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channelId = locationChannelId(sequenceId, locationDbId);
-    const storageDir = `${organizationId}/${sequenceId ?? 'organization'}/${locationDbId}`;
+    const storageDir = `${organizationId}/${sequenceId ?? 'org'}/${locationDbId}`;
 
     // Step 2: Generate the location reference image — reseeds on a content
     // flag, then one softened prompt (#1293). The upload rides the same step:

@@ -261,7 +261,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.organizationId}/${sequenceId ?? 'organization'}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${input.organizationId}/${sequenceId ?? 'org'}/${characterDbId}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,

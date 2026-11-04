@@ -100,8 +100,7 @@ async function landSheet(
 }
 
 /** Where a run's sheet is stored: under its sequence, or the organization's own. */
-const sheetStorageScope = (sequenceId: string | null) =>
-  sequenceId ?? 'organization';
+const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'org';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
   protected override readonly failureLabel = 'Character sheet';

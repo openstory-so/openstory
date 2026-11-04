@@ -662,7 +662,7 @@ export async function setCharacterSheetFromUpload(
       },
       versionId: variant.id,
       sheetUrl: data.publicUrl,
-      storageDir: `${context.organizationId}/${sequenceId ?? 'organization'}/${character.id}`,
+      storageDir: `${context.organizationId}/${sequenceId ?? 'org'}/${character.id}`,
     });
   }
   return updated;
@@ -742,7 +742,7 @@ export async function setLocationSheetFromUpload(
     subject: { kind: 'location', locationId: location.id },
     versionId: variant.id,
     sheetUrl: data.publicUrl,
-    storageDir: `${context.organizationId}/${sequenceId ?? 'organization'}/${location.id}`,
+    storageDir: `${context.organizationId}/${sequenceId ?? 'org'}/${location.id}`,
   });
   return updated;
 }
