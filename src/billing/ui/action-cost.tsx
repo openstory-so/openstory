@@ -17,7 +17,7 @@
  *
  * Prefixes with `~` — these are pre-flight estimates; billed units may differ.
  * When the signed-in wallet balance is below the estimate (and generation is
- * not covered by a team fal key), the amount is amber so over-budget is obvious.
+ * not covered by an organization fal key), the amount is amber so over-budget is obvious.
  * On a primary button pass `onPrimary` — that fill stays light in dark mode,
  * where the page amber is too pale. The amount sits in the button
  * (`InButtonCost`); over budget is the warning icon and colour, not extra words.
@@ -198,7 +198,7 @@ export function ActionCost({
     );
   }
 
-  // Wallet path only — team fal key covers media (and LLM when routed via fal).
+  // Wallet path only — organization fal key covers media (and LLM when routed via fal).
   // OpenRouter-only BYOK is not checked here.
   const walletApplies = !gate?.hasFalKey;
   const estimateUsd = microsToUsd(estimate);

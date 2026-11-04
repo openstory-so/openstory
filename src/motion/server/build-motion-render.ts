@@ -27,7 +27,7 @@ export type MotionRenderShot = BatchMotionMusicWorkflowInput['shots'][number];
 
 type MotionRenderSources = Pick<
   MotionWorkflowInput,
-  'userId' | 'teamId' | 'sequenceId' | 'reservationId' | 'variantOnly'
+  'userId' | 'organizationId' | 'sequenceId' | 'reservationId' | 'variantOnly'
 > & {
   shots: readonly MotionRenderShot[];
   videoModels?: ImageToVideoModel[];
@@ -122,7 +122,7 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
       shotId: string;
     } = {
       userId: sources.userId,
-      teamId: sources.teamId,
+      organizationId: sources.organizationId,
       shotId: shot.shotId,
       sequenceId: sources.sequenceId,
       // Pinned at the trigger — passed through untouched, never re-derived.
@@ -185,7 +185,7 @@ function maxEditSeconds(
 /** Finals reuse the provider's frozen draft request; the builder stamps its provenance. */
 export function buildDraftFinalRender(source: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequence: {
     id: string;
     title: string;
@@ -201,7 +201,7 @@ export function buildDraftFinalRender(source: {
 }): MotionWorkflowInput {
   return {
     userId: source.userId,
-    teamId: source.teamId,
+    organizationId: source.organizationId,
     sequenceId: source.sequence.id,
     sequenceTitle: source.sequence.title,
     aspectRatio: source.sequence.aspectRatio,

@@ -70,7 +70,7 @@ function baseArgs(scopedDb: ReturnType<typeof makeScopedDb>['scopedDb']) {
     scopedDb,
     sequence: {
       id: 'seq_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       aspectRatio: '16:9' as const,
       resolution: '720p' as const,
       imageModel: DEFAULT_IMAGE_MODEL,

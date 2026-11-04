@@ -1,5 +1,5 @@
 /**
- * Global search (#2100): one box over everything the team has made. Results
+ * Global search (#2100): one box over everything the organization has made. Results
  * are grouped by kind and each one is a link.
  */
 

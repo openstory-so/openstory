@@ -123,7 +123,7 @@ async function makeEvent(
 ): Promise<Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>> {
   const fields = {
     userId: 'u1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: 'seq-1',
     characterDbId: 'char-1',
     lookId: 'look-1',
@@ -155,8 +155,8 @@ beforeEach(() => {
     via: 'fal',
   });
   mockStoreGeneratedPng.mockResolvedValue({
-    url: '/r2/characters/team-1/seq-1/char-1/out.png',
-    path: 'team-1/seq-1/char-1/out.png',
+    url: '/r2/characters/organization-1/seq-1/char-1/out.png',
+    path: 'organization-1/seq-1/char-1/out.png',
   });
   mockRecordFalUsageStep.mockResolvedValue({});
   mockDeductWorkflowCredits.mockResolvedValue(undefined);
@@ -171,7 +171,7 @@ describe('CharacterSheetWorkflow looks', () => {
       await makeEvent({
         lookId: 'gala',
         face: {
-          url: '/r2/characters/team-1/char-1/default.png',
+          url: '/r2/characters/organization-1/char-1/default.png',
           versionId: 'char-1',
         },
       }),
@@ -182,7 +182,7 @@ describe('CharacterSheetWorkflow looks', () => {
     expect(mockGenerateImageWithProvider).toHaveBeenCalledTimes(1);
     const params = mockGenerateImageWithProvider.mock.calls[0]?.[0];
     expect(params.referenceImageUrls).toEqual([
-      '/r2/characters/team-1/char-1/default.png',
+      '/r2/characters/organization-1/char-1/default.png',
     ]);
     expect(params.prompt).toContain("this character's default look");
 
@@ -192,7 +192,7 @@ describe('CharacterSheetWorkflow looks', () => {
     expect(mockTriggerSheetPortrait.mock.calls[0]?.[0]).toMatchObject({
       subject: { kind: 'character', characterId: 'char-1', lookId: 'gala' },
       versionId: 'ver-1',
-      sheetUrl: '/r2/characters/team-1/seq-1/char-1/out.png',
+      sheetUrl: '/r2/characters/organization-1/seq-1/char-1/out.png',
     });
     expect(mockPromoteIfPending.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
       mockTriggerSheetPortrait.mock.invocationCallOrder[0] ?? 0
@@ -213,7 +213,7 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
         characterId: 'char-1',
         versionId: 'ver-1',
         claimed: true,
-        url: '/r2/characters/team-1/seq-1/char-1/out.png',
+        url: '/r2/characters/organization-1/seq-1/char-1/out.png',
       })
     );
     expect(result.sheetVersionId).toBe('ver-1');

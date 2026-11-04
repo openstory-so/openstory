@@ -14,7 +14,11 @@ import {
   PORTRAIT_RIGHTS_V1,
   statementHash,
 } from '@/platform/compliance/attestations';
-import { teams, uploadAttestations, user } from '@/platform/server/db/schema';
+import {
+  organization,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { createComplianceMethods } from './compliance';
 
@@ -22,7 +26,7 @@ let closeDb: () => Promise<void>;
 let db: Database;
 
 const owner = { id: '', name: 'A', email: 'a@example.com' };
-const team = { id: '', name: 'Team A', slug: 'team-a' };
+const org = { id: '', name: 'Organization A', slug: 'organization-a' };
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -34,15 +38,15 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(uploadAttestations);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
   owner.id = generateId();
-  team.id = generateId();
+  org.id = generateId();
   await db
     .insert(user)
     .values([{ id: owner.id, name: owner.name, email: owner.email }]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([org]);
 });
 
 describe('listForSubject', () => {
@@ -55,7 +59,7 @@ describe('listForSubject', () => {
 
     const base = {
       userId: owner.id,
-      teamId: team.id,
+      organizationId: org.id,
       subjectType: 'uploaded_image' as const,
       subjectId,
       attestedAt,
@@ -80,7 +84,7 @@ describe('listForSubject', () => {
 
     const rows = await createComplianceMethods(
       db,
-      team.id,
+      org.id,
       owner.id
     ).attestations.listForSubject('uploaded_image', subjectId);
 

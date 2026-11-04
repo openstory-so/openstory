@@ -246,7 +246,7 @@ transform registered in `endpoint-map.ts`) and a `textToVideoEndpointId`
 sibling for a shot that matched nothing (#1521).
 `supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via — the
 conservative floor, safe in a pure isomorphic schema. It is NOT the question to
-ask anywhere a team's keys are reachable; see below.
+ask anywhere an organization's keys are reachable; see below.
 
 Kling v3 Pro start-frame-only shots stay on image-to-video. Shots with
 references, and reference-only shots, route to Kling O3 Pro
@@ -298,9 +298,9 @@ scene casting five still drops one, so the submit path warns and emits
 `inline` for it, and `buildGrokVideoRequest` handles the no-still case. What it
 lacks is a _route_: its catalog id is
 `xai/grok-imagine-video/v1.5/image-to-video`, so only the native **xAI** via can
-serve a reference-only shot, and the via is claimed per team at submit time
-(team `xai` key → platform `XAI_API_KEY` → fal). A creation-time gate cannot
-know which way a given team will resolve months later, so it stays conservative.
+serve a reference-only shot, and the via is claimed per organization at submit time
+(organization `xai` key → platform `XAI_API_KEY` → fal). A creation-time gate cannot
+know which way a given organization will resolve months later, so it stays conservative.
 
 Where the via IS known, ask the honest question instead:
 `canRenderReferenceOnly(model, credentials)` in `motion-generation.ts` returns true
@@ -308,7 +308,7 @@ for Grok whenever an xAI key resolves. `MotionWorkflow`'s entry guard and the
 content-flag rescue both use it, which is what lets Grok rescue a flagged
 reference-only shot rather than committing itself onto the row and then dying.
 
-Grok IS selectable at creation. `getViaAvailabilityFn` resolves the team's
+Grok IS selectable at creation. `getViaAvailabilityFn` resolves the organization's
 reachable vias server-side, the `_app` loader seeds it, and the model selectors
 filter on the `referenceOnlyModels` it returns. The isomorphic schema asks the
 widest question (`referenceOnlyCapableWith(model, { xai: true })`) and

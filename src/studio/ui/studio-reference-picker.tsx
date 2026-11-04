@@ -26,8 +26,8 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
-import { useLibraryCharacters } from '@/cast/ui/use-team-characters';
-import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useLibraryCharacters } from '@/cast/ui/use-organization-characters';
+import { useOrganizationLocationList } from '@/cast/ui/use-organization-locations';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import {
   useSequencesWithShots,
@@ -61,7 +61,7 @@ export type StudioReference = {
   /** Stored (origin-relative `/r2/…`) or absolute URL. */
   url: string;
   /**
-   * Set when this tile is one of the team's Studio videos. The create
+   * Set when this tile is one of the organization's Studio videos. The create
    * request sends the id; the address is only for the tile (#2203).
    */
   assetId?: string;
@@ -145,12 +145,12 @@ function shotReferences(sequence: SequenceWithShots): StudioReference[] {
   });
 }
 
-/** The team's pickable media, as flat `{ url, label, kind }` rows per source. */
+/** The organization's pickable media, as flat `{ url, label, kind }` rows per source. */
 export function useStudioLibrary(): StudioLibrary {
-  // The team's characters and locations; the ones with a picture are offered.
+  // The organization's characters and locations; the ones with a picture are offered.
   const { data: session } = useAuthSession();
   const { data: characters } = useLibraryCharacters(!!session);
-  const { data: locations } = useTeamLocationList(!!session);
+  const { data: locations } = useOrganizationLocationList(!!session);
   const { data: sequences } = useSequencesWithShots();
   const images = useStudioAssets({ activity: 'image' });
   const videos = useStudioAssets({ activity: 'video' });

@@ -66,7 +66,7 @@ const baseOpts = {
   scene: null as Scene | null,
   model: DEFAULT_IMAGE_MODEL,
   userId: 'user-1',
-  teamId: 'team-1',
+  organizationId: 'org-1',
   sequenceId: 'seq-1',
   aspectRatio: '16:9' as const,
   resolution: '720p' as const,

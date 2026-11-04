@@ -3,7 +3,10 @@
  * Handles uploading and managing audio files in R2 Storage
  */
 
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  organizationKeyPrefix,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
 import {
   getExtensionFromUrl,
@@ -17,7 +20,7 @@ const logger = getLogger(['openstory', 'audio', 'audio-storage']);
 
 type UploadAudioOptions = {
   audioUrl: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId?: string;
   sequenceTitle: string;
@@ -56,8 +59,14 @@ export async function uploadAudioToStorage(
   options: UploadAudioOptions
 ): Promise<StorageResult> {
   try {
-    const { audioUrl, teamId, sequenceId, shotId, sequenceTitle, sceneTitle } =
-      options;
+    const {
+      audioUrl,
+      organizationId,
+      sequenceId,
+      shotId,
+      sequenceTitle,
+      sceneTitle,
+    } = options;
 
     const response = await fetch(audioUrl);
 
@@ -89,8 +98,8 @@ export async function uploadAudioToStorage(
 
     // Store under shot path if per-scene, otherwise under sequence
     const storagePath = shotId
-      ? `teams/${teamId}/sequences/${sequenceId}/frames/${shotId}/${filename}`
-      : `teams/${teamId}/sequences/${sequenceId}/music/${filename}`;
+      ? `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${filename}`
+      : `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/music/${filename}`;
 
     logger.info(`Generated filename: ${filename}`, {
       ulid,

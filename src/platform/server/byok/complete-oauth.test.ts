@@ -23,11 +23,11 @@ const { sealOAuthState, getOAuthCookieName } =
   await import('./openrouter-oauth-cookie');
 const { completeOpenRouterOAuth } = await import('./complete-oauth');
 
-const TEAM_ID = '01JTEAM00000000000000000000';
+const ORGANIZATION_ID = '01JTEAM00000000000000000000';
 const USER_ID = '01JUSER00000000000000000000';
 
 const validState: OAuthState = {
-  teamId: TEAM_ID,
+  organizationId: ORGANIZATION_ID,
   userId: USER_ID,
   codeVerifier: 'verifier-abc123',
   csrfState: 'csrf-nonce-xyz789',
@@ -85,7 +85,7 @@ describe('completeOpenRouterOAuth', () => {
 
     await completeOpenRouterOAuth(
       {
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
         code: 'auth-code',
         csrfState: validState.csrfState,
         secureCookies: true,
@@ -111,7 +111,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: ORGANIZATION_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
@@ -129,7 +129,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: ORGANIZATION_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
@@ -139,24 +139,24 @@ describe('completeOpenRouterOAuth', () => {
     ).rejects.toThrow('OAuth session expired or not found');
   });
 
-  it('throws when the state belongs to a different team', async () => {
+  it('throws when the state belongs to a different organization', async () => {
     await setStateCookie({
       ...validState,
-      teamId: '01JOTHERTEAM000000000000000',
+      organizationId: '01JOTHERTEAM000000000000000',
     });
     const { scopedDb } = makeScopedDb();
 
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: ORGANIZATION_ID,
           code: 'auth-code',
           csrfState: validState.csrfState,
           secureCookies: true,
         },
         scopedDb
       )
-    ).rejects.toThrow('OAuth state does not match the active team');
+    ).rejects.toThrow('OAuth state does not match the active organization');
     expect(exchangeCodeForKeyMock).not.toHaveBeenCalled();
   });
 
@@ -167,7 +167,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: ORGANIZATION_ID,
           code: 'auth-code',
           csrfState: null,
           secureCookies: true,
@@ -179,7 +179,7 @@ describe('completeOpenRouterOAuth', () => {
     await expect(
       completeOpenRouterOAuth(
         {
-          teamId: TEAM_ID,
+          organizationId: ORGANIZATION_ID,
           code: 'auth-code',
           csrfState: 'wrong-nonce',
           secureCookies: true,
@@ -196,7 +196,7 @@ describe('completeOpenRouterOAuth', () => {
 
     await completeOpenRouterOAuth(
       {
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
         code: 'auth-code',
         csrfState: validState.csrfState,
         secureCookies: false,
@@ -219,7 +219,7 @@ describe('completeOpenRouterOAuth', () => {
       await expect(
         completeOpenRouterOAuth(
           {
-            teamId: TEAM_ID,
+            organizationId: ORGANIZATION_ID,
             code: 'auth-code',
             csrfState: validState.csrfState,
             secureCookies: true,
@@ -247,7 +247,7 @@ describe('completeOpenRouterOAuth', () => {
         await expect(
           completeOpenRouterOAuth(
             {
-              teamId: TEAM_ID,
+              organizationId: ORGANIZATION_ID,
               code: 'auth-code',
               csrfState: validState.csrfState,
               secureCookies: true,
@@ -271,7 +271,7 @@ describe('completeOpenRouterOAuth', () => {
       await expect(
         completeOpenRouterOAuth(
           {
-            teamId: TEAM_ID,
+            organizationId: ORGANIZATION_ID,
             code: 'auth-code',
             csrfState: validState.csrfState,
             secureCookies: true,

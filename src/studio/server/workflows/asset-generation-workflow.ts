@@ -2,7 +2,7 @@
  * Asset generation workflow (#458 — direct model access).
  *
  * Runs an ARBITRARY fal endpoint (validated + credit-gated upstream in
- * `createGeneratedAssetFn`) and lands the outputs as a flat team asset:
+ * `createGeneratedAssetFn`) and lands the outputs as a flat organization asset:
  *
  *   1. set-running — flips the reserved `generated_assets` row to 'running'.
  *   2. submit-asset-job — submits to the fal queue (raw `@fal-ai/client`
@@ -42,6 +42,7 @@ import {
   recordProvenance,
 } from '@/platform/server/compliance/provenance';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -197,13 +198,15 @@ export type AssetPersistScopedDb = {
 };
 
 /**
- * Resolve the fal key (BYOK via team key, platform fallback) and apply it to
+ * Resolve the fal key (BYOK via organization key, platform fallback) and apply it to
  * the `fal` singleton — the same singleton `configureFalProxyFromEnv` routes
  * through the e2e proxy, and the same `fal.config({ credentials })` call the
  * @tanstack/ai-fal adapters make. Called inside every step that talks to fal,
  * since a replayed step may run in a fresh isolate.
  */
-async function configureFalForTeam(scopedDb: WorkflowScopedDb): Promise<void> {
+async function configureFalForOrganization(
+  scopedDb: WorkflowScopedDb
+): Promise<void> {
   const keyInfo = await scopedDb.credentials.resolveKey('fal');
   // Bound each queue HTTP call so a hung fal connection fails the step and
   // can retry rather than stalling asset generation forever (#826). Total
@@ -225,7 +228,8 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
-    const { assetId, endpointId, activity, input, teamId } = event.payload;
+    const { assetId, endpointId, activity, input, organizationId } =
+      event.payload;
 
     await step.do('set-running', async () => {
       await scopedDb.generatedAssets.markRunning(assetId);
@@ -235,7 +239,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     // retrying the same input can't succeed, so fail immediately; anything
     // else is transient and leans on CF's per-step retries.
     const { requestId } = await step.do('submit-asset-job', async () => {
-      await configureFalForTeam(scopedDb);
+      await configureFalForOrganization(scopedDb);
       logger.info(
         `[AssetGenerationWorkflow] Submitting ${endpointId} (${activity}) for asset ${assetId}`
       );
@@ -261,7 +265,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         await step.sleep(`asset-poll-wait-${batch}`, 1);
       }
       completed = await step.do(`asset-poll-batch-${batch}`, async () => {
-        await configureFalForTeam(scopedDb);
+        await configureFalForOrganization(scopedDb);
         const deadline = Date.now() + POLL_BATCH_DURATION_MS;
         while (Date.now() < deadline) {
           const status = await fal.queue.status(endpointId, {
@@ -283,7 +287,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     // Fetch the result. A failed fal job rejects here with the real error —
     // deterministic, so don't burn CF retries on it.
     const outputRefs = await step.do('fetch-result', async () => {
-      await configureFalForTeam(scopedDb);
+      await configureFalForOrganization(scopedDb);
       let data: JsonValue;
       try {
         const result = await fal.queue.result(endpointId, { requestId });
@@ -325,7 +329,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         const extension = outputExtension(ref.url, knownContentType);
         const contentType =
           knownContentType ?? getMimeTypeFromExtension(extension);
-        const path = `teams/${teamId}/assets/${assetId}/output-${index}.${extension}`;
+        const path = `${organizationKeyPrefix(organizationId)}/assets/${assetId}/output-${index}.${extension}`;
         const result = await uploadResponse(
           response,
           ACTIVITY_BUCKETS[activity],
@@ -355,7 +359,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     await step.do('record-provenance', async () => {
       for (const [index, storageKey] of storageKeys.entries()) {
         await recordProvenance(scopedDb.provenance, {
-          teamId,
+          organizationId,
           userId: event.payload.userId,
           assetKind: 'generated_asset',
           // Suffixed so multiple outputs of one run don't collide on assetId

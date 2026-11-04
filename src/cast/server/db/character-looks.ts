@@ -123,12 +123,12 @@ export type LookSheetSnapshot = {
 };
 
 /**
- * The looks of the team's characters, each at its current version with its
+ * The looks of the organization's characters, each at its current version with its
  * sheet.
  */
 const selectLooks = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   where: SQL | undefined,
   order: readonly SQL[] = []
 ): Promise<CharacterLook[]> =>
@@ -149,7 +149,7 @@ const selectLooks = async (
         characterSheetVariants,
         eq(characterSheetVariants.id, liveLookSheetVersionId)
       )
-      .where(and(eq(characters.teamId, teamId), where))
+      .where(and(eq(characters.organizationId, organizationId), where))
       .orderBy(...order)
   ).map(resolveStyling);
 
@@ -168,7 +168,7 @@ const lookOrder = [
  */
 const backfillDefaultLook = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   characterId: string
 ): Promise<void> => {
   const rows = await db
@@ -191,7 +191,7 @@ const backfillDefaultLook = async (
     .where(
       and(
         eq(characters.id, characterId),
-        eq(characters.teamId, teamId),
+        eq(characters.organizationId, organizationId),
         sql`NOT EXISTS (SELECT 1 FROM ${characterLooks} WHERE ${characterLooks.id} = ${characters.id})`
       )
     );
@@ -229,10 +229,10 @@ const backfillDefaultLook = async (
 
 const getLook = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   id: string
 ): Promise<CharacterLook | null> =>
-  (await selectLooks(db, teamId, eq(characterLooks.id, id)))[0] ?? null;
+  (await selectLooks(db, organizationId, eq(characterLooks.id, id)))[0] ?? null;
 
 /**
  * The look a write is about to touch. A character with no look yet answers
@@ -241,13 +241,13 @@ const getLook = async (
  */
 export const requireLook = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   id: string
 ): Promise<CharacterLook> => {
-  const found = await getLook(db, teamId, id);
+  const found = await getLook(db, organizationId, id);
   if (found) return found;
-  await backfillDefaultLook(db, teamId, id);
-  const look = await getLook(db, teamId, id);
+  await backfillDefaultLook(db, organizationId, id);
+  const look = await getLook(db, organizationId, id);
   if (!look) throw new NotFoundError(`Look ${id} not found`);
   return look;
 };
@@ -258,7 +258,7 @@ export const requireLook = async (
  */
 const ownerOf = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string,
   characterId: string
 ) => {
@@ -278,7 +278,7 @@ const ownerOf = async (
       and(
         eq(sequenceCast.characterId, characterId),
         eq(sequenceCast.sequenceId, sequenceId),
-        eq(characters.teamId, teamId)
+        eq(characters.organizationId, organizationId)
       )
     );
   const [owner] = owners;
@@ -293,12 +293,12 @@ const ownerOf = async (
  */
 const eventOwner = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string | null,
   characterId: string
 ) => {
   if (sequenceId !== null) {
-    return await ownerOf(db, teamId, sequenceId, characterId);
+    return await ownerOf(db, organizationId, sequenceId, characterId);
   }
   const [live] = await db
     .select({ id: characters.id })
@@ -306,7 +306,7 @@ const eventOwner = async (
     .where(
       and(
         eq(characters.id, characterId),
-        eq(characters.teamId, teamId),
+        eq(characters.organizationId, organizationId),
         isNull(characters.deletedAt)
       )
     );
@@ -482,14 +482,14 @@ const legacyFeaturesMove = async (
  */
 const requireFreeName = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   characterId: string,
   name: string,
   exceptLookId: string | null
 ): Promise<void> => {
   const taken = await selectLooks(
     db,
-    teamId,
+    organizationId,
     and(
       eq(characterLooks.characterId, characterId),
       sql`${characterLooks.deletedAt} IS NULL`
@@ -534,15 +534,18 @@ export const deleteLooksOfCharacters = (
   ] as const;
 };
 
-export function createCharacterLooksMethods(db: Database, teamId: string) {
+export function createCharacterLooksMethods(
+  db: Database,
+  organizationId: string
+) {
   type LookWriteOpts = { source: LookVersionSource; actorId: string | null };
 
   const methods = {
-    getById: (id: string) => getLook(db, teamId, id),
+    getById: (id: string) => getLook(db, organizationId, id),
 
     /** A character's default look: its id is the character's. */
     ensureDefault: (characterId: string) =>
-      requireLook(db, teamId, characterId),
+      requireLook(db, organizationId, characterId),
 
     /** A character's looks, default first. Removed ones only on request. */
     listByCharacter: async (
@@ -551,7 +554,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
     ): Promise<CharacterLook[]> =>
       await selectLooks(
         db,
-        teamId,
+        organizationId,
         and(
           eq(characterLooks.characterId, characterId),
           options?.includeRemoved
@@ -584,7 +587,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           )
           .where(
             and(
-              eq(characters.teamId, teamId),
+              eq(characters.organizationId, organizationId),
               inArray(characters.id, characterIds.slice(i, i + 80))
             )
           );
@@ -608,7 +611,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         rows.push(
           ...(await selectLooks(
             db,
-            teamId,
+            organizationId,
             inArray(characterLooks.characterId, characterIds.slice(i, i + 80)),
             lookOrder
           ))
@@ -616,7 +619,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       return rows;
     },
 
-    /** Definition history of one of the team's looks, newest first. */
+    /** Definition history of one of the organization's looks, newest first. */
     listVersions: async (lookId: string): Promise<CharacterLookVersion[]> =>
       await db
         .select(getTableColumns(characterLookVersions))
@@ -633,7 +636,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
                   characters,
                   eq(characters.id, characterLooks.characterId)
                 )
-                .where(eq(characters.teamId, teamId))
+                .where(eq(characters.organizationId, organizationId))
             )
           )
         )
@@ -665,7 +668,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(sequenceCast.sequenceId, sequenceId),
-            eq(characters.teamId, teamId)
+            eq(characters.organizationId, organizationId)
           )
         )
         .orderBy(
@@ -704,7 +707,9 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       // A character another sequence has ever cast is linked, never synced
       // (#2050, #2065): decided here, on every call, so no payload flag
       // that went stale mid-run can reach her.
-      if (await analysisMayNotRewrite(db, teamId, characterId, sequenceId)) {
+      if (
+        await analysisMayNotRewrite(db, organizationId, characterId, sequenceId)
+      ) {
         return await methods.linkFromAnalysis(
           sequenceId,
           characterId,
@@ -712,12 +717,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       }
       const opts = { source: 'analysis' as const, createdBy: null };
-      const defaultLook = await requireLook(db, teamId, characterId);
-      const owner = await ownerOf(db, teamId, sequenceId, characterId);
+      const defaultLook = await requireLook(db, organizationId, characterId);
+      const owner = await ownerOf(db, organizationId, sequenceId, characterId);
       const others = (
         await selectLooks(
           db,
-          teamId,
+          organizationId,
           eq(characterLooks.characterId, characterId)
         )
       ).filter((row) => !row.isDefault);
@@ -873,8 +878,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
-      // The team and link check; nothing of the link is written.
-      await ownerOf(db, teamId, sequenceId, characterId);
+      // The organization and link check; nothing of the link is written.
+      await ownerOf(db, organizationId, sequenceId, characterId);
       const own = await db
         .select({
           id: characterLooks.id,
@@ -942,12 +947,23 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       definition: LookDefinition,
       opts: LookWriteOpts
     ): Promise<CharacterLook> => {
-      const owner = await eventOwner(db, teamId, sequenceId, characterId);
+      const owner = await eventOwner(
+        db,
+        organizationId,
+        sequenceId,
+        characterId
+      );
       // A character with no look yet gets its default first, so the new one
       // is never the only look and never mistaken for the default. It is
-      // also the team check.
-      await requireLook(db, teamId, characterId);
-      await requireFreeName(db, teamId, characterId, definition.name, null);
+      // also the organization check.
+      await requireLook(db, organizationId, characterId);
+      await requireFreeName(
+        db,
+        organizationId,
+        characterId,
+        definition.name,
+        null
+      );
       const [last] = await db
         .select({ sortOrder: characterLooks.sortOrder })
         .from(characterLooks)
@@ -986,7 +1002,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
               }),
             ]),
       ]);
-      return await requireLook(db, teamId, id);
+      return await requireLook(db, organizationId, id);
     },
 
     /**
@@ -1002,11 +1018,11 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       patch: Partial<LookDefinition>,
       opts: LookWriteOpts
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       if (patch.name !== undefined) {
         await requireFreeName(
           db,
-          teamId,
+          organizationId,
           look.characterId,
           patch.name,
           look.id
@@ -1020,7 +1036,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       );
       const [first, ...rest] = statements;
       if (!first || versionId === null) return look;
-      const owner = await eventOwner(db, teamId, sequenceId, look.characterId);
+      const owner = await eventOwner(
+        db,
+        organizationId,
+        sequenceId,
+        look.characterId
+      );
       await db.batch([
         first,
         ...rest,
@@ -1045,7 +1066,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
               }),
             ]),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, organizationId, lookId);
     },
 
     /**
@@ -1058,7 +1079,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       const [version] = await db
         .select()
         .from(characterLookVersions)
@@ -1074,7 +1095,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       }
       if (version.id === look.lookVersionId) return look;
-      const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
+      const owner = await ownerOf(
+        db,
+        organizationId,
+        sequenceId,
+        look.characterId
+      );
       // Version to version: the look's own stored styling (#2065), not the
       // effective one, which on a default look also holds the bible's.
       const sheetMoved =
@@ -1104,7 +1130,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           },
         }),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, organizationId, lookId);
     },
 
     /**
@@ -1122,7 +1148,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       lookId: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       if (look.isDefault) {
         throw new ValidationError('The default look cannot be removed.');
       }
@@ -1171,7 +1197,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         .update(characterLooks)
         .set({ deletedAt, updatedAt: deletedAt })
         .where(eq(characterLooks.id, lookId));
-      const owner = await eventOwner(db, teamId, sequenceId, look.characterId);
+      const owner = await eventOwner(
+        db,
+        organizationId,
+        sequenceId,
+        look.characterId
+      );
       await db.batch([
         removal,
         ...(owner === null || sequenceId === null
@@ -1197,14 +1228,25 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       lookId: string,
       opts: { actorId: string | null }
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       if (!look.deletedAt) return look;
-      await requireFreeName(db, teamId, look.characterId, look.name, look.id);
+      await requireFreeName(
+        db,
+        organizationId,
+        look.characterId,
+        look.name,
+        look.id
+      );
       const revive = db
         .update(characterLooks)
         .set({ deletedAt: null, updatedAt: new Date() })
         .where(eq(characterLooks.id, lookId));
-      const owner = await eventOwner(db, teamId, sequenceId, look.characterId);
+      const owner = await eventOwner(
+        db,
+        organizationId,
+        sequenceId,
+        look.characterId
+      );
       await db.batch([
         revive,
         ...(owner === null || sequenceId === null
@@ -1221,7 +1263,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
               }),
             ]),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, organizationId, lookId);
     },
 
     /**
@@ -1251,7 +1293,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         } | null;
       }
     ): Promise<{ versionId: string; held: boolean }> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       const versionId = generateId();
       const claim = db
         .update(characterLooks)
@@ -1341,7 +1383,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       versionId: string | null,
       error: string
     ): Promise<void> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, organizationId, lookId);
       await db
         .update(characterLooks)
         .set({

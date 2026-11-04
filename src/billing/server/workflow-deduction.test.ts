@@ -36,7 +36,7 @@ function makeScopedDb({ canAfford = true } = {}) {
   const checkAutoTopUp = vi.fn().mockResolvedValue(undefined);
   const recordUsage = vi.fn().mockResolvedValue(undefined);
   const scopedDbStub = {
-    teamId: 'team_1',
+    organizationId: 'team_1',
     liveRead: { billing: { hasEnoughCredits, checkAutoTopUp } },
     billing: {
       tryDeductCredits,
@@ -194,7 +194,7 @@ describe('deductWorkflowCredits', () => {
     );
   });
 
-  it('skips when the team used its own key', async () => {
+  it('skips when the organization used its own key', async () => {
     const { scopedDb, tryDeductCredits, captureReservation } = makeScopedDb();
 
     await deductWorkflowCreditsImpl({
@@ -228,7 +228,7 @@ describe('deductWorkflowCredits', () => {
       workflowName: 'ImageWorkflow',
       description: 'LLM analysis (model)',
       metadata: undefined,
-      teamId: 'team_1',
+      organizationId: 'team_1',
     });
   });
 
@@ -264,7 +264,7 @@ describe('deductWorkflowCredits', () => {
     expect(tryDeductCredits).toHaveBeenCalledTimes(1);
     expect(checkAutoTopUp).toHaveBeenCalledTimes(1);
     expect(reportSkippedDeduction).toHaveBeenCalledWith({
-      teamId: 'team_1',
+      organizationId: 'team_1',
       workflowName: 'ImageWorkflow',
       description: 'Image generation (test-model)',
       costMicros: micros(2_000_000),

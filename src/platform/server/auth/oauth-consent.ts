@@ -12,12 +12,18 @@
  */
 
 import { getAuth } from './config';
-import { resolveOAuthIssuer, rewriteAuthorizationIss } from './oauth-provider';
+import {
+  consentOrganization,
+  resolveOAuthIssuer,
+  rewriteAuthorizationIss,
+} from './oauth-provider';
 import { resolveOAuthQuery } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from './oauth-scopes';
 import {
-  resolveUserTeam,
+  getUserOrganizationMembership,
+  listUserOrganizations,
   revokeOAuthGrantTokens,
+  type OrganizationOption,
 } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -40,7 +46,8 @@ export type OAuthClientSummary = {
 export type OAuthConsentContext = {
   client: OAuthClientSummary | null;
   scopes: OAuthScopeSummary[];
-  team: { id: string; name: string };
+  organizations: OrganizationOption[];
+  activeOrganizationId: string;
 };
 
 export type AuthorizedApp = {
@@ -91,12 +98,12 @@ export function toClientSummary(
 }
 
 /**
- * What the consent page renders: who is asking, for what, and which team the
- * grant will bill to. Unknown client ids read as `client: null`.
+ * What the consent page renders: who is asking, for what, and the
+ * organizations the grant can bill to. Unknown client ids read as `client: null`.
  */
 export async function loadOAuthConsentContext(input: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   clientId: string;
   scope: string;
   redirectUri?: string;
@@ -114,14 +121,11 @@ export async function loadOAuthConsentContext(input: {
     if (!(error instanceof APIError)) throw error;
     if (error.statusCode !== 404) throw error;
   }
-  const team = await resolveUserTeam(input.userId);
   return {
     client,
     scopes: scopeSummaries(input.scope),
-    team: {
-      id: team?.teamId ?? input.teamId,
-      name: team?.teamName ?? '',
-    },
+    organizations: await listUserOrganizations(input.userId),
+    activeOrganizationId: input.organizationId,
   };
 }
 
@@ -241,12 +245,18 @@ export function consentRedirectUrl(result: unknown): string | null {
  */
 export async function decideOAuthConsent(input: {
   userId: string;
-  teamId: string;
+  organizationId: string;
   accept: boolean;
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: string;
   headers: Headers;
 }): Promise<{ url: string }> {
+  if (
+    input.accept &&
+    !(await getUserOrganizationMembership(input.userId, input.organizationId))
+  ) {
+    throw new ValidationError('You are not a member of that organization');
+  }
   const oauthQuery = resolveOAuthQuery(input.oauthQuery).replace(/^\?/, '');
   const queryParams = new URLSearchParams(oauthQuery);
   const origin = consentApiOrigin(input.headers);
@@ -257,15 +267,17 @@ export async function decideOAuthConsent(input: {
     // In-process: a worker `fetch()` to the public origin can drop the
     // session cookie / CSRF origin. `auth.handler` is the same POST
     // `/api/auth/oauth2/consent` Better Auth's client uses.
-    res = await getAuth().handler(
-      new Request(`${origin}/api/auth/oauth2/consent`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          accept: input.accept,
-          oauth_query: oauthQuery,
-        }),
-      })
+    res = await consentOrganization.run(input.organizationId, () =>
+      getAuth().handler(
+        new Request(`${origin}/api/auth/oauth2/consent`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            accept: input.accept,
+            oauth_query: oauthQuery,
+          }),
+        })
+      )
     );
   } catch (error) {
     logger.warn('oauth consent fetch failed', {
@@ -290,7 +302,7 @@ export async function decideOAuthConsent(input: {
   if (redirect) {
     logger.info('oauth consent decided', {
       userId: input.userId,
-      teamId: input.teamId,
+      organizationId: input.organizationId,
       accept: input.accept,
       clientId: queryParams.get('client_id'),
     });

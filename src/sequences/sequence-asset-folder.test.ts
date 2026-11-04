@@ -17,7 +17,7 @@ describe('sequence asset folder', () => {
       {
         relativePath: 'segments/v.mp4',
         versionId: 'v1',
-        url: '/r2/team/v.mp4?download',
+        url: '/r2/organization/v.mp4?download',
         text: null,
       },
       {
@@ -45,7 +45,7 @@ describe('sequence asset folder', () => {
       {
         relativePath: 'segments/v.mp4',
         versionId: 'v1',
-        url: '/r2/team/v.mp4?download',
+        url: '/r2/organization/v.mp4?download',
         text: null,
       },
     ];

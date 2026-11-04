@@ -436,7 +436,7 @@ describe('an entry written before the default look took the features (#2065)', (
     const talent = { ...old([office]), characterId: 'talent_1' };
     const payload = {
       userId: 'u',
-      teamId: 't',
+      organizationId: 't',
       characterBible: [old([office, gala])],
       attachedCast: [{ id: 'row', shared: false, entry: old([office]) }],
       plan: { context: { characterBible: [old([office])] } },

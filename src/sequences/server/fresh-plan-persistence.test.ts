@@ -9,7 +9,7 @@ import {
   shotSpecVersions,
   shots,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -113,20 +113,22 @@ beforeAll(async () => {
 afterAll(() => closeDb());
 
 it('keeps persisted derived prompts current before sheets exist, while retaining edit staleness', async () => {
-  const teamId = generateId(),
+  const organizationId = generateId(),
     actorId = generateId(),
     sequenceId = generateId(),
     styleId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'Team', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'Organization', slug: organizationId });
   await db
     .insert(user)
     .values({ id: actorId, name: 'User', email: 'persist@example.com' });
   await db
     .insert(styles)
-    .values({ id: styleId, teamId, name: 'Look', config: styleConfig });
+    .values({ id: styleId, organizationId, name: 'Look', config: styleConfig });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'Sequence',
     styleId,
     status: 'completed',
@@ -138,7 +140,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     includeMusic: false,
     generationStopAt: 'images',
   });
-  const scopedDb = createScopedDb(teamId, actorId);
+  const scopedDb = createScopedDb(organizationId, actorId);
   const narrative = {
     title: 'Hall',
     location: 'Hall',

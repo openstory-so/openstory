@@ -302,7 +302,7 @@ export function assertQueuedWithLocationRendering(input: {
     !('referencePhotoUrls' in input)
   ) {
     throw new WorkflowValidationError(
-      'Queued before team locations shipped. Run it again.'
+      'Queued before organization locations shipped. Run it again.'
     );
   }
 }

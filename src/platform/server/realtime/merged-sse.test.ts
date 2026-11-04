@@ -103,11 +103,11 @@ describe('coalesceKeyForSsePayload', () => {
         JSON.stringify({
           id: '1',
           event: 'billing.balance:updated',
-          channel: 'billing:team',
+          channel: 'billing:organization',
           data: { balanceUsd: 1 },
         })
       )
-    ).toBe('billing:team\0billing.balance:updated');
+    ).toBe('billing:organization\0billing.balance:updated');
 
     expect(
       coalesceKeyForSsePayload(
@@ -248,7 +248,7 @@ describe('coalesceKeyForSsePayload', () => {
     const payload = JSON.stringify({
       id: '1',
       event: 'billing.balance:updated',
-      channel: 'billing:team',
+      channel: 'billing:organization',
       data: { blob: 'x'.repeat(9_000) },
     });
     expect(payload.length).toBeGreaterThan(8_192);

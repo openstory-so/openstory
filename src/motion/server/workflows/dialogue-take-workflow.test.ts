@@ -80,12 +80,12 @@ function makeScopedDb(claimId: string | null) {
 
 const input: DialogueTakeWorkflowInput = {
   userId: 'user-1',
-  teamId: 'team-1',
+  organizationId: 'org-1',
   sequenceId: 'seq-1',
   shotId: 'shot-1',
   reservationId: 'res-1',
   ownsReservation: true,
-  takeStorageKey: 'team-1/seq-1/dialogue-takes/take.wav',
+  takeStorageKey: 'org-1/seq-1/dialogue-takes/take.wav',
   line: { index: 1, voiceId: 'voice-b', character: 'B', text: 'Hi', tone: '' },
   sourceKey: 'key-1',
   dialogueVersionId: 'dv-1',

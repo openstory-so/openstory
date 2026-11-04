@@ -262,7 +262,7 @@ describe('ReplaceElementWorkflow onFailure (#1942)', () => {
     // onFailure reads only these fields
     const payload = asStub<ReplaceElementWorkflowInput>({
       userId: 'u1',
-      teamId: 't1',
+      organizationId: 't1',
       sequenceId: 'seq_1',
       elementId: 'el_1',
       token: 'LOGO',

@@ -19,6 +19,7 @@ import {
   lookupDeviceGrantFn,
 } from '@/platform/device-auth.fn';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
+import { OrganizationSelect } from '@/platform/ui/organization-select';
 import {
   useMutation,
   useQueryClient,
@@ -94,10 +95,13 @@ function GrantDecision({ userCode }: { userCode: string }) {
     queryKey: ['deviceGrant', userCode],
     queryFn: () => lookupDeviceGrantFn({ data: { userCode } }),
   });
+  const [organizationId, setOrganizationId] = useState(
+    data.activeOrganizationId
+  );
   const queryClient = useQueryClient();
   const decide = useMutation({
     mutationFn: (approve: boolean) =>
-      decideDeviceGrantFn({ data: { userCode, approve } }),
+      decideDeviceGrantFn({ data: { userCode, approve, organizationId } }),
     onSuccess: ({ error }, approve) => {
       if (error) {
         toast.error(
@@ -151,10 +155,14 @@ function GrantDecision({ userCode }: { userCode: string }) {
     <div className="flex flex-col gap-3">
       <p>
         Give the device showing{' '}
-        <code className="font-mono font-semibold">{userCode}</code> an API key
-        for team <strong>{data.teamName}</strong>? Only approve codes you
-        requested yourself.
+        <code className="font-mono font-semibold">{userCode}</code> an API key?
+        Only approve codes you requested yourself.
       </p>
+      <OrganizationSelect
+        organizations={data.organizations}
+        value={organizationId}
+        onValueChange={setOrganizationId}
+      />
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"

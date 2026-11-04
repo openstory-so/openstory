@@ -18,7 +18,7 @@ const serverManagedPayload = {
   id: 'attacker-chosen-id',
   isPublic: true,
   isTemplate: true,
-  teamId: 'other-team',
+  organizationId: 'other-organization',
   createdBy: 'other-user',
   createdAt: new Date(0),
   updatedAt: new Date(0),
@@ -30,14 +30,14 @@ const serverManagedPayload = {
 describe('style schemas', () => {
   it('strips client-provided server-managed columns when creating a style', () => {
     const parsed = createStyleSchema.parse({
-      name: 'Team Style',
+      name: 'Organization Style',
       config: baseConfig,
       category: 'film',
       ...serverManagedPayload,
     });
 
     expect(parsed).toMatchObject({
-      name: 'Team Style',
+      name: 'Organization Style',
       config: baseConfig,
       category: 'film',
     });

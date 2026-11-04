@@ -56,11 +56,13 @@ import { Route as AppLocationsLocationIdRouteImport } from './routes/_app/locati
 import { Route as AppModelsIndexRouteImport } from './routes/_app/models/index'
 import { Route as AppModelsSplatRouteImport } from './routes/_app/models/$'
 import { Route as AppOauthConsentRouteImport } from './routes/_app/oauth/consent'
+import { Route as AppOrganizationAcceptInvitationRouteImport } from './routes/_app/organization/accept-invitation'
 import { Route as AppSequencesIndexRouteImport } from './routes/_app/sequences/index'
 import { Route as AppSequencesIdRouteRouteImport } from './routes/_app/sequences/$id/route'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsApiKeysRouteImport } from './routes/_app/settings/api-keys'
 import { Route as AppSettingsDeveloperRouteImport } from './routes/_app/settings/developer'
+import { Route as AppSettingsOrganizationRouteImport } from './routes/_app/settings/organization'
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
 import { Route as AppStudioIndexRouteImport } from './routes/_app/studio/index'
 import { Route as AppStylesIndexRouteImport } from './routes/_app/styles/index'
@@ -343,6 +345,12 @@ const AppOauthConsentRoute = AppOauthConsentRouteImport.update({
   path: '/oauth/consent',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppOrganizationAcceptInvitationRoute =
+  AppOrganizationAcceptInvitationRouteImport.update({
+    id: '/organization/accept-invitation',
+    path: '/organization/accept-invitation',
+    getParentRoute: () => AppRouteRoute,
+  } as any)
 const AppSequencesIndexRoute = AppSequencesIndexRouteImport.update({
   id: '/sequences/',
   path: '/sequences/',
@@ -366,6 +374,11 @@ const AppSettingsApiKeysRoute = AppSettingsApiKeysRouteImport.update({
 const AppSettingsDeveloperRoute = AppSettingsDeveloperRouteImport.update({
   id: '/developer',
   path: '/developer',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
+const AppSettingsOrganizationRoute = AppSettingsOrganizationRouteImport.update({
+  id: '/organization',
+  path: '/organization',
   getParentRoute: () => AppSettingsRouteRoute,
 } as any)
 const AppSettingsPasskeysRoute = AppSettingsPasskeysRouteImport.update({
@@ -657,8 +670,10 @@ export interface FileRoutesByFullPath {
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
   '/oauth/consent': typeof AppOauthConsentRoute
+  '/organization/accept-invitation': typeof AppOrganizationAcceptInvitationRoute
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
+  '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -754,8 +769,10 @@ export interface FileRoutesByTo {
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
   '/oauth/consent': typeof AppOauthConsentRoute
+  '/organization/accept-invitation': typeof AppOrganizationAcceptInvitationRoute
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
+  '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -856,8 +873,10 @@ export interface FileRoutesById {
   '/_app/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/_app/models/$': typeof AppModelsSplatRoute
   '/_app/oauth/consent': typeof AppOauthConsentRoute
+  '/_app/organization/accept-invitation': typeof AppOrganizationAcceptInvitationRoute
   '/_app/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/_app/settings/developer': typeof AppSettingsDeveloperRoute
+  '/_app/settings/organization': typeof AppSettingsOrganizationRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -958,8 +977,10 @@ export interface FileRouteTypes {
     | '/locations/$locationId'
     | '/models/$'
     | '/oauth/consent'
+    | '/organization/accept-invitation'
     | '/settings/api-keys'
     | '/settings/developer'
+    | '/settings/organization'
     | '/settings/passkeys'
     | '/api/assistant/chat'
     | '/api/auth/$'
@@ -1055,8 +1076,10 @@ export interface FileRouteTypes {
     | '/locations/$locationId'
     | '/models/$'
     | '/oauth/consent'
+    | '/organization/accept-invitation'
     | '/settings/api-keys'
     | '/settings/developer'
+    | '/settings/organization'
     | '/settings/passkeys'
     | '/api/assistant/chat'
     | '/api/auth/$'
@@ -1156,8 +1179,10 @@ export interface FileRouteTypes {
     | '/_app/locations/$locationId'
     | '/_app/models/$'
     | '/_app/oauth/consent'
+    | '/_app/organization/accept-invitation'
     | '/_app/settings/api-keys'
     | '/_app/settings/developer'
+    | '/_app/settings/organization'
     | '/_app/settings/passkeys'
     | '/api/assistant/chat'
     | '/api/auth/$'
@@ -1583,6 +1608,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOauthConsentRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/organization/accept-invitation': {
+      id: '/_app/organization/accept-invitation'
+      path: '/organization/accept-invitation'
+      fullPath: '/organization/accept-invitation'
+      preLoaderRoute: typeof AppOrganizationAcceptInvitationRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/sequences/': {
       id: '/_app/sequences/'
       path: '/sequences'
@@ -1616,6 +1648,13 @@ declare module '@tanstack/react-router' {
       path: '/developer'
       fullPath: '/settings/developer'
       preLoaderRoute: typeof AppSettingsDeveloperRouteImport
+      parentRoute: typeof AppSettingsRouteRoute
+    }
+    '/_app/settings/organization': {
+      id: '/_app/settings/organization'
+      path: '/organization'
+      fullPath: '/settings/organization'
+      preLoaderRoute: typeof AppSettingsOrganizationRouteImport
       parentRoute: typeof AppSettingsRouteRoute
     }
     '/_app/settings/passkeys': {
@@ -1974,6 +2013,7 @@ const AppAdminRouteRouteWithChildren = AppAdminRouteRoute._addFileChildren(
 interface AppSettingsRouteRouteChildren {
   AppSettingsApiKeysRoute: typeof AppSettingsApiKeysRoute
   AppSettingsDeveloperRoute: typeof AppSettingsDeveloperRoute
+  AppSettingsOrganizationRoute: typeof AppSettingsOrganizationRoute
   AppSettingsPasskeysRoute: typeof AppSettingsPasskeysRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
@@ -1981,6 +2021,7 @@ interface AppSettingsRouteRouteChildren {
 const AppSettingsRouteRouteChildren: AppSettingsRouteRouteChildren = {
   AppSettingsApiKeysRoute: AppSettingsApiKeysRoute,
   AppSettingsDeveloperRoute: AppSettingsDeveloperRoute,
+  AppSettingsOrganizationRoute: AppSettingsOrganizationRoute,
   AppSettingsPasskeysRoute: AppSettingsPasskeysRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
@@ -2055,6 +2096,7 @@ interface AppRouteRouteChildren {
   AppLocationsLocationIdRoute: typeof AppLocationsLocationIdRoute
   AppModelsSplatRoute: typeof AppModelsSplatRoute
   AppOauthConsentRoute: typeof AppOauthConsentRoute
+  AppOrganizationAcceptInvitationRoute: typeof AppOrganizationAcceptInvitationRoute
   AppCharactersIndexRoute: typeof AppCharactersIndexRoute
   AppClipsIndexRoute: typeof AppClipsIndexRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
@@ -2086,6 +2128,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppLocationsLocationIdRoute: AppLocationsLocationIdRoute,
   AppModelsSplatRoute: AppModelsSplatRoute,
   AppOauthConsentRoute: AppOauthConsentRoute,
+  AppOrganizationAcceptInvitationRoute: AppOrganizationAcceptInvitationRoute,
   AppCharactersIndexRoute: AppCharactersIndexRoute,
   AppClipsIndexRoute: AppClipsIndexRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,

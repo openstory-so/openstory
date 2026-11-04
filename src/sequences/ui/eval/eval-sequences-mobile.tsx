@@ -72,7 +72,7 @@ export const EvalSequencesMobile: React.FC<EvalSequencesMobileProps> = ({
 
   // Mirror EvalMatrix's row virtualization (#748). The mobile reel view used to
   // mount every sequence row — and every shot strip within each row — in one
-  // synchronous pass. On a large team that N×M mount is what pushed iOS WebKit
+  // synchronous pass. On a large organization that N×M mount is what pushed iOS WebKit
   // past its per-tab memory budget and killed the WebProcess ("Can't open this
   // page"). Render only the visible rows (+overscan); row height is measured
   // because the title/creator block varies.

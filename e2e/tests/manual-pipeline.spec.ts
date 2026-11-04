@@ -68,7 +68,7 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       }
     });
     testSequence = await createTestSequence(
-      testUser.teamId,
+      testUser.organizationId,
       testUser.id,
       `E2E Manual Pipeline ${crypto.randomUUID().slice(0, 8)}`
     );

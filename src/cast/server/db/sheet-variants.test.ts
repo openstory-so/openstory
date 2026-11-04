@@ -28,7 +28,7 @@ import {
   locations,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
@@ -42,7 +42,7 @@ import { createLocationsMethods } from './locations';
 let closeDb: () => Promise<void>;
 let db: Database;
 
-const team = { id: '', name: 'T', slug: 't' };
+const org = { id: '', name: 'T', slug: 't' };
 const userRow = { id: '', name: 'U', email: 'u@example.com' };
 let sequenceId = '';
 let characterId = '';
@@ -55,19 +55,19 @@ async function seed() {
   await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  team.id = generateId();
+  org.id = generateId();
   userRow.id = generateId();
   sequenceId = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([org]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId: team.id,
+      organizationId: org.id,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -81,12 +81,15 @@ async function seed() {
     })
     .returning();
   if (!style) throw new Error('test setup: style insert returned nothing');
-  await db
-    .insert(sequences)
-    .values([
-      { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
-    ]);
-  const character = await createCharactersMethods(db, team.id).create(
+  await db.insert(sequences).values([
+    {
+      id: sequenceId,
+      organizationId: org.id,
+      title: 'S',
+      styleId: style.id,
+    },
+  ]);
+  const character = await createCharactersMethods(db, org.id).create(
     {
       sequenceId,
       characterId: 'char_001',
@@ -98,9 +101,9 @@ async function seed() {
   characterId = character.id;
 }
 
-/** One of the team's locations, in no sequence. */
+/** One of the organization's locations, in no sequence. */
 const seedLocation = async (name: string) =>
-  await createLocationsMethods(db, team.id).createForTeam(
+  await createLocationsMethods(db, org.id).createForOrganization(
     { name, rendering: 'Photoreal live action' },
     { createdBy: userRow.id }
   );
@@ -119,7 +122,7 @@ beforeEach(async () => {
 
 describe('character-sheet-variants insertDivergent', () => {
   it('is idempotent on (characterId, model, inputHash) — retry returns the existing row', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     const first = await methods.insertDivergent({
@@ -148,7 +151,7 @@ describe('character-sheet-variants insertDivergent', () => {
   });
 
   it('writes a second divergent row when inputHash differs', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     await methods.insertDivergent({
@@ -180,7 +183,7 @@ describe('character-sheet-variants insertDivergent', () => {
     // "the engine retried the same step" path. The post-collision retry path
     // is exercised separately at the helper level (see `insertDivergentRaceTolerant`
     // tests below).
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     const [existingRow] = await db
@@ -215,7 +218,7 @@ describe('character-sheet-variants insertDivergent', () => {
 
 describe('location-sheet-variants insertDivergent', () => {
   it('is idempotent on (locationId, model, inputHash)', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const location = await seedLocation('Harbour');
 
@@ -242,7 +245,7 @@ describe('location-sheet-variants insertDivergent', () => {
   });
 
   it('keeps the same model and hash on two locations as two rows', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const harbour = await seedLocation('Harbour');
     const depot = await seedLocation('Depot');
@@ -265,7 +268,7 @@ describe('location-sheet-variants insertDivergent', () => {
 
 describe('character-sheet-variants discard / undiscard / promote', () => {
   it('discard sets discardedAt and undiscard clears it', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const variant = await methods.insertDivergent({
       characterId,
@@ -291,7 +294,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
   });
 
   it('refuses to discard the selected sheet version', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const variant = await methods.insertDivergent({
       characterId,
       lookId: characterId,
@@ -301,7 +304,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       inputHash: characterSheetInputHash('hash-live'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
-    await createCharacterLooksMethods(db, team.id).ensureDefault(characterId);
+    await createCharacterLooksMethods(db, org.id).ensureDefault(characterId);
     await db
       .update(characterLooks)
       .set({ selectedSheetVersionId: variant.id })
@@ -314,7 +317,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
   });
 
   it('listDivergentActiveByCharacter excludes discarded rows', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const a = await methods.insertDivergent({
       characterId,
@@ -344,7 +347,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
 
 describe('location-sheet-variants discard', () => {
   it('discard then list excludes the discarded row', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const location = await seedLocation('Harbour');
     const variant = await methods.insertDivergent({
@@ -362,7 +365,7 @@ describe('location-sheet-variants discard', () => {
   });
 
   it('refuses to discard a location’s selected reference', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const location = await seedLocation('Harbour');
     const variant = await methods.insertDivergent({
       locationId: location.id,
@@ -386,12 +389,12 @@ describe('location-sheet-variants discard', () => {
 
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     expect(await methods.listDivergentActiveByCharacters([])).toEqual([]);
   });
 
   it('location listDivergentActiveByLocations lists only the locations asked for', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const harbour = await seedLocation('Harbour');
     const depot = await seedLocation('Depot');
@@ -424,8 +427,8 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     );
   });
 
-  it('another team reads and writes none of a location’s sheet versions', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+  it('another organization reads and writes none of a location’s sheet versions', async () => {
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     const harbour = await seedLocation('Harbour');
     const variant = await methods.insertDivergent({
       locationId: harbour.id,
@@ -468,12 +471,12 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
   });
 
   it('location listDivergentActiveByLocations returns [] for empty input', async () => {
-    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const methods = createLocationSheetVariantsMethods(db, org.id);
     expect(await methods.listDivergentActiveByLocations([])).toEqual([]);
   });
 
   it('character listDivergentActiveByCharacter excludes discarded rows but keeps all-divergent on listDivergentByCharacter', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const v1 = await methods.insertDivergent({
       characterId,
@@ -505,7 +508,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
 
 describe('character sheet versions (append + select)', () => {
   it('applyConvergent appends a version and points at it, keeping history', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     // The pre-versioning sheet, as the #1419 backfill left it: a 'prior'
     // version keyed to the character's own id, with the pointer still null.
     await db.insert(characterSheetVariants).values({
@@ -528,7 +531,7 @@ describe('character sheet versions (append + select)', () => {
 
     // The parent's mirror columns are no longer written (#1419) — the live
     // sheet is whatever the pointer names.
-    const live = await createCharactersMethods(db, team.id).getById(
+    const live = await createCharactersMethods(db, org.id).getById(
       sequenceId,
       characterId
     );
@@ -546,7 +549,7 @@ describe('character sheet versions (append + select)', () => {
   });
 
   it('select repoints the parent without discarding the previous version', async () => {
-    const methods = createCharacterSheetVariantsMethods(db, team.id);
+    const methods = createCharacterSheetVariantsMethods(db, org.id);
     const first = await methods.applyConvergent({
       lookId: characterId,
       url: 'https://example.com/a.png',
@@ -563,7 +566,7 @@ describe('character sheet versions (append + select)', () => {
     });
     expect(
       (
-        await createCharactersMethods(db, team.id).getById(
+        await createCharactersMethods(db, org.id).getById(
           sequenceId,
           characterId
         )
@@ -579,7 +582,7 @@ describe('character sheet versions (append + select)', () => {
       .where(eq(characterLooks.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
-    const live = await createCharactersMethods(db, team.id).getById(
+    const live = await createCharactersMethods(db, org.id).getById(
       sequenceId,
       characterId
     );

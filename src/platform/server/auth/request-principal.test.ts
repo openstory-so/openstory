@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const verifyOAuthAccessToken = vi.fn();
 const getSession = vi.fn();
-const findUserById = vi.fn();
+const getUserById = vi.fn();
 
 vi.doMock('./oauth-bearer', async () => {
   const actual =
@@ -13,8 +13,12 @@ vi.doMock('./oauth-bearer', async () => {
 vi.doMock('./config', () => ({
   getAuth: () => ({
     api: { getSession },
-    $context: Promise.resolve({ internalAdapter: { findUserById } }),
   }),
+}));
+
+vi.doMock('@/platform/server/db/scoped', () => ({
+  getApiKeyOrganizationId: vi.fn(),
+  getUserById,
 }));
 
 vi.doMock('./oauth-provider', () => ({
@@ -28,7 +32,7 @@ const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
 const oauth = {
   userId: 'user_1',
-  teamId: 'team_1',
+  organizationId: 'organization_1',
   clientId: 'c1',
   scopes: ['sequences:read'],
   audience: ['https://openstory.test/api/v1'],
@@ -38,7 +42,7 @@ const oauth = {
 beforeEach(() => {
   verifyOAuthAccessToken.mockReset();
   getSession.mockReset();
-  findUserById.mockReset();
+  getUserById.mockReset();
 });
 
 function asThrownResponse(error: unknown): Response {
@@ -51,7 +55,7 @@ function asThrownResponse(error: unknown): Response {
 describe('resolveRequestPrincipal OAuth gate', () => {
   it('verifies a JWT on /api/v1 and returns an OAuth principal', async () => {
     verifyOAuthAccessToken.mockResolvedValueOnce(oauth);
-    findUserById.mockResolvedValueOnce(user);
+    getUserById.mockResolvedValueOnce(user);
     const principal = await resolveRequestPrincipal(
       new Request('https://x/api/v1/sequences', {
         headers: { authorization: `Bearer ${jwt}` },
@@ -107,7 +111,7 @@ describe('resolveRequestPrincipal OAuth gate', () => {
 
   it('401s invalid_token when the subject no longer exists', async () => {
     verifyOAuthAccessToken.mockResolvedValueOnce(oauth);
-    findUserById.mockResolvedValueOnce(null);
+    getUserById.mockResolvedValueOnce(null);
     await expect(
       resolveRequestPrincipal(
         new Request('https://x/api/v1/sequences', {

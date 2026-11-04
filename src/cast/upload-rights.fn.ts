@@ -11,7 +11,7 @@ import {
   uploadRefSchema,
   type UploadCheck,
 } from '@/cast/upload-rights';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -30,7 +30,7 @@ function requestContext() {
  * while its run goes. Asked again until it answers; a failed run throws.
  */
 export const classifyUploadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(uploadRefSchema))
   .handler(({ context, data }): Promise<UploadCheck> =>
     readUploadCheck(context.scopedDb, data, requestContext())
@@ -38,7 +38,7 @@ export const classifyUploadFn = createServerFn({ method: 'POST' })
 
 /** Run the check again after it failed. */
 export const retryUploadCheckFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(uploadRefSchema))
   .handler(({ context, data }): Promise<UploadCheck> =>
     retryUploadCheck(context.scopedDb, data, requestContext())
@@ -46,7 +46,7 @@ export const retryUploadCheckFn = createServerFn({ method: 'POST' })
 
 /** Record the portrait sign-off for real-person uploads. */
 export const attestUploadsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -56,7 +56,7 @@ export const attestUploadsFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     for (const claim of data.attestations) {
-      requireCheckable(claim.url, context.teamId);
+      requireCheckable(claim.url, context.organizationId);
     }
     await attestUploads(context.scopedDb, data.attestations, requestContext());
     return { attested: data.attestations.length };

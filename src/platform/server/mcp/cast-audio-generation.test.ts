@@ -19,7 +19,7 @@ import { createMCPServer } from '@tanstack/ai-mcp/server';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real organization-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -35,7 +35,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
@@ -44,7 +44,7 @@ import {
   selectCharacterSheetVersion,
   updateCharacter,
   updateCharacterLook,
-  updateTeamCharacterLook,
+  updateOrganizationCharacterLook,
 } from '@/cast/server/cast-edit';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
@@ -69,7 +69,7 @@ const server = createMCPServer({
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let sequenceId: string;
 let shotId: string;
 let frameId: string;
@@ -77,7 +77,7 @@ let actorId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
 /** A character as analysis writes it: bible version, cast link, default look. */
 const castCharacter = (character: NewCharacter) =>
-  createScopedDb(teamId, actorId).characters.create(character, {
+  createScopedDb(organizationId, actorId).characters.create(character, {
     source: 'analysis',
     createdBy: null,
   });
@@ -152,17 +152,19 @@ afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.mocked(triggerWorkflow).mockClear();
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   shotId = generateId();
   frameId = generateId();
   actorId = generateId();
   const sceneId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   const styleId = generateId();
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 'Noir',
     config: {
       mood: 'neutral',
@@ -176,7 +178,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     styleId,
     title: 'Test sequence',
     status: 'completed',
@@ -195,7 +197,7 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values({ id: actorId, name: 'Actor', email: `${actorId}@test.invalid` });
-  scopedDb = createScopedDb(teamId, actorId);
+  scopedDb = createScopedDb(organizationId, actorId);
 });
 
 describe('music', () => {
@@ -303,12 +305,12 @@ describe('cast', () => {
     ).toEqual({ cancelled: false });
   });
 
-  /** One of the team's locations, with a completed sheet when `sheet`. */
-  async function teamLocation(name: string, sheet: boolean) {
+  /** One of the organization's locations, with a completed sheet when `sheet`. */
+  async function organizationLocation(name: string, sheet: boolean) {
     const id = generateId();
     await db.insert(locations).values({
       id,
-      teamId,
+      organizationId,
       legacyName: name,
       referenceStatus: sheet ? 'completed' : 'pending',
     });
@@ -330,10 +332,10 @@ describe('cast', () => {
       attached: false,
     });
 
-  it('refuses to switch to a team location with no reference image', async () => {
-    const locationId = await teamLocation('Office', true);
+  it('refuses to switch to an organization location with no reference image', async () => {
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const libraryLocationId = await teamLocation('Bare office', false);
+    const libraryLocationId = await organizationLocation('Bare office', false);
     expect(
       await call('recast_location', {
         sequenceId,
@@ -347,10 +349,10 @@ describe('cast', () => {
     );
   });
 
-  it('recast_location re-points the sequence at another team location and draws no sheet (#1695)', async () => {
-    const locationId = await teamLocation('Office', true);
+  it('recast_location re-points the sequence at another organization location and draws no sheet (#1695)', async () => {
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const libraryLocationId = await teamLocation('Loft', true);
+    const libraryLocationId = await organizationLocation('Loft', true);
     expect(
       await data('recast_location', {
         sequenceId,
@@ -366,13 +368,15 @@ describe('cast', () => {
     expect(vi.mocked(triggerWorkflow).mock.calls.map(([path]) => path)).toEqual(
       ['/recast-location']
     );
-    // The link moved and kept its script id; the old location is the team's.
+    // The link moved and kept its script id; the old location is the organization's.
     expect(
       await scopedDb.locations.getById(sequenceId, libraryLocationId)
     ).toMatchObject({ name: 'Loft', locationId: 'loc_001', attached: true });
     expect(await scopedDb.locations.getById(sequenceId, locationId)).toBe(null);
     expect(
-      (await scopedDb.locations.listTeam()).map((location) => location.id)
+      (await scopedDb.locations.listOrganization()).map(
+        (location) => location.id
+      )
     ).toEqual(expect.arrayContaining([locationId, libraryLocationId]));
     expect(await scopedDb.locations.getCurrent(locationId)).toMatchObject({
       referenceStatus: 'completed',
@@ -380,17 +384,21 @@ describe('cast', () => {
     });
   });
 
-  it('does not switch to another team\u2019s location', async () => {
-    const locationId = await teamLocation('Office', true);
+  it('does not switch to another organization\u2019s location', async () => {
+    const locationId = await organizationLocation('Office', true);
     await use(locationId, 'loc_001');
-    const foreignTeam = generateId();
-    await db
-      .insert(teams)
-      .values({ id: foreignTeam, name: 'Foreign', slug: foreignTeam });
+    const foreignOrganization = generateId();
+    await db.insert(organization).values({
+      id: foreignOrganization,
+      name: 'Foreign',
+      slug: foreignOrganization,
+    });
     const foreign = generateId();
-    await db
-      .insert(locations)
-      .values({ id: foreign, teamId: foreignTeam, legacyName: 'Vault' });
+    await db.insert(locations).values({
+      id: foreign,
+      organizationId: foreignOrganization,
+      legacyName: 'Vault',
+    });
     expect(
       await call('recast_location', {
         sequenceId,
@@ -422,7 +430,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     if (!seq) throw new Error('seed sequence missing');
     await db.insert(sequences).values({
       id,
-      teamId,
+      organizationId,
       styleId: seq.styleId,
       title,
       status: 'completed',
@@ -450,7 +458,7 @@ describe('a character that must be a person is stored as one, on every path (#20
    * own bible write is the caller's to make or leave out.
    */
   const uploadRealPhoto = async (characterId: string) => {
-    const url = `/r2/characters/${teamId}/uploads/${generateId()}.png`;
+    const url = `/r2/characters/${organizationId}/uploads/${generateId()}.png`;
     const { version } = await scopedDb.characterSheetVariants.applyConvergent({
       lookId: characterId,
       url,
@@ -510,7 +518,7 @@ describe('a character that must be a person is stored as one, on every path (#20
       .update(characterBibleVersions)
       .set({ isPerson: false, legacyDistinguishingFeatures: 'scar' })
       .where(eq(characterBibleVersions.characterId, id));
-    await updateTeamCharacterLook(scopedDb, actor(), id, id, {
+    await updateOrganizationCharacterLook(scopedDb, actor(), id, id, {
       styling: 'hair down',
     });
     expect(await scopedDb.characters.getCurrent(id)).toMatchObject({

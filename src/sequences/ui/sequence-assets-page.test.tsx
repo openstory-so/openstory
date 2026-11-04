@@ -22,7 +22,7 @@ const still: SequenceAsset = {
   discarded: false,
   shared: false,
   relativePath: 'scenes/1/shots/1/still.png',
-  url: '/r2/team/still.png?download',
+  url: '/r2/organization/still.png?download',
   text: null,
   contentType: 'image/png',
   versionId: 'still-1',
@@ -59,7 +59,7 @@ describe('sequence assets page', () => {
     expect(html).toContain('npx @openstory/stitch pull SEQ');
     expect(html).toContain('Copy Pull command');
     expect(html).toContain('# Run this to download these files.');
-    expect(html).toContain('href="/r2/team/still.png?download"');
+    expect(html).toContain('href="/r2/organization/still.png?download"');
   });
 
   it('names the folder after the sequence title', () => {

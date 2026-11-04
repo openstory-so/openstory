@@ -8,7 +8,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
   authMiddleware,
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   systemAdminMiddleware,
 } from '@/platform/middleware.fn';
 
@@ -31,7 +31,7 @@ export const createGiftTokenFn = createServerFn({ method: 'POST' })
       ? new Date(Date.now() + data.expiresInDays * MS_PER_DAY)
       : undefined;
 
-    // Admin ops use a dummy teamId since they're not team-scoped
+    // Admin ops use a dummy organizationId since they're not organization-scoped
     return context.adminScopedDb.admin.createGiftToken({
       createdByUserId: context.user.id,
       amountUsd: data.amountUsd,
@@ -73,12 +73,12 @@ export const batchCreateGiftTokensFn = createServerFn({ method: 'POST' })
   });
 
 export const redeemGiftTokenFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ code: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const result = await context.scopedDb.billing.redeemGiftToken({
       code: data.code,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       addCredits: context.scopedDb.billing.addCredits,
     });
@@ -87,7 +87,7 @@ export const redeemGiftTokenFn = createServerFn({ method: 'POST' })
         code: data.code,
         reason: result.reason,
         userId: context.user.id,
-        teamId: context.teamId,
+        organizationId: context.organizationId,
       });
     }
     return result;

@@ -245,7 +245,7 @@ export async function generateShotImageVariants(
 
   const workflowInput: ShotVariantWorkflowInput = {
     userId: user.id,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
     shotId: shot.id,
     frameId: frame.id,
@@ -329,7 +329,7 @@ export async function selectShotImageVariant(
     col,
     gridCols: gridConfig.cols,
     gridRows: gridConfig.rows,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
     shotId: shot.id,
   });
@@ -411,7 +411,7 @@ export async function selectShotImageVariant(
 
   const workflowInput: UpscaleShotVariantWorkflowInput = {
     userId: user.id,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     sequenceId: sequence.id,
     shotId: shot.id,
     frameId: frame.id,

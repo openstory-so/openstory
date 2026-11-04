@@ -13,7 +13,7 @@ function asset(
 ): GeneratedAsset {
   return {
     id: '01STUDIOASSET000000000000',
-    teamId: 'team',
+    organizationId: 'organization',
     userId: 'user',
     provider: 'fal',
     endpointId: 'fal-ai/example',
@@ -181,13 +181,13 @@ describe('studioReuse', () => {
         prompt: 'the fox turns',
         aspectRatio: '16:9',
         mode: 'reference',
-        referenceVideos: ['/r2/teams/team/studio/clip/video.mp4'],
+        referenceVideos: ['/r2/teams/organization/studio/clip/video.mp4'],
         referenceClips: [{ assetId: '01STUDIOCLIP00000000000000' }],
       },
     });
     expect(studioReuse(row)?.referenceVideos).toEqual([
       {
-        url: '/r2/teams/team/studio/clip/video.mp4',
+        url: '/r2/teams/organization/studio/clip/video.mp4',
         assetId: '01STUDIOCLIP00000000000000',
       },
     ]);

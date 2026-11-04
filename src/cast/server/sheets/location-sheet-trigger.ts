@@ -82,7 +82,7 @@ export async function loadLocationSheetPayloadRows(
 export async function buildRegenerateLocationSheetPayload(params: {
   scopedDb: ScopedDb;
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequence: { id: string; imageModel: string | null } | null;
   location: LocationWithReference | SequenceLocationWithReference;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
@@ -90,7 +90,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
   /** Already read for this location; omitted, they are read here (#2082). */
   preloaded?: LocationSheetPayloadRows;
 }): Promise<Omit<LocationSheetWorkflowInput, 'referenceVersionId'>> {
-  const { scopedDb, userId, teamId, sequence, location } = params;
+  const { scopedDb, userId, organizationId, sequence, location } = params;
 
   const { liveVersion, photos } =
     params.preloaded ??
@@ -98,7 +98,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
 
   const partialFields: SheetPayload<LocationSheetWorkflowInput> = {
     userId,
-    teamId,
+    organizationId,
     sequenceId: sequence?.id ?? null,
     locationDbId: location.id,
     locationName: location.name,

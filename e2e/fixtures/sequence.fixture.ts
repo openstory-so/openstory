@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 export type TestSequence = {
   id: string;
-  teamId: string;
+  organizationId: string;
   styleId: string;
   title: string;
 };
@@ -26,13 +26,13 @@ export type TestCharacter = {
 };
 
 /**
- * Create a test style for the team (required by sequence)
+ * Create a test style for the organization (required by sequence)
  */
-export async function createTestStyle(teamId: string): Promise<string> {
+export async function createTestStyle(organizationId: string): Promise<string> {
   const res = await fetch('http://localhost:3020/api/test/style', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId }),
+    body: JSON.stringify({ organizationId }),
   });
 
   if (!res.ok) {
@@ -47,18 +47,18 @@ export async function createTestStyle(teamId: string): Promise<string> {
  * Create a test sequence with a style
  */
 export async function createTestSequence(
-  teamId: string,
+  organizationId: string,
   userId: string,
   title = 'E2E Test Sequence'
 ): Promise<TestSequence> {
   // No style is created here on purpose: the API route already creates the
   // sequence's own style, and `cleanupSequenceById` only deletes that one — so
-  // a second style here leaked an orphan row onto the shared team on every
-  // call, permanently widening the team's style catalog mid-run.
+  // a second style here leaked an orphan row onto the shared organization on every
+  // call, permanently widening the organization's style catalog mid-run.
   const res = await fetch('http://localhost:3020/api/test/sequence', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId, userId, title }),
+    body: JSON.stringify({ organizationId, userId, title }),
   });
 
   if (!res.ok) {
@@ -68,7 +68,7 @@ export async function createTestSequence(
   const created = z
     .object({
       id: z.string(),
-      teamId: z.string(),
+      organizationId: z.string(),
       styleId: z.string(),
       title: z.string(),
     })
@@ -105,16 +105,16 @@ export async function createTestShot(
 }
 
 /**
- * The team character the full-sequence e2e casts as SCARLETT. No sheet: the
+ * The organization character the full-sequence e2e casts as SCARLETT. No sheet: the
  * run draws it.
  */
 export async function createScarlettCharacter(
-  teamId: string
+  organizationId: string
 ): Promise<{ id: string; name: string }> {
   const res = await fetch('http://localhost:3020/api/test/character', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId, preset: 'scarlett' }),
+    body: JSON.stringify({ organizationId, preset: 'scarlett' }),
   });
   if (!res.ok) {
     throw new Error(`Failed to create Scarlett via API: ${res.status}`);
@@ -267,13 +267,15 @@ export async function getTestSequenceStatus(sequenceId: string): Promise<{
 }
 
 /**
- * Clean up all test sequences and related data for a team (use only when test isolation isn't needed)
+ * Clean up all test sequences and related data for an organization (use only when test isolation isn't needed)
  */
-export async function cleanupTestSequences(teamId: string): Promise<void> {
+export async function cleanupTestSequences(
+  organizationId: string
+): Promise<void> {
   await fetch('http://localhost:3020/api/test/sequence', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId }),
+    body: JSON.stringify({ organizationId }),
   });
 }
 

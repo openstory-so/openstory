@@ -4,7 +4,7 @@
  * theatre player, at the 44px mobile hit target. Both open the same menu:
  * Download / Copy link once the current cut has a render, otherwise why it
  * has none and "Render MP4 on server". "All files" opens the asset page
- * (#2209). "Publish to social…" (#1267) exists only for teams that saved an
+ * (#2209). "Publish to social…" (#1267) exists only for organizations that saved an
  * Upload-Post key; everyone else never sees it. "Share stitch link" (#2140)
  * needs no render: it shares the cut the theatre plays as a public /stitch
  * page and copies its link.
@@ -59,7 +59,7 @@ function useElapsed(startedAt: number | null): string {
 }
 
 type PublishTarget = {
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   defaultTitle: string;
 };
@@ -70,7 +70,7 @@ export const SequenceDownloadMenu: React.FC<{
   /** Draft clips in the cut (#1756) — the render would carry 480p shots. */
   draftLabel?: string | null;
   variant: 'toolbar' | 'overlay';
-  /** Enables "Share stitch link", and "Publish to social…" when the team has an Upload-Post key. */
+  /** Enables "Share stitch link", and "Publish to social…" when the organization has an Upload-Post key. */
   publish?: PublishTarget;
 }> = ({ sequenceId, sequenceExport, draftLabel = null, variant, publish }) => {
   const {
@@ -92,7 +92,7 @@ export const SequenceDownloadMenu: React.FC<{
           ? 'Cut changed since last render'
           : 'Not rendered yet';
   const { data: publishing } = useQuery({
-    queryKey: ['social-publishing', publish?.teamId],
+    queryKey: ['social-publishing', publish?.organizationId],
     queryFn: publish
       ? () =>
           getSocialPublishingFn({
@@ -250,7 +250,7 @@ export const SequenceDownloadMenu: React.FC<{
       {publish && publishExportId && (
         <PublishDialog
           onClose={() => setPublishExportId(null)}
-          teamId={publish.teamId}
+          organizationId={publish.organizationId}
           sequenceId={publish.sequenceId}
           exportId={publishExportId}
           defaultTitle={publish.defaultTitle}

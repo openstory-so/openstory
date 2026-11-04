@@ -65,7 +65,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         const made = await recordDialogueTake({
           elevenLabsKey: eleven.key,
           seedKey,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId: input.sequenceId,
           shotId: input.shotId,
           line: input.line,
@@ -91,7 +91,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
       }
 
       // Billed only once the take fits: one that cannot be used costs the
-      // team nothing, as for a Seed take that failed its check.
+      // organization nothing, as for a Seed take that failed its check.
       await step.do('charge', async () => {
         const callKey = `${workflowRunId}:dialogue-take`;
         for (const charge of take.charges) {
@@ -131,7 +131,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         cutAudioSection({
           storageKey: take.storageKey,
           speechId: take.speechId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId: input.sequenceId,
           fromSeconds: 0,
           toSeconds: take.durationSeconds,

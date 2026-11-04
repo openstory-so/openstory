@@ -253,7 +253,7 @@ const generateMockStyle = (overrides?: Partial<Style>): Style => {
       ),
       colorGrading: faker.helpers.arrayElement(colorGradings),
     },
-    teamId: faker.string.ulid(),
+    organizationId: faker.string.ulid(),
     sequenceId: null,
     isPublic: faker.datatype.boolean(),
     isTemplate: faker.datatype.boolean(),

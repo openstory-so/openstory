@@ -33,13 +33,13 @@ Versions are append-only rows. Selection is a pointer. A download names rows tha
 | Rendered cut         | `sequence_exports`                         | the newest ready export                          | the MP4 in R2. Derived.                                                                         |
 | Prompt, spec, script | version tables                             | the shot and scene pointers                      | text. No media bytes.                                                                           |
 
-Characters, looks, and locations belong to the team (#2017, #1695). A sequence reaches them through cast and location links. The same sheet is the current sheet of every sequence that casts that character. Studio `generated_assets` and BytePlus pool entries are team or account files, not sequence files, and stay out of the first slice.
+Characters, looks, and locations belong to the organization (#2017, #1695). A sequence reaches them through cast and location links. The same sheet is the current sheet of every sequence that casts that character. Studio `generated_assets` and BytePlus pool entries are organization or account files, not sequence files, and stay out of the first slice.
 
 ## Options
 
 ### 1. A manifest, then one download per file
 
-`GET /api/v1/sequences/$id/assets` returns a JSON list. Each entry is `{ id, kind, role, selected, discarded, shared, relativePath, url, contentType, versionId, owners }`. `url` is the origin-relative `/r2/…?download` the app already serves. `relativePath` is the stable name a folder writer uses. `shared` is true for team cast and location files.
+`GET /api/v1/sequences/$id/assets` returns a JSON list. Each entry is `{ id, kind, role, selected, discarded, shared, relativePath, url, contentType, versionId, owners }`. `url` is the origin-relative `/r2/…?download` the app already serves. `relativePath` is the stable name a folder writer uses. `shared` is true for organization cast and location files.
 
 The same list is a server fn for the page and an MCP read (`list_sequence_assets`), so the assistant and a script see one shape. The public schema is generated with the rest of `/api/v1`.
 
@@ -61,7 +61,7 @@ The page writes text sidecars (`script`, shot spec, motion prompt, the speech's 
 
 ### 4. A CLI pull
 
-`npx` a small command that signs in with the device code (`/api/v1/device/code`, the stitch share sign-in), fetches the manifest, and writes the folder. Team files land once under a shared cache keyed by `versionId`. A later run skips matches. This is the sync. It resumes, it runs unattended, and it can take `history`.
+`npx` a small command that signs in with the device code (`/api/v1/device/code`, the stitch share sign-in), fetches the manifest, and writes the folder. Organization files land once under a shared cache keyed by `versionId`. A later run skips matches. This is the sync. It resumes, it runs unattended, and it can take `history`.
 
 The stitch CLI stays a player. This command is a sibling, or a later subcommand, and it does not render an MP4.
 
@@ -77,7 +77,7 @@ Out. A clip must not sit in Worker memory, and a sequence of versions is many cl
 
 ### 7. Bucket credentials for rclone
 
-Out. R2 keys are team-mixed in one bucket, and `/r2/$` is already a capability URL: knowing the key is the credential. A manifest behind sequence auth is the list. Handing out the bucket hands out every team.
+Out. R2 keys are organization-mixed in one bucket, and `/r2/$` is already a capability URL: knowing the key is the credential. A manifest behind sequence auth is the list. Handing out the bucket hands out every organization.
 
 ## Recommendation
 
@@ -109,7 +109,7 @@ Folder layout, so a sync and a zip agree:
 
 History inserts the version id before the extension (`still.<versionId>.<ext>`) and leaves the pointer's file at the stable name above. A segment file appears once. Shot folders do not each contain a copy. `manifest.json` maps each shot to its segment.
 
-`shared` cast and location files use those same relative paths inside a sequence snapshot, so a folder stands alone. The CLI also keeps one team cache and hard-links or skips when the bytes are already there.
+`shared` cast and location files use those same relative paths inside a sequence snapshot, so a folder stands alone. The CLI also keeps one organization cache and hard-links or skips when the bytes are already there.
 
 Rendered exports are a separate group, off by default. They are large and reproducible from the cut.
 
@@ -125,5 +125,5 @@ Folder save and the CLI are the next issues, against this manifest, so the path 
 
 - History payloads can be large as JSON. Page the history scope by kind if one sequence exceeds a few thousand rows. The selected scope is one row per pointer and stays one response.
 - `/r2/<key>` is readable by anyone who has the key. The manifest is the index, so it stays on the authenticated API. Do not attach it to a public stitch.
-- Team sheets change under a sequence that already synced. The next sync sees a new `versionId` and adds the file. The old file remains in `history`.
+- Organization sheets change under a sequence that already synced. The next sync sees a new `versionId` and adds the file. The old file remains in `history`.
 - Dialogue is one wav for a stretch of shots. The cuts sidecar is the per-shot view. Pre-cutting wavs would be a container job and is not part of this.

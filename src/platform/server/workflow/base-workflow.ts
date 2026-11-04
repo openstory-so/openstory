@@ -7,8 +7,8 @@
  *
  * Subclasses implement `runImpl(event, step, scopedDb)` and optionally
  * `onFailure({ event, error, scopedDb })`. The base class:
- *   - Validates `userId` / `teamId` on the payload (same contract as
- *     `createScopedWorkflow`'s teamId middleware).
+ *   - Validates `userId` / `organizationId` on the payload (same contract as
+ *     `createScopedWorkflow`'s organizationId middleware).
  *   - Builds a `ScopedDb` from the payload and hands it to both `runImpl`
  *     and `onFailure`.
  *   - Sanitizes the error message and emits it in a `step.do('emit-failure')`
@@ -148,7 +148,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
   /**
    * Subclasses implement workflow logic here. Receives the same `event` /
    * `step` the engine hands to `run()`, plus a `WorkflowScopedDb` bound to the
-   * payload's `(teamId, userId)` — the full write surface, but reads only via
+   * payload's `(organizationId, userId)` — the full write surface, but reads only via
    * the enumerated `liveRead` escape hatch. Everything else must be
    * snapshotted onto the payload by the server fn that triggered the run.
    */
@@ -192,14 +192,14 @@ export abstract class OpenStoryWorkflowEntrypoint<
       ...queued,
       payload: foldLegacyFeaturesInPayload(queued.payload),
     };
-    if (!event.payload.teamId || !event.payload.userId) {
+    if (!event.payload.organizationId || !event.payload.userId) {
       throw new Error(
-        `[${this.constructor.name}] payload missing teamId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`
+        `[${this.constructor.name}] payload missing organizationId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`
       );
     }
 
     const scopedDb = toWorkflowScopedDb(
-      createScopedDb(event.payload.teamId, event.payload.userId)
+      createScopedDb(event.payload.organizationId, event.payload.userId)
     );
 
     // Install the fal→proxy middleware on the global `fal` singleton before any
@@ -314,7 +314,8 @@ export abstract class OpenStoryWorkflowEntrypoint<
           workflow: this.constructor.name,
           error: sanitized,
           sequence_id: extractSequenceId(event.payload) ?? null,
-          team_id: event.payload.teamId,
+          team_id: event.payload.organizationId,
+          organization_id: event.payload.organizationId,
           run_id: event.instanceId,
         },
       });

@@ -93,14 +93,14 @@ describe('stitch pull', () => {
               {
                 relativePath: 'cast/c/looks/c/sheet.png',
                 versionId: 'sheet:1',
-                url: '/r2/team/sheet.png?download',
+                url: '/r2/organization/sheet.png?download',
                 text: null,
                 shared: true,
               },
             ])
           );
         }
-        if (url.pathname === '/r2/team/sheet.png') {
+        if (url.pathname === '/r2/organization/sheet.png') {
           return new Response('png-bytes');
         }
         return new Response('missing', { status: 404 });
@@ -130,13 +130,13 @@ describe('stitch pull', () => {
         home,
         '.openstory',
         'assets',
-        `${createHash('sha256').update('/r2/team/sheet.png').digest('hex')}.png`
+        `${createHash('sha256').update('/r2/organization/sheet.png').digest('hex')}.png`
       );
       const cached = await stat(cache);
       const linked = await stat(join(dest, 'cast/c/looks/c/sheet.png'));
       expect(linked.ino).toBe(cached.ino);
       const downloads = calls.filter((path) => path.startsWith('/r2/'));
-      expect(downloads).toEqual(['/r2/team/sheet.png']);
+      expect(downloads).toEqual(['/r2/organization/sheet.png']);
 
       calls.length = 0;
       const second = await downloadSequenceAssets({
@@ -246,24 +246,24 @@ describe('stitch pull', () => {
               {
                 relativePath: 'cast/c/portrait.png',
                 versionId: 'sheet-1',
-                url: '/r2/team/portrait.png?download',
+                url: '/r2/organization/portrait.png?download',
                 text: null,
                 shared: true,
               },
               {
                 relativePath: 'cast/c/sheet.png',
                 versionId: 'sheet-1',
-                url: '/r2/team/sheet.png?download',
+                url: '/r2/organization/sheet.png?download',
                 text: null,
                 shared: true,
               },
             ])
           );
         }
-        if (url.pathname === '/r2/team/portrait.png') {
+        if (url.pathname === '/r2/organization/portrait.png') {
           return new Response('portrait-bytes');
         }
-        if (url.pathname === '/r2/team/sheet.png') {
+        if (url.pathname === '/r2/organization/sheet.png') {
           return new Response('sheet-bytes');
         }
         return new Response('missing', { status: 404 });

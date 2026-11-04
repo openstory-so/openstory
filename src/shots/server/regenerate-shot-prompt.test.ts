@@ -166,7 +166,7 @@ function harness(opts: {
     },
     scopedDb,
     user: { id: 'user-1' },
-    teamId: 'team-1',
+    organizationId: 'org-1',
   };
   return {
     // test stub

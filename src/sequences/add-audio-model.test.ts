@@ -33,7 +33,7 @@ function makeContext(canAfford = false) {
     user: { id: 'u1' },
     sequence: {
       id: 'seq_1',
-      teamId: 't1',
+      organizationId: 't1',
       musicPrompt: 'ambient synths',
       musicTags: 'ambient',
     },
@@ -76,7 +76,7 @@ const addAudioModel =
 describe('add audio model — music credits', () => {
   beforeEach(() => triggerWorkflow.mockClear());
 
-  it('blocks native music for a fal BYOK team with insufficient credits', async () => {
+  it('blocks native music for a fal BYOK organization with insufficient credits', async () => {
     const context = makeContext();
 
     await expect(

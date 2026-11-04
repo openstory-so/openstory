@@ -17,7 +17,7 @@ const {
 } = await import('./openrouter-oauth-cookie');
 
 const sampleState: OAuthState = {
-  teamId: '01JTEAM00000000000000000000',
+  organizationId: '01JTEAM00000000000000000000',
   userId: '01JUSER00000000000000000000',
   codeVerifier: 'verifier-abc123',
   csrfState: 'csrf-nonce-xyz789',

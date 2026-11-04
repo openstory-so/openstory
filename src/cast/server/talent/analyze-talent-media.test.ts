@@ -14,9 +14,10 @@ vi.doMock('@/cast/server/talent-vision', async (importOriginal) => ({
   analyzeTalentClip: mockAnalyzeClip,
 }));
 
-const { analyzeTalentClipForTeam } = await import('./analyze-talent-media');
+const { analyzeTalentClipForOrganization } =
+  await import('./analyze-talent-media');
 
-describe('analyzeTalentClipForTeam', () => {
+describe('analyzeTalentClipForOrganization', () => {
   it('refuses a key that is not native Google before the clip leaves storage (#1930)', async () => {
     const scopedDb = asStub<ScopedDb>({
       apiKeys: {
@@ -29,7 +30,7 @@ describe('analyzeTalentClipForTeam', () => {
     });
 
     await expect(
-      analyzeTalentClipForTeam({
+      analyzeTalentClipForOrganization({
         scopedDb,
         userId: 'u',
         key: 'talent/t/uploads/clip.mp4',

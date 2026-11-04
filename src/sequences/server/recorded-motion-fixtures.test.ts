@@ -84,7 +84,7 @@ it('recorded packed and individual motion requests match canonical direction and
         const jobs = buildMotionRender({
           shots: group,
           userId: 'u',
-          teamId: 't',
+          organizationId: 't',
         });
         for (const job of jobs) {
           const refs = buildMotionReferenceImages({

@@ -4,7 +4,7 @@
  * The upload route starts it when the bytes land, so a closed tab, a reload
  * or a trip to checkout cannot cut it off. The browser only reads the
  * result: the ledger row once there is one, else the run's state. One run
- * per team and URL (the dedup id is their hash); a retry after a failed run is a
+ * per organization and URL (the dedup id is their hash); a retry after a failed run is a
  * new attempt, up to the trigger's generation cap.
  */
 
@@ -71,9 +71,9 @@ function checksOnUpload(bucket: StorageBucket, contentType: string): boolean {
   return false;
 }
 
-/** Per team: two teams may check the same raw URL, each on its own run. */
-async function checkKey(teamId: string, url: string): Promise<string> {
-  return sha256Hex(`${teamId}:${url}`);
+/** Per organization: two organizations may check the same raw URL, each on its own run. */
+async function checkKey(organizationId: string, url: string): Promise<string> {
+  return sha256Hex(`${organizationId}:${url}`);
 }
 
 /** Start (or join) the check for one upload. */
@@ -81,14 +81,14 @@ async function startUploadCheck(
   input: UploadCheckWorkflowInput
 ): Promise<void> {
   await triggerWorkflow(`/${UPLOAD_CHECK_TRIGGER}`, input, {
-    deduplicationId: await checkKey(input.teamId, input.url),
+    deduplicationId: await checkKey(input.organizationId, input.url),
   });
 }
 
 type StoredUpload = {
   bucket: StorageBucket;
   contentType: string;
-  teamId: string;
+  organizationId: string;
   userId: string;
 };
 
@@ -101,7 +101,10 @@ export async function requireUploadCheckAllowed(
   opts: StoredUpload
 ): Promise<void> {
   if (!checksOnUpload(opts.bucket, opts.contentType)) return;
-  const { enforcement } = await loadComplianceRecords(opts.userId, opts.teamId);
+  const { enforcement } = await loadComplianceRecords(
+    opts.userId,
+    opts.organizationId
+  );
   assertCanGenerate(resolveEnforcementState(enforcement));
 }
 
@@ -116,7 +119,7 @@ export async function startCheckForStoredUpload(
   if (!checksOnUpload(opts.bucket, opts.contentType)) return;
   await startUploadCheck({
     userId: opts.userId,
-    teamId: opts.teamId,
+    organizationId: opts.organizationId,
     url: getPublicUrl(opts.bucket, opts.path),
     // A hint only, as the browser's filename always was; capped like
     // `uploadRefSchema`.
@@ -137,10 +140,10 @@ type CheckRun = {
 
 /** The newest attempt's run for this URL, or null when none was started. */
 async function latestCheckRun(
-  teamId: string,
+  organizationId: string,
   url: string
 ): Promise<CheckRun | null> {
-  const suffix = await checkKey(teamId, url);
+  const suffix = await checkKey(organizationId, url);
   let latest: CheckRun | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const read = await readInstanceIfExists(
@@ -182,13 +185,13 @@ function checkFailure(run: CheckRun): OpenStoryError {
 }
 
 function checkInput(
-  scopedDb: Pick<ScopedDb, 'teamId' | 'userId'>,
+  scopedDb: Pick<ScopedDb, 'organizationId' | 'userId'>,
   ref: UploadRef,
   request: LikenessRequestContext
 ): UploadCheckWorkflowInput {
   return {
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     url: ref.url,
     filename: ref.filename ?? null,
     ipAddress: request.ipAddress ?? null,
@@ -206,10 +209,10 @@ export async function readUploadCheck(
   ref: UploadRef,
   request: LikenessRequestContext
 ): Promise<UploadCheck> {
-  requireCheckable(ref.url, scopedDb.teamId);
+  requireCheckable(ref.url, scopedDb.organizationId);
   const onRecord = await uploadRightsOnRecord(scopedDb, ref.url);
   if (onRecord) return onRecord;
-  const run = await latestCheckRun(scopedDb.teamId, ref.url);
+  const run = await latestCheckRun(scopedDb.organizationId, ref.url);
   if (!run) {
     await startUploadCheck(checkInput(scopedDb, ref, request));
     return { status: 'checking' };
@@ -239,10 +242,10 @@ export async function retryUploadCheck(
   ref: UploadRef,
   request: LikenessRequestContext
 ): Promise<UploadCheck> {
-  requireCheckable(ref.url, scopedDb.teamId);
+  requireCheckable(ref.url, scopedDb.organizationId);
   const onRecord = await uploadRightsOnRecord(scopedDb, ref.url);
   if (onRecord) return onRecord;
-  const run = await latestCheckRun(scopedDb.teamId, ref.url);
+  const run = await latestCheckRun(scopedDb.organizationId, ref.url);
   if (run && isRunning(run)) {
     return { status: 'checking' };
   }
@@ -265,7 +268,7 @@ function isRunning(run: CheckRun): boolean {
  * first instead of refused (#2192). For a request that takes URLs the
  * caller may never have checked: a past upload, a raw URL, an upload behind
  * a reused clip. An upload whose run is still going is refused as still
- * checking, so the vision call never runs (and bills) twice. Another team's
+ * checking, so the vision call never runs (and bills) twice. Another organization's
  * file is never checked; with no row it is refused. A failed check throws;
  * a real person still needs the sign-off.
  */
@@ -275,9 +278,9 @@ export async function requireCheckedUploadRights(
   request: LikenessRequestContext
 ): Promise<Map<string, { depictsRealPerson: boolean }>> {
   for (const url of new Set(urls)) {
-    if (!isCheckable(url, scopedDb.teamId)) continue;
+    if (!isCheckable(url, scopedDb.organizationId)) continue;
     if (await uploadRightsOnRecord(scopedDb, url)) continue;
-    const run = await latestCheckRun(scopedDb.teamId, url);
+    const run = await latestCheckRun(scopedDb.organizationId, url);
     if (run && isRunning(run)) {
       throw new AttestationRequiredError(
         'This upload is still being checked for a real person. Try again in a moment.'

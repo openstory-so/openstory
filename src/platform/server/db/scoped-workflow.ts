@@ -61,7 +61,7 @@ type WritesOnly<T> = Omit<T, ReadMethodName<Extract<keyof T, string>>>;
 
 /**
  * Every domain with its reads stripped. Callable members (`scopedDb.sequence(id)`)
- * and scalars (`teamId`, `userId`) pass through as-is — `Omit` on a function
+ * and scalars (`organizationId`, `userId`) pass through as-is — `Omit` on a function
  * type would drop its call signature.
  */
 type WorkflowDomains = {
@@ -79,14 +79,14 @@ type WorkflowDomains = {
  * declare exactly that. Resolved inside the step that spends it, because a
  * replayed step may run in a fresh isolate with an unconfigured client.
  *
- * `hasUsableKey` is deliberately NOT here — "does this team own a key" is a
+ * `hasUsableKey` is deliberately NOT here — "does this organization own a key" is a
  * billing fact that gates a charge, so it lives under `liveRead.apiKeys`.
  */
 type ApiKeys = ScopedDb['apiKeys'];
 
 /**
  * Keys a workflow may spend. `upload_post` (social publishing, #1267) is
- * a team's own social accounts, not a generation provider — never resolved
+ * an organization's own social accounts, not a generation provider — never resolved
  * mid-run.
  */
 type GenerationProvider = Exclude<
@@ -94,7 +94,7 @@ type GenerationProvider = Exclude<
   'upload_post'
 >;
 
-type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
+type WorkflowCredentials = Pick<ScopedDb, 'organizationId' | 'userId'> &
   Pick<ApiKeys, 'resolveLlmKey'> & {
     resolveKey: (
       provider: GenerationProvider
@@ -146,15 +146,15 @@ type WorkflowClaims = {
  * Each domain is a `Pick` off the real `ScopedDb`, so signatures stay in
  * lockstep with the query modules and no method is hand-written.
  */
-type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
-  /** Whether the team owns a usable key — the BYOK half of a charge gate. */
+type WorkflowLiveReads = Pick<ScopedDb, 'organizationId' | 'userId'> & {
+  /** Whether the organization owns a usable key — the BYOK half of a charge gate. */
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
   /**
    * Free/evictable slots in the account-wide BytePlus ACR pool (#1361),
    * before a motion batch fans out. Live by definition: the pool is shared by
-   * every team, so occupancy at the trigger says nothing about occupancy when
+   * every organization, so occupancy at the trigger says nothing about occupancy when
    * the run reaches the fan-out — a frozen count would evict slots another
-   * team leased minutes later. Reserving a slot is `scopedDb.bytePlusAssets
+   * organization leased minutes later. Reserving a slot is `scopedDb.bytePlusAssets
    * .claimSlot`, a write, and needs no hatch.
    */
   bytePlusAssets: Pick<ScopedDb['bytePlusAssets'], 'getAdmission'>;
@@ -183,7 +183,7 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   /** Existence guards, plus the anchor fallback for triggers that carry no `frameId`. */
   frames: Pick<ScopedDb['frames'], 'getAnchorByShot' | 'getById'>;
   /**
-   * `getCurrentByIds`: the team locations a matching run's writer picked.
+   * `getCurrentByIds`: the organization locations a matching run's writer picked.
    * `listWithReferences`: live
    * bibles for a re-render.
    */
@@ -269,7 +269,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
     // WorkflowScopedDb never depends on that domain being present — which
     // matters for the partial `createScopedDb` stubs the workflow tests use.
     credentials: {
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       userId: scopedDb.userId,
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
       resolveOptionalKey: (provider) =>
@@ -285,7 +285,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
 
 /**
  * What the media generation helpers (`image-generation`, `motion-generation`,
- * `music-generation`) actually depend on: resolve a key (team or platform),
+ * `music-generation`) actually depend on: resolve a key (organization or platform),
  * look for an optional native-provider key (#1216), and know whose run this
  * is for observability. BytePlus Ark is platform-only — `ARK_API_KEY` comes
  * from env, is not on `API_KEY_PROVIDERS`, and is never resolved here (#1157).

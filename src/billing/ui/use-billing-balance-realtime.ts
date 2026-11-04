@@ -1,7 +1,7 @@
 /**
  * Live credit-balance updates over SSE (#1090).
  *
- * Subscribes to `billing:${teamId}` only while the credit pill is visible so
+ * Subscribes to `billing:${organizationId}` only while the credit pill is visible so
  * idle sessions pay no realtime cost. On `billing.balance:updated`, patches the
  * balance query from the event and invalidates transactions for the ledger
  * tab. The balance itself is refetched only when the event cannot settle it
@@ -38,11 +38,11 @@ export function applyBalanceEvent(
 }
 
 /**
- * @param teamId - Active team; subscription is a no-op while undefined
+ * @param organizationId - Active organization; subscription is a no-op while undefined
  * @param enabled - True only while the credit pill is on-screen
  */
 export function useBillingBalanceRealtime(
-  teamId: string | undefined,
+  organizationId: string | undefined,
   enabled: boolean
 ) {
   const queryClient = useQueryClient();
@@ -85,9 +85,9 @@ export function useBillingBalanceRealtime(
   );
 
   useRealtime({
-    channels: teamId ? [billingChannelId(teamId)] : [],
+    channels: organizationId ? [billingChannelId(organizationId)] : [],
     events: ['billing.balance:updated'] as const,
-    enabled: Boolean(enabled && teamId),
+    enabled: Boolean(enabled && organizationId),
     onData,
   });
 }

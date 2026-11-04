@@ -456,7 +456,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
           variantOnly: false,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId,
           shotId,
           // Mandatory alongside `shotId` — without it the child renders and
@@ -609,7 +609,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           const durationMs = snapshots[shotId]?.durationMs;
           const renderJobs = buildMotionRender({
             userId: input.userId,
-            teamId: input.teamId,
+            organizationId: input.organizationId,
             sequenceId,
             shots: [
               {

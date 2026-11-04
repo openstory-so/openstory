@@ -46,6 +46,7 @@ describe('player events', () => {
       {
         sequence_id: 'seq_1',
         first_sequence_for_team: true,
+        first_sequence_for_organization: true,
         seconds_since_generate: 90,
       }
     );
@@ -57,6 +58,7 @@ describe('player events', () => {
     expect(capture).toHaveBeenCalledWith('sequence_ready_seen', {
       sequence_id: 'seq_1',
       first_sequence_for_team: true,
+      first_sequence_for_organization: true,
       seconds_since_generate: 90,
     });
   });

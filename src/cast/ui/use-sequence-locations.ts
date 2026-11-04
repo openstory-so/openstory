@@ -1,8 +1,8 @@
 /**
  * Locations as a sequence uses them (#1695): the sequence's list, the one
  * location a detail view shows (through a sequence or from none), and the
- * writes made through a sequence. The team's own list and writes are in
- * `use-team-locations.ts`.
+ * writes made through a sequence. The organization's own list and writes are in
+ * `use-organization-locations.ts`.
  */
 
 import {
@@ -47,10 +47,13 @@ export function useSequenceLocations(sequenceId: string) {
 
 /**
  * One location at its current version, read from no sequence (the Locations
- * page). Null when it is gone or another team's. Through a sequence the
+ * page). Null when it is gone or another organization's. Through a sequence the
  * detail view uses the sequence list's row instead.
  */
-export function useTeamLocationCurrent(locationDbId: string, enabled: boolean) {
+export function useOrganizationLocationCurrent(
+  locationDbId: string,
+  enabled: boolean
+) {
   return useQuery({
     queryKey: sequenceLocationKeys.detail(null, locationDbId),
     queryFn: () => getLocationFn({ data: { sequenceId: null, locationDbId } }),
@@ -105,8 +108,8 @@ export function useCreateSequenceLocation() {
 }
 
 /**
- * Use one of the team's locations in a sequence (#1695). The sequence's
- * locations and the team list (sort and sequence counts) both move.
+ * Use one of the organization's locations in a sequence (#1695). The sequence's
+ * locations and the organization list (sort and sequence counts) both move.
  */
 export function useAttachLocation() {
   const queryClient = useQueryClient();
@@ -121,7 +124,7 @@ export function useAttachLocation() {
 
 /**
  * Bible field edit made through a sequence (#1108 Phase 2). The location is
- * the team's, so every sequence's sheet and prompts re-stale by hash
+ * the organization's, so every sequence's sheet and prompts re-stale by hash
  * derivation.
  */
 export function useUpdateSequenceLocation() {
@@ -194,7 +197,7 @@ function invalidateLocationMembership(queryClient: QueryClient): void {
 }
 
 /**
- * Replace a sequence's location with another of the team's (#1695): the link
+ * Replace a sequence's location with another of the organization's (#1695): the link
  * is re-pointed and the shots set there re-render. No sheet is drawn.
  */
 export function useRecastLocation() {

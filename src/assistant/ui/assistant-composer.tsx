@@ -2,7 +2,7 @@
  * The composer (#2155): context chips the user can remove, attachments
  * with their upload state, a textarea that sends on Enter (Shift+Enter for
  * a line), and Send or Stop. Files arrive by drop or paste and upload at
- * once; `+` opens the Studio reference picker, so anything the team already
+ * once; `+` opens the Studio reference picker, so anything the organization already
  * has (a generation, an upload, a shot, a character, a location) attaches
  * without a second upload, and its Upload button takes a new file.
  */

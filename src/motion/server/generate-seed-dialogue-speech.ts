@@ -130,7 +130,7 @@ export function seedScenePrompt(
 export async function generateSeedDialogueSpeech(input: {
   seedKey: string;
   elevenLabsKey: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   lines: readonly DialogueCallLine[];
 }): Promise<DialogueSpeechCall> {
@@ -258,11 +258,11 @@ export async function generateSeedDialogueSpeech(input: {
     const speechId = generateId();
     const uploaded = await uploadFile(
       STORAGE_BUCKETS.AUDIO,
-      `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
+      `${input.organizationId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
       take.wav,
       { contentType: 'audio/wav', upsert: true }
     );
-    // ponytail: only the kept take is billed to the team; the platform eats
+    // ponytail: only the kept take is billed to the organization; the platform eats
     // the tries it threw away.
     return {
       speechId,

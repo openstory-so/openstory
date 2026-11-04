@@ -86,7 +86,7 @@ export async function resolveStyleSource(
   if (styleId === AUTO_STYLE_ID) {
     return { kind: 'pending', draft: placeholderAutoStyleDraft() };
   }
-  // `getById` hides other teams' bound rows, so reaching the clone branch
+  // `getById` hides other organizations' bound rows, so reaching the clone branch
   // means the source is ours.
   const style = await scopedDb.styles.getById(styleId);
   if (!style) {
@@ -114,7 +114,7 @@ export async function resolveStyleSource(
 export type CreateSequencesContext = {
   scopedDb: ScopedDb;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
   /**
    * When false, the storyboard run skips the ready email (#1276). `/api/v1`
    * callers poll; dashboard creates leave this undefined (send).
@@ -136,10 +136,10 @@ export const createSequences = createServerOnlyFn(
     context: CreateSequencesContext
   ): Promise<CreateSequencesResult> => {
     // The scoped DB IS the authorization boundary: middleware resolved the
-    // caller's team and built `context.scopedDb`/`context.teamId` for it, so
-    // every write below is already team-authorized. (The old `data.teamId`
+    // caller's organization and built `context.scopedDb`/`context.organizationId` for it, so
+    // every write below is already organization-authorized. (The old `data.organizationId`
     // override was vestigial — writes always went through the scoped db anyway.)
-    const teamId = context.teamId;
+    const organizationId = context.organizationId;
 
     const {
       script,
@@ -204,7 +204,7 @@ export const createSequences = createServerOnlyFn(
       }
     }
 
-    // Verify source sequence access (scoped read returns null for other teams)
+    // Verify source sequence access (scoped read returns null for other organizations)
     if (sourceSequenceId) {
       const source = await context.scopedDb.sequences.getById(sourceSequenceId);
       if (!source) {
@@ -244,7 +244,7 @@ export const createSequences = createServerOnlyFn(
       );
     }
 
-    // Reference-only, re-asked against THIS team's real keys. `createSequenceSchema`
+    // Reference-only, re-asked against THIS organization's real keys. `createSequenceSchema`
     // is isomorphic so it could only ask the widest question (capable on some
     // via) — which lets Grok Imagine through. Grok renders reference-only shots
     // on the native xAI route only; without an xAI key it falls back to a fal
@@ -263,7 +263,7 @@ export const createSequences = createServerOnlyFn(
       }
       if (incapable.length > 0) {
         throw new ValidationError(
-          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this team.)`
+          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this organization.)`
         );
       }
     }
@@ -295,7 +295,7 @@ export const createSequences = createServerOnlyFn(
     if (elementUploads && elementUploads.length > 0) {
       await assertDraftElementUploadsAttachable({
         scopedDb: context.scopedDb,
-        teamId,
+        organizationId,
         uploads: elementUploads,
       });
     }
@@ -320,11 +320,11 @@ export const createSequences = createServerOnlyFn(
       pricing: await getEffectiveFalPricing(),
     });
 
-    // Team characters the script references (#2050) are checked before any
-    // row is written: every pick must be the team's, and no two may share
+    // Organization characters the script references (#2050) are checked before any
+    // row is written: every pick must be the organization's, and no two may share
     // a name, or the attach after the insert would leave an empty sequence.
     if (castCharacterIds?.length) {
-      const library = await context.scopedDb.characters.listTeam();
+      const library = await context.scopedDb.characters.listOrganization();
       const names = new Map<string, string>();
       for (const id of new Set(castCharacterIds)) {
         const character = library.find((c) => c.id === id);
@@ -394,7 +394,7 @@ export const createSequences = createServerOnlyFn(
                 : undefined,
             });
 
-            // Team characters the script references (#2050) are cast
+            // Organization characters the script references (#2050) are cast
             // before the trigger, so the launcher's cast snapshot has them.
             for (const characterId of castCharacterIds ?? []) {
               await attachLibraryCharacter(
@@ -411,7 +411,7 @@ export const createSequences = createServerOnlyFn(
             if (elementUploads && elementUploads.length > 0) {
               await attachDraftElementUploads({
                 scopedDb: context.scopedDb,
-                teamId,
+                organizationId,
                 userId: context.user.id,
                 sequenceId: sequence.id,
                 uploads: elementUploads,
@@ -422,7 +422,7 @@ export const createSequences = createServerOnlyFn(
             if (sourceSequenceId) {
               await copySequenceElements({
                 scopedDb: context.scopedDb,
-                teamId,
+                organizationId,
                 userId: context.user.id,
                 sourceSequenceId,
                 targetSequenceId: sequence.id,
@@ -431,7 +431,7 @@ export const createSequences = createServerOnlyFn(
 
             const workflowInput: StoryboardTriggerInput = {
               userId: context.user.id,
-              teamId,
+              organizationId,
               sequenceId: sequence.id,
               reservationId,
               notify: context.notify,
@@ -471,7 +471,7 @@ export const createSequences = createServerOnlyFn(
         scopedDb: context.scopedDb,
         styleId,
         sequenceIds,
-        teamId,
+        organizationId,
         userId: context.user.id,
       });
     }
@@ -481,7 +481,8 @@ export const createSequences = createServerOnlyFn(
       distinctId: context.user.id,
       event: 'sequence_generated',
       properties: {
-        team_id: teamId,
+        team_id: organizationId,
+        organization_id: organizationId,
         style_id: styleId,
         automatic_style: styleSource.kind !== 'library',
         aspect_ratio: aspectRatio,

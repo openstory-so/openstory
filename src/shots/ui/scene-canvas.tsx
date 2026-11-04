@@ -23,7 +23,7 @@ import {
 } from './scene-selection';
 import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
-import { Film } from 'lucide-react';
+import { Film, MessageSquare } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   shotIdAtSequenceTime,
@@ -253,8 +253,10 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
                   as a chip; with nothing playing the route's chips suffice. */}
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 hover:text-white md:h-8 md:w-8 [&_svg]:size-5 md:[&_svg]:size-4"
+                aria-label="Chat about this"
                 onClick={() => {
                   const playing = shots.find((s) => s.id === playingShotId);
                   openAssistant({
@@ -272,7 +274,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
                   });
                 }}
               >
-                Chat about this
+                <MessageSquare />
               </Button>
               <SequenceDownloadMenu
                 sequenceId={sequence.id}
@@ -280,7 +282,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
                 draftLabel={draftLabel}
                 variant="overlay"
                 publish={{
-                  teamId: sequence.teamId,
+                  organizationId: sequence.organizationId,
                   sequenceId: sequence.id,
                   defaultTitle: sequence.title,
                 }}

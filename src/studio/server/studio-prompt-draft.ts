@@ -183,6 +183,6 @@ export async function draftStudioPrompt(
     prompt,
     model,
     costMicros: llmCostFromUsage(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'team',
+    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

@@ -15,7 +15,7 @@ const {
   mapCheckoutFailureReason,
 } = await import('./checkout-events');
 
-const CTX = { teamId: 'team_1', userId: 'user_1' };
+const CTX = { organizationId: 'team_1', userId: 'user_1' };
 
 function stripeEvent(
   type: Stripe.Event['type'],
@@ -61,11 +61,11 @@ describe('mapCheckoutFailureReason', () => {
 });
 
 describe('captureCheckoutOpened', () => {
-  it('captures Stripe IDs, amount, method, teamId, and surface', () => {
+  it('captures Stripe IDs, amount, method, organizationId, and surface', () => {
     captureProductEvent.mockClear();
     captureCheckoutOpened({
       distinctId: 'user_1',
-      teamId: 'team_1',
+      organizationId: 'team_1',
       amountUsd: 25,
       method: 'checkout',
       stripeCheckoutSessionId: 'cs_1',
@@ -76,7 +76,7 @@ describe('captureCheckoutOpened', () => {
       distinctId: 'user_1',
       event: 'checkout_opened',
       properties: {
-        teamId: 'team_1',
+        organizationId: 'team_1',
         amount_usd: 25,
         method: 'checkout',
         stripe_checkout_session_id: 'cs_1',
@@ -109,7 +109,7 @@ describe('captureCheckoutAnalyticsForStripeEvent', () => {
       distinctId: 'user_1',
       event: 'checkout_completed',
       properties: {
-        teamId: 'team_1',
+        organizationId: 'team_1',
         amount_usd: 10,
         method: 'checkout',
         stripe_checkout_session_id: 'cs_1',
@@ -199,7 +199,7 @@ describe('captureCheckoutAnalyticsForStripeEvent', () => {
       distinctId: 'user_1',
       event: 'checkout_failed',
       properties: {
-        teamId: 'team_1',
+        organizationId: 'team_1',
         amount_usd: 10,
         method: 'saved_card',
         stripe_payment_intent_id: 'pi_1',
@@ -244,7 +244,7 @@ describe('captureCheckoutCanceledFromSession', () => {
         status: 'open',
         metadata: {
           type: 'credit_top_up',
-          teamId: 'team_1',
+          organizationId: 'team_1',
           amountUsd: '15',
         },
       },
@@ -260,7 +260,7 @@ describe('captureCheckoutCanceledFromSession', () => {
     });
   });
 
-  it('does not fire when the session already paid or belongs to another team', () => {
+  it('does not fire when the session already paid or belongs to another organization', () => {
     captureProductEvent.mockClear();
     captureCheckoutCanceledFromSession(
       {
@@ -268,7 +268,7 @@ describe('captureCheckoutCanceledFromSession', () => {
         payment_status: 'paid',
         metadata: {
           type: 'credit_top_up',
-          teamId: 'team_1',
+          organizationId: 'team_1',
           amountUsd: '10',
         },
       },
@@ -280,7 +280,7 @@ describe('captureCheckoutCanceledFromSession', () => {
         payment_status: 'unpaid',
         metadata: {
           type: 'credit_top_up',
-          teamId: 'team_other',
+          organizationId: 'team_other',
           amountUsd: '10',
         },
       },
@@ -301,7 +301,7 @@ describe('captureSavedCardStripeError', () => {
       },
       {
         distinctId: 'user_1',
-        teamId: 'team_1',
+        organizationId: 'team_1',
         amountUsd: 10,
         surface: 'sidebar_pill',
       }

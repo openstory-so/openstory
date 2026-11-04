@@ -15,7 +15,7 @@ import { resolveSceneForShotFromDb } from './scene-script';
 /** The sequence fields `getWithSequence` selects. */
 type ShotSequence = {
   id: string;
-  teamId: string;
+  organizationId: string;
   title: string;
   /** Narrow, not `string`: staleness defers while the sequence is
    * 'processing' (#1121), and that check must not be a string compare. */
@@ -42,16 +42,16 @@ export type ShotTarget = {
   script: Scene['originalScript'] | null;
 };
 
-/** A shot edit's context: the target plus who acts, in which team. */
+/** A shot edit's context: the target plus who acts, in which organization. */
 export type ShotEditContext = ShotTarget & {
   scopedDb: ScopedDb;
   user: Pick<User, 'id'>;
-  teamId: string;
+  organizationId: string;
 };
 
 /**
  * Load a shot of this sequence (live or soft-deleted, as the editor does) with
- * its anchor frame and scene. Callers check the sequence's team first.
+ * its anchor frame and scene. Callers check the sequence's organization first.
  */
 export async function loadShotTarget(
   scopedDb: ScopedDb,

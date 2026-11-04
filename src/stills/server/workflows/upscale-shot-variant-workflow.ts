@@ -248,9 +248,11 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
     const input = event.payload;
     const workflowRunId = event.instanceId;
 
-    const { sequenceId, teamId, shotId, userId } = input;
-    if (!sequenceId || !teamId || !shotId) {
-      throw new WorkflowValidationError('sequenceId and teamId are required');
+    const { sequenceId, organizationId, shotId, userId } = input;
+    if (!sequenceId || !organizationId || !shotId) {
+      throw new WorkflowValidationError(
+        'sequenceId and organizationId are required'
+      );
     }
 
     // Derived from the payload, so it survives a step replay unchanged.
@@ -340,7 +342,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
       }
       const uploaded = await uploadImageToStorage({
         imageUrl: generatedUrl,
-        teamId,
+        organizationId,
         sequenceId,
         shotId,
       });
@@ -392,7 +394,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
     // cancelled/failed pointer flip cannot leave an untraceable object.
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId,
+        organizationId,
         userId,
         assetKind: 'frame_variant',
         assetId: upscaleResult.versionId,
@@ -455,7 +457,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
     logger.error(
       `[UpscaleShotVariantWorkflow] Upscale failed for shot ${input.shotId}: ${error}`
     );
-    if (!input.shotId || !input.teamId) return;
+    if (!input.shotId || !input.organizationId) return;
 
     // Mark the in-flight framing version failed AND out of the status race
     // (#1942): the frame's PRIOR selection is untouched, so the shot reads the

@@ -111,7 +111,7 @@ const libraryCharactersSchema = z.object({
 });
 const listLibraryCharacters = productionRead(
   'list_library_characters',
-  "List the team's characters, every one of them. Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
+  "List the organization's characters, every one of them. Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
   pageInput,
   libraryCharactersSchema,
   async (input, { scopedDb, origin }) =>
@@ -119,9 +119,9 @@ const listLibraryCharacters = productionRead(
       libraryCharactersSchema,
       await readPage(
         input,
-        // Bound to the team, like the other library cursors.
-        ['library_characters', scopedDb.teamId],
-        pageRows(await scopedDb.characters.listTeam())
+        // Bound to the organization, like the other library cursors.
+        ['library_characters', scopedDb.organizationId],
+        pageRows(await scopedDb.characters.listOrganization())
       ),
       origin
     )
@@ -145,7 +145,7 @@ const libraryLocationsSchema = z.object({
 });
 const listLibraryLocations = productionRead(
   'list_library_locations',
-  "List the team's locations, every one of them, used by a sequence or not (#1695). There are no public or template locations. Any of them can be used in a sequence with add_location_to_sequence, or named in create_sequence. Ascending ID pagination. Each carries its reference sheet (referenceImageUrl, null until one is drawn), the live sequences that use it (the most recently changed first) and lastUsedAt (null when no sequence uses it). Read one whole with get_library_location, or as a sequence uses it with get_location.",
+  "List the organization's locations, every one of them, used by a sequence or not (#1695). There are no public or template locations. Any of them can be used in a sequence with add_location_to_sequence, or named in create_sequence. Ascending ID pagination. Each carries its reference sheet (referenceImageUrl, null until one is drawn), the live sequences that use it (the most recently changed first) and lastUsedAt (null when no sequence uses it). Read one whole with get_library_location, or as a sequence uses it with get_location.",
   pageInput,
   libraryLocationsSchema,
   async (input, { scopedDb, origin }) =>
@@ -153,9 +153,9 @@ const listLibraryLocations = productionRead(
       libraryLocationsSchema,
       await readPage(
         input,
-        // Bound to the team, like the other library cursors.
-        ['library_locations', scopedDb.teamId],
-        pageRows(await scopedDb.locations.listTeam())
+        // Bound to the organization, like the other library cursors.
+        ['library_locations', scopedDb.organizationId],
+        pageRows(await scopedDb.locations.listOrganization())
       ),
       origin
     )
@@ -163,12 +163,12 @@ const listLibraryLocations = productionRead(
 const libraryLocationUseSchema = z.object(libraryLocationUse);
 const getLibraryLocation = productionRead(
   'get_library_location',
-  "Read one of the team's locations by id as a complete JSON document: its current bible (with rendering), reference sheet and status, and the live sequences that use it. It needs no sequence. An edit made from any sequence changes this one location. Continue with nextOffset and revision. Its uploaded photos and sheet versions are paginated by list_library_resources.",
+  "Read one of the organization's locations by id as a complete JSON document: its current bible (with rendering), reference sheet and status, and the live sequences that use it. It needs no sequence. An edit made from any sequence changes this one location. Continue with nextOffset and revision. Its uploaded photos and sheet versions are paginated by list_library_resources.",
   z.strictObject({ id: ulidSchema, ...documentInput.shape }),
   documentSchema,
   async (input, { scopedDb, origin }) => {
     const data = await readCast(scopedDb, 'location', input.id, '', origin);
-    const use = await scopedDb.locations.getTeamLocation(input.id);
+    const use = await scopedDb.locations.getOrganizationLocation(input.id);
     if (!use) throw new NotFoundError('Library resource not found.');
     return {
       document: await readDocument(
@@ -187,7 +187,7 @@ const listLibraryResourcesInput = z.discriminatedUnion('kind', [
   rootLibraryInput.extend(pageInput.shape),
 ]);
 const listLibraryResourcesDescription =
-  'List a team location’s uploaded photos and sheet versions, audio or VFX. parentId is required: location id (list_library_locations) for location_sheet and location_sheet_version. location_sheet is the photos uploaded as input for the location’s sheet, not the sheet; location_sheet_version is the drawn sheets. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
+  'List an organization location’s uploaded photos and sheet versions, audio or VFX. parentId is required: location id (list_library_locations) for location_sheet and location_sheet_version. location_sheet is the photos uploaded as input for the location’s sheet, not the sheet; location_sheet_version is the drawn sheets. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
 const listLibraryResources = readToolDefinition({
   name: 'list_library_resources',
   description: listLibraryResourcesDescription,
@@ -290,7 +290,7 @@ const assetsSchema = z.object({
 });
 const listGeneratedAssets = productionRead(
   'list_generated_assets',
-  'List team Studio and catalog generations, newest first. Filter by source, activity, favorites or endpoint. Detail contains all input settings, prompts, reference media, outputs, cost and errors.',
+  'List organization Studio and catalog generations, newest first. Filter by source, activity, favorites or endpoint. Detail contains all input settings, prompts, reference media, outputs, cost and errors.',
   pageInput.extend({
     source: z.enum(['studio', 'catalog']).optional(),
     activity: z.enum(['image', 'video', 'audio']).optional(),
@@ -329,13 +329,13 @@ const uploadsSchema = z.object({
 });
 const listStudioUploads = productionRead(
   'list_studio_uploads',
-  'List team Studio image, video and audio uploads with download URLs and metadata. Storage-key order. An empty filtered page with nextCursor means continue; no fixed total limit.',
+  'List organization Studio image, video and audio uploads with download URLs and metadata. Storage-key order. An empty filtered page with nextCursor means continue; no fixed total limit.',
   pageInput,
   uploadsSchema,
   async (input, { scopedDb, origin }) =>
     projectRead(
       uploadsSchema,
-      await listStudioUploadReads(scopedDb.teamId, input),
+      await listStudioUploadReads(scopedDb.organizationId, input),
       origin
     )
 );

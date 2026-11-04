@@ -37,7 +37,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     await expect(
       launchUpdateStale({
         userId: 'u',
-        teamId: 't',
+        organizationId: 't',
         sequenceId,
         plan: asStub<UpdateStalePlan>({}),
         runKey: `${sequenceId}-1`,
@@ -54,7 +54,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     await expect(
       launchUpdateStale({
         userId: 'u',
-        teamId: 't',
+        organizationId: 't',
         sequenceId,
         plan: asStub<UpdateStalePlan>({}),
         runKey: `${sequenceId}-1`,

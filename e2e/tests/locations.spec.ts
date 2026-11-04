@@ -1,6 +1,6 @@
 /**
  * Locations E2E Tests
- * The team's locations (#1695): the list, making one with no sequence, and
+ * The organization's locations (#1695): the list, making one with no sequence, and
  * its page.
  */
 
@@ -85,7 +85,7 @@ testWithUser.describe('New location', () => {
         { timeout: 10000 }
       );
 
-      await cleanupLocationByName(testUser.teamId, uniqueName);
+      await cleanupLocationByName(testUser.organizationId, uniqueName);
     }
   );
 });
@@ -97,7 +97,7 @@ testWithUser.describe('Location page', () => {
   testWithUser.beforeEach(async ({ page, testUser }) => {
     await setupMockRoutes(page);
     testLocation = await createTestLocation(
-      testUser.teamId,
+      testUser.organizationId,
       `E2E Edit Test Location ${crypto.randomUUID().slice(0, 8)}`
     );
   });
@@ -162,11 +162,11 @@ testWithUser.describe('Locations list', () => {
     await setupMockRoutes(page);
     const suffix = crypto.randomUUID().slice(0, 8);
     testLocationAlpha = await createTestLocation(
-      testUser.teamId,
+      testUser.organizationId,
       `E2E Location Alpha ${suffix}`
     );
     testLocationBeta = await createTestLocation(
-      testUser.teamId,
+      testUser.organizationId,
       `E2E Location Beta ${suffix}`
     );
   });

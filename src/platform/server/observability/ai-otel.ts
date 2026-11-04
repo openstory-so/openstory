@@ -515,7 +515,7 @@ export type MediaGenerationRecord = AIObservabilityMeta & {
   /** Provider-reported completion tokens, when the via bills in tokens. */
   outputTokens?: number;
   /**
-   * True when a team's own provider key paid for this. `costMicros` is priced
+   * True when an organization's own provider key paid for this. `costMicros` is priced
    * the same either way, but only the `false` case is spend on us — without
    * this a BYOK generation inflates cost dashboards.
    */

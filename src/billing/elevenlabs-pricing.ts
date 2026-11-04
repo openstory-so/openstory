@@ -92,7 +92,7 @@ export function speechToSpeechCost(seconds: number): Microdollars {
  *
  * TTS bills per character: `units = characterCount / 1000`, charged at the
  * v3 / Multilingual v2 advertised rate. We pin the HIGHER quality tier
- * deliberately — Flash/Turbo is $0.05/1K, and an under-estimate lets a team
+ * deliberately — Flash/Turbo is $0.05/1K, and an under-estimate lets an organization
  * spend past its balance, which is the failure mode #1069 exists to prevent.
  *
  * Voice Design is priced per call, not per character: the preview text is

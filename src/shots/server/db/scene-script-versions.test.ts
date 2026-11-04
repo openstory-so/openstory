@@ -6,7 +6,7 @@ import {
   scenes,
   sequences,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import { createSceneScriptVersionsMethods } from './scene-script-versions';
@@ -15,7 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let sequenceId = '';
 let sceneId = dbSceneId('');
 
@@ -41,16 +41,18 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
 
-  await db
-    .insert(teams)
-    .values({ id: teamId, name: 'Test Team', slug: `test-${teamId}` });
+  await db.insert(organization).values({
+    id: organizationId,
+    name: 'Test Organization',
+    slug: `test-${organizationId}`,
+  });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -67,7 +69,7 @@ beforeEach(async () => {
 
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'Seq',
     script: 'Full script',
     styleId: style.id,

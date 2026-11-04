@@ -188,7 +188,7 @@ export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<Sequence
     // provenance rows of their own, which the sequenceId links to.
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId: event.payload.teamId,
+        organizationId: event.payload.organizationId,
         userId: event.payload.userId,
         assetKind: 'sequence_export',
         assetId: exportId,

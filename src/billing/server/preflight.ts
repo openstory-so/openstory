@@ -1,7 +1,7 @@
 /**
  * Pre-flight Billing Check
  * Shared utility for server functions to verify credit availability
- * before triggering workflows. Skips check if team has own BYOK keys.
+ * before triggering workflows. Skips check if organization has own BYOK keys.
  */
 
 import { llmtrTextModel } from '@/models/llmtr';
@@ -14,7 +14,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'billing', 'preflight']);
 
 /**
- * The two live checks a preflight makes: whether the team can pay, and whether
+ * The two live checks a preflight makes: whether the organization can pay, and whether
  * it has its own key (in which case it doesn't need to). Narrowed so a
  * workflow passes `scopedDb.liveRead` — a balance read at charge time is one
  * of the sanctioned live reads.
@@ -46,16 +46,16 @@ async function coversProvider(
 }
 
 /**
- * Verify a team can afford a generation before triggering it.
- * Skips the check entirely if the team has BYOK keys for all required providers.
+ * Verify an organization can afford a generation before triggering it.
+ * Skips the check entirely if the organization has BYOK keys for all required providers.
  *
- * @param scopedDb - Scoped DB context for the team
+ * @param scopedDb - Scoped DB context for the organization
  * @param estimatedCostMicros - Estimated raw cost in Microdollars
  * @param providers - Which BYOK providers bypass the check (default: ['fal']);
- *   an empty list requires platform credits regardless of team keys.
+ *   an empty list requires platform credits regardless of organization keys.
  * @param errorMessage - Custom error message for insufficient credits
  *
- * @throws InsufficientCreditsError if team lacks credits and has no BYOK keys
+ * @throws InsufficientCreditsError if organization lacks credits and has no BYOK keys
  */
 export async function requireCredits(
   scopedDb: PreflightScopedDb,

@@ -89,7 +89,7 @@ describe('generation pipeline stages', () => {
     expect(includesStage('references', 'images')).toBe(false);
   });
 
-  it('lets unfunded teams run script analysis, not sheets or later stages', () => {
+  it('lets unfunded organizations run script analysis, not sheets or later stages', () => {
     expect(allowsUnfundedGeneration('script')).toBe(true);
     expect(allowsUnfundedGeneration('references')).toBe(false);
     expect(allowsUnfundedGeneration('images')).toBe(false);

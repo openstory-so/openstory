@@ -111,7 +111,7 @@ export async function recordDialogueTake(input: {
   elevenLabsKey: string;
   /** Required for a Seed voice. */
   seedKey: string | null;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
   line: DialogueTakeLine;
@@ -165,7 +165,7 @@ export async function recordDialogueTake(input: {
       headers: { 'content-length': String(header.length + dataSize) },
     }),
     STORAGE_BUCKETS.AUDIO,
-    `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
+    `${input.organizationId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
     { contentType: 'audio/wav' }
   );
   const durationSeconds = dataSize / bytesPerSecond;
@@ -460,7 +460,7 @@ async function convertWithSeed(
       ],
     };
   }
-  // ponytail: failed takes are not billed to the team.
+  // ponytail: failed takes are not billed to the organization.
   throw new NonRetryableError(
     `Seed Audio did not say the line in ${SEED_TAKE_ATTEMPTS} takes (last: ${lastProblem}). Try the take again.`
   );

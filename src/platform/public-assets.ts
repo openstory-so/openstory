@@ -2,7 +2,7 @@
  * Canonical public domain for SYSTEM / static assets — character sheets,
  * location references, and style previews — served from the shared
  * `openstory-public-assets` R2 bucket. Distinct from `R2_PUBLIC_STORAGE_DOMAIN`
- * (per-team, user-generated media).
+ * (per-organization, user-generated media).
  *
  * VITE_-prefixed vars are client-safe and inlined by Vite at build time on
  * every target (client, SSR, workerd). Reading via `import.meta.env` avoids the

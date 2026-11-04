@@ -13,7 +13,7 @@ vi.doMock('#env', () => ({
 const { triggerWorkflow } = await import('./client');
 
 const USER_ID = 'user_1';
-const TEAM_ID = 'team_1';
+const ORGANIZATION_ID = 'organization_1';
 const NOW = new Date('2026-08-12T12:00:00Z');
 
 function row(action: 'generation_suspended' | 'account_suspended') {
@@ -40,7 +40,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/image', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/image', {
+        userId: USER_ID,
+        organizationId: ORGANIZATION_ID,
+      })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
 
@@ -51,7 +54,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/sequence-export', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/sequence-export', {
+        userId: USER_ID,
+        organizationId: ORGANIZATION_ID,
+      })
     ).resolves.toMatch(/^mock-/);
   });
 
@@ -62,7 +68,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/sequence-export', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/sequence-export', {
+        userId: USER_ID,
+        organizationId: ORGANIZATION_ID,
+      })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
 
@@ -73,7 +82,10 @@ describe('triggerWorkflow enforcement backstop', () => {
     });
 
     await expect(
-      triggerWorkflow('/image', { userId: USER_ID, teamId: TEAM_ID })
+      triggerWorkflow('/image', {
+        userId: USER_ID,
+        organizationId: ORGANIZATION_ID,
+      })
     ).resolves.toMatch(/^mock-/);
   });
 
@@ -81,7 +93,7 @@ describe('triggerWorkflow enforcement backstop', () => {
     await expect(
       triggerWorkflow(
         '/image',
-        { userId: USER_ID, teamId: TEAM_ID },
+        { userId: USER_ID, organizationId: ORGANIZATION_ID },
         { enforcement: [row('generation_suspended')] }
       )
     ).rejects.toBeInstanceOf(AccountRestrictedError);

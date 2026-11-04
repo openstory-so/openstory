@@ -14,7 +14,12 @@ export function requireStoredKey(url: string): string {
   return key;
 }
 
-export function isTeamTalentStoredUrl(url: string, teamId: string): boolean {
+export function isOrganizationTalentStoredUrl(
+  url: string,
+  organizationId: string
+): boolean {
   const key = r2KeyFromUrl(url);
-  return key?.startsWith(`${STORAGE_BUCKETS.TALENT}/${teamId}/`) ?? false;
+  return (
+    key?.startsWith(`${STORAGE_BUCKETS.TALENT}/${organizationId}/`) ?? false
+  );
 }

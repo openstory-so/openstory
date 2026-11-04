@@ -24,7 +24,12 @@ import {
   verification,
 } from './auth';
 
-import { teamInvitations, teamMembers, teams } from './teams';
+import {
+  deviceGrantOrganizations,
+  invitation,
+  member,
+  organization,
+} from './organization';
 
 import { sequences } from './sequences';
 
@@ -79,7 +84,7 @@ import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
-// Locations (the team's places) and the links sequences hold to them
+// Locations (the organization's places) and the links sequences hold to them
 import {
   locationReferencePhotos,
   locations,
@@ -95,12 +100,12 @@ import {
   creditBatches,
   creditReservations,
   credits,
-  teamBillingSettings,
+  organizationBillingSettings,
   transactions,
   welcomeCardClaims,
 } from './credits';
 
-import { teamApiKeys } from './team-api-keys';
+import { organizationApiKeys } from './organization-api-keys';
 
 import { giftTokenRedemptions, giftTokens } from './gift-tokens';
 
@@ -149,8 +154,8 @@ export {
 
 export type { User } from './auth';
 
-// Teams
-export { teamInvitations, teamMembers, teams };
+// Organization (tenant) + Better Auth member/invitation (#813)
+export { deviceGrantOrganizations, invitation, member, organization };
 
 // Sequences
 export { sequences };
@@ -399,7 +404,7 @@ export type {
   SheetStatus,
 } from './characters';
 
-// Locations (the team's places) and the links sequences hold to them
+// Locations (the organization's places) and the links sequences hold to them
 export { locations, sequenceLocationLinks, locationReferencePhotos };
 
 export type {
@@ -410,7 +415,7 @@ export type {
   LocationRow,
   LocationWithReference,
   NewSequenceLocation,
-  NewTeamLocation,
+  NewOrganizationLocation,
   ReferenceStatus,
   SequenceLocation,
   SequenceLocationLinkRow,
@@ -451,13 +456,13 @@ export { creditReservations, credits, transactions };
  *
  * @public used by drizzle-kit generate, not the app graph
  */
-export { creditBatches, teamBillingSettings, welcomeCardClaims };
+export { creditBatches, organizationBillingSettings, welcomeCardClaims };
 
-// Team API Keys
-export { teamApiKeys };
+// Organization API Keys
+export { organizationApiKeys };
 
-export { API_KEY_PROVIDERS } from './team-api-keys';
-export type { ApiKeyProvider } from './team-api-keys';
+export { API_KEY_PROVIDERS } from './organization-api-keys';
+export type { ApiKeyProvider } from './organization-api-keys';
 
 // Gift Tokens
 export { giftTokens, giftTokenRedemptions };
@@ -465,7 +470,7 @@ export { giftTokens, giftTokenRedemptions };
 // App Metadata (key/value bookkeeping, e.g. system-template seed hash)
 export { appMetadata };
 
-// Generated Assets (#458 — direct model access; flat team-scoped runs of
+// Generated Assets (#458 — direct model access; flat organization-scoped runs of
 // arbitrary fal endpoints, decoupled from the sequence graph)
 export { generatedAssets };
 
@@ -534,10 +539,11 @@ export const schema = {
   oauthRefreshToken,
   oauthResource,
 
-  // Teams
-  teams,
-  teamMembers,
-  teamInvitations,
+  // Organization
+  organization,
+  deviceGrantOrganizations,
+  member,
+  invitation,
 
   // Sequences
   sequences,
@@ -597,11 +603,11 @@ export const schema = {
   creditBatches,
   creditReservations,
   transactions,
-  teamBillingSettings,
+  organizationBillingSettings,
   welcomeCardClaims,
 
-  // Team API Keys
-  teamApiKeys,
+  // Organization API Keys
+  organizationApiKeys,
 
   // Gift Tokens
   giftTokens,

@@ -9,7 +9,7 @@
  *
  *   1. PUT each local `sample-videos/{slug}/{kind}.mp4` into the local Miniflare
  *      media bucket (`R2_STORAGE_BUCKET`) at key `styles/{slug}/{kind}.mp4`.
- *   2. Set the matching system-team `styles.sampleVideos` to ORIGIN-RELATIVE
+ *   2. Set the matching system-organization `styles.sampleVideos` to ORIGIN-RELATIVE
  *      `/r2/styles/{slug}/{kind}.mp4` URLs.
  *
  * The `/r2/$` route streams those keys straight from the binding in local dev
@@ -27,7 +27,7 @@
  *   bun scripts/preview-style-sample-videos-local.ts --dry-run   # plan only, no writes
  */
 
-import { styles, teams } from '@/platform/server/db/schema';
+import { styles, organization } from '@/platform/server/db/schema';
 import type { StyleSampleVideo } from '@/platform/server/db/schema/libraries';
 import { buildSampleVideos } from '@/look/server/sample-videos';
 import { styleSlug } from '@/look/style-slug';
@@ -38,7 +38,7 @@ import path from 'node:path';
 import { getLocalPlatformProxy } from './local-platform-proxy';
 
 const SAMPLE_DIR = path.join(process.cwd(), 'sample-videos');
-const SYSTEM_TEAM_SLUG = 'system-templates';
+const SYSTEM_ORGANIZATION_SLUG = 'system-templates';
 
 type ProxyEnv = { DB?: D1Database; R2_STORAGE_BUCKET?: R2Bucket };
 
@@ -66,7 +66,7 @@ type LocalSample = {
 };
 
 /**
- * Match `sample-videos/{slug}/` dirs to system-team style rows by slug, keeping
+ * Match `sample-videos/{slug}/` dirs to system-organization style rows by slug, keeping
  * only the kinds whose file exists. Reuses `buildSampleVideos` for each entry's
  * label/duration/order, then rewrites the URL to the origin-relative `/r2` key.
  */
@@ -112,20 +112,20 @@ async function main() {
     if (!d1) throw new Error('D1 binding "DB" missing.');
     const db = drizzle(d1);
 
-    const [systemTeam]: { id: string }[] = await db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.slug, SYSTEM_TEAM_SLUG));
-    if (!systemTeam) {
+    const [systemOrganization]: { id: string }[] = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, SYSTEM_ORGANIZATION_SLUG));
+    if (!systemOrganization) {
       throw new Error(
-        `System team '${SYSTEM_TEAM_SLUG}' not found — run db:seed first.`
+        `System organization '${SYSTEM_ORGANIZATION_SLUG}' not found — run db:seed first.`
       );
     }
 
     const styleRows = await db
       .select({ id: styles.id, name: styles.name })
       .from(styles)
-      .where(eq(styles.teamId, systemTeam.id));
+      .where(eq(styles.organizationId, systemOrganization.id));
     const idBySlug = new Map(styleRows.map((s) => [styleSlug(s.name), s.id]));
     const nameBySlug = new Map(
       styleRows.map((s) => [styleSlug(s.name), s.name])
@@ -173,7 +173,7 @@ async function main() {
 
     if (orphanSlugs.length > 0) {
       console.log(
-        `\n⚠️  ${orphanSlugs.length} dir(s) had no system-team style: ${orphanSlugs.join(', ')}`
+        `\n⚠️  ${orphanSlugs.length} dir(s) had no system-organization style: ${orphanSlugs.join(', ')}`
       );
     }
     console.log(

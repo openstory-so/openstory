@@ -108,7 +108,7 @@ line` in order.
   Character voice samples stay strict. Seed's own subtitles are not used: they run adjacent
   lines together into one timed word, so a line break is lost (up to 2.3 s
   off in testing).
-- Takes thrown away are not billed to the team; a kept one is.
+- Takes thrown away are not billed to the organization; a kept one is.
 - **A failed scene does not fail the run.** `DialogueAudioWorkflow` keeps the
   scenes that recorded and logs the rest; the failed scene's shots record at
   motion and fail there, one by one, with the reason (e.g. which character

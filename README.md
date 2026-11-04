@@ -16,7 +16,7 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/openstory-so/openstory)
 
-OpenStory takes a script and produces a sequence of AI-generated frames — images, motion video, audio — with consistent style across every scene. Teams collaborate on shared libraries of characters, locations, and visual styles, and the platform handles the heavy lifting of prompt engineering, generation, and compositing.
+OpenStory takes a script and produces a sequence of AI-generated frames — images, motion video, audio — with consistent style across every scene. Organizations collaborate on shared libraries of characters, locations, and visual styles, and the platform handles the heavy lifting of prompt engineering, generation, and compositing.
 
 ## Features
 
@@ -25,7 +25,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 - **Image-to-video motion** — turn still frames into motion video clips
 - **Publish to social** (optional) — with your own [Upload-Post](https://www.upload-post.com) key, post a finished render to TikTok, Instagram, YouTube, LinkedIn, X and more
 - **Style consistency** — characters, locations, color palettes, and lighting carry across scenes automatically
-- **Team workspaces** (coming soon) — shared libraries of styles, characters, VFX, and audio
+- **Organization workspaces** (coming soon) — shared libraries of styles, characters, VFX, and audio
 - **Passkey authentication** — passwordless sign-in via Better Auth
 - **Edge deployment** — runs on Cloudflare Workers with global CDN
 

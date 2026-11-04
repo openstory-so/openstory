@@ -33,7 +33,7 @@ type ScenesViewStoryProps = React.ComponentProps<typeof ScenesView> & {
 
 const mockSequence: Sequence = {
   id: 'demo-sequence-123',
-  teamId: 'team-1',
+  organizationId: 'org-1',
   title: 'Demo Sequence',
   script: 'Sample script text for the demo sequence.',
   status: 'completed',

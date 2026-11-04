@@ -164,7 +164,7 @@ type ReadBucket =
   | 'BILLING-GUARD'
   /** Resolve a key inside the step that spends it (a replayed step gets a fresh isolate). */
   | 'CREDENTIAL'
-  /** The team's balance at charge time — the whole point is that it moved. */
+  /** The organization's balance at charge time — the whole point is that it moved. */
   | 'BALANCE'
   /** Free slots in the account-wide BytePlus ACR asset pool, at fan-out time. */
   | 'POOL-CAPACITY';
@@ -217,7 +217,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     {
       read: 'bytePlusAssets.getAdmission',
       bucket: 'POOL-CAPACITY',
-      why: 'ACR asset slots are per BytePlus ACCOUNT and shared by every team (#1361), so occupancy at the trigger says nothing about occupancy at the fan-out — a frozen count would evict slots another team leased in between.',
+      why: 'ACR asset slots are per BytePlus ACCOUNT and shared by every organization (#1361), so occupancy at the trigger says nothing about occupancy at the fan-out — a frozen count would evict slots another organization leased in between.',
     },
   ],
   'cast-records.ts': [
@@ -285,7 +285,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     {
       read: 'locations.getCurrentByIds',
       bucket: 'EXISTENCE-GUARD',
-      why: 'The team locations the writer picked (#1695). A location deleted from the team since the pick is left out of the read; name and description come from the trigger snapshot.',
+      why: 'The organization locations the writer picked (#1695). A location deleted from the organization since the pick is left out of the read; name and description come from the trigger snapshot.',
     },
   ],
   'upload-check-workflow.ts': [
@@ -500,7 +500,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     {
       read: 'sequences.getForUser',
       bucket: 'EXISTENCE-GUARD',
-      why: 'Throws if the sequence was deleted (or moved teams) since the trigger; on the failure path, checks whether the child already wrote a more specific error.',
+      why: 'Throws if the sequence was deleted (or moved organization) since the trigger; on the failure path, checks whether the child already wrote a more specific error.',
     },
   ],
   'studio-generation-workflow.ts': [

@@ -12,7 +12,7 @@
  * uses, since that has to stay deterministic — plus five alternatives in
  * `STYLE_BRIEF_VARIANTS`. Shuffle picks among all of them, so touring the same
  * style twice doesn't show the same script twice. They are code, not data:
- * resolved by style-name slug, so a team's own style still falls back to its
+ * resolved by style-name slug, so an organization's own style still falls back to its
  * category brief.
  */
 import { briefForStyle } from '@/look/brief-for-style';

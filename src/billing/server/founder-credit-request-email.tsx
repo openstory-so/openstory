@@ -18,7 +18,7 @@ interface FounderCreditRequestEmailProps {
   appName: string;
   userName: string;
   userEmail: string;
-  teamId: string;
+  organizationId: string;
   balanceDisplay: string;
   message?: string;
 }
@@ -27,7 +27,7 @@ const FounderCreditRequestEmail: React.FC<FounderCreditRequestEmailProps> = ({
   appName,
   userName,
   userEmail,
-  teamId,
+  organizationId,
   balanceDisplay,
   message,
 }) => (
@@ -49,7 +49,7 @@ const FounderCreditRequestEmail: React.FC<FounderCreditRequestEmailProps> = ({
           <strong>Email:</strong> {userEmail}
         </Text>
         <Text style={detailRowStyle}>
-          <strong>Team:</strong> {teamId}
+          <strong>Organization:</strong> {organizationId}
         </Text>
         <Text style={detailRowStyle}>
           <strong>Balance:</strong> {balanceDisplay}
@@ -76,7 +76,7 @@ export async function sendFounderCreditRequestEmail(params: {
   to: string;
   userName: string;
   userEmail: string;
-  teamId: string;
+  organizationId: string;
   balanceDisplay: string;
   message?: string;
 }): Promise<{ success: boolean; error?: string }> {
@@ -88,7 +88,7 @@ export async function sendFounderCreditRequestEmail(params: {
         appName={getAppName()}
         userName={params.userName}
         userEmail={params.userEmail}
-        teamId={params.teamId}
+        organizationId={params.organizationId}
         balanceDisplay={params.balanceDisplay}
         message={params.message}
       />

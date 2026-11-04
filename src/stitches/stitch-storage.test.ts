@@ -27,29 +27,27 @@ const cut = stitchCutSchema.parse({
 });
 
 describe('shared stitch storage', () => {
-  it('rewrites every bundle name to the team path under the stitch id', () => {
-    const stored = storedStitchCut(cut, 'TEAM', 'ID');
+  it('rewrites every bundle name to the organization path under the stitch id', () => {
+    const stored = storedStitchCut(cut, 'ORG', 'ID');
     expect(stored.clips[0]).toMatchObject({
-      imageUrl: '/r2/stitches/TEAM/ID/0.png',
-      audioUrls: ['/r2/stitches/TEAM/ID/1.wav'],
+      imageUrl: '/r2/stitches/ORG/ID/0.png',
+      audioUrls: ['/r2/stitches/ORG/ID/1.wav'],
     });
     expect(stored.clips[1]).toMatchObject({
-      videoUrl: '/r2/stitches/TEAM/ID/2.mp4',
-      posterUrl: '/r2/stitches/TEAM/ID/0.png',
+      videoUrl: '/r2/stitches/ORG/ID/2.mp4',
+      posterUrl: '/r2/stitches/ORG/ID/0.png',
     });
-    expect(stored.musicUrl).toBe('/r2/stitches/TEAM/ID/1.wav');
+    expect(stored.musicUrl).toBe('/r2/stitches/ORG/ID/1.wav');
     expect(stored.musicGainDb).toBe(-3);
-    expect(storedStitchPath('/r2/stitches/TEAM/ID/0.png')).toBe(
-      'TEAM/ID/0.png'
-    );
-    expect(() => storedStitchPath('/r2/talent/TEAM/x.png')).toThrow(
+    expect(storedStitchPath('/r2/stitches/ORG/ID/0.png')).toBe('ORG/ID/0.png');
+    expect(() => storedStitchPath('/r2/talent/ORG/x.png')).toThrow(
       'Not a stored stitch URL'
     );
   });
 
-  it('templates the upload link on the team path', () => {
-    expect(stitchUploadHref('TEAM', 'ID')).toBe(
-      '/api/storage/upload?bucket=stitches&path=TEAM/ID/{name}&contentType={type}'
+  it('templates the upload link on the organization path', () => {
+    expect(stitchUploadHref('ORG', 'ID')).toBe(
+      '/api/storage/upload?bucket=stitches&path=ORG/ID/{name}&contentType={type}'
     );
   });
 

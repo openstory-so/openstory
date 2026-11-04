@@ -108,7 +108,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(batchGenerateMotionInputSchema))
   .handler(async ({ data, context }) => {
-    const { sequence, teamId, user } = context;
+    const { sequence, organizationId, user } = context;
 
     // The eligibility filter and the per-shot `imageUrl` below read the anchor
     // frame's still (#989), so assemble each shot's view first.
@@ -234,7 +234,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Via-AWARE, matching `createSequences`, `MotionWorkflow` and the
     // single-shot path above — the model-only check rejected Grok Imagine,
     // which renders reference-only fine on the native xAI route. Resolved once
-    // per distinct model: the answer depends on the team's keys, not the shot.
+    // per distinct model: the answer depends on the organization's keys, not the shot.
     const referenceOnlyModels = new Set(
       eligibleShots
         .filter(shotIsReferenceOnly)
@@ -464,7 +464,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
 
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
-          teamId,
+          organizationId,
           sequenceId: sequence.id,
           reservationId,
           includeMusic,

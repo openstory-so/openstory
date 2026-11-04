@@ -5,7 +5,7 @@
  *
  * For each base template in PAIRS, renders the SAME generated brief through
  * the real pipeline twice — once with the seeded template (baseline), once
- * with its "<name> Motion Rich" team variant (identical look/references/
+ * with its "<name> Motion Rich" organization variant (identical look/references/
  * camera; only `motion.shots/pace/energy` added). Outputs land in
  *   sample-videos-eval-baseline/<slug>/canonical.mp4
  *   sample-videos-eval-motion/<slug>/canonical.mp4

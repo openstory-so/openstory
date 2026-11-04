@@ -23,7 +23,7 @@ import {
   locations,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { NewCharacter } from '@/platform/server/db/schema';
@@ -41,7 +41,7 @@ import { createSequencesMethods } from '@/sequences/server/db/sequences';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 let sequenceId = '';
 let characterId = '';
@@ -68,20 +68,22 @@ beforeEach(async () => {
     locations,
     sequences,
     styles,
-    teams,
+    organization,
     user,
   ]) {
     await db.delete(table);
   }
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   sequenceId = generateId();
   await db.insert(user).values({ id: userId, name: 'U', email: 'u@x.test' });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -97,18 +99,18 @@ beforeEach(async () => {
   if (!style) throw new Error('setup');
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
   const [otherStyle] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'other',
       config: { ...style.config, mood: 'tense' },
     })
     .returning();
   if (!otherStyle) throw new Error('setup');
   otherStyleId = otherStyle.id;
-  const ch = await createCharactersMethods(db, teamId).create(
+  const ch = await createCharactersMethods(db, organizationId).create(
     {
       sequenceId,
       characterId: 'char_001',
@@ -120,7 +122,7 @@ beforeEach(async () => {
     },
     { source: 'analysis', createdBy: null }
   );
-  const loc = await createLocationsMethods(db, teamId).create(
+  const loc = await createLocationsMethods(db, organizationId).create(
     {
       sequenceId,
       locationId: 'loc_001',
@@ -133,14 +135,16 @@ beforeEach(async () => {
   locationId = loc.id;
 });
 
-const chars = () => createCharactersMethods(db, teamId);
-const looks = () => createCharacterLooksMethods(db, teamId);
-const charVersions = () => createCharacterSheetVariantsMethods(db, teamId);
-const locs = () => createLocationsMethods(db, teamId);
-const locVersions = () => createLocationSheetVariantsMethods(db, teamId);
+const chars = () => createCharactersMethods(db, organizationId);
+const looks = () => createCharacterLooksMethods(db, organizationId);
+const charVersions = () =>
+  createCharacterSheetVariantsMethods(db, organizationId);
+const locs = () => createLocationsMethods(db, organizationId);
+const locVersions = () =>
+  createLocationSheetVariantsMethods(db, organizationId);
 /** A style change on the sequence, as the app makes it. */
 const changeStyle = () =>
-  createSequencesMethods(db, teamId, userId).update({
+  createSequencesMethods(db, organizationId, userId).update({
     id: sequenceId,
     styleId: otherStyleId,
   });
@@ -811,7 +815,7 @@ describe('look sheet claims (#2015)', () => {
     const other = generateId();
     await db.insert(sequences).values({
       id: other,
-      teamId,
+      organizationId,
       title: 'Episode 2',
       styleId: first.styleId,
     });

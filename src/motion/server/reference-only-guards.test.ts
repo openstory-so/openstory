@@ -244,7 +244,7 @@ describe('sequence schemas', () => {
   });
 
   it('lets Grok through — the schema cannot see vias, createSequences re-asks', () => {
-    // Isomorphic and pure, so it asks the widest question. The team-scoped
+    // Isomorphic and pure, so it asks the widest question. The organization-scoped
     // answer needs an xAI key and lives in `createSequences`.
     expect(
       createSequenceSchema.safeParse({

@@ -1,12 +1,12 @@
 /**
- * Library writes (#2155): a team's styles, the same create / update /
+ * Library writes (#2155): an organization's styles, the same create / update /
  * delete the Styles page and `POST /api/v1/styles` do. A style is the
- * team's, not a sequence's; `regenerate_storyboard` applies one to a
+ * organization's, not a sequence's; `regenerate_storyboard` applies one to a
  * sequence and `list_styles` / `get_style` read them.
  */
 import { z } from 'zod';
 import { NotFoundError, ValidationError } from '@/platform/errors';
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
 import { apiCreateStyleSchema } from '@/platform/server/api-v1/style-input-schema';
 import {
   styleDocument,
@@ -27,7 +27,7 @@ const styleId = ulidSchema.describe('Style ID (list_styles).');
 const createStyleTool = openstoryTool({
   name: 'create_style',
   description:
-    'Create a library style for the team from a complete v2 config (look + motion), the same body as POST /api/v1/styles. The name must be unique in the team. Starts no generation; regenerate_storyboard applies a style to a sequence.',
+    'Create a library style for the organization from a complete v2 config (look + motion), the same body as POST /api/v1/styles. The name must be unique in the organization. Starts no generation; regenerate_storyboard applies a style to a sequence.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: apiCreateStyleSchema.strict(),
@@ -44,7 +44,7 @@ const createStyleTool = openstoryTool({
 const updateStyleTool = openstoryTool({
   name: 'update_style',
   description:
-    'Edit a team library style: any of its fields; config is replaced whole when sent. At least one field. A public Gallery style cannot be edited. Sequences already using the style keep their stored snapshot.',
+    'Edit an organization library style: any of its fields; config is replaced whole when sent. At least one field. A public Gallery style cannot be edited. Sequences already using the style keep their stored snapshot.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: apiCreateStyleSchema.partial().extend({ styleId }).strict(),
@@ -65,7 +65,7 @@ const updateStyleTool = openstoryTool({
 const deleteStyleTool = openstoryTool({
   name: 'delete_style',
   description:
-    'Delete a team library style. Needs an admin or owner of the team. Sequences that used it keep their stored snapshot. Cannot be undone.',
+    'Delete an organization library style. Needs an admin or owner of the organization. Sequences that used it keep their stored snapshot. Cannot be undone.',
   scope: 'sequences:write',
   annotations: { ...writeAnnotations, destructiveHint: true },
   inputSchema: z.strictObject({ styleId }),
@@ -73,7 +73,7 @@ const deleteStyleTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const style = await scopedDb.styles.getById(input.styleId);
     if (!style) throw new NotFoundError('Style not found');
-    await requireTeamAdminAccess(userId, style.teamId);
+    await requireOrganizationAdminAccess(userId, style.organizationId);
     await scopedDb.styles.delete(style.id);
     return {
       data: { styleId: style.id },

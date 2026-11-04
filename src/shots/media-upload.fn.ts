@@ -28,8 +28,10 @@ import {
   type UploadMediaSurface,
 } from '@/shots/server/upload-media';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
+  castStorageDir,
 } from '@/platform/server/storage/buckets';
 import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { createServerFn } from '@tanstack/react-start';
@@ -83,8 +85,8 @@ function signedUpload(
 }
 
 // ---------------------------------------------------------------------------
-// Presign — one per media surface; all write under the caller team's prefix
-// (`teams/<teamId>/…`), which `resolveUploadTarget` enforces at PUT time.
+// Presign — one per media surface; all write under the caller organization's prefix
+// (`teams/<organizationId>/…`), which `resolveUploadTarget` enforces at PUT time.
 // ---------------------------------------------------------------------------
 
 const shotPresignInput = z.object({
@@ -100,7 +102,7 @@ export const presignFrameImageUploadFn = createServerFn({ method: 'POST' })
     // Same directory generated stills land in (uploadImageToStorage).
     return signedUpload(
       STORAGE_BUCKETS.THUMBNAILS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
       data.filename,
       'image'
     );
@@ -112,7 +114,7 @@ export const presignShotVideoUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.VIDEOS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
       data.filename,
       'video'
     );
@@ -128,7 +130,7 @@ export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.AUDIO,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/music/${generateId()}`,
+      `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/music/${generateId()}`,
       data.filename,
       'audio'
     );
@@ -182,7 +184,7 @@ export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
 // ---------------------------------------------------------------------------
 
 // `sequenceId` null is the Characters page (#2017): the same upload, stored
-// under the team, with no sequence event or channel.
+// under the organization, with no sequence event or channel.
 const characterSheetPresignInput = z.object({
   sequenceId: ulidSchema.nullable(),
   characterId: ulidSchema,
@@ -195,9 +197,7 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
-      context.sequence
-        ? `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`
-        : `teams/${context.teamId}/characters/${data.characterId}/${generateId()}`,
+      `${castStorageDir(context.organizationId, context.sequence?.id ?? null, 'characters', data.characterId)}/${generateId()}`,
       data.filename,
       'image'
     );
@@ -222,7 +222,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   );
 
 // `sequenceId` null is the Locations page (#1695): the same upload, stored
-// under the team, with no sequence event or channel.
+// under the organization, with no sequence event or channel.
 const locationSheetPresignInput = z.object({
   sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,
@@ -235,9 +235,7 @@ export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
-      context.sequence
-        ? `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`
-        : `teams/${context.teamId}/locations/${data.locationDbId}/${generateId()}`,
+      `${castStorageDir(context.organizationId, context.sequence?.id ?? null, 'locations', data.locationDbId)}/${generateId()}`,
       data.filename,
       'image'
     );

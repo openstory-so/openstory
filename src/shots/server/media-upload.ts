@@ -56,8 +56,10 @@ import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/medi
 import { base64ToBytes } from '@/platform/base64';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
+  castStorageDir,
 } from '@/platform/server/storage/buckets';
 
 import { getLogger } from '@/platform/logger';
@@ -68,7 +70,7 @@ import {
   responseContentType,
 } from '@/platform/server/api-v1/safe-fetch';
 import { generateId } from '@/platform/id';
-import { teamUserUploadStoragePath } from '@/cast/server/team-user-upload';
+import { organizationUserUploadStoragePath } from '@/cast/server/organization-user-upload';
 import type { PortraitAttestation } from '@/cast/upload-rights';
 
 const logger = getLogger(['openstory', 'shots', 'media-upload']);
@@ -77,7 +79,7 @@ const logger = getLogger(['openstory', 'shots', 'media-upload']);
 type SequenceUploadContext = {
   scopedDb: ScopedDb;
   user: Pick<User, 'id'>;
-  teamId: string;
+  organizationId: string;
   sequence: Sequence;
 };
 
@@ -92,7 +94,7 @@ type CastUploadContext = Omit<SequenceUploadContext, 'sequence'> & {
 /**
  * Resolve a finalize-time `publicUrl` to the bucket-relative `storagePath` the
  * variant tables store, or reject. A bad path here is bad INPUT (a URL outside
- * the caller's team namespace, or not one of ours) — `ValidationError` rides
+ * the caller's organization namespace, or not one of ours) — `ValidationError` rides
  * the serialization adapter to the client as a typed 400 instead of surfacing
  * as a 500 the user can't act on.
  */
@@ -110,12 +112,16 @@ export function assertSingleShotSegmentForVideoUpload(
 function requireUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
-  teamId: string
+  organizationId: string
 ): string {
-  const storagePath = parseUploadedStoragePath(publicUrl, bucket, teamId);
+  const storagePath = parseUploadedStoragePath(
+    publicUrl,
+    bucket,
+    organizationId
+  );
   if (!storagePath) {
     throw new ValidationError(
-      'Uploaded file is not in this team’s storage namespace'
+      'Uploaded file is not in this organization’s storage namespace'
     );
   }
   return storagePath;
@@ -230,7 +236,8 @@ export async function replaceFrameContent(
   context: ShotEditContext,
   data: { frameId?: string; promptText?: string; publicUrl: string }
 ) {
-  const { shot, frame, sequence, scene, scopedDb, user, teamId } = context;
+  const { shot, frame, sequence, scene, scopedDb, user, organizationId } =
+    context;
 
   if (data.frameId && data.frameId !== frame.id) {
     throw new ValidationError(
@@ -241,7 +248,7 @@ export async function replaceFrameContent(
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.THUMBNAILS,
-    teamId
+    organizationId
   );
   // A user still must be cleared or signed on the likeness ledger (#1581).
   await requireUploadRights(scopedDb, [data.publicUrl]);
@@ -367,12 +374,12 @@ export async function setShotVideoFromUpload(
   context: ShotEditContext,
   data: { publicUrl: string; durationSeconds?: number }
 ) {
-  const { shot, frame, sequence, scopedDb, user, teamId } = context;
+  const { shot, frame, sequence, scopedDb, user, organizationId } = context;
 
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.VIDEOS,
-    teamId
+    organizationId
   );
 
   const renderSegmentId = await scopedDb.renderSegments.ensureForShot(shot);
@@ -471,12 +478,12 @@ export async function setSequenceMusicFromUpload(
   context: SequenceUploadContext,
   data: { publicUrl: string; durationSeconds?: number }
 ) {
-  const { sequence, scopedDb, user, teamId } = context;
+  const { sequence, scopedDb, user, organizationId } = context;
 
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.AUDIO,
-    teamId
+    organizationId
   );
 
   const variant = await scopedDb.sequenceVariants.appendUploadedMusic({
@@ -547,7 +554,7 @@ export async function setCharacterSheetFromUpload(
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.CHARACTERS,
-    context.teamId
+    context.organizationId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
   const owner = await requireCharacter(scopedDb, sequenceId, data.characterId);
@@ -647,7 +654,7 @@ export async function setCharacterSheetFromUpload(
   if (!character.voiceOnly) {
     await triggerSheetPortrait({
       userId: user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       sequenceId: sequenceId ?? undefined,
       subject: {
         kind: 'character',
@@ -656,7 +663,12 @@ export async function setCharacterSheetFromUpload(
       },
       versionId: variant.id,
       sheetUrl: data.publicUrl,
-      storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${character.id}`,
+      storageDir: castStorageDir(
+        context.organizationId,
+        sequenceId,
+        'characters',
+        character.id
+      ),
     });
   }
   return updated;
@@ -679,7 +691,7 @@ export async function setLocationSheetFromUpload(
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.LOCATIONS,
-    context.teamId
+    context.organizationId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
   const location = await requireLocation(
@@ -731,12 +743,17 @@ export async function setLocationSheetFromUpload(
   }
   await triggerSheetPortrait({
     userId: user.id,
-    teamId: context.teamId,
+    organizationId: context.organizationId,
     sequenceId: sequenceId ?? undefined,
     subject: { kind: 'location', locationId: location.id },
     versionId: variant.id,
     sheetUrl: data.publicUrl,
-    storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${location.id}`,
+    storageDir: castStorageDir(
+      context.organizationId,
+      sequenceId,
+      'locations',
+      location.id
+    ),
   });
   return updated;
 }
@@ -824,16 +841,16 @@ const MAX_URL_MEDIA_BYTES = 500 * 1024 * 1024;
 
 function uploadTarget(
   target: StoreTarget,
-  teamId: string,
+  organizationId: string,
   sequenceId: string | null,
   ext: string
 ): { bucket: StorageBucket; path: string } {
   const id = generateId();
   if (target.use === 'stitch') {
-    // Beside the stitch CLI's uploads: `stitches/<team>/<stitch>/<file>`.
+    // Beside the stitch CLI's uploads: `stitches/<organization>/<stitch>/<file>`.
     return {
       bucket: STORAGE_BUCKETS.STITCHES,
-      path: `${teamId}/${target.stitchId}/${id}.${ext}`,
+      path: `${organizationId}/${target.stitchId}/${id}.${ext}`,
     };
   }
   const { use } = target;
@@ -841,20 +858,20 @@ function uploadTarget(
     // The composer's key (`presignTalentUploadFn`), which list_studio_uploads reads.
     return {
       bucket: STORAGE_BUCKETS.TALENT,
-      path: teamUserUploadStoragePath(teamId, id, ext),
+      path: organizationUserUploadStoragePath(organizationId, id, ext),
     };
   }
   if (!sequenceId) {
-    // A location is the team's (#1695): its sheet upload needs no sequence.
+    // A location is the organization's (#1695): its sheet upload needs no sequence.
     if (use === 'location_sheet') {
       return {
         bucket: STORAGE_BUCKETS.LOCATIONS,
-        path: `teams/${teamId}/locations/uploads/${id}.${ext}`,
+        path: `${organizationKeyPrefix(organizationId)}/locations/uploads/${id}.${ext}`,
       };
     }
     throw new ValidationError(`A ${use} upload needs sequenceId.`);
   }
-  const inSequence = `teams/${teamId}/sequences/${sequenceId}`;
+  const inSequence = `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}`;
   switch (use) {
     case 'shot_image':
       return {
@@ -882,10 +899,10 @@ function uploadTarget(
         path: `${inSequence}/uploads/${id}.${ext}`,
       };
     case 'element':
-      // `presignElementUploadFn`'s key: `elements/<team>/<sequence>/<id>`.
+      // `presignElementUploadFn`'s key: `elements/<organization>/<sequence>/<id>`.
       return {
         bucket: STORAGE_BUCKETS.ELEMENTS,
-        path: `${teamId}/${sequenceId}/${id}.${ext}`,
+        path: `${organizationId}/${sequenceId}/${id}.${ext}`,
       };
   }
 }
@@ -903,7 +920,7 @@ function extensionFor(use: StoreUse, mediaType: string): string {
 export type UploadSource = { url: string } | { data: string; mimeType: string };
 
 /**
- * Store an agent's file for `use` in this sequence (or the team's Studio) and
+ * Store an agent's file for `use` in this sequence (or the organization's Studio) and
  * check it for a real person (images only, as every editor surface does): the
  * classifier's verdict is recorded on the likeness ledger, and a real person
  * needs the portrait sign-off, which is recorded here. Returns the stored
@@ -914,7 +931,7 @@ export async function storeUpload(
     scopedDb: ScopedDb;
     userId: string;
     /**
-     * Null for a Studio upload, which belongs to the team, and for the sheet
+     * Null for a Studio upload, which belongs to the organization, and for the sheet
      * of a location worked on from no sequence.
      */
     sequenceId: string | null;
@@ -930,7 +947,7 @@ export async function storeUpload(
   rights: 'cleared' | 'signed' | 'not_checked';
 }> {
   const { scopedDb, use, source } = args;
-  const teamId = scopedDb.teamId;
+  const organizationId = scopedDb.organizationId;
   let stored: { url: string; mediaType: string; bytes: number | null };
 
   if ('data' in source) {
@@ -950,7 +967,12 @@ export async function storeUpload(
         'Inline data is over 8 MB; host the file and send its url instead.'
       );
     }
-    const { bucket, path } = uploadTarget(args, teamId, args.sequenceId, ext);
+    const { bucket, path } = uploadTarget(
+      args,
+      organizationId,
+      args.sequenceId,
+      ext
+    );
     const result = await uploadFile(bucket, path, bytes, {
       contentType: mediaType,
     });
@@ -983,7 +1005,12 @@ export async function storeUpload(
         `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
       );
     }
-    const { bucket, path } = uploadTarget(args, teamId, args.sequenceId, ext);
+    const { bucket, path } = uploadTarget(
+      args,
+      organizationId,
+      args.sequenceId,
+      ext
+    );
     if (isImage) {
       const bytes = new Uint8Array(await res.arrayBuffer());
       if (bytes.byteLength > cap) {

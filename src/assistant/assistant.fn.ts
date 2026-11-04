@@ -6,7 +6,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { getRequest } from '@tanstack/react-start/server';
 import { OpenStoryError } from '@/platform/errors';
@@ -19,7 +19,7 @@ import { toolContext, type AssistantCaller } from './server/assistant-chat';
 const threadIdSchema = z.object({ threadId: ulidSchema });
 
 export const listAssistantThreadsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     const threads = await context.scopedDb.assistant.listThreads();
     return threads.map((thread) => ({
@@ -30,7 +30,7 @@ export const listAssistantThreadsFn = createServerFn({ method: 'GET' })
   });
 
 export const renameAssistantThreadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       threadIdSchema.extend({ title: z.string().trim().min(1).max(80) })
@@ -41,7 +41,7 @@ export const renameAssistantThreadFn = createServerFn({ method: 'POST' })
   });
 
 export const deleteAssistantThreadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(threadIdSchema))
   .handler(async ({ context, data }) => {
     const runIds = await context.scopedDb.assistant.threadRunIds(data.threadId);
@@ -59,7 +59,7 @@ export const deleteAssistantThreadFn = createServerFn({ method: 'POST' })
  * the MCP server serves as a `ui://` resource, by its URI.
  */
 export const getMcpViewFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ uri: z.string().min(1).max(200) })))
   .handler(({ data }) => {
     if (data.uri !== SEQUENCE_CARD_URI) {
@@ -74,7 +74,7 @@ export const getMcpViewFn = createServerFn({ method: 'GET' })
  * from any host. Anything else is refused: a view never spends, changes or roams.
  */
 export const callMcpReadToolFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -96,8 +96,8 @@ export const callMcpReadToolFn = createServerFn({ method: 'POST' })
     const caller: AssistantCaller = {
       scopedDb: context.scopedDb,
       user: context.user,
-      teamId: context.teamId,
-      teamName: await context.scopedDb.assistant.teamName(),
+      organizationId: context.organizationId,
+      organizationName: await context.scopedDb.assistant.organizationName(),
       origin: new URL(request.url).origin,
       request,
     };

@@ -13,7 +13,7 @@ import { EvalView } from './eval-view';
 
 const baseSequence: Sequence = {
   id: 'demo-sequence-123',
-  teamId: 'demo-team',
+  organizationId: 'demo-organization',
   title: 'Demo Video Sequence',
   script: `INT. OFFICE - DAY
 
@@ -115,7 +115,7 @@ function createPreviewClient() {
     client.setQueryData(key, data, { updatedAt: Date.now() + 86400000 });
   seed(['session'], {
     user: { id: 'demo-user' },
-    session: { activeTeamId: 'demo-team' },
+    session: { activeOrganizationId: 'demo-organization' },
   });
   seed(['system-admin-status'], {
     isAdmin: true,
@@ -124,7 +124,7 @@ function createPreviewClient() {
   seed(sequenceKeys.list(), sequences);
   seed(styleKeys.list(), MOCK_SYSTEM_STYLES);
   seed(['archived-sequences'], []);
-  seed(['sequence-divergent-by-team', null], []);
+  seed(['sequence-divergent-by-organization', null], []);
   const shotsBySequence = new Map<string, SequenceListShot[]>();
   for (const sequence of sequences) {
     const shots = generateMockShots(2, sequence.id).map<SequenceListShot>(

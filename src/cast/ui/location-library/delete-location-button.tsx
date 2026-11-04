@@ -14,22 +14,22 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
-  useDeleteTeamLocation,
-  useRestoreTeamLocation,
-} from '@/cast/ui/use-team-locations';
+  useDeleteOrganizationLocation,
+  useRestoreOrganizationLocation,
+} from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
 /**
- * Delete one of the team's locations (#1695), with Undo on the toast.
+ * Delete one of the organization's locations (#1695), with Undo on the toast.
  * Offered only while no sequence uses it; the server refuses otherwise.
  */
 export const DeleteLocationButton: React.FC<{
   locationId: string;
   name: string;
 }> = ({ locationId, name }) => {
-  const remove = useDeleteTeamLocation();
-  const restore = useRestoreTeamLocation();
+  const remove = useDeleteOrganizationLocation();
+  const restore = useRestoreOrganizationLocation();
   const navigate = useNavigate();
   const hydrated = useHydrated();
 

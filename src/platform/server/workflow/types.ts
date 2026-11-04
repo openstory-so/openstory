@@ -83,11 +83,11 @@ type PreClickEditPayload = {
 
 /**
  * Base workflow context that includes authentication
- * All workflows must include userId and teamId for authorization
+ * All workflows must include userId and organizationId for authorization
  */
 export interface UserWorkflowContext {
   userId: string;
-  teamId: string;
+  organizationId: string;
   /**
    * Run envelope (#1310). Optional so in-flight instances without it still
    * last-resort deduct. Children inherit this from the parent payload.
@@ -339,7 +339,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   suggestedLocations?: SuggestedLocationSnapshot[];
   /**
    * Owner's email at trigger time (#1276). Null when the triggering user has
-   * no address on the team — the ready-email step then no-ops.
+   * no address on the organization — the ready-email step then no-ops.
    */
   ownerEmail?: string | null;
   /** Absolute `/sequences/:id/scenes` URL, snapshotted with the app origin. */
@@ -1203,7 +1203,7 @@ export interface UpscaleShotVariantWorkflowResult {
 
 /**
  * Location sheet generation workflow input. `sequenceId` is null for a run
- * started from the Locations page (#1695): it stores under the team and
+ * started from the Locations page (#1695): it stores under the organization and
  * reports on the location's own channel.
  */
 export interface LocationSheetWorkflowInput extends Omit<
@@ -1264,21 +1264,21 @@ export interface LocationBibleWorkflowInput extends UserWorkflowContext {
   /** Image model to use */
   imageModel?: TextToImageModel;
   /**
-   * Script locations matching bound to a team location: the sequence links
+   * Script locations matching bound to an organization location: the sequence links
    * to that location and no sheet is drawn here (#1695).
    */
   libraryLocationMatches: LibraryLocationMatch[];
 }
 
 /**
- * A script location matching bound to one of the team's locations the writer
+ * A script location matching bound to one of the organization's locations the writer
  * picked (#1695). The sequence links to that location: nothing is copied and
  * no sheet is drawn.
  */
 export type LibraryLocationMatch = {
   /** Location ID from LocationBibleEntry.locationId */
   locationId: string;
-  /** The team location's id (`locations.id`). */
+  /** The organization location's id (`locations.id`). */
   libraryLocationId: string;
   libraryLocationName: string;
   /** That location's sheet, for the progress stream; null while none has landed. */
@@ -1305,7 +1305,7 @@ export interface LocationMatchingWorkflowOutput {
 }
 /**
  * Recast location workflow input. A recast re-points the sequence's link at
- * another of the team's locations (done at the trigger, #1695); this run
+ * another of the organization's locations (done at the trigger, #1695); this run
  * re-renders the shots set there. No sheet is drawn.
  */
 export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
@@ -1827,7 +1827,7 @@ export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
   input: StudioRunInput;
   /**
    * Render the 1080p final of this Ark draft task (#1756). Set by the server
-   * fn, never by the client — a task id names another team's render as
+   * fn, never by the client — a task id names another organization's render as
    * easily as this one's. `input` is the draft's input at 1080p; the run
    * skips still ingest and submits only the id.
    */

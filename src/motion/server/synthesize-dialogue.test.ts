@@ -47,7 +47,7 @@ describe('generateDialogueSpeechCall voice identity', () => {
     );
     const recording = await generateDialogueSpeechCall({
       apiKey: 'test-key',
-      teamId: 'team-1',
+      organizationId: 'org-1',
       sequenceId: 'seq-1',
       lines: lines.map((line) => ({ ...line, shotId: 'shot-1' })),
     });
@@ -120,7 +120,7 @@ describe('generateDialogueSpeechCall turn timing', () => {
   const record = () =>
     generateDialogueSpeechCall({
       apiKey: 'test-key',
-      teamId: 'team-1',
+      organizationId: 'org-1',
       sequenceId: 'seq-1',
       lines,
     });

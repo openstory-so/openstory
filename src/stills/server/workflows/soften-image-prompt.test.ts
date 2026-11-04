@@ -80,7 +80,7 @@ function makeInput(
   return {
     userId: 'u1',
     variantOnly: false,
-    teamId: 't1',
+    organizationId: 't1',
     sequenceId: 'seq_1',
     shotId: 'shot-1',
     frameId: 'frame-1',

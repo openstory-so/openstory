@@ -56,8 +56,8 @@ const storedCutSchema = cutSchemaOf(z.string().min(1));
 /**
  * Share a sequence as a stitch (#2140): the whole cut the theatre plays —
  * rendered clips where the shot has one, stills elsewhere, and the music when
- * it is on — stored as a published row. Built here from the team's own shots,
- * never from URLs the browser sends, so the row points only at the team's
+ * it is on — stored as a published row. Built here from the organization's own shots,
+ * never from URLs the browser sends, so the row points only at the organization's
  * media. Like "Copy link" on a render, it makes the cut public by its id.
  */
 export const shareSequenceStitchFn = createServerFn({ method: 'POST' })

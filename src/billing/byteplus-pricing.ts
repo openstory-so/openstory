@@ -37,7 +37,7 @@ import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
  * at 2K, which straddles that boundary (2048x1152 is 2.36MP → lower tier;
  * a square 2K is 4.19MP → higher). The card carries the HIGHER tier
  * deliberately: an over-estimate makes the credit gate slightly
- * conservative, while an under-estimate lets a team spend past its
+ * conservative, while an under-estimate lets an organization spend past its
  * balance, which is the failure mode #1069 exists to prevent. Re-read
  * **2026-08-27** when bumping lite → Pro. The invoice check (see header)
  * is what settles which rate our id actually bills at.

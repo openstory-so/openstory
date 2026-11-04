@@ -19,7 +19,7 @@ import {
 import {
   modelPricing,
   modelPricingHistory,
-  teams,
+  organization,
   transactions,
 } from '@/platform/server/db/schema';
 import { modelUsageObservations } from '@/platform/server/db/schema/model-pricing';
@@ -125,7 +125,7 @@ describe('reconcileFalBilling', () => {
     const id = `tx-${opts.requestId}`;
     await db.insert(transactions).values({
       id,
-      teamId: 'team-1',
+      organizationId: 'organization-1',
       type: 'credit_usage',
       amount: -opts.costMicros,
       balanceAfter: 0,
@@ -139,10 +139,10 @@ describe('reconcileFalBilling', () => {
   }
 
   beforeEach(async () => {
-    // transactions.teamId FK needs a parent row.
+    // transactions.organizationId FK needs a parent row.
     await db
-      .insert(teams)
-      .values({ id: 'team-1', name: 't', slug: 'team-1-slug' })
+      .insert(organization)
+      .values({ id: 'organization-1', name: 't', slug: 'organization-1-slug' })
       .onConflictDoNothing();
     await db.delete(modelPricing);
     await db.delete(modelPricingHistory);

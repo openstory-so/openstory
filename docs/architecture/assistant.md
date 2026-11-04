@@ -1,7 +1,7 @@
 # In-app assistant (#2155)
 
 A chat panel inside the app that can do everything the MCP server lets an
-outside agent do, under the signed-in user's team, with the page the user is
+outside agent do, under the signed-in user's organization, with the page the user is
 on as context.
 
 ## One tool set, two callers
@@ -39,17 +39,17 @@ same on both paths. Do not add an assistant-only tool; add an MCP tool.
 
 1. `chatParamsFromRequest` reads the AG-UI body. `threadId` must be a ULID
    the client minted; the thread row is created on first use and belongs to
-   the user in the team (`scopedDb.assistant.ensureThread`).
+   the user in the organization (`scopedDb.assistant.ensureThread`).
 2. `forwardedProps.pageContext` (validated by `pageContextSchema`) becomes
    one system line naming what the user is looking at, ids included.
 3. The model is the composer's pick (`forwardedProps.model`, kept in the
    assistant store across threads), through `chatModelFor`:
    `DEFAULT_ANALYSIS_MODEL` when there is no pick, a refusal (400) when the
    pick is not a selectable analysis model, else the pick, swapped for the
-   request's country the way a sequence's is. It runs on the team's `resolveLlmKey`.
+   request's country the way a sequence's is. It runs on the organization's `resolveLlmKey`.
    `requireCredits` runs first; a platform key bills each model iteration
    as its usage is reported, with `llmCostFromUsage(usage, model,
-llmKey.via)`, under a server-minted key per iteration. A team key bills
+llmKey.via)`, under a server-minted key per iteration. An organization key bills
    nothing.
 4. `withPersistence` writes the transcript, the run and any interrupt to
    `assistant_messages` / `assistant_runs` / `assistant_interrupts` through
@@ -70,7 +70,7 @@ over `@durable-streams/server-cloudflare`, a Durable Object per run behind
 the `STREAMS` binding (`StreamObject`, tag v4 in every env block, class
 re-exported from `src/server.ts`). The streams server is called in-process;
 no route speaks its protocol to the outside, and a stream is keyed under
-`assistant/<team>/<user>/<runId>`, so another user's run id names a stream
+`assistant/<organization>/<user>/<runId>`, so another user's run id names a stream
 that does not exist.
 
 - A drop mid-reply: the client re-sends the POST with `Last-Event-ID`.
@@ -138,7 +138,7 @@ message to text, so `get_shot_frames` is blind here. The system line says
 the picture is attached. A shot chip carries no still yet.
 
 A clip is never attached. The model watches one on request through the
-`watch_clip` MCP tool (`watchClipForTeam`), which runs its own Gemini 4
+`watch_clip` MCP tool (`watchClipForOrganization`), which runs its own Gemini 4
 Argon call over the Files API, so the chat model stays whatever the user
 picked and the cost is one call, not every turn.
 

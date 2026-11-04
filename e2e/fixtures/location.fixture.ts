@@ -1,6 +1,6 @@
 /**
  * Location Fixture for E2E Tests
- * Creates team locations (#1695) for the Locations page and the pipeline.
+ * Creates organization locations (#1695) for the Locations page and the pipeline.
  */
 
 import { z } from 'zod';
@@ -8,13 +8,13 @@ import { z } from 'zod';
 export type TestLocation = {
   id: string;
   name: string;
-  teamId: string;
+  organizationId: string;
   referenceImageUrl: string;
 };
 
 const createdSchema = z.object({
   id: z.string(),
-  teamId: z.string(),
+  organizationId: z.string(),
   name: z.string(),
   referenceImageUrl: z.string(),
 });
@@ -31,23 +31,23 @@ async function postLocation(body: Record<string, string>) {
   return createdSchema.parse(await res.json());
 }
 
-/** A team location with a placeholder sheet. */
+/** An organization location with a placeholder sheet. */
 export async function createTestLocation(
-  teamId: string,
+  organizationId: string,
   name: string
 ): Promise<TestLocation> {
-  return await postLocation({ teamId, name });
+  return await postLocation({ organizationId, name });
 }
 
 /**
- * The team location the full-pipeline run picks: named and described like
+ * The organization location the full-pipeline run picks: named and described like
  * the "Sunlit Loft Studio" the location-match fixture was recorded against,
  * with a real R2 sheet the workflows can read.
  */
 export async function createSunlitLoftLocation(
-  teamId: string
+  organizationId: string
 ): Promise<TestLocation> {
-  return await postLocation({ teamId, preset: 'sunlit-loft' });
+  return await postLocation({ organizationId, preset: 'sunlit-loft' });
 }
 
 /**

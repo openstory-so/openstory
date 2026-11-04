@@ -390,7 +390,7 @@ export function BillingSettings({
                 </p>
               ) : !pmData?.canManage ? (
                 <p className="text-sm text-muted-foreground">
-                  Only a team admin can manage cards.
+                  Only an organization admin can manage cards.
                 </p>
               ) : !hasCard || !balanceData ? (
                 <p className="text-sm text-muted-foreground">

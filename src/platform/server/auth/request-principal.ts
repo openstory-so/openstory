@@ -17,6 +17,11 @@ import {
   type OAuthAccessToken,
 } from './oauth-bearer';
 import { apiResourceIdentifier, resolveOAuthIssuer } from './oauth-provider';
+import { readPublicApiKeyFromHeaders } from './public-api-key';
+import {
+  getApiKeyOrganizationId,
+  getUserById,
+} from '@/platform/server/db/scoped';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
 
@@ -43,14 +48,25 @@ export function apiResourceMetadataUrl(): string {
 
 /**
  * Who is calling a `/api/v1` route: a cookie or `osk_` key session, or an
- * OAuth access token (#1456). Tokens carry no Better Auth session — the team
- * and scopes come from the token's claims instead.
+ * OAuth access token (#1456). `organizationId` is the one the caller acts
+ * for: the token's, the key's, or the session's active organization.
  */
 export type RequestPrincipal = {
   user: User;
   session: Session | null;
   oauth: OAuthAccessToken | null;
+  organizationId: string | null;
 };
+
+/** The organization a cookie or `osk_` key session acts for. */
+export async function sessionOrganizationId(
+  session: Session,
+  headers: Headers
+): Promise<string | null> {
+  return readPublicApiKeyFromHeaders(headers)
+    ? getApiKeyOrganizationId(session.session.id)
+    : (session.session.activeOrganizationId ?? null);
+}
 
 /**
  * Resolve the session for a request. The apiKey plugin validates a key header
@@ -97,8 +113,7 @@ export async function resolveRequestPrincipal(
         })
       );
     }
-    const { internalAdapter } = await auth.$context;
-    const user = await internalAdapter.findUserById(token.userId);
+    const user = await getUserById(token.userId);
     if (!user) {
       throw authErrorResponse(
         401,
@@ -110,13 +125,22 @@ export async function resolveRequestPrincipal(
         })
       );
     }
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the adapter returns the same row getSession would, minus the inferred additional-field typing
-    return { user: user as User, session: null, oauth: token };
+    return {
+      user,
+      session: null,
+      oauth: token,
+      organizationId: token.organizationId ?? null,
+    };
   }
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) return null;
-    return { user: session.user, session, oauth: null };
+    return {
+      user: session.user,
+      session,
+      oauth: null,
+      organizationId: await sessionOrganizationId(session, request.headers),
+    };
   } catch (error) {
     if (error instanceof APIError && error.statusCode === 429) {
       const tryAgainInMs = error.body?.details?.tryAgainIn;

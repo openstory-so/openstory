@@ -328,7 +328,7 @@ const run = (
     asStub<Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>>({
       payload: {
         userId: 'u1',
-        teamId: 't1',
+        organizationId: 't1',
         sequenceId: 'seq-1',
         plan: p,
         announcePhases: true,
@@ -654,7 +654,11 @@ describe('executor packed clips', () => {
       const dialogue = { presence: false, lines: [] };
       const version = { text: 'She crosses the room.', audio: null };
       const ids = ['a', 'b'];
-      const context = { userId: 'u1', teamId: 't1', sequenceId: 'seq-1' };
+      const context = {
+        userId: 'u1',
+        organizationId: 't1',
+        sequenceId: 'seq-1',
+      };
       const header = {
         location: 'Frozen room',
         timeOfDay: 'Night',

@@ -16,14 +16,14 @@ export function reportGiftRedeemRefusal(args: {
   code: string;
   reason: GiftRedeemReason;
   userId: string;
-  teamId: string;
+  organizationId: string;
 }): void {
   const code = normalizeGiftCode(args.code);
   logger.warn('Gift code redeem refused', {
     code,
     reason: args.reason,
     userId: args.userId,
-    teamId: args.teamId,
+    organizationId: args.organizationId,
   });
   captureProductEvent({
     distinctId: args.userId,
@@ -31,7 +31,7 @@ export function reportGiftRedeemRefusal(args: {
     properties: {
       reason: args.reason,
       code,
-      teamId: args.teamId,
+      organizationId: args.organizationId,
     },
   });
 }

@@ -3,8 +3,8 @@
  * real migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), mirroring the `video-variants.test.ts`
  * harness.
  *
- * Pins the team boundary (reads filter on teamId, writes inject
- * teamId/userId), newest-first listing with activity/endpoint filters +
+ * Pins the organization boundary (reads filter on organizationId, writes inject
+ * organizationId/userId), newest-first listing with activity/endpoint filters +
  * keyset cursor, and the status lifecycle
  * (`queued` → `running` → `completed`/`failed`).
  */
@@ -16,7 +16,7 @@ import type { Database } from '@/platform/server/db/client';
 import {
   GENERATED_ASSET_ACTIVITIES,
   generatedAssets,
-  teams,
+  organization,
   user,
   type NewGeneratedAsset,
 } from '@/platform/server/db/schema';
@@ -25,30 +25,30 @@ import { createGeneratedAssetsMethods } from './generated-assets';
 let closeDb: () => Promise<void>;
 let db: Database;
 let methods: ReturnType<typeof createGeneratedAssetsMethods>;
-let otherTeamMethods: ReturnType<typeof createGeneratedAssetsMethods>;
+let otherOrganizationMethods: ReturnType<typeof createGeneratedAssetsMethods>;
 
 const USER_ID = 'user-1';
-let teamId = '';
-let otherTeamId = '';
+let organizationId = '';
+let otherOrganizationId = '';
 
 async function seed() {
   await db.delete(generatedAssets);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
-  otherTeamId = generateId();
+  organizationId = generateId();
+  otherOrganizationId = generateId();
 
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([
-    { id: teamId, name: 'T', slug: `t-${teamId}` },
-    { id: otherTeamId, name: 'O', slug: `o-${otherTeamId}` },
+  await db.insert(organization).values([
+    { id: organizationId, name: 'T', slug: `t-${organizationId}` },
+    { id: otherOrganizationId, name: 'O', slug: `o-${otherOrganizationId}` },
   ]);
 }
 
 function assetInput(
-  overrides: Partial<Omit<NewGeneratedAsset, 'teamId' | 'userId'>> = {}
-): Omit<NewGeneratedAsset, 'teamId' | 'userId'> {
+  overrides: Partial<Omit<NewGeneratedAsset, 'organizationId' | 'userId'>> = {}
+): Omit<NewGeneratedAsset, 'organizationId' | 'userId'> {
   return {
     provider: 'fal',
     endpointId: 'fal-ai/flux-1/dev',
@@ -70,14 +70,18 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await seed();
-  methods = createGeneratedAssetsMethods(db, teamId, USER_ID);
-  otherTeamMethods = createGeneratedAssetsMethods(db, otherTeamId, USER_ID);
+  methods = createGeneratedAssetsMethods(db, organizationId, USER_ID);
+  otherOrganizationMethods = createGeneratedAssetsMethods(
+    db,
+    otherOrganizationId,
+    USER_ID
+  );
 });
 
 describe('insert', () => {
-  it('injects teamId/userId and returns the row', async () => {
+  it('injects organizationId/userId and returns the row', async () => {
     const row = await methods.insert(assetInput());
-    expect(row.teamId).toBe(teamId);
+    expect(row.organizationId).toBe(organizationId);
     expect(row.userId).toBe(USER_ID);
     expect(row.status).toBe('queued');
     expect(row.input).toEqual({ prompt: 'a red fox' });
@@ -87,10 +91,10 @@ describe('insert', () => {
 });
 
 describe('list', () => {
-  it('is team-scoped and newest-first', async () => {
+  it('is organization-scoped and newest-first', async () => {
     const first = await methods.insert(assetInput());
     const second = await methods.insert(assetInput());
-    await otherTeamMethods.insert(assetInput());
+    await otherOrganizationMethods.insert(assetInput());
 
     const { assets, nextCursor } = await methods.list();
     expect(assets.map((a) => a.id)).toEqual([second.id, first.id]);
@@ -145,9 +149,9 @@ describe('list', () => {
 });
 
 describe('getById', () => {
-  it('returns own-team rows and hides other teams', async () => {
+  it('returns own-organization rows and hides other organizations', async () => {
     const row = await methods.insert(assetInput());
-    const foreign = await otherTeamMethods.insert(assetInput());
+    const foreign = await otherOrganizationMethods.insert(assetInput());
 
     expect((await methods.getById(row.id))?.id).toBe(row.id);
     expect(await methods.getById(foreign.id)).toBeNull();
@@ -193,13 +197,13 @@ describe('status lifecycle', () => {
     expect(current?.outputs).toBeNull();
   });
 
-  it('scopes writes to the team (a foreign markFailed throws, row untouched)', async () => {
+  it('scopes writes to the organization (a foreign markFailed throws, row untouched)', async () => {
     const row = await methods.insert(assetInput());
     // Throwing (not a silent no-op) — a zero-row status write means the
     // workflow would otherwise "succeed" with nothing persisted.
     await expect(
-      otherTeamMethods.markFailed(row.id, 'cross-team write')
-    ).rejects.toThrow(/not found for this team/);
+      otherOrganizationMethods.markFailed(row.id, 'cross-organization write')
+    ).rejects.toThrow(/not found for this organization/);
 
     const current = await methods.getById(row.id);
     expect(current?.status).toBe('queued');
@@ -209,6 +213,6 @@ describe('status lifecycle', () => {
   it('throws on status writes to a nonexistent row', async () => {
     await expect(
       methods.markRunning('01J00000000000000000000000')
-    ).rejects.toThrow(/not found for this team/);
+    ).rejects.toThrow(/not found for this organization/);
   });
 });

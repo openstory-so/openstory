@@ -1,6 +1,6 @@
 /**
  * Public `/api/v1/styles` documents (#1227). Create goes straight through
- * `scopedDb.styles.create` (slug-unique per team, server-managed columns
+ * `scopedDb.styles.create` (slug-unique per organization, server-managed columns
  * stripped); this module only shapes the HAL responses.
  */
 
@@ -20,7 +20,7 @@ export const styleDocumentSchema = z.object({
   useCases: z.array(z.string()),
   isTemplate: z.boolean().meta({
     description:
-      'True for a public template; false for a style your team owns.',
+      'True for a public template; false for a style your organization owns.',
   }),
   defaultAspectRatio: z.string().nullable(),
   recommendedImageModel: z.string().nullable(),
@@ -71,7 +71,10 @@ export function styleDocument(style: Style) {
           },
         ],
       },
-      'list-styles': getLink(STYLES_PATH, "List your team's library styles"),
+      'list-styles': getLink(
+        STYLES_PATH,
+        "List your organization's library styles"
+      ),
     }
   );
 }

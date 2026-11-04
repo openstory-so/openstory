@@ -325,8 +325,8 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     // NonRetryableError — onFailure records the real message.
     // Destination is resolved BEFORE generating: the still is stored inside
     // the generating step so its bytes never reach a checkpoint (#1645).
-    const { teamId, shotId, sequenceId } = input;
-    if (!teamId || !shotId || !sequenceId) {
+    const { organizationId, shotId, sequenceId } = input;
+    if (!organizationId || !shotId || !sequenceId) {
       throw new Error('Missing required IDs for image storage');
     }
     const generation = await generateImageWithContentRetry({
@@ -344,7 +344,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         }
         return uploadImageToStorage({
           imageUrl: generatedImageUrl,
-          teamId,
+          organizationId,
           sequenceId,
           shotId,
         });
@@ -362,7 +362,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    if (imageCostMicros > 0 && teamId && !imageMetadata.usedOwnKey) {
+    if (imageCostMicros > 0 && organizationId && !imageMetadata.usedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
@@ -525,7 +525,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       // retries instead of leaving a silent audit gap.
       await step.do('record-provenance', async () => {
         await recordProvenance(scopedDb.provenance, {
-          teamId,
+          organizationId,
           userId: input.userId,
           assetKind: 'frame_variant',
           assetId: generation.versionId || prep.versionId,
@@ -644,7 +644,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       }
       return;
     }
-    if (!input.shotId || !input.teamId) return;
+    if (!input.shotId || !input.organizationId) return;
 
     // The run's rows fail below; a primary one is the frame's failure
     // (#1942). Variant-only rows never speak for the frame.

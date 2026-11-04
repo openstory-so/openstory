@@ -13,7 +13,7 @@ management — the adapter promotes only the preview it just generated, so
 saving an arbitrary `generatedVoiceId`, get, list, share and delete stay on
 the SDK). **Platform
 key only** (`ELEVENLABS_API_KEY`): designed voices live in the account that
-created them, so there is no team BYOK and `'elevenlabs'` is not on
+created them, so there is no organization BYOK and `'elevenlabs'` is not on
 `API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
 through `scopedDb.credentials.resolveKey('elevenlabs')`.
 

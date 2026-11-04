@@ -15,7 +15,7 @@
  *   --image-model         Image model for thumbnails (e.g., flux_1_1_ultra)
  *   --video-model         Video model for motion (e.g., wan_i2v)
  *   --user-id             User ID for authenticated runs
- *   --team-id             Team ID for authenticated runs
+ *   --organization-id     Organization ID for authenticated runs
  *   --sequence-id         Sequence ID to associate with
  *
  * Example:
@@ -53,7 +53,7 @@ Options:
   --image-model         Image model for thumbnails (e.g., flux_1_1_ultra)
   --video-model         Video model for motion (e.g., wan_i2v)
   --user-id             User ID for authenticated runs
-  --team-id             Team ID for authenticated runs
+  --organization-id     Organization ID for authenticated runs
   --sequence-id         Sequence ID to associate with
 
 Available aspect ratios: 16:9, 9:16, 1:1
@@ -85,7 +85,7 @@ async function main() {
       'image-model': { type: 'string', default: DEFAULT_IMAGE_MODEL },
       'video-model': { type: 'string', default: DEFAULT_VIDEO_MODEL },
       'user-id': { type: 'string' },
-      'team-id': { type: 'string' },
+      'organization-id': { type: 'string' },
       'sequence-id': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -193,7 +193,7 @@ async function main() {
       imageModel: values['image-model'],
       videoModel: values['video-model'],
       userId: values['user-id'] ?? 'cli-user',
-      teamId: values['team-id'] ?? 'cli-team',
+      organizationId: values['organization-id'] ?? 'cli-organization',
       sequenceId: values['sequence-id'],
     });
 

@@ -37,7 +37,7 @@ import {
   sequenceStyleVersions,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -55,7 +55,7 @@ const NO_VOICES = { releasedVoiceIds: [] };
 let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
-let teamId = '';
+let organizationId = '';
 let actorId = '';
 
 async function seed() {
@@ -67,18 +67,20 @@ async function seed() {
   await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   actorId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -94,7 +96,7 @@ async function seed() {
   if (!style) throw new Error('test setup: style insert returned nothing');
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
 }
 
 async function eventKinds(): Promise<string[]> {
@@ -136,7 +138,7 @@ const HASH_SCENE = {
  * must move this, and nothing in the write paths may stamp a hash itself.
  */
 async function liveVisualPromptHash(): Promise<string> {
-  const cast = await createCharactersMethods(db, teamId).listWithSheets(
+  const cast = await createCharactersMethods(db, organizationId).listWithSheets(
     sequenceId
   );
   return await hashVisualPromptInput({
@@ -164,7 +166,7 @@ beforeEach(async () => {
 
 describe('characters bible CRUD + soft-remove', () => {
   it('appends and can restore selected voice configurations', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -226,7 +228,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('stamps a take unusable without appending voice history (#1709)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -279,7 +281,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('creates a generating voice husk and points pending-promote at it (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -309,7 +311,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('returns the existing live husk instead of inserting a second (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -332,7 +334,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not touch the live voice while a husk is inserted or completed (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -379,7 +381,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('logs a voice start and one designed line, and none from no sequence', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -437,7 +439,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('completes a live husk in place without appending history (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -483,7 +485,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not complete a husk that already failed (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -517,7 +519,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote when selecting a different completed voice (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -555,7 +557,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('promotes a completed husk only while pending-promote still names it (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -603,7 +605,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote when the pointer moved mid-run (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -652,7 +654,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote a generating husk or a completed empty husk (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -677,7 +679,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote on a library updateVoice (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -715,7 +717,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a generating voice husk (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -736,7 +738,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a completed husk with no voiceId (#1715)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -758,7 +760,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses a released voice version, across every character holding the id', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const maya = await methods.create(
       {
         sequenceId,
@@ -832,7 +834,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('create labels a voice that arrives with an id as library, and appends nothing on the re-upsert', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const cast = await methods.create(
       {
         sequenceId,
@@ -866,7 +868,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-cast fills a voice id the selected version lacks, as a library version (#1788)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -898,7 +900,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('counts voice references through the selected version, soft-deleted included (#1788)', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const shared = 'shared-voice';
     const live = await methods.create(
       {
@@ -942,7 +944,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
 
     expect(live.voiceId).toBe(shared);
-    // A's current pointer, and B's (removed from the sequence, still the team's).
+    // A's current pointer, and B's (removed from the sequence, still the organization's).
     expect(await methods.getVoiceReferenceCount(shared)).toBe(2);
     // C's current pointer moved to 'other'.
     expect(await methods.getVoiceReferenceCount('other')).toBe(1);
@@ -953,7 +955,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {
-    const methods = createCharactersMethods(db, teamId);
+    const methods = createCharactersMethods(db, organizationId);
     const created = await methods.create(
       {
         sequenceId,
@@ -991,7 +993,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1042,7 +1044,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1101,7 +1103,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: a bible edit moves the visual-prompt hash, a consistencyTag edit does NOT (#867)', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1141,7 +1143,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: soft-removing a character moves the visual-prompt hash; restore puts it back', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1166,7 +1168,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('bible edit and soft-remove move the DERIVED live prompt hash; restore moves it back', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1199,7 +1201,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-analysis upsert on the same characterId revives a soft-deleted character', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1232,7 +1234,7 @@ describe('characters bible CRUD + soft-remove', () => {
 
 describe('sequence locations bible CRUD + soft-remove', () => {
   it('updateBible writes the fields and an atomic location.updated event carrying prevState', async () => {
-    const m = createLocationsMethods(db, teamId);
+    const m = createLocationsMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1264,8 +1266,8 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     });
   });
 
-  it('softDelete hides the location from the sequence and leaves it on the team; restore brings it back', async () => {
-    const m = createLocationsMethods(db, teamId);
+  it('softDelete hides the location from the sequence and leaves it on the organization; restore brings it back', async () => {
+    const m = createLocationsMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1280,8 +1282,8 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     await m.softDelete(sequenceId, created.id, { actorId });
     expect(await m.list(sequenceId)).toHaveLength(0);
     expect(await m.listWithReferences(sequenceId)).toHaveLength(0);
-    // Removed from the sequence, not from the team (#1695).
-    expect(await m.listTeam()).toMatchObject([
+    // Removed from the sequence, not from the organization (#1695).
+    expect(await m.listOrganization()).toMatchObject([
       { id: created.id, sequences: [], usedAnywhere: false },
     ]);
     expect((await m.getById(sequenceId, created.id))?.deletedAt).toBeInstanceOf(
@@ -1291,7 +1293,7 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     const restored = await m.restore(sequenceId, created.id, { actorId });
     expect(restored.deletedAt).toBeNull();
     expect(await m.list(sequenceId)).toHaveLength(1);
-    expect(await m.listTeam()).toMatchObject([
+    expect(await m.listOrganization()).toMatchObject([
       { id: created.id, sequences: [{ id: sequenceId }], usedAnywhere: true },
     ]);
 
@@ -1301,7 +1303,7 @@ describe('sequence locations bible CRUD + soft-remove', () => {
   });
 
   it('createBulk upsert revives a soft-deleted location', async () => {
-    const m = createLocationsMethods(db, teamId);
+    const m = createLocationsMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1381,7 +1383,7 @@ describe('bible history (#1600)', () => {
   const analysis = { source: 'analysis', createdBy: null } as const;
 
   it('a create appends the first version and points at it', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1408,7 +1410,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('a re-analysis appends only when a field moved, keeping what it left out', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const input = {
       sequenceId,
       characterId: 'char_001',
@@ -1440,7 +1442,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('a re-analysis may make a character a person, never the reverse (#2065)', async () => {
-    const characters = createCharactersMethods(db, teamId);
+    const characters = createCharactersMethods(db, organizationId);
     const analysed = (isPerson: boolean) =>
       characters.create(
         {
@@ -1473,7 +1475,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('an edit appends a version by its author; a no-op edit appends none', async () => {
-    const m = createCharactersMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1506,8 +1508,8 @@ describe('bible history (#1600)', () => {
   });
 
   it('a clothing edit appends a look version, not a bible version (#2015)', async () => {
-    const m = createCharactersMethods(db, teamId);
-    const looks = createCharacterLooksMethods(db, teamId);
+    const m = createCharactersMethods(db, organizationId);
+    const looks = createCharacterLooksMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1559,7 +1561,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('locations: create, bulk re-analysis and edits append the same way', async () => {
-    const m = createLocationsMethods(db, teamId);
+    const m = createLocationsMethods(db, organizationId);
     const created = await m.create(
       {
         sequenceId,
@@ -1605,8 +1607,8 @@ describe('bible history (#1600)', () => {
 
 describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
   it('characters, locations and the sequence delete with their versions', async () => {
-    const chars = createCharactersMethods(db, teamId);
-    const locs = createLocationsMethods(db, teamId);
+    const chars = createCharactersMethods(db, organizationId);
+    const locs = createLocationsMethods(db, organizationId);
     const opts = { source: 'analysis' as const, createdBy: null };
     const [a, b] = await Promise.all(
       ['Ann', 'Bo'].map((name, i) =>
@@ -1650,7 +1652,7 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
       config: STYLE_CONFIG,
       source: 'backfill',
     });
-    await createSequencesMethods(db, sequence.teamId, actorId).delete(
+    await createSequencesMethods(db, sequence.organizationId, actorId).delete(
       sequenceId,
       NO_VOICES
     );
@@ -1666,10 +1668,10 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
   });
 });
 
-describe('team characters (#2017)', () => {
+describe('organization characters (#2017)', () => {
   const analysis = { source: 'analysis', createdBy: null } as const;
-  const chars = () => createCharactersMethods(db, teamId);
-  const looks = () => createCharacterLooksMethods(db, teamId);
+  const chars = () => createCharactersMethods(db, organizationId);
+  const looks = () => createCharacterLooksMethods(db, organizationId);
   const linksOf = async (characterId: string) =>
     await db
       .select()
@@ -1680,7 +1682,7 @@ describe('team characters (#2017)', () => {
       .select()
       .from(characterBibleVersions)
       .where(eq(characterBibleVersions.characterId, characterId));
-  /** A second sequence of the same team, on the first one's style. */
+  /** A second sequence of the same organization, on the first one's style. */
   const secondSequence = async () => {
     const [first] = await db
       .select()
@@ -1690,7 +1692,7 @@ describe('team characters (#2017)', () => {
     const id = generateId();
     await db
       .insert(sequences)
-      .values({ id, teamId, title: 'S2', styleId: first.styleId });
+      .values({ id, organizationId, title: 'S2', styleId: first.styleId });
     return id;
   };
   it('is read through a sequence (with the link) or from none (without)', async () => {
@@ -1731,7 +1733,7 @@ describe('team characters (#2017)', () => {
     });
     expect(own).not.toHaveProperty('castId');
     expect(own).not.toHaveProperty('sequenceId');
-    // Deleted from the team: gone from no sequence, still there to restore
+    // Deleted from the organization: gone from no sequence, still there to restore
     // through the link.
     await db
       .update(characters)
@@ -1764,7 +1766,7 @@ describe('team characters (#2017)', () => {
       characterId: shared.id,
       scriptCharacterId: 'char_x',
     });
-    await createSequencesMethods(db, teamId, actorId).delete(
+    await createSequencesMethods(db, organizationId, actorId).delete(
       sequenceId,
       NO_VOICES
     );
@@ -1933,7 +1935,7 @@ describe('team characters (#2017)', () => {
 
   it("deleting a sequence is refused until its characters' voices are released, then removes sheets and voices too", async () => {
     const created = await withSheetAndVoices('char_001');
-    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    const sequencesDb = createSequencesMethods(db, organizationId, actorId);
     const owed = await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId);
     expect(owed.sort()).toEqual(['voice-a', 'voice-b']);
     await expect(sequencesDb.delete(sequenceId, NO_VOICES)).rejects.toThrow(
@@ -1958,7 +1960,7 @@ describe('team characters (#2017)', () => {
       characterId: shared.id,
       scriptCharacterId: 'char_x',
     });
-    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    const sequencesDb = createSequencesMethods(db, organizationId, actorId);
     // It is not deleted, so no voice is in the way.
     expect(await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual(
       []
@@ -1979,12 +1981,14 @@ describe('team characters (#2017)', () => {
     expect(voiced?.selected).not.toBeNull();
   });
 
-  it('another team cannot delete a sequence or what it casts', async () => {
+  it('another organization cannot delete a sequence or what it casts', async () => {
     const created = await withSheetAndVoices('char_001');
     const before = await rowsOf(created.id);
-    const otherTeam = generateId();
-    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createSequencesMethods(db, otherTeam, actorId);
+    const otherOrganization = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createSequencesMethods(db, otherOrganization, actorId);
 
     expect(await theirs.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual([]);
     await theirs.delete(sequenceId, NO_VOICES);
@@ -1995,7 +1999,7 @@ describe('team characters (#2017)', () => {
     });
   });
 
-  it('attaches a team character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
+  it('attaches an organization character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
     const created = await chars().create(
       {
         sequenceId,
@@ -2061,7 +2065,7 @@ describe('team characters (#2017)', () => {
     await expect(chars().attach(other, twin.id, { actorId })).rejects.toThrow(
       'already a name'
     );
-    // Another team's character is not found.
+    // Another organization's character is not found.
     await expect(
       createCharactersMethods(db, generateId()).attach(other, created.id, {
         actorId,
@@ -2101,7 +2105,7 @@ describe('team characters (#2017)', () => {
     );
     expect(bob.id).not.toBe(ada.id);
     expect(bob).toMatchObject({ name: 'Bob', characterId: 'char_001_2' });
-    expect(await chars().getTeamCharacter(ada.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(ada.id)).toMatchObject({
       name: 'Ada',
     });
     expect(await versionsOf(ada.id)).toHaveLength(1);
@@ -2152,7 +2156,7 @@ describe('team characters (#2017)', () => {
     expect(await looks().listByCharacter(ada.id)).toHaveLength(2);
   });
 
-  it("a revive or restore runs the name check, and an attach refuses another team's sequence (#2050)", async () => {
+  it("a revive or restore runs the name check, and an attach refuses another organization's sequence (#2050)", async () => {
     const ada = await chars().create(
       {
         sequenceId,
@@ -2182,14 +2186,16 @@ describe('team characters (#2017)', () => {
     );
     expect(await chars().list(other)).toHaveLength(1);
 
-    const foreignTeam = generateId();
+    const foreignOrganization = generateId();
     const foreignSequence = generateId();
-    await db
-      .insert(teams)
-      .values({ id: foreignTeam, name: 'F', slug: foreignTeam });
+    await db.insert(organization).values({
+      id: foreignOrganization,
+      name: 'F',
+      slug: foreignOrganization,
+    });
     await db.insert(sequences).values({
       id: foreignSequence,
-      teamId: foreignTeam,
+      organizationId: foreignOrganization,
       title: 'F',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -2280,7 +2286,7 @@ describe('team characters (#2017)', () => {
     );
   });
 
-  it('lists the team characters by the latest sequence casting them, then by how many', async () => {
+  it('lists the organization characters by the latest sequence casting them, then by how many', async () => {
     const [old, busy, removed] = await Promise.all(
       ['Old', 'Busy', 'Removed'].map((name, i) =>
         chars().create(
@@ -2317,7 +2323,10 @@ describe('team characters (#2017)', () => {
     await touch(other, '2026-02-01T00:00:00Z');
     await chars().softDelete(sequenceId, removed.id, { actorId });
     // A sheet on the second sequence's link only.
-    await createCharacterSheetVariantsMethods(db, teamId).applyConvergent({
+    await createCharacterSheetVariantsMethods(
+      db,
+      organizationId
+    ).applyConvergent({
       lookId: busy.lookId,
       url: 'https://x.test/busy.png',
       storagePath: 'busy.png',
@@ -2328,8 +2337,8 @@ describe('team characters (#2017)', () => {
     await touch(sequenceId, '2026-01-01T00:00:00Z');
     await touch(other, '2026-02-01T00:00:00Z');
 
-    // Removed from its only sequence: still the team's, listed last (#2065).
-    expect(await chars().listTeam()).toEqual([
+    // Removed from its only sequence: still the organization's, listed last (#2065).
+    expect(await chars().listOrganization()).toEqual([
       {
         id: busy.id,
         name: 'Busy',
@@ -2356,7 +2365,7 @@ describe('team characters (#2017)', () => {
         sequences: [],
       }),
     ]);
-    expect(await chars().getTeamCharacter(removed.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(removed.id)).toMatchObject({
       lastUsedAt: null,
       sequences: [],
     });
@@ -2367,25 +2376,29 @@ describe('team characters (#2017)', () => {
       .set({ status: 'archived' })
       .where(eq(sequences.id, other));
     expect(
-      (await chars().getTeamCharacter(busy.id))?.sequences.map((row) => row.id)
+      (await chars().getOrganizationCharacter(busy.id))?.sequences.map(
+        (row) => row.id
+      )
     ).toEqual([sequenceId]);
     // Its link in the archived sequence still stops a delete (#2065).
     await chars().softDelete(sequenceId, busy.id, { actorId });
-    expect(await chars().getTeamCharacter(busy.id)).toMatchObject({
+    expect(await chars().getOrganizationCharacter(busy.id)).toMatchObject({
       sequences: [],
       castAnywhere: true,
     });
 
-    // Another team sees none of it.
-    const otherTeam = generateId();
-    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createCharactersMethods(db, otherTeam);
-    expect(await theirs.listTeam()).toEqual([]);
-    expect(await theirs.getTeamCharacter(busy.id)).toBeNull();
+    // Another organization sees none of it.
+    const otherOrganization = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createCharactersMethods(db, otherOrganization);
+    expect(await theirs.listOrganization()).toEqual([]);
+    expect(await theirs.getOrganizationCharacter(busy.id)).toBeNull();
   });
 
   it('makes a character with no sequence: a bible version and a default look, no cast link (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2410,7 +2423,7 @@ describe('team characters (#2017)', () => {
       .from(characters)
       .where(eq(characters.id, made.id));
     expect(row).toMatchObject({
-      teamId,
+      organizationId,
       selectedBibleVersionId: made.selectedBibleVersionId,
       selectedVoiceVersionId: null,
     });
@@ -2427,17 +2440,17 @@ describe('team characters (#2017)', () => {
     expect(await linksOf(made.id)).toEqual([]);
     expect(await db.select().from(characterSheetVariants)).toEqual([]);
     expect(await eventKinds()).toEqual([]);
-    expect(await chars().listTeam()).toMatchObject([
+    expect(await chars().listOrganization()).toMatchObject([
       { id: made.id, name: 'Ada', lastUsedAt: null, sequences: [] },
     ]);
-    // Another team does not see it.
+    // Another organization does not see it.
     expect(
       await createCharactersMethods(db, generateId()).getCurrent(made.id)
     ).toBeNull();
   });
 
   it('edits a bible and looks with no sequence: a new version, the current pointer moves, no pin or event (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2532,10 +2545,10 @@ describe('team characters (#2017)', () => {
       lookName: 'Day wear',
     });
     expect(cast.looks.map((look) => look.name)).toEqual(['Day wear', 'Gala']);
-    // Another team cannot edit her or her looks.
-    const otherTeam = generateId();
+    // Another organization cannot edit her or her looks.
+    const otherOrganization = generateId();
     await expect(
-      createCharactersMethods(db, otherTeam).updateBible(
+      createCharactersMethods(db, otherOrganization).updateBible(
         null,
         made.id,
         { age: '1' },
@@ -2543,7 +2556,7 @@ describe('team characters (#2017)', () => {
       )
     ).rejects.toThrow('not found');
     await expect(
-      createCharacterLooksMethods(db, otherTeam).update(
+      createCharacterLooksMethods(db, otherOrganization).update(
         null,
         made.id,
         { clothing: 'x' },
@@ -2553,7 +2566,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('a deleted character is not read or edited from no sequence until it is restored (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2561,7 +2574,7 @@ describe('team characters (#2017)', () => {
       },
       { createdBy: actorId }
     );
-    expect(await chars().softDeleteForTeam(made.id)).toBe(true);
+    expect(await chars().softDeleteForOrganization(made.id)).toBe(true);
 
     expect(await chars().getCurrent(made.id)).toBeNull();
     await expect(
@@ -2592,7 +2605,7 @@ describe('team characters (#2017)', () => {
         .where(eq(characterLooks.characterId, made.id))
     ).toHaveLength(1);
 
-    expect(await chars().restoreForTeam(made.id)).toBe(true);
+    expect(await chars().restoreForOrganization(made.id)).toBe(true);
     expect(await chars().getCurrent(made.id)).toMatchObject({
       age: null,
       standardClothing: 'coat',
@@ -2600,7 +2613,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('analysis never rewrites a character the writer attached, even when no other sequence casts her (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2692,7 +2705,7 @@ describe('team characters (#2017)', () => {
   });
 
   it('deleting a sequence keeps a character the writer attached to it alone (#2065)', async () => {
-    const made = await chars().createForTeam(
+    const made = await chars().createForOrganization(
       {
         name: 'Ada',
         rendering: 'Photoreal live action',
@@ -2701,7 +2714,7 @@ describe('team characters (#2017)', () => {
       { createdBy: actorId }
     );
     await chars().attach(sequenceId, made.id, { actorId });
-    await createSequencesMethods(db, teamId, actorId).delete(
+    await createSequencesMethods(db, organizationId, actorId).delete(
       sequenceId,
       NO_VOICES
     );
@@ -2709,7 +2722,7 @@ describe('team characters (#2017)', () => {
     expect(await chars().getCurrent(made.id)).toMatchObject({ name: 'Ada' });
   });
 
-  it('another team cannot read, edit or delete a character or its looks', async () => {
+  it('another organization cannot read, edit or delete a character or its looks', async () => {
     const created = await chars().create(
       {
         sequenceId,
@@ -2719,10 +2732,12 @@ describe('team characters (#2017)', () => {
       },
       analysis
     );
-    const otherTeam = generateId();
-    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
-    const theirs = createCharactersMethods(db, otherTeam);
-    const theirLooks = createCharacterLooksMethods(db, otherTeam);
+    const otherOrganization = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganization, name: 'O', slug: 'o' });
+    const theirs = createCharactersMethods(db, otherOrganization);
+    const theirLooks = createCharacterLooksMethods(db, otherOrganization);
 
     expect(await theirs.getById(sequenceId, created.id)).toBeNull();
     expect(await theirs.list(sequenceId)).toEqual([]);

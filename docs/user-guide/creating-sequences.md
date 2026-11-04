@@ -123,11 +123,11 @@ Before generating, you can optionally attach resources from your libraries:
 
 ### Characters
 
-Attach team characters before generation when you already know who appears. A character's face, sheet and voice live on the character, and every sequence that casts them shares those. See [Cast](/docs/user-guide/cast).
+Attach organization characters before generation when you already know who appears. A character's face, sheet and voice live on the character, and every sequence that casts them shares those. See [Cast](/docs/user-guide/cast).
 
 ### Location Suggestions
 
-Click the location icon to pick from your team's **Locations**. When the script has a matching place, the sequence uses the location you picked, as it is. See [Locations](/docs/user-guide/locations).
+Click the location icon to pick from your organization's **Locations**. When the script has a matching place, the sequence uses the location you picked, as it is. See [Locations](/docs/user-guide/locations).
 
 Both are marked as "optional" in the UI — sequences work fine without them.
 

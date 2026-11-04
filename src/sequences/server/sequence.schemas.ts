@@ -59,7 +59,7 @@ export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
   script: z.string().min(10), // Override to make it required with business rules
-  teamId: ulidSchemaOptional, // Optional - will use user's default team if not provided
+  organizationId: ulidSchemaOptional, // Optional - the active organization if not provided
   aspectRatio: aspectRatioSchema.optional(), // Optional - defaults to '16:9' in database
   resolution: resolutionSchema.optional(), // Optional - defaults to '720p' in database
   styleId: z.string().optional(), // Optional - can be null
@@ -170,7 +170,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     targetDurationSeconds: z.number().min(5).optional(),
     // Suggested location IDs for visual consistency during generation
     suggestedLocationIds: z.array(z.string()).optional(),
-    // Team characters the script references with `@` (#2050): cast into
+    // Organization characters the script references with `@` (#2050): cast into
     // the new sequence before analysis runs, so analysis reads them.
     castCharacterIds: z.array(z.string()).optional(),
     // Draft element uploads: images already at a permanent key, waiting for a
@@ -212,10 +212,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   // route whose start frame is optional — not just the primary. A variant
   // model without one would fail every shot it was asked to render.
   //
-  // This schema is isomorphic and pure, so it cannot know which vias a team
+  // This schema is isomorphic and pure, so it cannot know which vias an organization
   // reaches. It asks the widest question — capable on SOME via — which rejects
   // Kling v3 always and lets Grok Imagine through; `createSequences`
-  // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
+  // then re-asks it against the organization's real keys via `canRenderReferenceOnly`.
   .refine(
     (data) =>
       data.generateStartFrames ||

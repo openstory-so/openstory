@@ -1,6 +1,6 @@
 /**
  * Support-mode lookup (`createAdminMethods.getAllSequences` /
- * `getAllStudioAssets`): resolves a person through TEAM MEMBERSHIP, so a
+ * `getAllStudioAssets`): resolves a person through ORGANIZATION MEMBERSHIP, so a
  * customer's work stays reachable by their email even when a creator column
  * is missing — the state the #612-class table-rebuild left 174 prod sequences
  * in. Studio `userId` is required, but lookup still goes through membership
@@ -14,8 +14,8 @@ import {
   generatedAssets,
   sequences,
   styles,
-  teamMembers,
-  teams,
+  member,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
@@ -34,18 +34,18 @@ const styleConfig = {
   colorGrading: 'neutral',
 };
 
-// One team (owner "Tanner") whose sequences all have a NULL creator, plus an
-// unrelated team, so we can assert both "found by member email" and "other
-// teams excluded".
+// One organization (owner "Tanner") whose sequences all have a NULL creator, plus an
+// unrelated organization, so we can assert both "found by member email" and "other
+// organization excluded".
 const ids = {
   tannerUser: '',
   tannerTeammate: '',
-  tannerTeam: '',
+  tannerOrganization: '',
   tannerStyle: '',
   liveSeq: '',
   archivedSeq: '',
   otherUser: '',
-  otherTeam: '',
+  otherOrganization: '',
   otherStyle: '',
   otherSeq: '',
   tannerImage: '',
@@ -59,15 +59,15 @@ async function seed() {
   await db.delete(generatedAssets);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teamMembers);
-  await db.delete(teams);
+  await db.delete(member);
+  await db.delete(organization);
   await db.delete(user);
 
   ids.tannerUser = generateId();
   ids.tannerTeammate = generateId();
-  ids.tannerTeam = generateId();
+  ids.tannerOrganization = generateId();
   ids.otherUser = generateId();
-  ids.otherTeam = generateId();
+  ids.otherOrganization = generateId();
   ids.liveSeq = generateId();
   ids.archivedSeq = generateId();
   ids.otherSeq = generateId();
@@ -86,20 +86,47 @@ async function seed() {
     },
     { id: ids.otherUser, name: 'Someone Else', email: 'other@example.com' },
   ]);
-  await db.insert(teams).values([
-    { id: ids.tannerTeam, name: 'Tanner', slug: 'tanner' },
-    { id: ids.otherTeam, name: 'Other', slug: 'other' },
+  await db.insert(organization).values([
+    { id: ids.tannerOrganization, name: 'Tanner', slug: 'tanner' },
+    { id: ids.otherOrganization, name: 'Other', slug: 'other' },
   ]);
-  await db.insert(teamMembers).values([
-    { teamId: ids.tannerTeam, userId: ids.tannerUser, role: 'owner' },
-    { teamId: ids.tannerTeam, userId: ids.tannerTeammate, role: 'member' },
-    { teamId: ids.otherTeam, userId: ids.otherUser, role: 'owner' },
+  const joined = new Date();
+  await db.insert(member).values([
+    {
+      id: ids.tannerUser,
+      organizationId: ids.tannerOrganization,
+      userId: ids.tannerUser,
+      role: 'owner',
+      createdAt: joined,
+    },
+    {
+      id: ids.tannerTeammate,
+      organizationId: ids.tannerOrganization,
+      userId: ids.tannerTeammate,
+      role: 'member',
+      createdAt: joined,
+    },
+    {
+      id: ids.otherUser,
+      organizationId: ids.otherOrganization,
+      userId: ids.otherUser,
+      role: 'owner',
+      createdAt: joined,
+    },
   ]);
   const [tannerStyle, otherStyle] = await db
     .insert(styles)
     .values([
-      { teamId: ids.tannerTeam, name: 'tanner-style', config: styleConfig },
-      { teamId: ids.otherTeam, name: 'other-style', config: styleConfig },
+      {
+        organizationId: ids.tannerOrganization,
+        name: 'tanner-style',
+        config: styleConfig,
+      },
+      {
+        organizationId: ids.otherOrganization,
+        name: 'other-style',
+        config: styleConfig,
+      },
     ])
     .returning();
   if (!tannerStyle || !otherStyle) {
@@ -112,21 +139,21 @@ async function seed() {
   await db.insert(sequences).values([
     {
       id: ids.liveSeq,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       title: 'Hidden Divide',
       styleId: ids.tannerStyle,
       status: 'completed',
     },
     {
       id: ids.archivedSeq,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       title: 'Old Teaser',
       styleId: ids.tannerStyle,
       status: 'archived',
     },
     {
       id: ids.otherSeq,
-      teamId: ids.otherTeam,
+      organizationId: ids.otherOrganization,
       title: 'Unrelated',
       styleId: ids.otherStyle,
       status: 'completed',
@@ -136,7 +163,7 @@ async function seed() {
   await db.insert(generatedAssets).values([
     {
       id: ids.tannerImage,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -148,7 +175,7 @@ async function seed() {
     },
     {
       id: ids.tannerTeammateImage,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerTeammate,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -160,7 +187,7 @@ async function seed() {
     },
     {
       id: ids.tannerVideo,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/kling-video',
@@ -172,7 +199,7 @@ async function seed() {
     },
     {
       id: ids.tannerCatalog,
-      teamId: ids.tannerTeam,
+      organizationId: ids.tannerOrganization,
       userId: ids.tannerUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -184,7 +211,7 @@ async function seed() {
     },
     {
       id: ids.otherImage,
-      teamId: ids.otherTeam,
+      organizationId: ids.otherOrganization,
       userId: ids.otherUser,
       provider: 'fal',
       endpointId: 'fal-ai/flux-1/dev',
@@ -210,16 +237,16 @@ beforeEach(async () => {
 });
 
 describe('createAdminMethods.getAllSequences', () => {
-  it('finds a team’s sequences by a member email even when created_by is NULL', async () => {
+  it('finds an organization’s sequences by a member email even when created_by is NULL', async () => {
     const admin = createAdminMethods(db);
     const rows = await admin.getAllSequences({ search: 'tanner@example.com' });
 
-    // The live sequence surfaces via team membership; the archived one and the
-    // other team never do.
+    // The live sequence surfaces via organization membership; the archived one and the
+    // other organization never do.
     expect(rows.map((r) => r.id)).toEqual([ids.liveSeq]);
   });
 
-  it('excludes archived sequences and other teams', async () => {
+  it('excludes archived sequences and other organizations', async () => {
     const admin = createAdminMethods(db);
     const rows = await admin.getAllSequences({ search: 'tanner' });
 
@@ -237,7 +264,7 @@ describe('createAdminMethods.getAllSequences', () => {
 });
 
 describe('createAdminMethods.getAllStudioAssets', () => {
-  it('lists every studio asset across teams when unfiltered', async () => {
+  it('lists every studio asset across organizations when unfiltered', async () => {
     const admin = createAdminMethods(db);
     const { assets, nextCursor } = await admin.getAllStudioAssets();
 
@@ -253,7 +280,7 @@ describe('createAdminMethods.getAllStudioAssets', () => {
     expect(assets.some((a) => a.id === ids.tannerCatalog)).toBe(false);
   });
 
-  it("finds a team's studio stills by a member email, including a teammate's", async () => {
+  it("finds an organization's studio stills by a member email, including a teammate's", async () => {
     const admin = createAdminMethods(db);
     const { assets } = await admin.getAllStudioAssets({
       activity: 'image',
@@ -271,7 +298,7 @@ describe('createAdminMethods.getAllStudioAssets', () => {
     ).toBe('teammate@example.com');
   });
 
-  it('excludes catalog runs, other teams, and the other activity', async () => {
+  it('excludes catalog runs, other organizations, and the other activity', async () => {
     const admin = createAdminMethods(db);
     const { assets } = await admin.getAllStudioAssets({
       activity: 'video',

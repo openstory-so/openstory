@@ -1,7 +1,7 @@
 /**
  * Search read-boundary tests (#2100). Search reads eight kinds of thing
  * across the whole database, so its filters are the data-leak barrier: a hit
- * must belong to the searching team, and must be live.
+ * must belong to the searching organization, and must be live.
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -27,7 +27,7 @@ import {
   shots,
   shotSpecVersions,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { SEARCH_KINDS } from '@/platform/search';
@@ -55,7 +55,11 @@ const spec = (action: string) => ({
 });
 
 /** A sequence holding one scene, shot and location that all say `word`. */
-async function seedSequence(teamId: string, styleId: string, word: string) {
+async function seedSequence(
+  organizationId: string,
+  styleId: string,
+  word: string
+) {
   const ids = {
     sequence: generateId(),
     scene: dbSceneId(generateId()),
@@ -70,7 +74,7 @@ async function seedSequence(teamId: string, styleId: string, word: string) {
   };
   await db.insert(sequences).values({
     id: ids.sequence,
-    teamId,
+    organizationId,
     styleId,
     title: `Sequence ${word}`,
     script: `A script about a ${word}.`,
@@ -131,7 +135,7 @@ async function seedSequence(teamId: string, styleId: string, word: string) {
   });
   await db.insert(locations).values({
     id: ids.sequenceLocation,
-    teamId,
+    organizationId,
     legacyName: 'unused',
     selectedBibleVersionId: ids.locationVersion,
   });
@@ -150,13 +154,13 @@ async function seedSequence(teamId: string, styleId: string, word: string) {
   return ids;
 }
 
-async function seedCharacter(teamId: string, word: string) {
+async function seedCharacter(organizationId: string, word: string) {
   const id = generateId();
   const bibleVersion = generateId();
   const lookVersion = generateId();
   await db.insert(characters).values({
     id,
-    teamId,
+    organizationId,
     legacyName: 'unused',
     selectedBibleVersionId: bibleVersion,
   });
@@ -187,7 +191,7 @@ async function seedCharacter(teamId: string, word: string) {
 }
 
 async function seedAsset(
-  teamId: string,
+  organizationId: string,
   userId: string,
   word: string,
   activity: 'image' | 'video',
@@ -196,7 +200,7 @@ async function seedAsset(
   const id = generateId();
   await db.insert(generatedAssets).values({
     id,
-    teamId,
+    organizationId,
     userId,
     provider: 'fal',
     endpointId: 'x',
@@ -208,18 +212,20 @@ async function seedAsset(
   return id;
 }
 
-/** A team with one of every searchable kind, each saying `word`. */
-async function seedTeam(word: string) {
-  const teamId = generateId();
+/** An organization with one of every searchable kind, each saying `word`. */
+async function seedOrganization(word: string) {
+  const organizationId = generateId();
   const userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'S',
       config: {
         artStyle: 'Cinematic',
@@ -233,35 +239,35 @@ async function seedTeam(word: string) {
     })
     .returning();
   if (!style) throw new Error('seed failed');
-  const sequence = await seedSequence(teamId, style.id, word);
-  const character = await seedCharacter(teamId, word);
+  const sequence = await seedSequence(organizationId, style.id, word);
+  const character = await seedCharacter(organizationId, word);
   const libraryLocation = generateId();
   await db.insert(locations).values({
     id: libraryLocation,
-    teamId,
+    organizationId,
     legacyName: `${word} house`,
   });
   return {
-    teamId,
+    organizationId,
     userId,
     styleId: style.id,
     ...sequence,
     ...character,
     libraryLocation,
-    image: await seedAsset(teamId, userId, word, 'image'),
-    clip: await seedAsset(teamId, userId, word, 'video'),
+    image: await seedAsset(organizationId, userId, word, 'image'),
+    clip: await seedAsset(organizationId, userId, word, 'video'),
   };
 }
 
-const find = (teamId: string, query: string) =>
-  createSearchMethods(db, teamId).find(query, 50);
+const find = (organizationId: string, query: string) =>
+  createSearchMethods(db, organizationId).find(query, 50);
 
 describe('search', () => {
-  it('returns every kind of the team’s own, and nothing of another team’s', async () => {
-    const mine = await seedTeam('zebra');
-    const theirs = await seedTeam('zebra');
+  it('returns every kind of the organization’s own, and nothing of another organization’s', async () => {
+    const mine = await seedOrganization('zebra');
+    const theirs = await seedOrganization('zebra');
 
-    const hits = await find(mine.teamId, 'ZEBRA');
+    const hits = await find(mine.organizationId, 'ZEBRA');
 
     expect(new Set(hits.map((hit) => hit.kind))).toEqual(new Set(SEARCH_KINDS));
     expect(hits.map((hit) => hit.id).sort()).toEqual(
@@ -280,14 +286,16 @@ describe('search', () => {
       if (hit.sequence) expect(hit.sequence.id).toBe(mine.sequence);
     }
     // The other way round, so the first half cannot pass by seeding order.
-    const theirIds = (await find(theirs.teamId, 'zebra')).map((hit) => hit.id);
+    const theirIds = (await find(theirs.organizationId, 'zebra')).map(
+      (hit) => hit.id
+    );
     expect(theirIds).toContain(theirs.sequence);
     expect(theirIds).not.toContain(mine.sequence);
   });
 
-  it('never reads another team’s text through a stray version pointer', async () => {
-    const mine = await seedTeam('heron');
-    const theirs = await seedTeam('giraffe');
+  it('never reads another organization’s text through a stray version pointer', async () => {
+    const mine = await seedOrganization('heron');
+    const theirs = await seedOrganization('giraffe');
 
     // Version pointers have no foreign key. Point each of mine at theirs.
     await db
@@ -314,18 +322,28 @@ describe('search', () => {
       .set({ selectedBibleVersionId: theirs.locationVersion })
       .where(eq(locations.id, mine.sequenceLocation));
 
-    expect(await find(mine.teamId, 'giraffe')).toEqual([]);
+    expect(await find(mine.organizationId, 'giraffe')).toEqual([]);
   });
 
   it('hides archived sequences, deleted rows and non-studio generations', async () => {
-    const mine = await seedTeam('otter');
-    const archived = await seedSequence(mine.teamId, mine.styleId, 'walrus');
+    const mine = await seedOrganization('otter');
+    const archived = await seedSequence(
+      mine.organizationId,
+      mine.styleId,
+      'walrus'
+    );
     await db
       .update(sequences)
       .set({ status: 'archived' })
       .where(eq(sequences.id, archived.sequence));
-    await seedAsset(mine.teamId, mine.userId, 'walrus', 'image', 'catalog');
-    expect(await find(mine.teamId, 'walrus')).toEqual([]);
+    await seedAsset(
+      mine.organizationId,
+      mine.userId,
+      'walrus',
+      'image',
+      'catalog'
+    );
+    expect(await find(mine.organizationId, 'walrus')).toEqual([]);
 
     const deletedAt = new Date();
     await db.update(scenes).set({ deletedAt }).where(eq(scenes.id, mine.scene));
@@ -339,11 +357,8 @@ describe('search', () => {
       .set({ deletedAt })
       .where(eq(locations.id, mine.sequenceLocation));
 
-    expect((await find(mine.teamId, 'otter')).map((hit) => hit.kind)).toEqual([
-      'sequence',
-      'libraryLocation',
-      'image',
-      'clip',
-    ]);
+    expect(
+      (await find(mine.organizationId, 'otter')).map((hit) => hit.kind)
+    ).toEqual(['sequence', 'libraryLocation', 'image', 'clip']);
   });
 });

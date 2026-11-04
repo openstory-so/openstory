@@ -64,7 +64,7 @@ export async function enqueueCharacterVoiceDesign(args: {
   const husk = claim.version;
   const payload: CharacterVoiceWorkflowInput = {
     userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequenceId,
     characterDbId: character.id,
     characterBible: characterToBible(character),

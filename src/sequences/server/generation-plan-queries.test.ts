@@ -66,7 +66,7 @@ afterAll(() => closeDb());
 /** A sequence with `n` shots, `n` characters with hashed sheets and `n` locations with hashed sheets. */
 async function seed(n: number) {
   const user = await createTestUser();
-  const sequence = await createTestSequence(user.teamId, user.id);
+  const sequence = await createTestSequence(user.organizationId, user.id);
   const now = new Date();
   for (let i = 0; i < n; i++) {
     await createTestShot(sequence.id, i);
@@ -80,7 +80,10 @@ async function seed(n: number) {
       .update(characterSheetVariants)
       .set({ inputHash: 'stamped' })
       .where(eq(characterSheetVariants.id, character.id));
-    const location = await createTestLocation(user.teamId, `Location ${i}`);
+    const location = await createTestLocation(
+      user.organizationId,
+      `Location ${i}`
+    );
     await db
       .update(locationSheetVariants)
       .set({ inputHash: 'stamped' })
@@ -94,7 +97,7 @@ async function seed(n: number) {
       createdAt: now,
     });
   }
-  return { scopedDb: createScopedDb(user.teamId, user.id), sequence };
+  return { scopedDb: createScopedDb(user.organizationId, user.id), sequence };
 }
 
 /** What each server function in the issue's table reads, minus its auth. */
@@ -172,7 +175,10 @@ describe('sheet verdicts (#2082)', () => {
     const [character] = await scopedDb.characters.list(sequence.id);
     const [location] = await scopedDb.locations.list(sequence.id);
     if (!character || !location) throw new Error('seed is empty');
-    const actor = { userId: scopedDb.userId, teamId: scopedDb.teamId };
+    const actor = {
+      userId: scopedDb.userId,
+      organizationId: scopedDb.organizationId,
+    };
 
     // Stamp both sheets with the hash a regenerate would write now.
     const { draft, isDefault, liveFace } = await buildCharacterSheetDraft({

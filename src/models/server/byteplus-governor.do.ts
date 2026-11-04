@@ -3,7 +3,7 @@
  * a single Durable Object so it can see the whole system (#1519).
  *
  * The Assets OpenAPI quotas (`AccountFlowLimitExceeded`, `QuotaWriteQPMExceeded`)
- * are per ACCOUNT, shared by every team and every preview. A workflow run
+ * are per ACCOUNT, shared by every organization and every preview. A workflow run
  * only sees itself, so any limiter inside a run cannot hold the account
  * under quota — that is why #1143 deleted the per-run fan-out cap. This DO is
  * the one place every call passes through before it fires; callers ask for a

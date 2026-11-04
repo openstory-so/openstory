@@ -480,7 +480,7 @@ export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
 /**
  * The video model new work starts on when none is named: Seedance 2.5 where
- * the team reaches BytePlus (its only route), the platform default otherwise.
+ * the organization reaches BytePlus (its only route), the platform default otherwise.
  * Stored rows never go through this — they keep the model they were made on.
  */
 export function defaultVideoModelFor(vias: {
@@ -1087,7 +1087,7 @@ export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
   return model in MOTION_REFERENCE_ENDPOINTS;
 }
 
-/** Which native vias are reachable. Resolved per team by `getViaAvailabilityFn`. */
+/** Which native vias are reachable. Resolved per organization by `getViaAvailabilityFn`. */
 export type ReferenceOnlyVias = { xai?: boolean; byteplus?: boolean };
 
 /**

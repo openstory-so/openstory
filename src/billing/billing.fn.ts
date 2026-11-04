@@ -3,15 +3,13 @@
  * Balance, checkout, transactions, and auto-top-up
  */
 
-import {
-  requireTeamAdminAccess,
-  requireTeamMemberAccess,
-} from '@/platform/server/auth/action-utils';
-import { hasMinimumRole } from '@/platform/server/auth/constants';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
+import { roleHasPermission } from '@/platform/auth/organization-access';
+import { getUserRole } from '@/platform/server/auth/permissions';
 import {
   createCheckoutSession,
   createSetupCheckoutSession,
-  teamHasSavedCard,
+  organizationHasSavedCard,
 } from '@/billing/server/checkout';
 import {
   captureCheckoutCanceledFromSession,
@@ -39,7 +37,7 @@ import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import Stripe from 'stripe';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 
 const logger = getLogger(['openstory', 'functions', 'billing']);
 
@@ -51,7 +49,7 @@ const checkoutInputSchema = z.object({
 });
 
 export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(checkoutInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
@@ -63,7 +61,7 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
 
     const { url } = await createCheckoutSession({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       amountUsd: data.amountUsd,
       userId: context.user.id,
       userEmail: context.user.email,
@@ -77,18 +75,21 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
 
 /** Save a card with no charge (Stripe Checkout `mode: 'setup'`). */
 export const createSetupCheckoutSessionFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
     const appUrl = getServerAppUrl(getRequest());
     return createSetupCheckoutSession({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       userEmail: context.user.email,
       successUrl: `${appUrl}/credits?card_saved=true`,
@@ -105,7 +106,7 @@ const reportCheckoutCanceledSchema = z.object({
  * not a client-only event (#1466).
  */
 export const reportCheckoutCanceledFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(reportCheckoutCanceledSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) return { ok: true as const };
@@ -115,7 +116,7 @@ export const reportCheckoutCanceledFn = createServerFn({ method: 'POST' })
       const stripe = getStripeOrThrow();
       const session = await stripe.checkout.sessions.retrieve(data.sessionId);
       captureCheckoutCanceledFromSession(session, {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userId: context.user.id,
       });
     } catch (err) {
@@ -140,7 +141,7 @@ export type SavedPaymentMethod = {
 };
 
 /**
- * Saved cards for the team's Stripe customer. Checkout
+ * Saved cards for the organization's Stripe customer. Checkout
  * (`setup_future_usage: 'off_session'`) saves one on a first purchase. The add-credits dialog falls back to Checkout when
  * none are on file.
  *
@@ -149,7 +150,7 @@ export type SavedPaymentMethod = {
  * gets `canManage: false` and no cards, so the page can say so.
  */
 export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(
     async ({
       context,
@@ -159,11 +160,11 @@ export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
     }> => {
       if (!isStripeEnabled()) return { canManage: false, paymentMethods: [] };
 
-      const role = await requireTeamMemberAccess(
-        context.user.id,
-        context.teamId
-      );
-      if (!hasMinimumRole(role, 'admin')) {
+      const role = await getUserRole(context.user.id, context.organizationId);
+      if (!role) {
+        throw new Error('Access denied: not a member of this organization');
+      }
+      if (!roleHasPermission(role, { billing: ['update'] })) {
         return { canManage: false, paymentMethods: [] };
       }
 
@@ -229,14 +230,17 @@ const purchaseInputSchema = z.object({
  * still go through Stripe Checkout (which saves them for next time).
  */
 export const purchaseCreditsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(purchaseInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
     const settings = await context.scopedDb.billing.getBillingSettings();
     if (!settings.stripeCustomerId) {
@@ -260,7 +264,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
     }
 
     const amountMicros = usdToMicros(data.amountUsd);
-    const idempotencyKey = `purchase:${context.teamId}:${data.requestId}`;
+    const idempotencyKey = `purchase:${context.organizationId}:${data.requestId}`;
 
     let paymentIntent;
     try {
@@ -276,7 +280,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
           // userId is required by stripeWebhookMiddleware — without it the
           // reconciling payment_intent.succeeded webhook is rejected with 400.
           metadata: {
-            teamId: context.teamId,
+            organizationId: context.organizationId,
             userId: context.user.id,
             type: 'credit_top_up_direct',
             amountUsd: String(data.amountUsd),
@@ -295,7 +299,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       if (err instanceof Stripe.errors.StripeCardError) {
         captureSavedCardStripeError(err, {
           distinctId: context.user.id,
-          teamId: context.teamId,
+          organizationId: context.organizationId,
           amountUsd: data.amountUsd,
           surface: data.surface,
         });
@@ -306,7 +310,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
 
     captureCheckoutOpened({
       distinctId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       amountUsd: data.amountUsd,
       method: 'saved_card',
       stripePaymentIntentId: paymentIntent.id,
@@ -318,7 +322,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       // user it failed would be wrong — when they do, payment_intent.succeeded
       // fires and the webhook grants the credits.
       logger.warn('Direct purchase intent not immediately successful', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         status: paymentIntent.status,
         stripePaymentIntentId: paymentIntent.id,
       });
@@ -329,7 +333,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       ) {
         captureCheckoutFailed({
           distinctId: context.user.id,
-          teamId: context.teamId,
+          organizationId: context.organizationId,
           amountUsd: data.amountUsd,
           method: 'saved_card',
           stripePaymentIntentId: paymentIntent.id,
@@ -373,7 +377,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       // The card is already charged. Everything needed to reconcile by hand
       // goes in this log; the webhook retries the grant with the same key.
       logger.error('Charged the customer but failed to credit the wallet', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userId: context.user.id,
         amountMicros,
         idempotencyKey,
@@ -387,7 +391,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       distinctId: context.user.id,
       event: 'credits_added',
       properties: {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         amount_usd: data.amountUsd,
         stripe_payment_intent_id: paymentIntent.id,
         source: 'direct_purchase',
@@ -409,7 +413,7 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 export const getBillingBalanceFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     const { scopedDb } = context;
 
@@ -419,7 +423,7 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
     ]);
 
     return {
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       balance: microsToUsd(funds.balance),
       availableUsd: microsToUsd(funds.available),
       reservedUsd: microsToUsd(funds.reserved),
@@ -449,7 +453,7 @@ const founderCreditsInputSchema = z.object({
 });
 
 export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(founderCreditsInputSchema))
   .handler(async ({ data, context }) => {
     const balance = await context.scopedDb.billing.getBalance();
@@ -460,7 +464,7 @@ export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
       to: FOUNDER_EMAIL,
       userName: context.user.name,
       userEmail: context.user.email,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       balanceDisplay,
       message,
     });
@@ -471,7 +475,7 @@ export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
       distinctId: context.user.id,
       event: 'founder_credits_requested',
       properties: {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         userEmail: context.user.email,
         balance: balanceDisplay,
         emailSent: result.success,
@@ -531,7 +535,7 @@ type Transaction = {
 };
 
 export const getTransactionsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(transactionsInputSchema))
   .handler(
     async ({
@@ -578,16 +582,19 @@ const autoTopUpInputSchema = z.object({
 });
 
 export const updateAutoTopUpFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(autoTopUpInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
     }
 
-    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await requireOrganizationAdminAccess(
+      context.user.id,
+      context.organizationId
+    );
 
-    if (data.enabled && !(await teamHasSavedCard(context.scopedDb))) {
+    if (data.enabled && !(await organizationHasSavedCard(context.scopedDb))) {
       throw new ValidationError('Add a card first');
     }
 

@@ -170,14 +170,16 @@ export function getShotPromptChannel(shotId?: string): RealtimeChannelApi {
 }
 
 /**
- * Team-scoped billing channel for live credit-balance updates (#1090).
- * Channel id: `billing:${teamId}`.
+ * Organization-scoped billing channel for live credit-balance updates (#1090).
+ * Channel id: `billing:${organizationId}`.
  */
-export function getBillingChannel(teamId?: string): RealtimeChannelApi {
-  return teamId ? realtimeChannel(`billing:${teamId}`) : noopChannel('billing');
+export function getBillingChannel(organizationId?: string): RealtimeChannelApi {
+  return organizationId
+    ? realtimeChannel(`billing:${organizationId}`)
+    : noopChannel('billing');
 }
 
-/** Stable channel id for a team's billing events (client subscribe + history). */
-export function billingChannelId(teamId: string): string {
-  return `billing:${teamId}`;
+/** Stable channel id for an organization's billing events (client subscribe + history). */
+export function billingChannelId(organizationId: string): string {
+  return `billing:${organizationId}`;
 }

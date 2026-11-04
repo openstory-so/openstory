@@ -26,18 +26,22 @@ describe('trace ids', () => {
 
 describe('extractStorageKey', () => {
   it('uses r2KeyFromUrl for /r2/ paths', () => {
-    expect(extractStorageKey('/r2/thumbnails/team/shot.png')).toBe(
-      'thumbnails/team/shot.png'
+    expect(extractStorageKey('/r2/thumbnails/organization/shot.png')).toBe(
+      'thumbnails/organization/shot.png'
     );
     expect(
-      extractStorageKey('https://app.example.com/r2/videos/team/clip.mp4')
-    ).toBe('videos/team/clip.mp4');
+      extractStorageKey(
+        'https://app.example.com/r2/videos/organization/clip.mp4'
+      )
+    ).toBe('videos/organization/clip.mp4');
   });
 
   it('accepts a CDN URL or bare key that starts with a known bucket', () => {
     expect(
-      extractStorageKey('https://storage.example.com/thumbnails/team/shot.png')
-    ).toBe('thumbnails/team/shot.png');
+      extractStorageKey(
+        'https://storage.example.com/thumbnails/organization/shot.png'
+      )
+    ).toBe('thumbnails/organization/shot.png');
     expect(extractStorageKey('videos/teams/abc/shot.mp4')).toBe(
       'videos/teams/abc/shot.mp4'
     );
@@ -70,7 +74,7 @@ describe('recordProvenance', () => {
     const trace = await recordProvenance(
       { record },
       {
-        teamId: 'team_1',
+        organizationId: 'organization_1',
         assetKind: 'frame_variant',
         assetId: 'asset_1',
         provider: 'fal',
@@ -90,7 +94,7 @@ describe('recordProvenance', () => {
       recordProvenance(
         { record: vi.fn().mockResolvedValue(undefined) },
         {
-          teamId: 'team_1',
+          organizationId: 'organization_1',
           assetKind: 'frame_variant',
           assetId: 'asset_1',
           provider: 'fal',
@@ -105,7 +109,7 @@ describe('recordProvenance', () => {
       recordProvenance(
         { record: vi.fn().mockRejectedValue(new Error('d1 down')) },
         {
-          teamId: 'team_1',
+          organizationId: 'organization_1',
           assetKind: 'frame_variant',
           assetId: 'asset_1',
           provider: 'fal',

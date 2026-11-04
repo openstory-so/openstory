@@ -23,7 +23,7 @@ type NodeKind = 'input' | 'artifact';
 
 /**
  * Band on the page. Inputs sit in the first three: what you write and set,
- * the optional team library, and the bibles — seeded once from the script
+ * the optional organization library, and the bibles — seeded once from the script
  * (by the LLM) or from the library (by casting / matching), then yours to
  * edit. Artifacts flow down from there.
  */
@@ -127,7 +127,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      "Extracted from the script at the Script stage, then yours to edit. The character's face, sheet and voice live on the character. Every change is a version. The character belongs to the team (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.",
+      "Extracted from the script at the Script stage, then yours to edit. The character's face, sheet and voice live on the character. Every change is a version. The character belongs to the organization (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.",
     counts: [
       'Age, gender, ethnicity',
       'Physical description, permanent marks included',
@@ -162,7 +162,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      "Extracted from the script at the Script stage, or one of the team's locations picked for the sequence, then yours to edit. Every change is a version. The location belongs to the team (#1695): every sequence that uses it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved.",
+      "Extracted from the script at the Script stage, or one of the organization's locations picked for the sequence, then yours to edit. Every change is a version. The location belongs to the organization (#1695): every sequence that uses it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved.",
     counts: [
       'Description',
       'Type, architectural style, key features, ambiance',
@@ -223,7 +223,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'library',
     optional: 'when the style was picked rather than derived',
     summary:
-      'A team or system style in the catalog. Picking it copies its config onto the sequence; the catalog row is never read again.',
+      'An organization or system style in the catalog. Picking it copies its config onto the sequence; the catalog row is never read again.',
     counts: ['Nothing directly'],
     ignored: ['Everything, once snapshotted onto the sequence'],
   },

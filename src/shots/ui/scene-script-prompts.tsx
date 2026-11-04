@@ -897,7 +897,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       ? 'grok_imagine_video_1_5'
       : effectiveMotionModel;
   // Draft first for this shot (#1756): the sequence's Draft first switch,
-  // honoured while the model has a draft mode and this team can reach Ark.
+  // honoured while the model has a draft mode and this organization can reach Ark.
   // A final only ever comes from an approved draft (Render final below).
   const viaAvailability = useViaAvailability();
   const offerDraft =

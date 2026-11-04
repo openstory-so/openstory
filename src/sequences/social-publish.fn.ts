@@ -1,10 +1,10 @@
 /**
  * Publish to social (#1267) — server functions behind the Download menu's
  * "Publish to social…". Everything goes through Upload-Post
- * (`server/social/upload-post.ts`) on the team's own key (`team_api_keys`,
+ * (`server/social/upload-post.ts`) on the organization's own key (`organization_api_keys`,
  * provider `upload_post`), resolved server-side; it never reaches the browser.
  *
- *   - `getSocialPublishingFn`     — `{ enabled }`: whether the team has an
+ *   - `getSocialPublishingFn`     — `{ enabled }`: whether the organization has an
  *                                   active, valid key. The menu item only
  *                                   exists when it does.
  *   - `listSocialProfilesFn`      — profiles + their connected platforms.
@@ -18,10 +18,10 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
   sequenceAccessMiddleware,
-  teamMemberAccessMiddleware,
+  organizationMemberAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { getLogger } from '@/platform/logger';
-import { requireTeamMemberAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationMemberAccess } from '@/platform/server/auth/action-utils';
 import { getUserRole } from '@/platform/server/auth/permissions';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -61,15 +61,15 @@ export const getSocialPublishingFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => ({
-    // A system admin viewing another team's sequence cannot publish for it.
+    // A system admin viewing another organization's sequence cannot publish for it.
     enabled:
-      (await getUserRole(context.user.id, context.sequence.teamId)) !== null &&
-      (await context.scopedDb.apiKeys.hasUsableKey('upload_post')),
+      (await getUserRole(context.user.id, context.sequence.organizationId)) !==
+        null && (await context.scopedDb.apiKeys.hasUsableKey('upload_post')),
   }));
 
 export const listSocialProfilesFn = createServerFn({ method: 'GET' })
-  .middleware([teamMemberAccessMiddleware])
-  .validator(zodValidator(z.object({ teamId: ulidSchema })))
+  .middleware([organizationMemberAccessMiddleware])
+  .validator(zodValidator(z.object({ organizationId: ulidSchema })))
   .handler(async ({ context }) => {
     const apiKey = await requireUploadPostKey(context.scopedDb.apiKeys);
     return listUploadPostProfiles(apiKey);
@@ -84,10 +84,13 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
     // Every refusal here happens before anything is sent, so it is `not_sent`
     // — the dialog treats a thrown error as "maybe sent" and keeps tracking.
     try {
-      // A system admin opening another team's sequence gets that team's
-      // scopedDb (and key). Reading is an admin power; posting on the team's
+      // A system admin opening another organization's sequence gets that organization's
+      // scopedDb (and key). Reading is an admin power; posting on the organization's
       // own social accounts is not.
-      await requireTeamMemberAccess(context.user.id, sequence.teamId);
+      await requireOrganizationMemberAccess(
+        context.user.id,
+        sequence.organizationId
+      );
       const apiKey = await requireUploadPostKey(scopedDb.apiKeys);
       const exportRow = await scopedDb.sequenceExports.getById(data.exportId);
       assertPublishableExport(exportRow, sequence.id);
@@ -100,13 +103,13 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
       assertPublicVideoUrl(videoUrl);
       const requestId = await derivePublishRequestId({
         ...data,
-        teamId: sequence.teamId,
+        organizationId: sequence.organizationId,
       });
       prepared = { apiKey, videoUrl, requestId };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.info('Publish refused before sending', {
-        teamId: sequence.teamId,
+        organizationId: sequence.organizationId,
         exportId: data.exportId,
         message,
       });
@@ -122,11 +125,11 @@ export const publishSequenceExportFn = createServerFn({ method: 'POST' })
   });
 
 export const getSocialPublishStatusFn = createServerFn({ method: 'GET' })
-  .middleware([teamMemberAccessMiddleware])
+  .middleware([organizationMemberAccessMiddleware])
   .validator(
     zodValidator(
       z.object({
-        teamId: ulidSchema,
+        organizationId: ulidSchema,
         requestId: z.string().regex(PUBLISH_REQUEST_ID_RE),
       })
     )

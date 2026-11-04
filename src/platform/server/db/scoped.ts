@@ -1,16 +1,18 @@
 /**
  * Scoped Database Context
- * Factory that returns team-scoped query methods, auto-injecting teamId.
+ * Factory that returns organization-scoped query methods, auto-injecting organizationId.
  * Sub-modules in ./scoped/ contain domain-specific methods.
  * Raw `getDb` readers are allowlisted in `.oxlintrc.json` and pinned by
- * `db-access-allowlist.test.ts`; everything team-scoped goes through here.
+ * `db-access-allowlist.test.ts`; everything organization-scoped goes through here.
  */
 
 import { getDb } from '#db-client';
 import type { Sequence, User } from '@/platform/server/db/schema';
 import {
-  teamMembers,
-  teams,
+  apikey,
+  deviceGrantOrganizations,
+  member,
+  organization,
   deviceCode,
   oauthAccessToken,
   oauthClient,
@@ -19,7 +21,7 @@ import {
   sequences,
   user,
 } from '@/platform/server/db/schema';
-import type { TeamMemberRole } from '@/platform/server/db/schema/teams';
+import type { OrganizationMemberRole } from '@/platform/server/db/schema/organization';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
@@ -72,17 +74,14 @@ import {
   createPublicStylesReadMethods,
   createStylesMethods,
 } from '@/look/server/db/styles';
-import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
-import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
-
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'db', 'scoped']);
+import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
+import { and, asc, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
+import { apiKeyMetadataSchema } from '@/platform/server/auth/public-api-key';
 
 export type { UserActivityRow } from '@/platform/server/db/scoped/admin';
 
 /**
- * Unscoped by nature (#1219): device codes belong to no team until approved,
+ * Unscoped by nature (#1219): device codes belong to no organization until approved,
  * and Better Auth's plugin only deletes a code when someone polls it after
  * expiry — never-polled codes would accumulate forever.
  */
@@ -178,72 +177,132 @@ export async function revokeOAuthGrantTokens(
     );
 }
 
-/**
- * Resolve a user's default team (highest-role team).
- * Module-level function for bootstrap before scopedDb exists.
- */
-export async function resolveUserTeam(
-  userId: string
-): Promise<{ teamId: string; role: TeamMemberRole; teamName: string } | null> {
-  const db = getDb();
-  const [result] = await db
-    .select({
-      teamId: teamMembers.teamId,
-      role: teamMembers.role,
-      teamName: teams.name,
-      joinedAt: teamMembers.joinedAt,
-    })
-    .from(teamMembers)
-    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .where(eq(teamMembers.userId, userId))
-    .orderBy(
-      sql`CASE
-        WHEN ${teamMembers.role} = 'owner' THEN 1
-        WHEN ${teamMembers.role} = 'admin' THEN 2
-        WHEN ${teamMembers.role} = 'member' THEN 3
-        WHEN ${teamMembers.role} = 'viewer' THEN 4
-        ELSE 5
-      END`
-    )
-    .limit(1);
+type ResolvedOrganization = {
+  organizationId: string;
+  role: OrganizationMemberRole;
+  organizationName: string;
+};
 
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-  return result ?? null;
+function asMemberRole(role: string): OrganizationMemberRole {
+  if (role === 'owner' || role === 'admin' || role === 'member') {
+    return role;
+  }
+  throw new Error(`Unknown organization role "${role}"`);
 }
 
-/**
- * Check if a user is a member of a specific team and return their role.
- * Module-level function — does not require a scopedDb instance.
- */
-export async function getUserTeamMembership(
+/** Membership of one organization, or null. */
+export async function getUserOrganizationMembership(
   userId: string,
-  teamId: string
-): Promise<{ teamId: string; role: TeamMemberRole; teamName: string } | null> {
-  const db = getDb();
-  const [result] = await db
+  organizationId: string
+): Promise<ResolvedOrganization | null> {
+  const [result] = await getDb()
     .select({
-      teamId: teamMembers.teamId,
-      role: teamMembers.role,
-      teamName: teams.name,
+      organizationId: member.organizationId,
+      role: member.role,
+      organizationName: organization.name,
     })
-    .from(teamMembers)
-    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.teamId, teamId)))
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(
+      and(eq(member.userId, userId), eq(member.organizationId, organizationId))
+    )
     .limit(1);
+  if (!result) return null;
+  return { ...result, role: asMemberRole(result.role) };
+}
 
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-  return result ?? null;
+export type OrganizationOption = { id: string; name: string };
+
+/** Every organization the user belongs to, by name. */
+export async function listUserOrganizations(
+  userId: string
+): Promise<OrganizationOption[]> {
+  return getDb()
+    .select({ id: organization.id, name: organization.name })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(eq(member.userId, userId))
+    .orderBy(asc(organization.name));
+}
+
+/** Record the organization a device login was approved for. */
+export async function recordDeviceGrantOrganization(input: {
+  userCode: string;
+  userId: string;
+  organizationId: string;
+}): Promise<void> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: deviceCode.id })
+    .from(deviceCode)
+    .where(
+      and(
+        eq(deviceCode.userCode, input.userCode),
+        eq(deviceCode.userId, input.userId)
+      )
+    )
+    .limit(1);
+  if (!row) throw new Error('Device login code not found');
+  await db
+    .insert(deviceGrantOrganizations)
+    .values({ deviceCodeId: row.id, organizationId: input.organizationId })
+    .onConflictDoUpdate({
+      target: deviceGrantOrganizations.deviceCodeId,
+      set: { organizationId: input.organizationId },
+    });
+}
+
+/** The organization a device code was approved for, or null before approval. */
+export async function getDeviceGrantOrganizationId(
+  deviceCodeValue: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ organizationId: deviceGrantOrganizations.organizationId })
+    .from(deviceGrantOrganizations)
+    .innerJoin(
+      deviceCode,
+      eq(deviceGrantOrganizations.deviceCodeId, deviceCode.id)
+    )
+    .where(eq(deviceCode.deviceCode, deviceCodeValue))
+    .limit(1);
+  return row?.organizationId ?? null;
+}
+
+/** The organization a new session starts in: the user's first membership. */
+export async function getFirstOrganizationId(
+  userId: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt))
+    .limit(1);
+  return row?.organizationId ?? null;
+}
+
+/** The organization an `osk_` key acts for, from the key's `metadata`. */
+export async function getApiKeyOrganizationId(
+  keyId: string
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ metadata: apikey.metadata })
+    .from(apikey)
+    .where(eq(apikey.id, keyId))
+    .limit(1);
+  if (!row?.metadata) return null;
+  return apiKeyMetadataSchema.parse(JSON.parse(row.metadata)).organizationId;
 }
 
 /**
  * Public (anonymous) read surface — everything a logged-out visitor can read.
  * Each function delegates to a createPublic*ReadMethods factory that takes no
- * team scope at all, so these code paths cannot express a team-scoped query;
+ * organization scope at all, so these code paths cannot express an organization-scoped query;
  * the isPublic filters inside the factories are the entire data boundary.
  */
 
 /**
- * List publicly-shared styles without any team scoping or auth.
+ * List publicly-shared styles without any organization scoping or auth.
  * Used to populate the style picker for anonymous (logged-out) visitors so
  * they can compose a sequence before being prompted to sign in.
  */
@@ -252,8 +311,8 @@ export async function listPublicStyles() {
 }
 
 /**
- * Get a sequence by ID without team scoping.
- * Only for admin operations where team context isn't available yet.
+ * Get a sequence by ID without organization scoping.
+ * Only for admin operations where organization context isn't available yet.
  */
 export async function getSequenceByIdUnscoped(
   sequenceId: string
@@ -266,30 +325,42 @@ export async function getSequenceByIdUnscoped(
 }
 
 /**
- * Create a user's default team with them as owner. The one place the
- * sign-up bootstrap SQL lives: the Better Auth `user.create` hook and
- * `ensureUserAndTeam` both call it, so neither touches `teams` /
- * `team_members` directly.
+ * Create a user's default organization with them as owner. Called from the Better Auth
+ * `user.create` hook. The membership id is the user id because
+ * this is their only membership.
  */
-export async function createDefaultTeam(input: {
+export async function createDefaultOrganization(input: {
   userId: string;
-  teamName: string;
+  organizationName: string;
 }) {
   const db = getDb();
-  const [team] = await db
-    .insert(teams)
-    .values({ name: input.teamName, slug: `team-${input.userId.slice(0, 8)}` })
+  const [created] = await db
+    .insert(organization)
+    .values({
+      name: input.organizationName,
+      slug: `org-${input.userId.slice(0, 8)}`,
+    })
     .returning();
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
-  if (!team) {
-    throw new Error(`Failed to create default team for user ${input.userId}`);
+  if (!created) {
+    throw new Error(
+      `Failed to create default organization for user ${input.userId}`
+    );
   }
-  await db.insert(teamMembers).values({
-    teamId: team.id,
+  await db.insert(member).values({
+    id: input.userId,
+    organizationId: created.id,
     userId: input.userId,
     role: 'owner',
+    createdAt: new Date(),
   });
-  return team;
+  return created;
+}
+
+/** A user row by id, typed like a session's user. Null when missing. */
+export async function getUserById(userId: string): Promise<User | null> {
+  const row = await getDb().query.user.findFirst({ where: { id: userId } });
+  return row ?? null;
 }
 
 /** Email + name for a PostHog identify. Null when the row is missing. */
@@ -305,95 +376,22 @@ export async function getUserIdentity(
 }
 
 /**
- * Ensure user exists in database with team membership.
- * Creates user record, team, and membership if they don't exist.
- * Bootstrap function — does not require a scopedDb instance.
- */
-export async function ensureUserAndTeam(authUser: {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-}): Promise<{
-  success: boolean;
-  data?: User & { teamMembers?: Array<{ teamId: string; role: string }> };
-  error?: string;
-}> {
-  try {
-    const db = getDb();
-
-    const foundUser = await db.query.user.findFirst({
-      where: { id: authUser.id },
-    });
-
-    if (foundUser) {
-      const memberships = await db
-        .select({ teamId: teamMembers.teamId, role: teamMembers.role })
-        .from(teamMembers)
-        .where(eq(teamMembers.userId, authUser.id));
-
-      if (memberships.length > 0) {
-        return {
-          success: true,
-          data: { ...foundUser, teamMembers: memberships },
-        };
-      }
-    }
-
-    await db
-      .insert(user)
-      .values({
-        id: authUser.id,
-        name: authUser.name || 'Anonymous',
-        email: authUser.email || `${authUser.id}@anonymous.local`,
-      })
-      .onConflictDoNothing();
-
-    const team = await createDefaultTeam({
-      userId: authUser.id,
-      teamName: authUser.name
-        ? `${authUser.name}'s Team`
-        : `Anonymous Team ${authUser.id.slice(0, 8)}`,
-    });
-
-    const createdUser = await db.query.user.findFirst({
-      where: { id: authUser.id },
-    });
-
-    if (!createdUser) throw new Error('Failed to retrieve created user');
-
-    return {
-      success: true,
-      data: {
-        ...createdUser,
-        teamMembers: [{ teamId: team.id, role: 'owner' }],
-      },
-    };
-  } catch (error) {
-    logger.error('Error:', { err: error });
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unexpected error',
-    };
-  }
-}
-
-/**
  * Full scoped DB — requires userId for write operations that auto-inject audit fields.
  */
-export function createScopedDb(teamId: string, userId: string) {
+export function createScopedDb(organizationId: string, userId: string) {
   const db = getDb();
-  const reads = createProductionReadMethods(db, teamId);
+  const reads = createProductionReadMethods(db, organizationId);
 
   return {
-    teamId,
+    organizationId,
     userId,
 
-    sequences: createSequencesMethods(db, teamId, userId),
+    sequences: createSequencesMethods(db, organizationId, userId),
     sequence: (sequenceId: string) => createSequenceMethods(db, sequenceId),
 
-    styles: createStylesMethods(db, teamId, userId),
-    locations: createLocationsMethods(db, teamId),
-    library: createLibraryMethods(db, teamId),
+    styles: createStylesMethods(db, organizationId, userId),
+    locations: createLocationsMethods(db, organizationId),
+    library: createLibraryMethods(db, organizationId),
 
     scenes: { ...createScenesMethods(db), ...reads.scenes },
     sceneScriptVersions: createSceneScriptVersionsMethods(db),
@@ -414,42 +412,51 @@ export function createScopedDb(teamId: string, userId: string) {
     frameVariants: createFrameVariantsMethods(db),
     framePromptVersions: createFramePromptVersionsMethods(db),
     sequenceEvents: createSequenceEventsMethods(db),
-    characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
-    characterLooks: createCharacterLooksMethods(db, teamId),
-    locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
+    characterSheetVariants: createCharacterSheetVariantsMethods(
+      db,
+      organizationId
+    ),
+    characterLooks: createCharacterLooksMethods(db, organizationId),
+    locationSheetVariants: createLocationSheetVariantsMethods(
+      db,
+      organizationId
+    ),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
-    stitches: createStitchesMethods(db, teamId, userId),
+    stitches: createStitchesMethods(db, organizationId, userId),
     // In-app assistant threads and their persistence stores (#2155).
-    assistant: createAssistantMethods(db, teamId, userId),
+    assistant: createAssistantMethods(db, organizationId, userId),
 
-    characters: createCharactersMethods(db, teamId),
+    characters: createCharactersMethods(db, organizationId),
     sequenceElements: createSequenceElementsMethods(db),
 
-    // Direct model access (#458) — flat team-scoped runs of arbitrary fal
+    // Direct model access (#458) — flat organization-scoped runs of arbitrary fal
     // endpoints, decoupled from the sequence graph.
-    generatedAssets: createGeneratedAssetsMethods(db, teamId, userId),
+    generatedAssets: createGeneratedAssetsMethods(db, organizationId, userId),
 
-    // Platform-global pricing telemetry (#1069) — not team-scoped.
+    // Platform-global pricing telemetry (#1069) — not organization-scoped.
     modelUsage: createModelUsageMethods(db),
 
     // BytePlus ACR slot ledger (#1361) — also platform-global: the asset
-    // slots are per BytePlus ACCOUNT, shared by every team, so there is
+    // slots are per BytePlus ACCOUNT, shared by every organization, so there is
     // nothing to scope. Policy lives in `@/models/server/byteplus-asset-pool`.
     bytePlusAssets: createBytePlusAssetsMethods(db),
 
-    billing: createBillingMethods(db, teamId, userId),
-    apiKeys: createApiKeysMethods(db, teamId, userId),
-    teamManagement: createTeamManagementMethods(db, teamId, userId),
-    search: createSearchMethods(db, teamId),
+    billing: createBillingMethods(db, organizationId, userId),
+    apiKeys: createApiKeysMethods(db, organizationId, userId),
+    organizationManagement: createOrganizationManagementMethods(
+      db,
+      organizationId
+    ),
+    search: createSearchMethods(db, organizationId),
 
     // Compliance (#1180). `provenance` is its own domain rather than a member
     // of `compliance` because workflows must reach it and the workflow write
     // surface only strips read methods at the top level — see the comment on
     // createProvenanceMethods.
-    provenance: createProvenanceMethods(db, teamId, userId),
-    compliance: createComplianceMethods(db, teamId, userId),
+    provenance: createProvenanceMethods(db, organizationId, userId),
+    compliance: createComplianceMethods(db, organizationId, userId),
   };
 }
 
@@ -460,9 +467,9 @@ export function createSystemAdminScopedDb() {
 
   return {
     admin: createAdminMethods(db),
-    // Cross-team moderation (#1180): the report queue, enforcement, and
+    // Cross-organization moderation (#1180): the report queue, enforcement, and
     // trace lookup. Only reachable through the system-admin scope, so a
-    // team-scoped caller cannot read another team's reports.
+    // organization-scoped caller cannot read another organization's reports.
     moderation: createModerationMethods(db),
   };
 }
@@ -470,17 +477,17 @@ export function createSystemAdminScopedDb() {
 /**
  * Enforcement rows for one user (#1180).
  *
- * Module-level and unscoped, like `resolveUserTeam` above, for the same reason:
- * the generation gate runs before any team scope is meaningful, and an
+ * Module-level and unscoped, like `getUserOrganizationMembership` above, for the same reason:
+ * the generation gate runs before any organization scope is meaningful, and an
  * enforcement action follows the person rather than the workspace. Returns raw
  * rows; interpretation lives in `@/platform/server/compliance/enforcement`.
  */
 export async function loadComplianceRecords(
   userId: string,
-  teamId?: string | null
+  organizationId?: string | null
 ) {
   const reads = createComplianceReadMethods(getDb());
-  const enforcement = await reads.listEnforcementFor(userId, teamId);
+  const enforcement = await reads.listEnforcementFor(userId, organizationId);
   return { enforcement };
 }
 
@@ -490,7 +497,7 @@ export async function loadComplianceRecords(
  * Module-level with no scope at all — the person whose likeness was misused has
  * no account, and a takedown channel that requires one is not a takedown
  * channel. Mirrors the `listPublic*` factories: the code path cannot express a
- * team-scoped query.
+ * organization-scoped query.
  */
 export async function submitPublicContentReport(
   input: Parameters<ReturnType<typeof createPublicReportIntake>['submit']>[0]
@@ -502,7 +509,7 @@ export async function submitPublicContentReport(
  * One shared stitch by id (#2127), for the public page at /stitch/<id>.
  *
  * Module-level and unscoped, like `submitPublicContentReport`: the viewer has
- * no team, and the ULID is the only credential, as it is for a stored media URL.
+ * no organization, and the ULID is the only credential, as it is for a stored media URL.
  */
 export async function getPublicStitch(id: string) {
   return createPublicStitchReads(getDb()).getById(id);

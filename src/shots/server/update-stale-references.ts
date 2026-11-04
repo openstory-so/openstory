@@ -52,7 +52,7 @@ export type PlanReferences = {
   /**
    * The wave's price at the click. Its children have no preflight of their
    * own, so the run checks the balance against this before it spawns them.
-   * Split because a team's fal key pays for sheets, never for voices.
+   * Split because an organization's fal key pays for sheets, never for voices.
    */
   cost: { sheets: Microdollars; voices: Microdollars };
 };
@@ -91,7 +91,7 @@ export async function buildPlanReferences(args: {
   const context = {
     scopedDb,
     userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequence,
   };
 
@@ -151,7 +151,7 @@ export async function buildPlanReferences(args: {
         : null;
     elementSheets = {
       userId,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       sequenceId: sequence.id,
       entries: owedElements.map((el) => ({
         elementId: el.id,
@@ -184,7 +184,7 @@ export async function buildPlanReferences(args: {
     .filter((c) => voiceIds.has(c.id))
     .map((character): Omit<CharacterVoiceWorkflowInput, 'targetVersionId'> => ({
       userId,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       sequenceId: sequence.id,
       characterDbId: character.id,
       characterBible: characterToBible(character),

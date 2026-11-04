@@ -31,7 +31,7 @@ export async function readPage<T extends { id: string }>(
 }
 
 /**
- * {@link readPage} loader over rows already in memory — for the small team
+ * {@link readPage} loader over rows already in memory — for the small organization
  * libraries the app itself loads whole (characters, locations, styles).
  */
 export const pageRows =

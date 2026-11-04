@@ -20,10 +20,11 @@
  * off the client.
  */
 
+import { keyOwner } from '@/platform/server/storage/buckets';
 import type { Likeness } from '@/cast/likeness';
 import {
-  analyzeTalentClipForTeam,
-  analyzeTalentMediaForTeam,
+  analyzeTalentClipForOrganization,
+  analyzeTalentMediaForOrganization,
   type VisionBillingDb,
 } from '@/cast/server/talent/analyze-talent-media';
 import type { TalentVisionResult } from '@/cast/server/talent-vision';
@@ -74,7 +75,7 @@ export type UploadRightsReader = {
  * call. A request passes its `ScopedDb`; `UploadCheckWorkflow` passes the
  * same methods through its named hatches.
  */
-export type LikenessCheckDb = Pick<ScopedDb, 'teamId' | 'userId'> &
+export type LikenessCheckDb = Pick<ScopedDb, 'organizationId' | 'userId'> &
   VisionBillingDb & {
     compliance: {
       attestations: Pick<
@@ -171,7 +172,7 @@ export async function recordLikenessFinding(
 
 /**
  * One classifier call for the upload: Claude on a still, Gemini watching the
- * whole clip (#1930). A clip that is not this team's stored object is
+ * whole clip (#1930). A clip that is not this organization's stored object is
  * refused, never waved through.
  */
 function analyzeUpload(opts: {
@@ -186,7 +187,7 @@ function analyzeUpload(opts: {
   // classifier could be cleared on bytes it cannot read.
   const mimeType = getMimeTypeFromExtension(getExtensionFromUrl(opts.url));
   if (mimeType.startsWith('image/')) {
-    return analyzeTalentMediaForTeam({
+    return analyzeTalentMediaForOrganization({
       scopedDb: opts.scopedDb,
       userId: opts.userId,
       imageUrls: [opts.url],
@@ -200,13 +201,13 @@ function analyzeUpload(opts: {
     );
   }
   const key = r2KeyFromUrl(opts.url);
-  // Only this team's own objects: the check streams the bytes to Gemini.
-  if (key === null || !key.split('/').includes(opts.scopedDb.teamId)) {
+  // Only this organization's own objects: the check streams the bytes to Gemini.
+  if (key === null || !key.split('/').includes(opts.scopedDb.organizationId)) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
   }
-  return analyzeTalentClipForTeam({
+  return analyzeTalentClipForOrganization({
     scopedDb: opts.scopedDb,
     userId: opts.userId,
     key,
@@ -216,21 +217,21 @@ function analyzeUpload(opts: {
 }
 
 /**
- * A raw URL, or one of this team's own stored objects. Ownership is the
+ * A raw URL, or one of this organization's own stored objects. Ownership is the
  * key's owner segment, read the way the upload route reads it
- * (`<bucket>/<team>/…` or `<bucket>/teams/<team>/…`), never a substring.
+ * (`keyOwner`), never a substring.
  */
-export function isCheckable(url: string, teamId: string): boolean {
+export function isCheckable(url: string, organizationId: string): boolean {
   const key = r2KeyFromUrl(url);
   if (key === null) return needsLikenessCheck(url);
   if (mediaUrlHasTraversal(url)) return false;
   const path = key.split('/').slice(1);
-  return (path[0] === 'teams' ? path[1] : path[0]) === teamId;
+  return keyOwner(path) === organizationId;
 }
 
-/** Refuse a URL {@link isCheckable} rejects: another team's file. */
-export function requireCheckable(url: string, teamId: string): void {
-  if (!isCheckable(url, teamId)) {
+/** Refuse a URL {@link isCheckable} rejects: another organization's file. */
+export function requireCheckable(url: string, organizationId: string): void {
+  if (!isCheckable(url, organizationId)) {
     throw new ValidationError('This file is not an upload of yours');
   }
 }
@@ -239,9 +240,9 @@ export function requireCheckable(url: string, teamId: string): void {
  * The rights for one upload: what the ledger already says, or one vision
  * call whose verdict is written so the next ask is free. Never defaults to
  * human, never defaults to cleared: a classifier failure throws and leaves
- * no row, so the gate keeps refusing. Only this team's own objects, or a
- * raw URL, are checked: a verdict on another team's file would let this
- * team use it.
+ * no row, so the gate keeps refusing. Only this organization's own objects, or a
+ * raw URL, are checked: a verdict on another organization's file would let this
+ * organization use it.
  */
 export async function classifyUpload(opts: {
   scopedDb: LikenessCheckDb;
@@ -251,7 +252,7 @@ export async function classifyUpload(opts: {
   filename?: string;
   request: LikenessRequestContext;
 }): Promise<UploadRights> {
-  requireCheckable(opts.url, opts.scopedDb.teamId);
+  requireCheckable(opts.url, opts.scopedDb.organizationId);
   const existing = await latestRow(opts.scopedDb, opts.url);
   if (existing) return rightsFromRow(existing);
   const analysis = await analyzeUpload(opts);

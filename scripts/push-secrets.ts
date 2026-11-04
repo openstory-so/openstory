@@ -88,7 +88,7 @@ export const SECRETS = {
   BETTER_AUTH_URL: { runtime: true, build: false, optional: true },
   // Where abuse reports are emailed; unset means queue-only (#1180).
   ABUSE_REPORT_NOTIFY_EMAIL: { runtime: true, build: false, optional: true },
-  // Designed voices live on this account; there is no team BYOK (#1552).
+  // Designed voices live on this account; there is no organization BYOK (#1552).
   ELEVENLABS_API_KEY: { runtime: true, build: false, optional: true },
   ELEVENLABS_BASE_URL: { runtime: true, build: false, optional: true },
   // Seed Audio voices and dialogue (#1765); platform key only.
@@ -146,7 +146,7 @@ export const TOOLING_OR_LEGACY = new Set([
   // Local fal billing-compare tooling (`scripts/verify-fal-costs.ts --compare`,
   // `scripts/env-file.ts`). The Worker's admin-scoped fal key is FAL_BILLING_KEY.
   'FAL_PRICING_KEY',
-  // LLMTR is team BYOK only (Settings → API Keys). Never a Worker secret.
+  // LLMTR is organization BYOK only (Settings → API Keys). Never a Worker secret.
   'LLMTR_API_KEY',
   // Pre-rename / retired names sometimes left on the Worker
   'APP_NAME',

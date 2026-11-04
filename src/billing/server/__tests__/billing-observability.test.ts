@@ -50,7 +50,7 @@ describe('reportMissingBillingCost', () => {
       source: 'workflow-deduction',
       workflowName: 'StoryboardWorkflow',
       modelId: 'fal/flux',
-      teamId: 'team_1',
+      organizationId: 'team_1',
     });
 
     expect(loggerWarn).toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe('reportReservationShort', () => {
     capture.mockClear();
 
     reportReservationShort({
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       neededMicros: 3_000_000,
       remainingMicros: 1_000_000,
@@ -111,7 +111,7 @@ describe('reportSkippedDeduction', () => {
     capture.mockClear();
 
     reportSkippedDeduction({
-      teamId: 'team_1',
+      organizationId: 'team_1',
       workflowName: 'MotionWorkflow:cf',
       description: 'Motion generation (seedance)',
       costMicros: 1_222_200,

@@ -13,7 +13,6 @@ vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({ api: { deviceCode } }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  resolveUserTeam: vi.fn(),
   pruneExpiredDeviceCodes: prune,
 }));
 
@@ -81,14 +80,14 @@ describe('GET /api/v1/device/token', () => {
     exchangeDeviceCode.mockResolvedValueOnce({
       status: 'approved',
       apiKey: 'osk_x',
-      team: { id: 't', name: 'T' },
+      organization: { id: 't', name: 'T' },
     });
     const res = await token('?device_code=dc');
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(await res.json()).toMatchObject({
       api_key: 'osk_x',
-      team: { id: 't', name: 'T' },
+      organization: { id: 't', name: 'T' },
     });
   });
 

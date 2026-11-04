@@ -1,8 +1,8 @@
 /**
  * In-memory DB tests for `sequences.listShotsByIds` (#957).
  *
- * The sequences/eval list pages fetch shots for every sequence on a team in
- * one batched call. Once a team grew past ~500 sequences the request tripped a
+ * The sequences/eval list pages fetch shots for every sequence in an organization in
+ * one batched call. Once an organization grew past ~500 sequences the request tripped a
  * `z.array().max(500)` cap, and the underlying `inArray` would overflow D1's
  * 100-bound-parameter limit. `listShotsByIds` now chunks the ids; these tests
  * cover a list larger than the chunk size to prove every shot still comes back
@@ -12,7 +12,12 @@
 import type { Database } from '@/platform/server/db/client';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
-import { shots, sequences, styles, teams } from '@/platform/server/db/schema';
+import {
+  shots,
+  sequences,
+  styles,
+  organization,
+} from '@/platform/server/db/schema';
 import { eq } from 'drizzle-orm';
 import {
   afterAll,
@@ -28,20 +33,22 @@ import { createShotsMethods } from './shots';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 
 async function seed() {
   await db.delete(shots);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
 
-  teamId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  organizationId = generateId();
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -69,7 +76,7 @@ async function seedSequences(
     seqIds.push(seqId);
     await db.insert(sequences).values({
       id: seqId,
-      teamId,
+      organizationId,
       title: `S${i}`,
       styleId,
     });
@@ -100,7 +107,7 @@ describe('listShotReadinessByIds', () => {
     const seqIds = await seedSequences(styleId, 1);
     const seqId = seqIds[0];
     if (!seqId) throw new Error('test setup: expected a sequence id');
-    const methods = createSequencesMethods(db, teamId, generateId());
+    const methods = createSequencesMethods(db, organizationId, generateId());
 
     const before = await methods.listShotReadinessByIds([seqId]);
     expect(before).toHaveLength(3);
@@ -122,7 +129,7 @@ describe('listShotReadinessByIds', () => {
 
 describe('listShotsByIds', () => {
   it('returns [] for an empty input', async () => {
-    const methods = createSequencesMethods(db, teamId, generateId());
+    const methods = createSequencesMethods(db, organizationId, generateId());
     await expect(methods.listShotsByIds([])).resolves.toEqual([]);
   });
 
@@ -131,7 +138,7 @@ describe('listShotsByIds', () => {
     // batches. The old single-query path would also blow past D1's 100-param
     // limit here.
     const seqIds = await seedSequences(styleId, 250);
-    const methods = createSequencesMethods(db, teamId, generateId());
+    const methods = createSequencesMethods(db, organizationId, generateId());
 
     const result = await methods.listShotsByIds(seqIds);
 
@@ -164,17 +171,19 @@ describe('listShotsByIds', () => {
     ]);
   });
 
-  it('never leaks shots from another team', async () => {
+  it('never leaks shots from another organization', async () => {
     const mySeqIds = await seedSequences(styleId, 2);
 
-    // A second team with its own sequence — its id is requested but must not
-    // resolve, because the join filters on teamId.
-    const otherTeamId = generateId();
-    await db.insert(teams).values({ id: otherTeamId, name: 'O', slug: 'o' });
+    // A second organization with its own sequence — its id is requested but must not
+    // resolve, because the join filters on organizationId.
+    const otherOrganizationId = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganizationId, name: 'O', slug: 'o' });
     const [otherStyle] = await db
       .insert(styles)
       .values({
-        teamId: otherTeamId,
+        organizationId: otherOrganizationId,
         name: 'default',
         config: {
           mood: 'neutral',
@@ -192,13 +201,13 @@ describe('listShotsByIds', () => {
     const otherSeqId = generateId();
     await db.insert(sequences).values({
       id: otherSeqId,
-      teamId: otherTeamId,
+      organizationId: otherOrganizationId,
       title: 'X',
       styleId: otherStyle.id,
     });
     await db.insert(shots).values({ sequenceId: otherSeqId, shotNumber: 1 });
 
-    const methods = createSequencesMethods(db, teamId, generateId());
+    const methods = createSequencesMethods(db, organizationId, generateId());
     const result = await methods.listShotsByIds([...mySeqIds, otherSeqId]);
 
     expect(result).toHaveLength(2 * 3);

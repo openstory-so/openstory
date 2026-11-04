@@ -56,7 +56,7 @@ const input: StoryboardWorkflowInput & { sequenceId: string } = {
   elementIds: [],
   cast: [],
   sequenceUrl: '/sequence',
-  teamId: 'team',
+  organizationId: 'organization',
   sequenceId: 'sequence',
   userId: 'user',
   referenceOnly: true,

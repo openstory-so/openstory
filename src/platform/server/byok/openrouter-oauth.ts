@@ -34,7 +34,7 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 }
 
 export type OAuthState = {
-  teamId: string;
+  organizationId: string;
   userId: string;
   codeVerifier: string;
   /** CSRF nonce echoed back via the callback URL's `state` query param. */
@@ -49,7 +49,7 @@ export type OAuthState = {
  */
 export async function buildAuthorizationUrl(
   callbackUrl: string,
-  teamId: string,
+  organizationId: string,
   userId: string
 ): Promise<{ url: string; state: OAuthState }> {
   const codeVerifier = generateUrlSafeToken();
@@ -69,7 +69,7 @@ export async function buildAuthorizationUrl(
 
   return {
     url: `${OPENROUTER_AUTH_URL}?${params.toString()}`,
-    state: { teamId, userId, codeVerifier, csrfState },
+    state: { organizationId, userId, codeVerifier, csrfState },
   };
 }
 

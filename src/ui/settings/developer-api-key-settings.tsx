@@ -1,7 +1,7 @@
 /**
  * Developer API Key Settings
  * Mint, view, and revoke keys that authenticate calls to the public OpenStory
- * API (`/api/v1/*`). Distinct from the "API Keys" tab, which manages a team's
+ * API (`/api/v1/*`). Distinct from the "API Keys" tab, which manages an organization's
  * provider keys (OpenRouter/Fal). The secret is shown exactly once, on creation.
  */
 

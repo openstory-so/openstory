@@ -1,5 +1,5 @@
 import { NewCharacterDialog } from '@/cast/ui/character-library/new-character-dialog';
-import { TeamCharacterList } from '@/cast/ui/character-library/team-character-list';
+import { OrganizationCharacterList } from '@/cast/ui/character-library/organization-character-list';
 import { LibraryGridSkeleton } from '@/cast/ui/library-virtual-grid';
 import { rememberLibrarySearch } from '@/cast/ui/library-search';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
@@ -40,7 +40,7 @@ function CharactersPage() {
         title="Characters"
         actions={session ? <NewCharacterDialog /> : undefined}
       >
-        Every character your team has. Use one in a script with @.
+        Every character your organization has. Use one in a script with @.
       </PageIntro>
       <PageContainer padding="none" className="pb-8">
         {session ? (
@@ -64,7 +64,10 @@ function CharactersPage() {
               />
             </InputGroup>
             <Suspense fallback={<LibraryGridSkeleton />}>
-              <TeamCharacterList scrollRef={scrollRef} query={search.q ?? ''} />
+              <OrganizationCharacterList
+                scrollRef={scrollRef}
+                query={search.q ?? ''}
+              />
             </Suspense>
           </div>
         ) : isPending ? (
@@ -73,7 +76,7 @@ function CharactersPage() {
           <EmptyState
             icon={<User className="h-12 w-12" />}
             title="Sign in to see your characters"
-            description="Characters belong to your team."
+            description="Characters belong to your organization."
             action={<SignInButton />}
           />
         )}

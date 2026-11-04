@@ -13,12 +13,12 @@ describe('partitionRealtimeChannels', () => {
     expect(
       partitionRealtimeChannels([
         'character:01',
-        'billing:team',
+        'billing:organization',
         'sequence-1',
         'billing:other',
       ])
     ).toEqual({
-      billing: ['billing:team', 'billing:other'],
+      billing: ['billing:organization', 'billing:other'],
       heavy: ['character:01', 'sequence-1'],
     });
   });

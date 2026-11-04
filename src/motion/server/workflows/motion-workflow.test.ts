@@ -217,7 +217,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'org-1',
       sequenceId: 'seq-1',
       shotId: 'shot-1',
       sceneId: 'scene-1',
@@ -591,7 +591,7 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
       makeEvent({
         referenceImages: [
           {
-            referenceImageUrl: '/r2/elements/team-1/seq-0/old.mp4',
+            referenceImageUrl: '/r2/elements/org-1/seq-0/old.mp4',
             description: 'DANCE',
             kind: 'video',
             role: 'element',
@@ -1229,7 +1229,7 @@ describe('recording its own dialogue (#1657)', () => {
     const { scopedDb, videoVariants } = makeScopedDb();
     const [job] = buildMotionRender({
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'org-1',
       sequenceId: 'seq-1',
       shots: [
         {

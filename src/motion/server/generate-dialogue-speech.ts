@@ -78,7 +78,7 @@ export type GenerateDialogueSpeechArgs = {
   scopedDb: WorkflowScopedDb;
   workflowRunId: string;
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   /** The conversation to speak, in speaking order (`sceneConversation`). */
   lines: readonly SceneVoicedLine[];
@@ -233,13 +233,13 @@ async function recordClaimed(
                   await args.scopedDb.credentials.resolveKey('seed-speech')
                 ).key,
                 elevenLabsKey: eleven.key,
-                teamId: args.teamId,
+                organizationId: args.organizationId,
                 sequenceId: args.sequenceId,
                 lines: callLines,
               })
             : await generateDialogueSpeechCall({
                 apiKey: eleven.key,
-                teamId: args.teamId,
+                organizationId: args.organizationId,
                 sequenceId: args.sequenceId,
                 lines: callLines,
               });
@@ -362,7 +362,7 @@ async function recordClaimed(
         cutAudioSection({
           storageKey: call.storageKey,
           speechId: call.speechId,
-          teamId: args.teamId,
+          organizationId: args.organizationId,
           sequenceId: args.sequenceId,
           fromSeconds: window.fromSeconds,
           toSeconds: window.toSeconds,

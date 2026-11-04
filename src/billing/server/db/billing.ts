@@ -1,6 +1,6 @@
 /**
  * Scoped Billing Sub-module
- * Team-scoped credit operations: balance, deductions, transactions, settings.
+ * Organization-scoped credit operations: balance, deductions, transactions, settings.
  * All monetary values are in Microdollars (1 USD = 1,000,000).
  */
 
@@ -27,16 +27,16 @@ import {
   creditBatches,
   creditReservations,
   credits,
-  teamBillingSettings,
+  organizationBillingSettings,
   transactions,
 } from '@/platform/server/db/schema/credits';
 import type {
   CreditBatchSource,
-  TeamBillingSetting,
+  OrganizationBillingSetting,
   TransactionType,
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
-import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
+import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
 import {
   giftRedeemHolderReason,
   normalizeGiftCode,
@@ -60,7 +60,7 @@ import { getLogger } from '@/platform/logger';
  * replay).
  */
 async function emitFundsUpdated(opts: {
-  teamId: string;
+  organizationId: string;
   balance: Microdollars;
   reserved: Microdollars;
   available: Microdollars;
@@ -70,8 +70,8 @@ async function emitFundsUpdated(opts: {
   transactionId?: string;
   type?: TransactionType;
 }): Promise<void> {
-  await getBillingChannel(opts.teamId).emit('billing.balance:updated', {
-    teamId: opts.teamId,
+  await getBillingChannel(opts.organizationId).emit('billing.balance:updated', {
+    organizationId: opts.organizationId,
     balanceUsd: microsToUsd(opts.balance),
     availableUsd: microsToUsd(opts.available),
     reservedUsd: microsToUsd(opts.reserved),
@@ -154,19 +154,19 @@ function mapBatchSource(
 /**
  * Read-only billing methods — balance checks, transaction history, settings.
  */
-function createBillingReadMethods(db: Database, teamId: string) {
+function createBillingReadMethods(db: Database, organizationId: string) {
   async function getBalance(): Promise<Microdollars> {
     const [row] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId))
+      .where(eq(credits.organizationId, organizationId))
       .limit(1);
 
     if (!row) {
       await db
         .insert(credits)
-        .values({ teamId, balance: 0 })
-        .onConflictDoNothing({ target: credits.teamId });
+        .values({ organizationId, balance: 0 })
+        .onConflictDoNothing({ target: credits.organizationId });
       return ZERO_MICROS;
     }
 
@@ -193,7 +193,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
       db
         .select({ balance: credits.balance })
         .from(credits)
-        .where(eq(credits.teamId, teamId))
+        .where(eq(credits.organizationId, organizationId))
         .limit(1),
       db
         .select({
@@ -203,7 +203,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
         .from(creditReservations)
         .where(
           and(
-            eq(creditReservations.teamId, teamId),
+            eq(creditReservations.organizationId, organizationId),
             reservationId
               ? sql`${creditReservations.id} <> ${reservationId}`
               : undefined,
@@ -238,7 +238,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return available >= estimatedCostMicros;
   }
 
-  /** One page of the team ledger, newest first. `hasMore` comes from reading
+  /** One page of the organization ledger, newest first. `hasMore` comes from reading
    *  one extra row — a `count(*)` would read every ledger row (#1881). */
   async function getTransactionHistory(
     opts: { limit?: number; offset?: number; type?: TransactionType } = {}
@@ -270,7 +270,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
       .from(transactions)
       .where(
         and(
-          eq(transactions.teamId, teamId),
+          eq(transactions.organizationId, organizationId),
           opts.type ? eq(transactions.type, opts.type) : undefined
         )
       )
@@ -283,19 +283,21 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
-  async function getBillingSettings(): Promise<TeamBillingSetting> {
+  async function getBillingSettings(): Promise<OrganizationBillingSetting> {
     const [row] = await db
       .select()
-      .from(teamBillingSettings)
-      .where(eq(teamBillingSettings.teamId, teamId))
+      .from(organizationBillingSettings)
+      .where(eq(organizationBillingSettings.organizationId, organizationId))
       .limit(1);
 
     if (row) return row;
 
     const [inserted] = await db
-      .insert(teamBillingSettings)
-      .values({ teamId })
-      .onConflictDoNothing({ target: teamBillingSettings.teamId })
+      .insert(organizationBillingSettings)
+      .values({ organizationId })
+      .onConflictDoNothing({
+        target: organizationBillingSettings.organizationId,
+      })
       .returning();
 
     if (inserted) return inserted;
@@ -303,12 +305,12 @@ function createBillingReadMethods(db: Database, teamId: string) {
     // Lost the race — peer inserted between our SELECT and INSERT.
     const [existing] = await db
       .select()
-      .from(teamBillingSettings)
-      .where(eq(teamBillingSettings.teamId, teamId))
+      .from(organizationBillingSettings)
+      .where(eq(organizationBillingSettings.organizationId, organizationId))
       .limit(1);
     if (!existing) {
       throw new Error(
-        `getBillingSettings: row missing for team ${teamId} after onConflictDoNothing`
+        `getBillingSettings: row missing for organization ${organizationId} after onConflictDoNothing`
       );
     }
     return existing;
@@ -328,19 +330,19 @@ function createBillingReadMethods(db: Database, teamId: string) {
  */
 export function createBillingMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
-  const read = createBillingReadMethods(db, teamId);
+  const read = createBillingReadMethods(db, organizationId);
 
-  async function emitTeamFunds(opts: {
+  async function emitOrganizationFunds(opts: {
     amountMicros: Microdollars;
     transactionId?: string;
     type?: TransactionType;
   }): Promise<void> {
     const snapshot = await read.getAvailable();
     await emitFundsUpdated({
-      teamId,
+      organizationId,
       ...snapshot,
       amountMicros: opts.amountMicros,
       transactionId: opts.transactionId,
@@ -350,13 +352,13 @@ export function createBillingMethods(
 
   async function clearAutoTopUpFailure(): Promise<void> {
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: null,
         autoTopUpDeclineCode: null,
         updatedAt: new Date(),
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
   }
 
   /**
@@ -374,38 +376,39 @@ export function createBillingMethods(
       updatedAt: new Date(),
     };
     const claimed = await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set(paused)
       .where(
         and(
-          eq(teamBillingSettings.teamId, teamId),
-          isNull(teamBillingSettings.autoTopUpFailedAt)
+          eq(organizationBillingSettings.organizationId, organizationId),
+          isNull(organizationBillingSettings.autoTopUpFailedAt)
         )
       )
-      .returning({ teamId: teamBillingSettings.teamId });
+      .returning({
+        organizationId: organizationBillingSettings.organizationId,
+      });
 
     if (claimed.length === 0) {
       // Already paused. Refresh the cooldown window anyway — otherwise a
       // decline after the first cooldown expires would leave the stale
       // timestamp in place and the next debit would charge again (#1334).
       await db
-        .update(teamBillingSettings)
+        .update(organizationBillingSettings)
         .set(paused)
-        .where(eq(teamBillingSettings.teamId, teamId));
+        .where(eq(organizationBillingSettings.organizationId, organizationId));
       return;
     }
 
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
 
     try {
       const { available } = await read.getAvailable();
       await notifyAutoTopUpFailed({
-        to: await createTeamManagementMethods(
+        to: await createOrganizationManagementMethods(
           db,
-          teamId,
-          userId
+          organizationId
         ).getOwnerEmail(),
-        teamId,
+        organizationId,
         userId,
         balanceMicros: available,
       });
@@ -413,7 +416,10 @@ export function createBillingMethods(
       // Log, don't rethrow and don't release the claim: clearing
       // `autoTopUpFailedAt` to retry the email would also lift the decline
       // cooldown, putting us straight back into the retry loop #1334 fixed.
-      logger.error('Failed to send auto-top-up-failed email', { teamId, err });
+      logger.error('Failed to send auto-top-up-failed email', {
+        organizationId,
+        err,
+      });
     }
   }
 
@@ -438,7 +444,7 @@ export function createBillingMethods(
 
     await db
       .insert(credits)
-      .values({ teamId, balance: 0 })
+      .values({ organizationId, balance: 0 })
       .onConflictDoNothing();
 
     const [updated] = await db
@@ -447,11 +453,13 @@ export function createBillingMethods(
         balance: sql`${credits.balance} + ${amountMicros}`,
         updatedAt: new Date(),
       })
-      .where(eq(credits.teamId, teamId))
+      .where(eq(credits.organizationId, organizationId))
       .returning({ balance: credits.balance });
 
     if (!updated) {
-      throw new Error(`addCredits: update returned no row for team ${teamId}`);
+      throw new Error(
+        `addCredits: update returned no row for organization ${organizationId}`
+      );
     }
 
     const txType = opts.type ?? 'credit_purchase';
@@ -459,7 +467,7 @@ export function createBillingMethods(
     const rows = await db
       .insert(transactions)
       .values({
-        teamId,
+        organizationId,
         userId,
         type: txType,
         amount: amountMicros,
@@ -481,20 +489,20 @@ export function createBillingMethods(
           balance: sql`${credits.balance} - ${amountMicros}`,
           updatedAt: new Date(),
         })
-        .where(eq(credits.teamId, teamId));
+        .where(eq(credits.organizationId, organizationId));
       return null;
     }
 
     const insertedRow = rows[0];
     if (!insertedRow) {
       throw new Error(
-        `addCredits: transaction insert returned no row for team ${teamId}`
+        `addCredits: transaction insert returned no row for organization ${organizationId}`
       );
     }
     const transactionId = insertedRow.id;
 
     await db.insert(creditBatches).values({
-      teamId,
+      organizationId,
       originalAmount: amountMicros,
       remainingAmount: amountMicros,
       source: mapBatchSource(txType, opts.metadata),
@@ -503,7 +511,7 @@ export function createBillingMethods(
     });
 
     const newBalance = micros(updated.balance);
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros,
       transactionId,
       type: txType,
@@ -520,10 +528,10 @@ export function createBillingMethods(
 
   async function saveStripeCustomerId(stripeCustomerId: string): Promise<void> {
     await db
-      .insert(teamBillingSettings)
-      .values({ teamId, stripeCustomerId })
+      .insert(organizationBillingSettings)
+      .values({ organizationId, stripeCustomerId })
       .onConflictDoUpdate({
-        target: teamBillingSettings.teamId,
+        target: organizationBillingSettings.organizationId,
         set: {
           stripeCustomerId,
           updatedAt: new Date(),
@@ -538,7 +546,7 @@ export function createBillingMethods(
    * Pass `opts.idempotencyKey` (convention: `${workflowInstanceId}:<charge-name>`)
    * from any retryable context — a workflow `step.do` that throws partway
    * re-runs its closure, and without the key every replay double-debits the
-   * team and writes a duplicate ledger row. The balance UPDATE and the
+   * organization and writes a duplicate ledger row. The balance UPDATE and the
    * transaction INSERT run in one atomic `db.batch`; the UPDATE is guarded on
    * "no transaction with this key exists yet" and the INSERT dedupes via the
    * partial unique index on `(team_id, idempotency_key)`. A replay is a no-op
@@ -570,7 +578,7 @@ export function createBillingMethods(
 
     await db
       .insert(credits)
-      .values({ teamId, balance: 0 })
+      .values({ organizationId, balance: 0 })
       .onConflictDoNothing();
 
     const chargedUsd = microsToUsd(chargedAmount);
@@ -584,20 +592,20 @@ export function createBillingMethods(
       .where(
         idempotencyKey
           ? and(
-              eq(credits.teamId, teamId),
+              eq(credits.organizationId, organizationId),
               notExists(
                 db
                   .select({ id: transactions.id })
                   .from(transactions)
                   .where(
                     and(
-                      eq(transactions.teamId, teamId),
+                      eq(transactions.organizationId, organizationId),
                       eq(transactions.idempotencyKey, idempotencyKey)
                     )
                   )
               )
             )
-          : eq(credits.teamId, teamId)
+          : eq(credits.organizationId, organizationId)
       );
 
     // balanceAfter reads the post-UPDATE balance via subquery — the batch
@@ -607,11 +615,11 @@ export function createBillingMethods(
     const insertTransaction = db
       .insert(transactions)
       .values({
-        teamId,
+        organizationId,
         userId,
         type: 'credit_usage' as TransactionType,
         amount: negateMicros(chargedAmount),
-        balanceAfter: sql`(select ${credits.balance} from ${credits} where ${credits.teamId} = ${teamId})`,
+        balanceAfter: sql`(select ${credits.balance} from ${credits} where ${credits.organizationId} = ${organizationId})`,
         description: opts.description ?? `Usage: $${chargedUsd.toFixed(4)}`,
         metadata: {
           costMicros: chargedAmount,
@@ -631,7 +639,7 @@ export function createBillingMethods(
     const readBackBalance = db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
     const [, insertedRows, balanceRows] = await db.batch([
       updateBalance,
@@ -642,7 +650,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     if (!balanceRow) {
       throw new Error(
-        `deductCredits: credits row missing for team ${teamId} after batch`
+        `deductCredits: credits row missing for organization ${organizationId} after batch`
       );
     }
     const newBalance = micros(balanceRow.balance);
@@ -654,7 +662,7 @@ export function createBillingMethods(
     if (!transactionId) {
       if (!idempotencyKey) {
         throw new Error(
-          `deductCredits: transaction insert returned no row for team ${teamId}`
+          `deductCredits: transaction insert returned no row for organization ${organizationId}`
         );
       }
       // Replay of an already-applied deduction — recover the original
@@ -664,21 +672,21 @@ export function createBillingMethods(
         .from(transactions)
         .where(
           and(
-            eq(transactions.teamId, teamId),
+            eq(transactions.organizationId, organizationId),
             eq(transactions.idempotencyKey, idempotencyKey)
           )
         )
         .limit(1);
       if (!existing) {
         throw new Error(
-          `deductCredits: no transaction row for team ${teamId} key ${idempotencyKey} after conflict no-op`
+          `deductCredits: no transaction row for organization ${organizationId} key ${idempotencyKey} after conflict no-op`
         );
       }
       transactionId = existing.id;
     }
 
     if (isNewCharge) {
-      await emitTeamFunds({
+      await emitOrganizationFunds({
         amountMicros: negateMicros(chargedAmount),
         transactionId,
         type: 'credit_usage',
@@ -687,7 +695,7 @@ export function createBillingMethods(
 
     void maybeAutoTopUp().catch((err) => {
       logger.error('Auto top-up failed after deduction', {
-        teamId,
+        organizationId,
         balanceMicros: newBalance,
         err,
       });
@@ -706,7 +714,7 @@ export function createBillingMethods(
       .from(transactions)
       .where(
         and(
-          eq(transactions.teamId, teamId),
+          eq(transactions.organizationId, organizationId),
           eq(transactions.idempotencyKey, idempotencyKey)
         )
       )
@@ -737,7 +745,7 @@ export function createBillingMethods(
       const [balanceRow] = await db
         .select({ balance: credits.balance })
         .from(credits)
-        .where(eq(credits.teamId, teamId))
+        .where(eq(credits.organizationId, organizationId))
         .limit(1);
       return {
         ok: true,
@@ -750,7 +758,7 @@ export function createBillingMethods(
 
     await db
       .insert(credits)
-      .values({ teamId, balance: 0 })
+      .values({ organizationId, balance: 0 })
       .onConflictDoNothing();
 
     const txId = generateId();
@@ -768,7 +776,7 @@ export function createBillingMethods(
       })
       .where(
         and(
-          eq(credits.teamId, teamId),
+          eq(credits.organizationId, organizationId),
           gte(credits.balance, amountMicros),
           notExists(
             db
@@ -776,7 +784,7 @@ export function createBillingMethods(
               .from(transactions)
               .where(
                 and(
-                  eq(transactions.teamId, teamId),
+                  eq(transactions.organizationId, organizationId),
                   eq(transactions.idempotencyKey, opts.idempotencyKey)
                 )
               )
@@ -790,7 +798,9 @@ export function createBillingMethods(
         db
           .select({
             id: sql<string>`${txId}`.as('id'),
-            teamId: sql<string>`${teamId}`.as('team_id'),
+            organizationId: sql<string>`${organizationId}`.as(
+              'organization_id'
+            ),
             userId: sql<string>`${userId}`.as('user_id'),
             type: sql<string>`${txType}`.as('type'),
             amount: sql<number>`${signedAmount}`.as('amount'),
@@ -803,7 +813,9 @@ export function createBillingMethods(
             createdAt: sql`${nowSeconds}`.as('created_at'),
           })
           .from(credits)
-          .where(and(eq(credits.teamId, teamId), sql`changes() > 0`))
+          .where(
+            and(eq(credits.organizationId, organizationId), sql`changes() > 0`)
+          )
       )
       .onConflictDoNothing()
       .returning({ id: transactions.id });
@@ -811,7 +823,7 @@ export function createBillingMethods(
     const readBackBalance = db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
     const [, insertedRows, balanceRows] = await db.batch([
       updateBalance,
@@ -822,7 +834,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     if (!balanceRow) {
       throw new Error(
-        `tryDebit: credits row missing for team ${teamId} after batch`
+        `tryDebit: credits row missing for organization ${organizationId} after batch`
       );
     }
     const newBalance = micros(balanceRow.balance);
@@ -841,7 +853,7 @@ export function createBillingMethods(
       return { ok: false };
     }
 
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros: signedAmount,
       transactionId,
       type: txType,
@@ -850,7 +862,7 @@ export function createBillingMethods(
     if (txType === 'credit_usage') {
       void maybeAutoTopUp().catch((err) => {
         logger.error('Auto top-up failed after reservation debit', {
-          teamId,
+          organizationId,
           balanceMicros: newBalance,
           err,
         });
@@ -897,7 +909,7 @@ export function createBillingMethods(
       .from(creditReservations)
       .where(
         and(
-          eq(creditReservations.teamId, teamId),
+          eq(creditReservations.organizationId, organizationId),
           eq(creditReservations.idempotencyKey, opts.idempotencyKey)
         )
       )
@@ -914,7 +926,7 @@ export function createBillingMethods(
 
     await db
       .insert(credits)
-      .values({ teamId, balance: 0 })
+      .values({ organizationId, balance: 0 })
       .onConflictDoNothing();
 
     const reservationId = generateId();
@@ -931,7 +943,9 @@ export function createBillingMethods(
         db
           .select({
             id: sql<string>`${reservationId}`.as('id'),
-            teamId: sql<string>`${teamId}`.as('team_id'),
+            organizationId: sql<string>`${organizationId}`.as(
+              'organization_id'
+            ),
             userId: sql<string>`${userId}`.as('user_id'),
             sequenceId: sql`${opts.sequenceId ?? null}`.as('sequence_id'),
             originalAmount: sql<number>`${amountMicros}`.as('original_amount'),
@@ -947,11 +961,11 @@ export function createBillingMethods(
           .from(credits)
           .where(
             and(
-              eq(credits.teamId, teamId),
+              eq(credits.organizationId, organizationId),
               sql`${credits.balance} - coalesce((
                 select sum(${creditReservations.remainingAmount})
                 from ${creditReservations}
-                where ${creditReservations.teamId} = ${teamId}
+                where ${creditReservations.organizationId} = ${organizationId}
                   and ${creditReservations.remainingAmount} > 0
                   and ${creditReservations.expiresAt} > ${nowSeconds}
               ), 0) >= ${amountMicros}`
@@ -968,7 +982,7 @@ export function createBillingMethods(
         .from(creditReservations)
         .where(
           and(
-            eq(creditReservations.teamId, teamId),
+            eq(creditReservations.organizationId, organizationId),
             eq(creditReservations.idempotencyKey, opts.idempotencyKey)
           )
         )
@@ -985,7 +999,7 @@ export function createBillingMethods(
       return { ok: false };
     }
 
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
     return {
       ok: true,
       reservationId: created.id,
@@ -1006,7 +1020,7 @@ export function createBillingMethods(
         .where(
           and(
             eq(creditReservations.id, reservationId),
-            eq(creditReservations.teamId, teamId)
+            eq(creditReservations.organizationId, organizationId)
           )
         )
         .limit(1);
@@ -1031,13 +1045,13 @@ export function createBillingMethods(
       .where(
         and(
           eq(creditReservations.id, reservationId),
-          eq(creditReservations.teamId, teamId),
+          eq(creditReservations.organizationId, organizationId),
           sql`${extraMicros} <= (
-            (select ${credits.balance} from ${credits} where ${credits.teamId} = ${teamId})
+            (select ${credits.balance} from ${credits} where ${credits.organizationId} = ${organizationId})
             - coalesce((
               select sum(${creditReservations.remainingAmount})
               from ${creditReservations}
-              where ${creditReservations.teamId} = ${teamId}
+              where ${creditReservations.organizationId} = ${organizationId}
                 and ${creditReservations.remainingAmount} > 0
                 and ${creditReservations.expiresAt} > ${nowSeconds}
             ), 0)
@@ -1047,7 +1061,7 @@ export function createBillingMethods(
       .returning({ remaining: creditReservations.remainingAmount });
 
     if (!updated) return { ok: false };
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
     return { ok: true, remaining: micros(updated.remaining) };
   }
 
@@ -1082,7 +1096,7 @@ export function createBillingMethods(
       .where(
         and(
           eq(creditReservations.id, reservationId),
-          eq(creditReservations.teamId, teamId)
+          eq(creditReservations.organizationId, organizationId)
         )
       )
       .limit(1);
@@ -1106,7 +1120,7 @@ export function createBillingMethods(
       select min(${creditReservations.remainingAmount}, ${actualMicros})
       from ${creditReservations}
       where ${creditReservations.id} = ${reservationId}
-        and ${creditReservations.teamId} = ${teamId}
+        and ${creditReservations.organizationId} = ${organizationId}
     )`;
     const extraExpr = sql`max(0, ${actualMicros} - ${creditReservations.remainingAmount})`;
 
@@ -1120,14 +1134,14 @@ export function createBillingMethods(
       .where(
         and(
           eq(creditReservations.id, reservationId),
-          eq(creditReservations.teamId, teamId),
+          eq(creditReservations.organizationId, organizationId),
           sql`${extraExpr} > 0`,
           sql`${extraExpr} <= (
-            (select ${credits.balance} from ${credits} where ${credits.teamId} = ${teamId})
+            (select ${credits.balance} from ${credits} where ${credits.organizationId} = ${organizationId})
             - coalesce((
               select sum(${creditReservations.remainingAmount})
               from ${creditReservations}
-              where ${creditReservations.teamId} = ${teamId}
+              where ${creditReservations.organizationId} = ${organizationId}
                 and ${creditReservations.remainingAmount} > 0
                 and ${creditReservations.expiresAt} > ${nowSeconds}
             ), 0)
@@ -1143,7 +1157,7 @@ export function createBillingMethods(
       })
       .where(
         and(
-          eq(credits.teamId, teamId),
+          eq(credits.organizationId, organizationId),
           sql`${takeExpr} > 0`,
           sql`${credits.balance} >= ${takeExpr}`,
           notExists(
@@ -1152,7 +1166,7 @@ export function createBillingMethods(
               .from(transactions)
               .where(
                 and(
-                  eq(transactions.teamId, teamId),
+                  eq(transactions.organizationId, organizationId),
                   eq(transactions.idempotencyKey, opts.idempotencyKey)
                 )
               )
@@ -1166,7 +1180,9 @@ export function createBillingMethods(
         db
           .select({
             id: sql<string>`${txId}`.as('id'),
-            teamId: sql<string>`${teamId}`.as('team_id'),
+            organizationId: sql<string>`${organizationId}`.as(
+              'organization_id'
+            ),
             userId: sql<string>`${userId}`.as('user_id'),
             type: sql<string>`${txType}`.as('type'),
             amount: sql<number>`(${takeExpr}) * -1`.as('amount'),
@@ -1179,7 +1195,9 @@ export function createBillingMethods(
             createdAt: sql`${nowSeconds}`.as('created_at'),
           })
           .from(credits)
-          .where(and(eq(credits.teamId, teamId), sql`changes() > 0`))
+          .where(
+            and(eq(credits.organizationId, organizationId), sql`changes() > 0`)
+          )
       )
       .onConflictDoNothing()
       .returning({ id: transactions.id, amount: transactions.amount });
@@ -1192,7 +1210,7 @@ export function createBillingMethods(
       .where(
         and(
           eq(creditReservations.id, reservationId),
-          eq(creditReservations.teamId, teamId),
+          eq(creditReservations.organizationId, organizationId),
           sql`changes() > 0`
         )
       );
@@ -1200,7 +1218,7 @@ export function createBillingMethods(
     const readBackBalance = db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
     const [, , insertedRows, , balanceRows] = await db.batch([
       growHold,
@@ -1232,7 +1250,7 @@ export function createBillingMethods(
     const balanceRow = balanceRows[0];
     const newBalance = micros(balanceRow?.balance ?? 0);
 
-    await emitTeamFunds({
+    await emitOrganizationFunds({
       amountMicros: negateMicros(captured),
       transactionId: inserted.id,
       type: txType,
@@ -1240,7 +1258,7 @@ export function createBillingMethods(
 
     void maybeAutoTopUp().catch((err) => {
       logger.error('Auto top-up failed after reservation capture', {
-        teamId,
+        organizationId,
         balanceMicros: newBalance,
         err,
       });
@@ -1260,10 +1278,10 @@ export function createBillingMethods(
       .where(
         and(
           eq(creditReservations.id, reservationId),
-          eq(creditReservations.teamId, teamId)
+          eq(creditReservations.organizationId, organizationId)
         )
       );
-    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    await emitOrganizationFunds({ amountMicros: ZERO_MICROS });
   }
 
   async function updateAutoTopUpSettings(settings: {
@@ -1292,9 +1310,9 @@ export function createBillingMethods(
     }
 
     await db
-      .insert(teamBillingSettings)
+      .insert(organizationBillingSettings)
       .values({
-        teamId,
+        organizationId,
         autoTopUpEnabled: settings.enabled,
         autoTopUpThresholdMicros: settings.thresholdMicros,
         autoTopUpAmountMicros: settings.amountMicros,
@@ -1302,7 +1320,7 @@ export function createBillingMethods(
         autoTopUpDeclineCode: null,
       })
       .onConflictDoUpdate({
-        target: teamBillingSettings.teamId,
+        target: organizationBillingSettings.organizationId,
         set: {
           autoTopUpEnabled: settings.enabled,
           ...(settings.thresholdMicros !== undefined && {
@@ -1325,7 +1343,7 @@ export function createBillingMethods(
 
     // `== null`, not falsy: a threshold of 0 ("top up when I hit zero") is a
     // legitimate setting, and treating it as "unset" would silently disable
-    // auto-top-up for a team whose settings page says it is on.
+    // auto-top-up for an organization whose settings page says it is on.
     if (
       !settings.autoTopUpEnabled ||
       !settings.stripeCustomerId ||
@@ -1348,7 +1366,7 @@ export function createBillingMethods(
         AUTO_TOPUP_DECLINE_COOLDOWN_MS
     ) {
       logger.debug('Auto top-up skipped: decline cooldown', {
-        teamId,
+        organizationId,
         declineCode: settings.autoTopUpDeclineCode,
         failedAt: settings.autoTopUpFailedAt,
       });
@@ -1360,7 +1378,7 @@ export function createBillingMethods(
       .from(transactions)
       .where(
         and(
-          eq(transactions.teamId, teamId),
+          eq(transactions.organizationId, organizationId),
           sql`json_extract(${transactions.metadata}, '$.autoTopUp') = true`
         )
       )
@@ -1371,7 +1389,7 @@ export function createBillingMethods(
       const elapsed = Date.now() - recentAutoTopUp.createdAt.getTime();
       if (elapsed < AUTO_TOPUP_COOLDOWN_MS) {
         logger.info(
-          `Cooldown active for team ${teamId}, skipping (${Math.round(elapsed / 1000)}s ago)`
+          `Cooldown active for organization ${organizationId}, skipping (${Math.round(elapsed / 1000)}s ago)`
         );
         return;
       }
@@ -1386,12 +1404,12 @@ export function createBillingMethods(
     const stripe = getStripeOrThrow();
     const amountCents = totalCheckoutCents(topUpMicros);
 
-    // Every exit below leaves auto-top-up silently dead for this team while
+    // Every exit below leaves auto-top-up silently dead for this organization while
     // the settings page still advertises it as on — so each one logs (#1099).
     const customer = await stripe.customers.retrieve(settings.stripeCustomerId);
     if (customer.deleted) {
       logger.warn('Auto top-up skipped: Stripe customer deleted', {
-        teamId,
+        organizationId,
         stripeCustomerId: settings.stripeCustomerId,
       });
       return;
@@ -1402,7 +1420,7 @@ export function createBillingMethods(
       customer.invoice_settings?.default_payment_method;
     if (!defaultPaymentMethod) {
       logger.warn('Auto top-up skipped: no default payment method', {
-        teamId,
+        organizationId,
         stripeCustomerId: settings.stripeCustomerId,
       });
       return;
@@ -1426,7 +1444,7 @@ export function createBillingMethods(
         // userId is required by stripeWebhookMiddleware — without it every
         // payment_intent.* webhook for this charge is rejected with a 400.
         metadata: {
-          teamId,
+          organizationId,
           userId,
           type: 'auto_top_up',
         },
@@ -1435,7 +1453,7 @@ export function createBillingMethods(
       const declineCode = stripeDeclineCode(err);
       if (declineCode) {
         logger.error('Auto top-up declined', {
-          teamId,
+          organizationId,
           declineCode,
           amountCents,
         });
@@ -1450,7 +1468,7 @@ export function createBillingMethods(
       // outcomes. Record a cooldown so the next debit/capture does not
       // fire another PaymentIntent at the same card (#1334).
       logger.error('Auto top-up payment did not succeed', {
-        teamId,
+        organizationId,
         status: paymentIntent.status,
         amountCents,
         stripePaymentIntentId: paymentIntent.id,
@@ -1486,7 +1504,7 @@ export function createBillingMethods(
     const [balanceRow] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId))
+      .where(eq(credits.organizationId, organizationId))
       .limit(1);
 
     const runningBalance = micros(balanceRow?.balance ?? 0);
@@ -1496,7 +1514,7 @@ export function createBillingMethods(
         total: sql<number>`COALESCE(SUM(${creditBatches.remainingAmount}), 0)`,
       })
       .from(creditBatches)
-      .where(eq(creditBatches.teamId, teamId));
+      .where(eq(creditBatches.organizationId, organizationId));
 
     const batchTotal = micros(batchRow?.total ?? 0);
 
@@ -1508,18 +1526,18 @@ export function createBillingMethods(
   }
 
   /**
-   * Redeem a gift token for a team. Adds credits via the billing sub-module.
+   * Redeem a gift token for an organization. Adds credits via the billing sub-module.
    * Caller must provide an addCredits function (from billing sub-module) to avoid
    * circular dependency.
    *
-   * Known refusals return `{ status: 'refused' }` (#2033). A code this team
+   * Known refusals return `{ status: 'refused' }` (#2033). A code this organization
    * already holds is "already redeemed" / "once per account" even when the
    * cap is also full — that check comes before the cap, so a single-use code
    * the caller used does not come back as "fully redeemed".
    */
   async function redeemGiftToken(opts: {
     code: string;
-    teamId: string;
+    organizationId: string;
     userId: string;
     addCredits: (
       amountMicros: Microdollars,
@@ -1546,21 +1564,21 @@ export function createBillingMethods(
       return { status: 'refused', reason: 'expired' };
     }
 
-    const teamRedemption = async () => {
+    const organizationRedemption = async () => {
       const [holder] = await db
         .select({ userId: giftTokenRedemptions.userId })
         .from(giftTokenRedemptions)
         .where(
           and(
             eq(giftTokenRedemptions.giftTokenId, token.id),
-            eq(giftTokenRedemptions.teamId, opts.teamId)
+            eq(giftTokenRedemptions.organizationId, opts.organizationId)
           )
         )
         .limit(1);
       return holder ?? null;
     };
 
-    const ownRedemption = await teamRedemption();
+    const ownRedemption = await organizationRedemption();
     if (ownRedemption) {
       return {
         status: 'refused',
@@ -1579,20 +1597,20 @@ export function createBillingMethods(
       return { status: 'refused', reason: 'fully_redeemed' };
     }
 
-    // Unique index on (giftTokenId, teamId) closes the race the pre-check missed.
+    // Unique index on (giftTokenId, organizationId) closes the race the pre-check missed.
     const [inserted] = await db
       .insert(giftTokenRedemptions)
       .values({
         id: generateId(),
         giftTokenId: token.id,
-        teamId: opts.teamId,
+        organizationId: opts.organizationId,
         userId: opts.userId,
       })
       .onConflictDoNothing()
       .returning();
 
     if (!inserted) {
-      const holder = await teamRedemption();
+      const holder = await organizationRedemption();
       return {
         status: 'refused',
         reason: holder

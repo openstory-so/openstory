@@ -71,14 +71,14 @@ Inside a product domain: root files are client-safe (catalogs, pure logic, zod);
 - **Import boundaries are one lint rule per question** (`scripts/lint/restricted-imports.ts`, plugin `boundaries`). oxlint overrides replace a rule's whole config for the files they match, so concerns sharing one rule key cannot be layered — every override would have to restate the others. Instead each concern is its own rule, on for every file, and each override in `.oxlintrc.json` is exactly "these files may do X":
   - `boundaries/no-server-imports` — **client/server seam (#1445).** `src/**/server/**` is server-only; lifted for server code (`src/**/server/**`, `src/**/*.fn.ts` — the compiler strips `.handler()`, `src/routes/api/**`, the root-level server-only routes, `*.test.ts`, scripts). `*.test.tsx` and stories are NOT lifted: a React test or story only ever needs `import type` from server code. Transitive backstop: `src/platform/client-server-boundary.test.ts` (pre-commit). Do not punch `!` holes in the pattern: a file that needs server code belongs under `server/` or is a `*.fn.ts`; a file that mixes halves is split, not exempted. One deliberate leak shape remains: a `createIsomorphicFn().server(…)` body may value-import server modules under an `oxlint-disable-next-line boundaries/no-server-imports` (`src/billing/billing-observability.ts`, `routes/__root.tsx`), because the compiler strips it.
   - `boundaries/no-sql` — **SQL is written in the db layer only.** `drizzle-orm` query builders are lifted for `src/**/server/db/**` (the scoped-db modules), the schema, the seeds, scripts, `*.test.ts`, and the pricing/cron jobs that still read the raw handle (collapsing into one db-layer module under #1535); `drizzle-orm/zod` validators are fine anywhere. A domain module that needs a query adds a method to its scoped-db module and calls it through `scopedDb` — it does not take a `Database` handle as a parameter.
-  - `boundaries/no-raw-db` and `boundaries/no-scoped-factory` — **raw db access is allowlisted twice.** `#db-client` is lifted only for the raw-handle readers (the scoped-db factory, the Better Auth adapter, the pricing/cron jobs, the seeds); `createScopedDb` / `createSystemAdminScopedDb` only for the two request middlewares, the MCP server, and the workflow base. Even the allowlisted files keep table SQL out where they can: the sign-up hook calls `createDefaultTeam`, the same bootstrap `ensureUserAndTeam` uses. `src/platform/server/db/db-access-allowlist.test.ts` pins both lists by resolving every value import, which catches the relative-path form the lint rule cannot see. Everything team-scoped goes through `context.scopedDb`.
+  - `boundaries/no-raw-db` and `boundaries/no-scoped-factory` — **raw db access is allowlisted twice.** `#db-client` is lifted only for the raw-handle readers (the scoped-db factory, the Better Auth adapter, the pricing/cron jobs, the seeds); `createScopedDb` / `createSystemAdminScopedDb` only for the two request middlewares, the MCP server, and the workflow base. Even the allowlisted files keep table SQL out where they can: the sign-up hook calls `createDefaultOrganization` in `db/scoped.ts`. `src/platform/server/db/db-access-allowlist.test.ts` pins both lists by resolving every value import, which catches the relative-path form the lint rule cannot see. Everything organization-scoped goes through `context.scopedDb`.
   - `boundaries/platform-domain-blind` — on for `src/platform/**` only (see Project Structure).
   - All of them ignore `import type`; the inline `import { type X }` form is banned by `typescript/no-import-type-side-effects` because it leaves a side-effect import that ships the whole graph.
 
 - **Generated media is stored in the step that generated it (#1645).** A via can answer with inline base64 and no URL at all (native Gemini always; BytePlus can), and Workflows checkpoints every `step.do` result at 1 MiB — so a separate upload step would make the image itself ride the checkpoint (#1638). `generateImageSoftening` / `generateImageWithContentRetry` take a `store` callback that runs inside the generate step; direct `generateImageWithProvider` callers do their upload in the same `step.do`. Only the small `{ url, path }` record crosses. Use `uploadResponse` to stream a body into the binding (`FixedLengthStream` when a `Content-Length` is present — `r2.put` rejects an unknown-length stream). Sheets go through `storeGeneratedPng`; shot stills through `uploadImageFromUrl` — both open a `data:` result, which workerd `fetch` cannot.
 - **Server JS is heap (#1893).** workerd holds the source of every server chunk, lazy ones included, on the 128 MB isolate from boot. So the SSR build is minified (names kept), and `scripts/latin1-server-chunks.ts` escapes chars above U+00FF: one em-dash stores a whole chunk at two bytes per char. Keep both on. A new server dependency costs its size in memory on every instance. Measure with `scripts/measure-worker-heap.ts`.
 - Anonymous-first → upgrade to save work.
-- Team-based resources (sequences, styles, characters).
+- Organization-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.
 - **Comments are one line, as terse as possible.** Rationale and history go in `docs/architecture/`, not the code.
 
@@ -98,19 +98,21 @@ All API routes use TanStack Start server handlers. Standard shape:
 // src/routes/api/example/$id.ts
 export const Route = createFileRoute('/api/example/$id')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ params, request, context }) => {
         try {
           const input = schema.parse(await request.json());
-          const { user, teamId } = context;
+          const { user, organizationId } = context;
 
-          const record = await db.insert(table).values({ ...input, teamId });
+          const record = await db
+            .insert(table)
+            .values({ ...input, organizationId });
 
           // Trigger a durable workflow (see Workflow Pattern below)
           const workflowRunId = await triggerWorkflow('/image', {
             userId: user.id,
-            teamId,
+            organizationId,
             ...input,
           });
 
@@ -128,7 +130,7 @@ export const Route = createFileRoute('/api/example/$id')({
 });
 ```
 
-Steps: 1) validate input · 2) auth via `authWithTeamRequestMiddleware` (user/teamId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
+Steps: 1) validate input · 2) auth via `authWithOrganizationRequestMiddleware` (user/organizationId on `context`) · 3) DB writes (only here) · 4) trigger workflow · 5) standardized response.
 
 ## Workflow Pattern
 
@@ -147,7 +149,7 @@ the QStash-era `label` / `retries` / `retryDelay` were no-ops and are gone
 ```typescript
 const workflowRunId = await triggerWorkflow('/image', {
   userId,
-  teamId,
+  organizationId,
   prompt,
   ...params,
 });
@@ -168,7 +170,7 @@ and must be wired in four places (a test in
    binding so the sequence chip can status a child whose instance id has no
    trigger key (`continue:…`, `element-sheets:…`).
 
-The base class validates `userId`/`teamId` on the payload, builds a
+The base class validates `userId`/`organizationId` on the payload, builds a
 `ScopedDb`, and sanitizes/handles failures. Subclasses implement
 `runImpl(event, step, scopedDb)`, run steps via
 `step.do('step-name', async () => { ... })` (durable, auto-retried), and write
@@ -218,7 +220,7 @@ lines here are only the traps that bite without warning. **Read the doc before
 changing the area, and update it in the same PR.**
 
 - **Publishing to social (#1267)** — `docs/architecture/social-publishing.md`.
-  Opt-in per team (`upload_post` key, no platform fallback); no key means no
+  Opt-in per organization (`upload_post` key, no platform fallback); no key means no
   menu item. Only a definitive 4xx (or a refusal before sending) is
   `not_sent` — a 5xx, dropped connection or lost reply is `unconfirmed` and
   is never re-sent automatically; a failed pre-send lookup sends nothing.
@@ -227,7 +229,7 @@ changing the area, and update it in the same PR.**
   sequence: always go through `usesStartFrame()` / `rendersReferenceOnly()`,
   never read `sequence.generateStartFrames` raw
   (`reference-only-is-per-shot.test.ts`). `usesStartFrame` is required and
-  never defaulted (`!undefined` is `true`). Where a team's keys are reachable
+  never defaulted (`!undefined` is `true`). Where an organization's keys are reachable
   ask `canRenderReferenceOnly(model, credentials)`, not the model-only
   `supportsReferenceOnlyMotion`.
 - **Staleness graph** — `docs/architecture/prompt-staleness-dependency-graph.md`
@@ -254,8 +256,8 @@ changing the area, and update it in the same PR.**
   (#2065): a look's `styling` is already resolved (`effectiveStyling`), so
   never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
   show or prompt with, and copy a look version forward from `storedStyling`.
-- **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
-  character belongs to the team; a sequence uses it through a `sequence_cast`
+- **Organization characters (#2017)** — `docs/architecture/organization-characters.md`. A
+  character belongs to the organization; a sequence uses it through a `sequence_cast`
   link that holds only the script id, the soft remove and the `attached`
   flag. There are no per-sequence versions, sheets or voices: every sequence
   reads the character's current bible, voice, looks and look sheets, and an
@@ -266,10 +268,10 @@ changing the area, and update it in the same PR.**
   `sequenceId` only for the link's own fields or the event it writes; a write
   made from no sequence (the Characters page, #2065) passes `null` there and
   writes no event. A sheet or voice run started from no sequence
-  (`castAccessMiddleware`, `sequence: null`) stores under the team and
+  (`castAccessMiddleware`, `sequence: null`) stores under the organization and
   reports on the character's own channel (`castChannelId`). Analysis never rewrites a character the writer attached
   or another sequence has cast: ask `analysisMayNotRewrite`, the one place
-  that rule lives. There is no library flag (#2065): every team character is
+  that rule lives. There is no library flag (#2065): every organization character is
   listed and attachable, and stays when its last sequence lets it go. A voice
   is held until the character is deleted; removing a character from a
   sequence or archiving a sequence releases nothing. A delete is soft
@@ -277,8 +279,8 @@ changing the area, and update it in the same PR.**
   included, casts it (`getCastInAnySequenceOrArchive`). Nothing cascades
   from `characters`: a hard delete goes through `deleteCharactersStatements`
   and is refused while it would strand a saved voice.
-- **Team locations (#1695)** — `docs/architecture/team-locations.md`. A
-  location belongs to the team; a sequence uses it through a
+- **Organization locations (#1695)** — `docs/architecture/organization-locations.md`. A
+  location belongs to the organization; a sequence uses it through a
   `sequence_location_links` row that holds only the script id, the first
   mention, the soft remove and the `attached` flag. There is no location
   library, no per-sequence sheet and no public template: every sequence
@@ -289,7 +291,7 @@ changing the area, and update it in the same PR.**
   photos and the image model. A method takes a `sequenceId` only for the
   link's own fields or the event it writes; a write made from no sequence
   (the Locations page) passes `null` there and writes no event. A sheet run
-  started from no sequence stores under the team and reports on the
+  started from no sequence stores under the organization and reports on the
   location's own channel (`locationChannelId`). A match is a link, never a
   copy: analysis binds a script location to one the writer picked
   (`boundTo`), and Replace re-points the link (`locations.replace`); neither
@@ -344,7 +346,7 @@ changing the area, and update it in the same PR.**
   `src/sequences/ui/theatre/playback-clips.ts`. A CLI cut is shared without
   the CLI (#2127): `stitch bundle` writes a static folder, `stitch share`
   uploads it (`POST /api/v1/stitches`, media names only, rewritten to
-  `/r2/stitches/<team>/<id>/…`, then one PUT per file, then
+  `/r2/stitches/<organization>/<id>/…`, then one PUT per file, then
   `POST …/$id/publish`, which checks every file is there and every image
   for a real person before the row is published) and `/stitch/$id` plays
   a published row with no auth. `create_stitch` on MCP stores through
@@ -372,12 +374,12 @@ Rules that hold for every via:
 
 Read the via's doc before touching it, and update it in the same PR:
 
-- **BytePlus Ark** — `docs/architecture/byteplus-ark.md`. Platform key only (no `'byteplus'` on `API_KEY_PROVIDERS`). Ark is not fal-shaped — `bun motion:codegen` does not apply, and Ark rejects frame roles mixed with reference roles. Quotas and the ~50 portrait-asset slots are per ACCOUNT, shared by every team: CreateAsset is paced by the `BytePlusGovernor` DO, leases are per (still, run), and a parent never sweeps its fan-out's leases. Every user upload is classified for a real person first (`classifyUpload` / `requireUploadRights`); `isHuman` never comes from the client.
+- **BytePlus Ark** — `docs/architecture/byteplus-ark.md`. Platform key only (no `'byteplus'` on `API_KEY_PROVIDERS`). Ark is not fal-shaped — `bun motion:codegen` does not apply, and Ark rejects frame roles mixed with reference roles. Quotas and the ~50 portrait-asset slots are per ACCOUNT, shared by every organization: CreateAsset is paced by the `BytePlusGovernor` DO, leases are per (still, run), and a parent never sweeps its fan-out's leases. Every user upload is classified for a real person first (`classifyUpload` / `requireUploadRights`); `isHuman` never comes from the client.
 - **ElevenLabs (character voices, dialogue audio, music, fitting the section)** — `docs/architecture/elevenlabs.md`. Platform key only. Music is native too (`elevenlabs-music` / `music_v1`, never the retired `fal-ai/elevenlabs/music` proxy), and its inline bytes are parked in R2 before the step returns. A saved voice is an account-wide slot: free it only through `releaseVoiceIfUnreferenced` (provider delete first, row write second), never a bare delete. Voices are versioned with an explicit `source`; a released version cannot be selected. Dialogue lines live on the SHOT (`shot_dialogue_versions`; speaking order is shot order, then line order). What a shot says is resolved ONLY through `shotDialogueResolver` — never read or write `shot_prompt_versions.dialogue` (unwritten since #1657; the resolver's fallback for old rows), and never treat the motion-prompt LLM's `dialogue` output as lines; `motionPromptFromVersion` takes the resolved dialogue as a required argument. Speeches (`dialogue_speeches`) are whole files, one per call, never joined — the one file we make is a mic take (#1802, `DialogueTakeWorkflow`), a recorded line spliced into one shot's current section, which is its own speech. A shot's audio is its selected `shot_dialogue_sections` row — a time range of a speech — and `shots.audioClips` mirrors its cut. A scene is recorded ONCE: batch-style triggers send `dialogueSpeech` (`snapshotBatchDialogue`) and the batch records before it fans out — never let N children each record a window. A speech lands through a claim (`shot_dialogue_claims`): `appendSpeech` promotes pointer + `shots.audioClips` in one transaction guarded by the claim, and user writes demote live claims in their own batch — never write a shot's dialogue clip on its own. Record wide, adopt narrow: the call speaks the whole conversation, but never re-point a shot whose lines did not move. The cut (`cutAudioSection`) must stay ranged + streamed — never `readStorageObject` a whole speech. Voice changes fold into the video manifest (`audioSourceKey`, `audioClipIds`, `referenceKeys`), not the motion-prompt hash, and only when present so no stored digest moves. No time-compression rung when fitting a section. Bytes never cross a `step.do`.
 - **Seed Speech (Seed Audio voices + dialogue, #1765)** — `docs/architecture/seed-voices.md`. Platform key only (`SEED_SPEECH_API_KEY`). New character voices are Seed voices when Seed AND ElevenLabs are configured (isolation + Scribe run on ElevenLabs); a voice keeps its provider for life — `seed:` ids record on Seed, the rest on ElevenLabs, never both in one call; ask `voiceProviderOf(voiceId)`, never read the prefix. Every Seed take is transcribed and its lines found by letter alignment (`recordCheckedTake`, `take-check.ts`) — never by word lists, never by Seed's subtitles. Normal spelling only in Seed prompts.
 - **Native Grok (xAI)** — `docs/architecture/media-vias.md`. xAI speaks the Responses API; `resolveNativeGrokModel` keeps `llm-client` and the adapter on the same route.
 - **Native Google (Gemini)** — `docs/architecture/media-vias.md`. Omni Flash submit must request `response_format.delivery: "uri"` and must NOT pass top-level `duration`/`size`; stills go inline as base64 (`toVisionImageSource(..., { inline: true })`), never as a fetched URI.
-- **LLMTR gateway** — `docs/architecture/media-vias.md`. Team BYOK only. A registry id absent from `LLMTR_TEXT_MODELS` is not routable — never guess a neighbour slug, never send the LLMTR key to OpenRouter, and send native wire names, not OpenRouter plugins.
+- **LLMTR gateway** — `docs/architecture/media-vias.md`. Organization BYOK only. A registry id absent from `LLMTR_TEXT_MODELS` is not routable — never guess a neighbour slug, never send the LLMTR key to OpenRouter, and send native wire names, not OpenRouter plugins.
 - **LLMTR must not block model upgrades.** Missing support, an unreachable catalog, or unverified LLMTR pricing is not a reason to delay an upgrade or keep its PR in draft. Put unsupported or unverified ids in `LLMTR_UNMAPPED_MODEL_IDS` so existing OpenRouter/fal resolution handles them; add LLMTR mappings and rates only after verification. Keep LLMTR last in Settings → API Keys, below OpenRouter.
 - **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth. Pre-flight estimates read the stored modelschemas rate card on that row (#1605); a refusal stays null and never copies a sibling endpoint's price.
 
@@ -437,9 +439,9 @@ This destroyed `team_members`, `session`, `account`, and `passkey` in production
    - Copy out, drop, **create the table again** and copy back with named columns. Not drizzle's rename, which fails at commit.
    - The pattern drops any trigger on the rebuilt table without a word (none exist today).
 
-   Prove it before merging, on a copy of production and on a scratch remote D1. What has been run for the worked example: `wrangler d1 migrations apply --local` on local data and on a copy of production, the PR-preview path on an empty remote D1, and on 2026-10-07 `migrations apply --remote` on a throwaway remote D1 loaded with a production export (188,226 rows; all eight character tables identical in count, no foreign key violations, both files recorded). Still local only: the out-of-order control, the guard stopping file 2 when file 1 has not run. Details: `docs/architecture/team-characters.md` § Migrations.
+   Prove it before merging, on a copy of production and on a scratch remote D1. What has been run for the worked example: `wrangler d1 migrations apply --local` on local data and on a copy of production, the PR-preview path on an empty remote D1, and on 2026-10-07 `migrations apply --remote` on a throwaway remote D1 loaded with a production export (188,226 rows; all eight character tables identical in count, no foreign key violations, both files recorded). Still local only: the out-of-order control, the guard stopping file 2 when file 1 has not run. Details: `docs/architecture/organization-characters.md` § Migrations.
 
-3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `teams`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code.
+3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `organization`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code. The Better Auth `member` and `invitation` rows cascade from `organization` and `user` because that is what the plugin's generated schema does, and it matches the existing `team_members` foreign keys.
 
 **Loading a D1 export.** A whole `wrangler d1 export` file does not load back: a child's rows come before its parent table exists (`no such table`). Export twice, `--no-data` then `--no-schema`, and load the schema file first. On **local** D1 the data file then loads as it is. On **remote** D1 it still fails with a foreign key error: the remote import is evidently not one transaction, so the pragma at the top of the file does not cover it. Put the rows in parent-table-first order before loading (no table in this schema references itself or forms a loop, so such an order exists; `scripts/reorder-d1-dump.ts` does the reordering, but its table list is an old snapshot and it stops on a table it does not know, so regenerate the list first). Verified 2026-10-07 on local D1 and on a remote D1 with a production export.
 
@@ -487,7 +489,7 @@ See `src/ui/` and any domain's `ui/` for the house pattern.
 - Services/utils: co-located (`service.test.ts`).
 - Focus: business logic, not React components.
 - DB: a test that needs a database calls `createTestDb()` (`src/platform/server/db/test-d1.ts`): in-process SQLite behind the D1 API, so it answers like D1 (no `rowsAffected`, at most 100 bound variables per query, foreign keys always on, no `BEGIN`). Never build a libsql client in a test. Code that calls `getDb()` gets it via `vi.doMock('#db-client', …)`. ULID primary keys.
-- Workflows: mock workflow context + AI calls; pass auth (userId/teamId) through context.
+- Workflows: mock workflow context + AI calls; pass auth (userId/organizationId) through context.
 - `vitest.config.ts` is **self-contained** — it does not extend `vite.config.ts`, because the Cloudflare Vite plugin rejects the SSR-externals shape Vitest injects.
 
 **Module-mocking pattern** (preserves the runtime-ordered semantics bun:test's `mock.module` had — `vi.doMock` is NOT hoisted, so dynamic-import the target after mocking):

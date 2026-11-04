@@ -37,7 +37,7 @@ const gridColumns = () =>
         : 2;
 
 /**
- * A team library as a grid of cards (#2017, #1695). Everything the team has
+ * An organization library as a grid of cards (#2017, #1695). Everything the organization has
  * is listed, so the rows are virtualized against the page's scroller.
  */
 export function LibraryVirtualGrid<T extends { id: string }>({

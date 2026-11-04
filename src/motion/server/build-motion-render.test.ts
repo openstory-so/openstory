@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { buildMotionRender } from './build-motion-render';
 import type { MotionRenderShot } from './build-motion-render';
 
-const context = { userId: 'user', teamId: 'team', sequenceId: 'sequence' };
+const context = {
+  userId: 'user',
+  organizationId: 'org',
+  sequenceId: 'sequence',
+};
 const shot = (shotId: string, fullPrompt: string): MotionRenderShot => ({
   shotId,
   sceneId: 'scene',

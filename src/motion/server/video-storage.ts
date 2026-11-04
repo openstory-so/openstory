@@ -6,6 +6,7 @@
 import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   r2KeyFromUrl,
 } from '@/platform/server/storage/buckets';
@@ -23,7 +24,7 @@ const logger = getLogger(['openstory', 'motion', 'video-storage']);
 
 type UploadVideoOptions = {
   videoUrl: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
   sequenceTitle: string;
@@ -134,7 +135,7 @@ export async function uploadVideoToStorage(
   try {
     const {
       videoUrl,
-      teamId,
+      organizationId,
       sequenceId,
       shotId,
       sequenceTitle,
@@ -156,7 +157,7 @@ export async function uploadVideoToStorage(
     const uploaded = await uploadVideoFromUrl(
       videoUrl,
       (extension) =>
-        `teams/${teamId}/sequences/${sequenceId}/frames/${shotId}/${sequenceSlug}_${sceneSlug}_${shortHash}_openstory.${extension}`,
+        `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${sequenceSlug}_${sceneSlug}_${shortHash}_openstory.${extension}`,
       { googleApiKey }
     );
     return { success: true, url: uploaded.url, path: uploaded.path };

@@ -81,7 +81,7 @@ function makeScopedDb(siblings: VideoVariant[]) {
   const zeroReservation = vi.fn(async () => {});
   // stub covering only the surface the module touches
   const scopedDb = asStub<ScopedDb>({
-    teamId: 'team-1',
+    organizationId: 'org-1',
     videoVariants: { listBySegment: vi.fn(async () => siblings) },
     shotPromptVersions: {
       getByIdForShot: vi.fn(async () => ({ text: 'the draft prompt' })),
@@ -175,7 +175,7 @@ describe('renderDraftAtQuality', () => {
       '/motion',
       expect.objectContaining({
         userId: 'u1',
-        teamId: 'team-1',
+        organizationId: 'org-1',
         sequenceId: 'seq-1',
         shotId: 'shot-1',
         sceneId: 'scene-1',

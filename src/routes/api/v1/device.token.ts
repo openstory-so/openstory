@@ -6,7 +6,7 @@
  * answers 428 `authorization_pending`; `?wait` holds the request open (same
  * convention as sequence status) so an agent needn't busy-poll. Polling faster
  * than the advertised `interval` without `?wait` gets 429 `slow_down`.
- * Terminal: 200 `{ api_key, team }` (once — the code is consumed),
+ * Terminal: 200 `{ api_key, organization }` (once — the code is consumed),
  * 403 `access_denied`, 410 `expired_token` (also for unknown/used codes).
  */
 
@@ -89,7 +89,7 @@ export const Route = createFileRoute('/api/v1/device/token')({
               return Response.json(
                 {
                   api_key: value.apiKey,
-                  team: value.team,
+                  organization: value.organization,
                   _links: {
                     root: {
                       href: API_V1_BASE,

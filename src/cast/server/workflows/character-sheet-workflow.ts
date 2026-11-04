@@ -20,7 +20,10 @@ import type { ImageGenerationParams } from '@/stills/server/image-generation';
 import { buildCharacterSheetPrompt } from '@/cast/character-prompt';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getGenerationChannel } from '@/platform/realtime';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  castStorageDir,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
@@ -98,9 +101,6 @@ async function landSheet(
     snapshotInputHash: input.snapshotInputHash,
   });
 }
-
-/** Where a run's sheet is stored: under its sequence, or the team's own. */
-const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
   protected override readonly failureLabel = 'Character sheet';
@@ -185,10 +185,10 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Destination is resolved BEFORE generating, because the image is stored
     // inside the generating step (#1645). A run from the Characters page has
-    // no sequence (#2017): it stores under the team and reports on the
+    // no sequence (#2017): it stores under the organization and reports on the
     // character's own channel.
     const characterDbId = input.characterDbId;
-    const teamId = input.teamId;
+    const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channel = getGenerationChannel(
       castChannelId(sequenceId, characterDbId)
@@ -216,7 +216,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         storeGeneratedPng(
           result.imageUrls[0],
           STORAGE_BUCKETS.CHARACTERS,
-          `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${generateId()}.png`
+          `${castStorageDir(organizationId, sequenceId, 'characters', characterDbId)}/${generateId()}.png`
         ),
       onRetry: async (retry) => {
         await channel.emit('generation.character-sheet:progress', {
@@ -235,7 +235,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
 
-    // Deduct credits for image generation (skip if team used own fal key)
+    // Deduct credits for image generation (skip if organization used own fal key)
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
         scopedDb,
@@ -263,7 +263,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // double-insert.
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         assetKind: 'character_sheet',
         assetId: characterDbId,
@@ -305,7 +305,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       await triggerSheetPortrait(
         {
           userId: input.userId,
-          teamId,
+          organizationId,
           sequenceId: sequenceId ?? undefined,
           subject: {
             kind: 'character',
@@ -314,11 +314,16 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           },
           versionId: reconcileOutcome.versionId,
           sheetUrl: storageResult.url,
-          storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
+          storageDir: castStorageDir(
+            organizationId,
+            sequenceId,
+            'characters',
+            characterDbId
+          ),
         },
         await scopedDb.liveRead.compliance.listEnforcementFor(
           input.userId,
-          teamId
+          organizationId
         )
       );
     });

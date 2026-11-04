@@ -9,7 +9,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 // Enum values as constants (SQLite doesn't have native enums)
 const TRANSACTION_TYPES = [
@@ -21,7 +21,7 @@ const TRANSACTION_TYPES = [
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 /**
- * Team credit balance, in microdollars. Decremented in place on every
+ * Organization credit balance, in microdollars. Decremented in place on every
  * deduction (see `deductCredits`), not derived from the ledger.
  *
  * The CHECK is the backstop under the application-level gates
@@ -33,10 +33,10 @@ export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 export const credits = snakeCase.table(
   'credits',
   {
-    teamId: text()
+    organizationId: text()
       .primaryKey()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     balance: integer().default(0).notNull(),
     updatedAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -52,9 +52,9 @@ export const transactions = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: text().references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -77,19 +77,22 @@ export const transactions = snakeCase.table(
   (table) => [
     index('idx_transactions_created_at').on(table.createdAt),
     index('idx_transactions_type').on(table.type),
-    // Team ledger newest first — the history page (#1881). Also serves every
-    // team_id lookup, so there is no single-column team index.
-    index('idx_transactions_team_created').on(table.teamId, table.createdAt),
-    // Team ledger by type, newest first — the typed history page (#1881).
-    index('idx_transactions_team_type_created').on(
-      table.teamId,
+    // Organization ledger newest first — the history page (#1881). Also serves every
+    // organization_id lookup, so there is no single-column organization index.
+    index('idx_transactions_organization_created').on(
+      table.organizationId,
+      table.createdAt
+    ),
+    // Organization ledger by type, newest first — the typed history page (#1881).
+    index('idx_transactions_organization_type_created').on(
+      table.organizationId,
       table.type,
       table.createdAt
     ),
     index('idx_transactions_user_id').on(table.userId),
     uniqueIndex('idx_transactions_stripe_session_id').on(table.stripeSessionId),
-    uniqueIndex('idx_transactions_team_idempotency_key')
-      .on(table.teamId, table.idempotencyKey)
+    uniqueIndex('idx_transactions_organization_idempotency_key')
+      .on(table.organizationId, table.idempotencyKey)
       .where(sql`${table.idempotencyKey} IS NOT NULL`),
   ]
 );
@@ -107,9 +110,9 @@ export const creditReservations = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: text().references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -123,12 +126,12 @@ export const creditReservations = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    uniqueIndex('idx_credit_reservations_team_idempotency_key').on(
-      table.teamId,
+    uniqueIndex('idx_credit_reservations_organization_idempotency_key').on(
+      table.organizationId,
       table.idempotencyKey
     ),
-    index('idx_credit_reservations_team_expires').on(
-      table.teamId,
+    index('idx_credit_reservations_organization_expires').on(
+      table.organizationId,
       table.expiresAt
     ),
     check(
@@ -138,26 +141,29 @@ export const creditReservations = snakeCase.table(
   ]
 );
 
-export const teamBillingSettings = snakeCase.table('team_billing_settings', {
-  teamId: text()
-    .primaryKey()
-    .notNull()
-    .references(() => teams.id, { onDelete: 'cascade' }),
-  stripeCustomerId: text(),
-  autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
-  autoTopUpThresholdMicros: integer().default(5_000_000),
-  autoTopUpAmountMicros: integer().default(100_000_000),
-  /**
-   * Set when an off-session auto-top-up PaymentIntent is declined or
-   * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
-   * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
-   */
-  autoTopUpFailedAt: integer({ mode: 'timestamp' }),
-  autoTopUpDeclineCode: text(),
-  updatedAt: integer({ mode: 'timestamp' })
-    .$defaultFn(() => new Date())
-    .notNull(),
-});
+export const organizationBillingSettings = snakeCase.table(
+  'organization_billing_settings',
+  {
+    organizationId: text()
+      .primaryKey()
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    stripeCustomerId: text(),
+    autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
+    autoTopUpThresholdMicros: integer().default(5_000_000),
+    autoTopUpAmountMicros: integer().default(100_000_000),
+    /**
+     * Set when an off-session auto-top-up PaymentIntent is declined or
+     * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
+     * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
+     */
+    autoTopUpFailedAt: integer({ mode: 'timestamp' }),
+    autoTopUpDeclineCode: text(),
+    updatedAt: integer({ mode: 'timestamp' })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }
+);
 
 /**
  * Retired with the welcome grant (#1883): nothing reads or writes it. Kept
@@ -171,9 +177,9 @@ export const welcomeCardClaims = snakeCase.table(
       .primaryKey()
       .notNull(),
     fingerprint: text().notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
@@ -200,9 +206,9 @@ export const creditBatches = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     originalAmount: integer().notNull(),
     remainingAmount: integer().notNull(),
     source: text().$type<CreditBatchSource>().notNull(),
@@ -215,9 +221,9 @@ export const creditBatches = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_credit_batches_team_id').on(table.teamId),
-    index('idx_credit_batches_team_remaining_created').on(
-      table.teamId,
+    index('idx_credit_batches_organization_id').on(table.organizationId),
+    index('idx_credit_batches_organization_remaining_created').on(
+      table.organizationId,
       table.remainingAmount,
       table.createdAt
     ),
@@ -226,4 +232,6 @@ export const creditBatches = snakeCase.table(
 );
 
 // Type exports
-export type TeamBillingSetting = InferSelectModel<typeof teamBillingSettings>;
+export type OrganizationBillingSetting = InferSelectModel<
+  typeof organizationBillingSettings
+>;

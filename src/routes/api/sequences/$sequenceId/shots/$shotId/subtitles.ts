@@ -8,7 +8,7 @@
  */
 
 import { handleApiError, NotFoundError } from '@/platform/errors';
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { loadShotSubtitlesVtt } from '@/shots/server/shot-subtitles';
 import { createFileRoute } from '@tanstack/react-router';
 
@@ -16,7 +16,7 @@ export const Route = createFileRoute(
   '/api/sequences/$sequenceId/shots/$shotId/subtitles'
 )({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context }) => {
         try {

@@ -1,6 +1,6 @@
 import type { Style } from '@/platform/server/db/schema';
 import { ConflictError, NotFoundError } from '@/platform/errors';
-import type { TeamLocation } from '@/cast/server/db/locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the runtime side-effecting deps so resolve.ts (and the safe-fetch ingest
@@ -29,7 +29,7 @@ const {
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
@@ -62,7 +62,9 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
   };
 }
 
-function makeLocation(overrides: Partial<TeamLocation> = {}): TeamLocation {
+function makeLocation(
+  overrides: Partial<OrganizationLocation> = {}
+): OrganizationLocation {
   return {
     id: 'loc-1',
     name: 'Rooftop Bar',
@@ -110,7 +112,7 @@ describe('resolveStyle', () => {
     );
   });
 
-  it('throws when the team has no styles at all', async () => {
+  it('throws when the organization has no styles at all', async () => {
     await expect(
       resolveStyle({ styles: { list: async () => [] } }, undefined)
     ).rejects.toThrow(/No styles are available/);
@@ -119,7 +121,7 @@ describe('resolveStyle', () => {
 
 function library(rows: Array<{ id: string; name: string }>) {
   return {
-    listTeam: async () =>
+    listOrganization: async () =>
       rows.map((row) => ({
         ...row,
         physicalDescription: null,
@@ -136,7 +138,7 @@ function library(rows: Array<{ id: string; name: string }>) {
 describe('resolveCharacterIds', () => {
   const empty = library([]);
 
-  it('resolves an existing team character by name and id', async () => {
+  it('resolves an existing organization character by name and id', async () => {
     const createCharacter = vi.fn();
     const ids = await resolveCharacterIds(
       {
@@ -190,7 +192,7 @@ describe('resolveCharacterIds', () => {
     expect(ids).toEqual(['c-ada']);
   });
 
-  it('refuses an inline create whose name a team character has, naming its id', async () => {
+  it('refuses an inline create whose name an organization character has, naming its id', async () => {
     const createCharacter = vi.fn();
     await expect(
       resolveCharacterIds(
@@ -233,28 +235,28 @@ describe('resolveCharacterIds', () => {
 });
 
 describe('resolveLocationIds', () => {
-  // `listTeam` is the team's own locations: another team's never appear.
-  const team = [
+  // `listOrganization` is the organization's own locations: another organization's never appear.
+  const existing = [
     makeLocation({ id: 'l-roof', name: 'Rooftop Bar' }),
     makeLocation({ id: 'l-pier-1', name: 'Pier' }),
     makeLocation({ id: 'l-pier-2', name: 'pier' }),
   ];
   const deps = (createLocation = vi.fn()) => ({
-    locations: { listTeam: async () => team },
+    locations: { listOrganization: async () => existing },
     createLocation,
   });
 
-  it('names a team location by id', async () => {
+  it('names an organization location by id', async () => {
     expect(await resolveLocationIds(deps(), ['l-roof'])).toEqual(['l-roof']);
   });
 
-  it('names a team location by name, forgivingly, and dedupes', async () => {
+  it('names an organization location by name, forgivingly, and dedupes', async () => {
     expect(
       await resolveLocationIds(deps(), ['rooftop-bar', 'Rooftop Bar', 'l-roof'])
     ).toEqual(['l-roof']);
   });
 
-  it('asks for the id when two team locations share the name', async () => {
+  it('asks for the id when two organization locations share the name', async () => {
     await expect(resolveLocationIds(deps(), ['Pier'])).rejects.toSatisfy(
       (error: unknown) => {
         expect(error).toBeInstanceOf(ConflictError);
@@ -268,9 +270,9 @@ describe('resolveLocationIds', () => {
     ]);
   });
 
-  it('does not find another team\u2019s id, or a name nothing has', async () => {
+  it('does not find another organization\u2019s id, or a name nothing has', async () => {
     await expect(
-      resolveLocationIds(deps(), ['l-other-team'])
+      resolveLocationIds(deps(), ['l-other-organization'])
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(resolveLocationIds(deps(), ['Beach'])).rejects.toThrow(
       'No location found matching "Beach".'
@@ -291,7 +293,7 @@ describe('resolveLocationIds', () => {
     expect(createLocation).toHaveBeenCalledWith({ name: 'Beach' });
   });
 
-  it('reuses the team location of that name instead of creating a duplicate', async () => {
+  it('reuses the organization location of that name instead of creating a duplicate', async () => {
     const createLocation = vi.fn();
     expect(
       await resolveLocationIds(deps(createLocation), [{ name: 'Rooftop Bar' }])
@@ -318,32 +320,33 @@ describe('ingestElements', () => {
   });
 
   it('returns [] for no elements', async () => {
-    expect(await ingestElements('team-1', undefined)).toEqual([]);
-    expect(await ingestElements('team-1', [])).toEqual([]);
+    expect(await ingestElements('organization-1', undefined)).toEqual([]);
+    expect(await ingestElements('organization-1', [])).toEqual([]);
   });
 
   it('uploads to the permanent uploads prefix and defers vision', async () => {
-    const [upload] = await ingestElements('team-1', [
+    const [upload] = await ingestElements('organization-1', [
       { url: 'https://host/logo.png', filename: 'logo.png', token: 'LOGO' },
     ]);
 
     expect(uploadFileMock).toHaveBeenCalledWith(
       'elements',
-      'team-1/uploads/gen-1.png',
+      'organization-1/uploads/gen-1.png',
       expect.any(Uint8Array),
       { contentType: 'image/png' }
     );
     // No description/consistencyTag: vision runs in the element-vision workflow.
     expect(upload).toEqual({
-      tempPath: 'elements/team-1/uploads/gen-1.png',
-      tempPublicUrl: 'https://cdn.test/elements/team-1/uploads/gen-1.png',
+      tempPath: 'elements/organization-1/uploads/gen-1.png',
+      tempPublicUrl:
+        'https://cdn.test/elements/organization-1/uploads/gen-1.png',
       filename: 'logo.png',
       token: 'LOGO',
     });
   });
 
   it('derives the extension from the response content-type', async () => {
-    const [upload] = await ingestElements('team-1', [
+    const [upload] = await ingestElements('organization-1', [
       { url: 'https://host/no-ext' },
     ]);
     expect(upload?.filename).toBe('element.png');
@@ -353,7 +356,9 @@ describe('ingestElements', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      ingestElements('team-1', [{ url: 'http://169.254.169.254/latest' }])
+      ingestElements('organization-1', [
+        { url: 'http://169.254.169.254/latest' },
+      ])
     ).rejects.toThrow(/not allowed/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -369,7 +374,7 @@ describe('ingestElements', () => {
       }))
     );
     await expect(
-      ingestElements('team-1', [{ url: 'https://host/missing.png' }])
+      ingestElements('organization-1', [{ url: 'https://host/missing.png' }])
     ).rejects.toThrow(/could not be fetched/);
   });
 });

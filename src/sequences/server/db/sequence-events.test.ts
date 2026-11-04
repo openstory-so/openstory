@@ -22,7 +22,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
   videoVariants,
 } from '@/platform/server/db/schema';
@@ -43,7 +43,7 @@ let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId = '';
 let shotId = '';
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 async function seed() {
@@ -60,10 +60,10 @@ async function seed() {
   await db.delete(characters);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   sequenceId = generateId();
   await db.insert(user).values({
@@ -71,11 +71,13 @@ async function seed() {
     name: 'Ada',
     email: `${userId}@example.com`,
   });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -91,7 +93,7 @@ async function seed() {
   if (!style) throw new Error('test setup: style insert returned nothing');
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
   const [shot] = await db
     .insert(shots)
     .values({ sequenceId, shotNumber: 1 })
@@ -303,7 +305,7 @@ describe('listHistory', () => {
     });
     await db.insert(characters).values({
       id: characterId,
-      teamId,
+      organizationId,
       legacyName: 'Maya',
       selectedBibleVersionId: bibleId,
     });
@@ -720,7 +722,7 @@ describe('storyboard.started', () => {
       .where(eq(sequenceEvents.kind, 'storyboard.started'));
 
   it('is written with the claim, and not when the claim is lost', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const lost = await methods.claimWorkflowSlot({
       id: sequenceId,
       expectedRunId: 'someone-else',
@@ -745,7 +747,7 @@ describe('storyboard.started', () => {
 
 describe('sequence settings history', () => {
   it('writes a sentence only when the stored value changes', async () => {
-    const sequences = createSequencesMethods(db, teamId, userId);
+    const sequences = createSequencesMethods(db, organizationId, userId);
     await sequences.update({ id: sequenceId, aspectRatio: '9:16' });
     await sequences.update({ id: sequenceId, aspectRatio: '9:16' });
     await sequences.update({ id: sequenceId, imageModel: 'gpt_image_2' });

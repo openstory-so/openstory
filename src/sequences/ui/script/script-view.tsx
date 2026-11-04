@@ -27,7 +27,7 @@ import {
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
-} from '@/cast/ui/use-team-characters';
+} from '@/cast/ui/use-organization-characters';
 import { GenerationStopAlert } from '@/sequences/ui/generation/generation-stop-alert';
 import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
@@ -84,7 +84,7 @@ import {
   useAttachLocation,
   useSequenceLocations,
 } from '@/cast/ui/use-sequence-locations';
-import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useOrganizationLocationList } from '@/cast/ui/use-organization-locations';
 import { TARGET_DURATION_PRESETS } from '@/sequences/ui/target-duration-chip';
 import {
   useRecommendedStyles,
@@ -246,7 +246,7 @@ function DurationFitHint({
 }
 
 export const ScriptView: FC<{
-  teamId?: string;
+  organizationId?: string;
   sequence?: Sequence;
   flat?: boolean;
   /** Extra classes merged onto the outer card — e.g. a height bound on the
@@ -279,7 +279,7 @@ export const ScriptView: FC<{
    */
   allowScriptEdit?: boolean;
 }> = ({
-  teamId,
+  organizationId,
   sequence,
   loading = false,
   flat,
@@ -363,7 +363,7 @@ export const ScriptView: FC<{
   // Load draft from localStorage (script, style, location)
   const { draft, isLoaded: draftLoaded, saveDraft } = useSequenceDraft();
 
-  // Which video models can render reference-only for this team — resolved
+  // Which video models can render reference-only for this organization — resolved
   // server-side and seeded by the `_app` route loader.
   const { referenceOnlyModels } = viaAvailability;
 
@@ -430,7 +430,7 @@ export const ScriptView: FC<{
   const generateVoices =
     voiceDesignAvailable !== false && savedSettings.generateVoices;
   // Draft first (#1756) is offered while a chosen model has a draft mode and
-  // this team reaches Ark (a team on its own fal key does not, and a draft
+  // this organization reaches Ark (an organization on its own fal key does not, and a draft
   // submit there refuses). The remembered setting is kept either way; only
   // what is sent is gated.
   const offerDraftMotion =
@@ -477,7 +477,7 @@ export const ScriptView: FC<{
   };
   const [selections, setSelections] = useState({
     locationIds: sequence?.suggestedLocationIds ?? [],
-    // Team characters picked for a sequence that does not exist yet, in the
+    // Organization characters picked for a sequence that does not exist yet, in the
     // cast picker or with `@` (#2050): create casts every one.
     castCharacterIds: [] as string[],
   });
@@ -618,7 +618,7 @@ export const ScriptView: FC<{
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
   };
   // Signed-in `/` prefetches the *public* catalogue; useStyles then fetches
-  // the team list (a different query key). Until that lands, `styles` is []
+  // the organization list (a different query key). Until that lands, `styles` is []
   // and Shuffle would no-op (#1384).
   const canShuffle = pickShuffleStyle(styles, styleId, () => 0) != null;
   const handleTrySample = (tryStyleId: string) => {
@@ -656,16 +656,16 @@ export const ScriptView: FC<{
   // registered at init and can't be enabled later.
   const mentionSequenceId = sequence?.id;
   const { requireAuth, isAuthenticated } = useAuthGate();
-  // Team characters not cast here are offered too, and attach on pick
+  // Organization characters not cast here are offered too, and attach on pick
   // (#2050): straight onto the sequence when there is one, else onto the
   // draft, which create casts before analysis.
   const { data: libraryCharacters, isError: libraryCharactersFailed } =
     useLibraryCharacters(isAuthenticated);
   const attachLibraryCharacter = useAttachLibraryCharacter();
-  // The team's locations, the same way (#1695): a pick links the sequence
+  // The organization's locations, the same way (#1695): a pick links the sequence
   // to one, or goes onto the draft's suggested locations.
-  const { data: teamLocations, isError: teamLocationsFailed } =
-    useTeamLocationList(isAuthenticated);
+  const { data: organizationLocations, isError: organizationLocationsFailed } =
+    useOrganizationLocationList(isAuthenticated);
   const attachLocation = useAttachLocation();
   const { data: mentionElements } = useSequenceElements(mentionSequenceId);
   const { data: mentionCharacters } = useSequenceCharacters(
@@ -681,7 +681,7 @@ export const ScriptView: FC<{
       name: c.name,
       sheetImageUrl: c.sheetImageUrl,
     }));
-    // On the create screen a picked team character is the cast, whether or
+    // On the create screen a picked organization character is the cast, whether or
     // not the script names her yet.
     const draftCast = libraryRows
       .filter((c) => castCharacterIds.includes(c.id))
@@ -708,10 +708,10 @@ export const ScriptView: FC<{
     return [
       ...items,
       ...libraryMentionItems(libraryRows, new Set(cast.map((c) => c.id))),
-      // A draft has no locations of its own yet, so every team location is
+      // A draft has no locations of its own yet, so every organization location is
       // offered; picking one twice is the same pick.
       ...libraryLocationMentionItems(
-        teamLocations ?? [],
+        organizationLocations ?? [],
         new Set((mentionLocations ?? []).map((l) => l.id))
       ),
     ];
@@ -723,7 +723,7 @@ export const ScriptView: FC<{
     draftElements,
     libraryCharacters,
     castCharacterIds,
-    teamLocations,
+    organizationLocations,
   ]);
 
   // A picked library row inserts her name as a cast row would; the attach
@@ -910,7 +910,7 @@ export const ScriptView: FC<{
   // Auto-fallback motion models when style changes away from a required
   // category — any selected model whose requiredStyleCategory no longer matches
   // is swapped for the default; the result is deduped. A new sequence also
-  // swaps the Seedance 2.5 default for the Turbo one where this team cannot
+  // swaps the Seedance 2.5 default for the Turbo one where this organization cannot
   // reach BytePlus (#2004) — only once the server has answered, so the
   // conservative stand-in is never remembered as their pick.
   useEffect(() => {
@@ -1047,7 +1047,7 @@ export const ScriptView: FC<{
     // so dashboard + public API both feed #product-alerts once.
     const payload = {
       title: undefined,
-      teamId,
+      organizationId,
       script: script ?? baseScript ?? '',
       styleId: styleId || sequence?.styleId || undefined,
       aspectRatio,
@@ -1325,9 +1325,9 @@ export const ScriptView: FC<{
         />
       )}
       <LocationSuggestionSelector
-        locations={isAuthenticated ? teamLocations : []}
+        locations={isAuthenticated ? organizationLocations : []}
         signedOut={!isAuthenticated}
-        failed={teamLocationsFailed}
+        failed={organizationLocationsFailed}
         selectedLocationIds={selectedLocationIds}
         onSelectionChange={(v) =>
           setSelections((s) => ({ ...s, locationIds: v }))

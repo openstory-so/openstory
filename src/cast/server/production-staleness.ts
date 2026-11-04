@@ -33,7 +33,7 @@ import {
   uploadedLocationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
 
-/** What a sheet verdict takes of the sequence; null from the team pages. */
+/** What a sheet verdict takes of the sequence; null from the organization pages. */
 type SheetSequence = Pick<
   Sequence,
   'id' | 'imageModel' | 'styleId' | 'styleConfig'
@@ -99,7 +99,7 @@ export async function locationSheetStaleness(args: {
     scopedDb,
     sequence,
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     location,
     preloaded: rows,
   });
@@ -195,7 +195,7 @@ export async function lookSheetStaleness(args: {
         scopedDb,
         sequence,
         userId: scopedDb.userId,
-        teamId: scopedDb.teamId,
+        organizationId: scopedDb.organizationId,
         character: owner,
         lookId: character.lookId,
       },

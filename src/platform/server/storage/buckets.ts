@@ -15,12 +15,36 @@ export const STORAGE_BUCKETS = {
   TALENT: 'talent',
   VFX: 'vfx',
   ELEMENTS: 'elements',
-  /** Shared stitches (#2127): `<teamId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
+  /** Shared stitches (#2127): `<organizationId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
   STITCHES: 'stitches',
 } as const;
 
 export type StorageBucket =
   (typeof STORAGE_BUCKETS)[keyof typeof STORAGE_BUCKETS];
+
+/** Key prefix for an organization's objects. Keys written before #813 start `teams/<id>/`. */
+export const organizationKeyPrefix = (organizationId: string) =>
+  `org/${organizationId}`;
+
+/** A character's or location's folder: under its sequence, or the organization's own. */
+export function castStorageDir(
+  organizationId: string,
+  sequenceId: string | null,
+  kind: 'characters' | 'locations',
+  id: string
+): string {
+  const org = organizationKeyPrefix(organizationId);
+  return sequenceId
+    ? `${org}/sequences/${sequenceId}/${kind}/${id}`
+    : `${org}/${kind}/${id}`;
+}
+
+/** The organization a bucket-relative key belongs to: `org/<id>/…`, `teams/<id>/…` or `<id>/…`. */
+export function keyOwner(segments: readonly string[]): string | undefined {
+  return segments[0] === 'org' || segments[0] === 'teams'
+    ? segments[1]
+    : segments[0];
+}
 
 /**
  * Buckets whose user uploads get the likeness check (#2192). A verdict is

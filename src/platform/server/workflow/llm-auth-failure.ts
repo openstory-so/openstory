@@ -1,6 +1,6 @@
 /**
  * Shared workflow-failure handling for LLM auth errors. LLM calls can run on
- * the team's OpenRouter, fal, xAI, Google, or LLMTR key, so a 401 must be
+ * the organization's OpenRouter, fal, xAI, Google, or LLMTR key, so a 401 must be
  * pinned on the key the run actually resolved — not blindly on OpenRouter.
  */
 
@@ -10,9 +10,9 @@ import { isLlmAuthError } from './sanitize-fail-response';
 
 /**
  * If a workflow failure looks like the LLM provider rejecting the API key,
- * mark the team key the run resolved as invalid and return a user-facing
+ * mark the organization key the run resolved as invalid and return a user-facing
  * message naming that key. Returns undefined when the failure isn't an auth
- * error or the run was on the platform key (an ops problem, not the team's).
+ * error or the run was on the platform key (an ops problem, not the organization's).
  *
  * Pass `model` — the model the failed call used. Omitting it skips xAI /
  * Google / LLMTR routing and can pin the 401 on the wrong key.
@@ -27,7 +27,7 @@ export async function handleLlmAuthFailure(
   const llmKey = await scopedDb.credentials
     .resolveLlmKey(model)
     .catch(() => undefined);
-  if (llmKey?.source !== 'team') return undefined;
+  if (llmKey?.source !== 'organization') return undefined;
 
   await scopedDb.apiKeys.markKeyInvalid(llmKey.via, sanitizedError);
   return `Your ${LLM_KEY_LABELS[llmKey.via]} API key is invalid — update it in Settings.`;

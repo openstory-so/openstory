@@ -11,7 +11,7 @@ import { ScriptView } from './script-view';
 // Mock sequence for edit mode stories
 const mockSequence: Sequence = {
   id: 'demo-sequence-123',
-  teamId: 'demo-team',
+  organizationId: 'demo-organization',
   title: 'Demo Video Sequence',
   script: `INT. OFFICE - DAY
 
@@ -81,8 +81,8 @@ const createQueryClient = () => {
       },
     },
   });
-  // Cover both the team-scoped and unscoped useStyles() callers.
-  client.setQueryData(styleKeys.list('demo-team'), MOCK_SYSTEM_STYLES);
+  // Cover both the organization-scoped and unscoped useStyles() callers.
+  client.setQueryData(styleKeys.list('demo-organization'), MOCK_SYSTEM_STYLES);
   client.setQueryData(styleKeys.list(undefined), MOCK_SYSTEM_STYLES);
   return client;
 };
@@ -111,8 +111,8 @@ const meta: Meta<typeof ScriptView> = {
     ),
   ],
   argTypes: {
-    teamId: {
-      description: 'The ID of the team to create the sequence for',
+    organizationId: {
+      description: 'The ID of the organization to create the sequence for',
       control: 'text',
     },
     sequence: {
@@ -135,7 +135,7 @@ type Story = StoryObj<typeof ScriptView>;
 
 export const Default: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-organization',
   },
   parameters: {
     docs: {
@@ -149,7 +149,7 @@ export const Default: Story = {
 
 export const EditMode: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-organization',
     sequence: mockSequence,
   },
   parameters: {
@@ -164,7 +164,7 @@ export const EditMode: Story = {
 
 export const Loading: Story = {
   args: {
-    teamId: 'demo-team',
+    organizationId: 'demo-organization',
     sequence: mockSequence,
     loading: true,
   },

@@ -61,7 +61,7 @@ supplied:
 - a SHA-256 of the file's bytes — accepted, but matches nothing until the column
   is populated (see below).
 
-A match returns the `content_provenance` row: **team, user, provider, model,
+A match returns the `content_provenance` row: **organization, user, provider, model,
 provider request id, prompt hash, whether reference images were used and how
 many, the workflow run id, and the timestamp.**
 
@@ -138,7 +138,7 @@ For CSAM, beyond removal and termination:
 3. Notify the model provider whose model produced it, quoting their request id
    from the provenance row.
 4. Review the account's full generation history
-   (**Trace → team provenance**) for related material.
+   (**Trace → organization provenance**) for related material.
 
 ---
 
@@ -169,7 +169,7 @@ where practical. A successful appeal is a **revocation**, not a deletion.
 | -------------------------------------------------------------- | -------------------------------------------------------------- |
 | Terms prohibit likeness use without authorization              | `/terms` § Acceptable Use                                      |
 | Every upload classified; a real person needs the attestation   | `src/cast/server/upload-rights.ts` → `upload_attestations`     |
-| Email login + card on file (accepted real-name auth)           | Better Auth session; Stripe customer on the team               |
+| Email login + card on file (accepted real-name auth)           | Better Auth session; Stripe customer on the organization       |
 | Provider content filters, with rejections logged and queryable | `src/models/content-rejection.ts`, PostHog `content_rejection` |
 
 ---

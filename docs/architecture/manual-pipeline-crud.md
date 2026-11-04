@@ -91,7 +91,7 @@ and the history query so the new version appears without a page reload.
 
 All uploads: presign (`getSignedUploadUrl` → client PUT to
 `/api/storage/upload`) → finalize. Finalize validates the `publicUrl` against
-the caller's team namespace (`<bucket>/teams/<teamId>/…`, no traversal) and the
+the caller's organization namespace (`<bucket>/org/<organizationId>/…`, or the pre-#813 `teams/`; no traversal) and the
 presign enforces a per-surface extension allow-list (an `.svg` under `/r2/`
 would be stored XSS). `USER_UPLOAD_MODEL = 'user-upload'` is never a valid
 generation model id — every model-resolution tier skips it by design.
@@ -142,7 +142,7 @@ sequence-scoped read excludes deleted rows):
   update-stale-plan/Update-all, smart retry, export inputs, theatre, api-v1,
   VTT), `sequences.listShotsByIds`, `shots.countInRenderSegment`,
   `characters.list/listWithSheets/getNeedingSheets`,
-  `sequenceLocations.list/listWithReferences/getNeedingReferences/getTeamLibrary`,
+  `sequenceLocations.list/listWithReferences/getNeedingReferences/getOrganizationLibrary`,
   `sequenceElements.list/getShotCountsByElement`, the character/location/element
   → shots matcher scans (recast + replace-element affected sets).
 - **Deliberately unfiltered:** id-addressed gets (`getById`/`getByIds`/
@@ -174,7 +174,7 @@ The finalize logic lives in `src/shots/server/media-upload.ts`, shared with the 
 
 | Fn                                                                                                | Input → output                                                                                  | Rule enforced                                                    |
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, team-namespace path                        |
+| `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, organization-namespace path                |
 | `presignSequenceMusicUploadFn` / `presignCharacterSheetUploadFn` / `presignLocationSheetUploadFn` | `{sequenceId, filename (+characterId/locationDbId)}` → same                                     | same                                                             |
 | `replaceFrameContentFn`                                                                           | `{…, frameId?, promptText?, publicUrl}` → `{shotId, versionId, promptVersionId, promptChanged}` | §1.3 B (omit/unchanged prompt) + C (atomic)                      |
 | `setShotVideoFromUploadFn`                                                                        | `{…, publicUrl, durationSeconds?}` → `{shotId, versionId, videoUrl}`                            | manifest snapshot; duration re-snap; rejects multi-shot segments |

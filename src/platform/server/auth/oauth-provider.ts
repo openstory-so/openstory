@@ -10,7 +10,7 @@
  *   registers apps by hand.
  * - **Forks and self-hosts** — "login with OpenStory", the OpenRouter pattern
  *   inverted: the fork is the OAuth client, upstream OpenStory is the server,
- *   and the fork holds a refresh token as a team credential.
+ *   and the fork holds a refresh token as an organization credential.
  * - **Anything else** that can run authorization-code + PKCE against
  *   `/api/auth/oauth2/authorize`. Skills and CLIs keep the device-code login
  *   (#1219), which mints an `osk_` key instead of a token.
@@ -31,19 +31,20 @@
  * - `src/routes/oauth/consent-start.ts` packs the signed consent query so
  *   TanStack cannot collapse repeated `ba_param`, then 302s to
  *   `src/routes/_app/oauth/consent.tsx` + `src/platform/oauth-consent.fn.ts`.
- * - At consent the grant is stamped with the user's default team
- *   (`consentReferenceId` → `resolveUserTeam`); there is no picker yet.
- *   `/api/v1` uses `team_id` when present, otherwise the same default-team
- *   lookup as an `osk_` key.
+ * - The consent page picks the organization the grant acts for; the JWT
+ *   carries it as `organization_id`, and `/api/v1` and `/mcp` act for it.
  */
 
 import { getEnv } from '#env';
 import { OAUTH_CONSENT_START_PATH } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_API_SCOPES, OAUTH_SCOPES } from './oauth-scopes';
-import { resolveUserTeam } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import { mcp } from '@better-auth/mcp';
 import { jwt } from 'better-auth/plugins';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/** The organization the consent page picked, set around its in-process consent POST. */
+export const consentOrganization = new AsyncLocalStorage<string>();
 
 const logger = getLogger(['openstory', 'auth', 'oauth-provider']);
 
@@ -295,19 +296,20 @@ export function createOAuthProviderPlugins() {
       // endpoint is throttled per IP in the auth catch-all route.
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
-      // Consents (and therefore tokens) are keyed by the team they bill to.
-      // `shouldRedirect` is a hook for a future team picker; today the grant
-      // goes to the user's default team, exactly like an `osk_` key.
+      // Consents and tokens are keyed by the organization they bill to: the
+      // consent page's pick while it posts, the active one when authorize
+      // looks for an existing consent.
       postLogin: {
         page: OAUTH_CONSENT_START_PATH,
         shouldRedirect: () => false,
-        consentReferenceId: async ({ user }) => {
-          const team = await resolveUserTeam(user.id);
-          return team?.teamId;
-        },
+        consentReferenceId: ({ session }) =>
+          consentOrganization.getStore() ??
+          (typeof session.activeOrganizationId === 'string'
+            ? session.activeOrganizationId
+            : undefined),
       },
       customAccessTokenClaims: ({ referenceId }) =>
-        referenceId ? { team_id: referenceId } : {},
+        referenceId ? { organization_id: referenceId } : {},
     }),
   ];
 }

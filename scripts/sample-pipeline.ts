@@ -66,7 +66,7 @@ const createResponseSchema = z.object({
 export type SamplePipelineConfig = {
   /** App origin, e.g. `http://localhost:3000` or `https://openstory.so`. */
   baseUrl: string;
-  /** Public-API key (`osk_…`) whose team has styles + credits. */
+  /** Public-API key (`osk_…`) whose organization has styles + credits. */
   apiKey: string;
   /** Injectable for tests. */
   fetchImpl?: typeof fetch;

@@ -6,7 +6,7 @@
  * the generation site, then this module only answers "is the platform Ark
  * key live?". Stamp `via` on the job; poll MUST follow the stamp.
  *
- * Platform key only: `API_KEY_PROVIDERS` has no `'byteplus'`. A team on its
+ * Platform key only: `API_KEY_PROVIDERS` has no `'byteplus'`. An organization on its
  * own fal key stays on fal — routing their Seedance onto our Ark account
  * would bill us for it.
  */
@@ -85,7 +85,7 @@ export function isBytePlusConfigured(): boolean {
 /**
  * After xAI has been ruled out, claim BytePlus the way Grok claims xAI:
  * native model + live key, else fal. `usingOwnFalKey` is the extra veto
- * Grok does not need (xAI has team keys; Ark does not).
+ * Grok does not need (xAI has organization keys; Ark does not).
  */
 export function claimBytePlusVia(options: {
   native: boolean;

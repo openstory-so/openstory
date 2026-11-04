@@ -1,6 +1,6 @@
 /**
  * Library Resources Schema
- * Styles, characters, VFX, and audio assets for teams
+ * Styles, characters, VFX, and audio assets for organizations
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
@@ -9,7 +9,7 @@ import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import z from 'zod';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 // Canonical config schema lives drizzle-free in src/look/style-config.ts.
 import type { StoredStyleConfig } from '@/look/style-config';
@@ -37,9 +37,9 @@ export const styles = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     // Set on an automatic style (#1213): derived from one sequence's script,
     // visible only through that sequence, excluded from every library list and
     // the slug-uniqueness check. Cleared by promotion. No FK: `sequences`
@@ -84,7 +84,7 @@ export const styles = snakeCase.table(
     }),
   },
   (table) => [
-    index('idx_styles_team_id').on(table.teamId),
+    index('idx_styles_organization_id').on(table.organizationId),
     index('idx_styles_sequence_id').on(table.sequenceId),
   ]
 );
@@ -100,9 +100,9 @@ export const vfx = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text({ length: 255 }).notNull(),
     presetConfig: text({ mode: 'json' }).default('{}').notNull(),
     previewUrl: text(),
@@ -118,7 +118,7 @@ export const vfx = snakeCase.table(
   },
   (table) => [
     index('idx_vfx_name').on(table.name),
-    index('idx_vfx_team_id').on(table.teamId),
+    index('idx_vfx_organization_id').on(table.organizationId),
   ]
 );
 
@@ -133,9 +133,9 @@ export const audio = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text({ length: 255 }).notNull(),
     fileUrl: text().notNull(),
     durationMs: integer(),
@@ -152,7 +152,7 @@ export const audio = snakeCase.table(
   },
   (table) => [
     index('idx_audio_name').on(table.name),
-    index('idx_audio_team_id').on(table.teamId),
+    index('idx_audio_organization_id').on(table.organizationId),
   ]
 );
 

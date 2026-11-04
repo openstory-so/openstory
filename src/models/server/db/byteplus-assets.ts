@@ -2,14 +2,14 @@
  * BytePlus ACR asset pool (#1361, #1531) — the slot ledger's write surface.
  *
  * Advanced Creation Rights gives the BytePlus *account* a fixed number of
- * resident asset slots, shared by every OpenStory team. Reuse is what keeps
+ * resident asset slots, shared by every OpenStory organization. Reuse is what keeps
  * us inside it, and eviction is what keeps `CreateAsset` from refusing
  * forever — but eviction needs facts Ark cannot give us: which stills an
  * in-flight job is holding, which slots are already spoken for by a create
  * that has not finished, and whether a slot is a churning start frame or a
  * cast sheet every shot binds.
  *
- * Platform-global telemetry-shaped state, not team data: no `teamId`, no
+ * Platform-global telemetry-shaped state, not organization data: no `organizationId`, no
  * scoping — the same shape as `modelUsage`. Policy (how many slots, how long
  * a lease lasts) lives in `src/models/server/byteplus-asset-pool.ts` and arrives as
  * arguments, so this module knows nothing about BytePlus tiers.

@@ -135,7 +135,7 @@ export async function renderDraftAtQuality(options: {
   return releaseReservationOnThrow(scopedDb, reservationId, async () => {
     const payload = buildDraftFinalRender({
       userId: options.userId,
-      teamId: scopedDb.teamId,
+      organizationId: scopedDb.organizationId,
       sequence,
       lead,
       sceneId: options.sceneId,

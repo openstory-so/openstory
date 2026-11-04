@@ -10,7 +10,7 @@ import { QueryClient } from '@tanstack/react-query';
 type Prev = NonNullable<Parameters<typeof applyBalanceEvent>[0]>;
 
 const prev: Prev = {
-  teamId: 'team_1',
+  organizationId: 'team_1',
   balance: 10,
   availableUsd: 8,
   reservedUsd: 2,
@@ -25,7 +25,7 @@ const prev: Prev = {
 };
 
 const usage = {
-  teamId: 'team_1',
+  organizationId: 'team_1',
   balanceUsd: 9,
   availableUsd: 7,
   reservedUsd: 2,

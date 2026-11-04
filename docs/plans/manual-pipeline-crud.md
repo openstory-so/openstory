@@ -37,7 +37,7 @@ shipped and is authoritative.
 | **Scene / shot / frame structure**                                  | Set `deletedAt` (or `archivedAt`); **exclude from default lists**         | Clear `deletedAt`; restore orderIndex   | ❌ hard delete today — **change**       |
 | **Cast / sequence location**                                        | Soft-remove from sequence (`deletedAt`); keep rows + sheets               | Undelete                                | ❌ hard delete DB only                  |
 | **Elements**                                                        | Soft-hide preferred; hard delete OK only if no shot refs or after confirm | Undelete if soft                        | ⚠️ hard delete SF today                 |
-| **Library talent / location**                                       | Soft archive preferred for team library                                   | Unarchive                               | mixed                                   |
+| **Library talent / location**                                       | Soft archive preferred for organization library                           | Unarchive                               | mixed                                   |
 | **R2 blobs**                                                        | **Never** delete on soft-delete                                           | GC only after retention                 | keep bytes                              |
 
 **Undo UX (decided: toast-only for this effort):**
@@ -67,7 +67,7 @@ shipped and is authoritative.
 ### Hierarchy (post Scene→Shot→Frame redesign)
 
 ```
-Team
+Organization
 └── Sequence
     ├── Scenes ── scene_script_versions
     │     └── Render segments ── video_variants (manifest)
@@ -158,7 +158,7 @@ Legend: **DB** = scoped layer · **SF** = server fn · **UI** = product UI
 | **Sequence element**           | ✅ upload SF      | ✅   | rename/replace | ⚠️ hard delete SF | Prefer soft-hide + undo; post-analysis UI thinner than composer   |
 | **Talent library**             | ✅ full           | ✅   | ✅             | ✅                | Good reference pattern                                            |
 | **Location library**           | ✅ full           | ✅   | ✅             | ✅                | Good                                                              |
-| **Styles**                     | ✅ SF             | ✅   | ✅ SF          | ✅ SF             | ❌ team authoring UI (lower priority)                             |
+| **Styles**                     | ✅ SF             | ✅   | ✅ SF          | ✅ SF             | ❌ organization authoring UI (lower priority)                     |
 | **VFX / audio library tables** | ❌                | ❌   | ❌             | ❌                | Schema-only — **defer**                                           |
 
 ### 3.5 Recovery / orchestration (already strong)
@@ -334,7 +334,7 @@ Treat **server functions as the contract** (API/MCP later wraps them). Group by 
 
 | Need                          | Existing pattern                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Team-scoped auth              | `authWithTeam` / shot-access middleware                                             |
+| Organization-scoped auth      | `authWithOrganizationMiddleware` / shot-access middleware                           |
 | Append-only versions + select | `frameVariants.select`, `videoVariants.select`, prompt `write`                      |
 | Soft-hide versions            | `discardedAt` + promote/discard/undiscard Fns (sheets, music, frame/video variants) |
 | Soft-archive sequence         | `archiveSequenceFn` — extend with unarchive                                         |

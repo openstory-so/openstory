@@ -94,7 +94,7 @@ beforeEach(() => {
       let results: unknown[] = [];
       let changes = 0;
       if (sql.includes('sqlite_schema') && previewHasTables)
-        results = [{ name: 'teams' }];
+        results = [{ name: 'organization' }];
       if (sql.includes('SELECT revision, database_id FROM preview_base'))
         results = [{ ...base }];
       if (sql.includes('FROM preview_forks WHERE pr') && forked)

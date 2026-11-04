@@ -12,7 +12,7 @@ import {
   assistantMessages,
   assistantRuns,
   assistantThreads,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -24,7 +24,7 @@ import {
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 let otherUserId = '';
 
@@ -43,12 +43,14 @@ beforeEach(async () => {
   await db.delete(assistantRuns);
   await db.delete(assistantMessages);
   await db.delete(assistantThreads);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   otherUserId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db.insert(user).values([
     { id: userId, name: 'U', email: `${userId}@example.com` },
     { id: otherUserId, name: 'O', email: `${otherUserId}@example.com` },
@@ -57,8 +59,8 @@ beforeEach(async () => {
 
 describe('threads', () => {
   it('creates on first use and refuses another user’s id', async () => {
-    const mine = createAssistantMethods(db, teamId, userId);
-    const theirs = createAssistantMethods(db, teamId, otherUserId);
+    const mine = createAssistantMethods(db, organizationId, userId);
+    const theirs = createAssistantMethods(db, organizationId, otherUserId);
     const id = generateId();
     const created = await mine.ensureThread(id, 'Hello');
     expect(created.id).toBe(id);
@@ -77,7 +79,7 @@ describe('threads', () => {
 
 describe('message store', () => {
   it('stores ids for engine messages so the next turn merges, not appends', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const { messages } = methods.persistence(threadId).stores;
@@ -141,7 +143,7 @@ describe('message store', () => {
   });
 
   it('saves an id-less message to the same row every time', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const { messages } = methods.persistence(threadId).stores;
@@ -170,7 +172,7 @@ describe('message store', () => {
   });
 
   it('drops messages a full replace leaves out', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const { messages } = methods.persistence(threadId).stores;
@@ -188,7 +190,7 @@ describe('message store', () => {
 
 describe('run store', () => {
   it('is idempotent on create and no-op on an unknown update', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const { runs } = methods.persistence(threadId).stores;
@@ -211,7 +213,7 @@ describe('run store', () => {
   });
 
   it('reports a recent running run as active, never a stale or finished one', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const { runs } = methods.persistence(threadId).stores;
@@ -236,7 +238,7 @@ describe('run store', () => {
   });
 
   it('cannot read a run of another thread', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const a = generateId();
     const b = generateId();
     await methods.ensureThread(a, 'A');
@@ -252,7 +254,7 @@ describe('run store', () => {
 
 describe('deleteThread', () => {
   it('removes the thread with its messages and runs', async () => {
-    const methods = createAssistantMethods(db, teamId, userId);
+    const methods = createAssistantMethods(db, organizationId, userId);
     const threadId = generateId();
     await methods.ensureThread(threadId, 'Hi');
     const stores = methods.persistence(threadId).stores;

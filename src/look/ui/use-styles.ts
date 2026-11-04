@@ -9,7 +9,7 @@ import {
   getStylesFn,
   promoteSequenceStyleFn,
 } from '@/look/styles.fn';
-import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
+import { usePublicOrOrganizationQuery } from '@/ui/use-public-or-organization-query';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { publicStylesQueryKey } from './public-styles-query';
 import { simpleHash } from '@/platform/hash';
@@ -20,7 +20,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 export const styleKeys = {
   all: ['styles'] as const,
   lists: () => [...styleKeys.all, 'list'] as const,
-  list: (teamId?: string) => [...styleKeys.lists(), teamId] as const,
+  list: (organizationId?: string) =>
+    [...styleKeys.lists(), organizationId] as const,
   public: () => publicStylesQueryKey,
   details: () => [...styleKeys.all, 'detail'] as const,
   detail: (id: string) => [...styleKeys.details(), id] as const,
@@ -35,13 +36,13 @@ export const styleKeys = {
 
 // Hook for listing styles.
 // Anonymous (logged-out) visitors get the public style catalogue so they can
-// compose a sequence before signing in; authenticated users get their team's
-// styles plus public ones (see usePublicOrTeamQuery for the session rules).
-export function useStyles(teamId?: string, enabled = true) {
-  return usePublicOrTeamQuery<Style[]>({
-    teamKey: styleKeys.list(teamId),
+// compose a sequence before signing in; authenticated users get their organization's
+// styles plus public ones (see usePublicOrOrganizationQuery for the session rules).
+export function useStyles(organizationId?: string, enabled = true) {
+  return usePublicOrOrganizationQuery<Style[]>({
+    organizationKey: styleKeys.list(organizationId),
     publicKey: styleKeys.public(),
-    teamFn: () => getStylesFn(),
+    organizationFn: () => getStylesFn(),
     publicFn: () => getPublicStylesFn(),
     staleTime: 10 * 60 * 1000, // 10 minutes (styles change less frequently)
     enabled,
@@ -49,7 +50,7 @@ export function useStyles(teamId?: string, enabled = true) {
 }
 
 // Hook for getting single style. `null` when the id resolves to nothing the
-// team can see (see getStyleFn) — callers render as if there were no style.
+// organization can see (see getStyleFn) — callers render as if there were no style.
 export function useStyle(id: string) {
   return useQuery<Style | null>({
     queryKey: styleKeys.detail(id),
@@ -62,10 +63,10 @@ export function useStyle(id: string) {
 }
 
 /**
- * The style a sequence was generated with, resolved in the sequence's team
+ * The style a sequence was generated with, resolved in the sequence's organization
  * scope (see getSequenceStyleFn). Prefer this over `useStyle(sequence.styleId)`
  * whenever a sequence is in hand — it also works for admins viewing another
- * team's sequence. `null` when the row is gone.
+ * organization's sequence. `null` when the row is gone.
  */
 export function useSequenceStyle(sequenceId: string) {
   return useQuery<Style | null>({
@@ -81,7 +82,7 @@ export type { StyleRecommendation };
 const MIN_RECOMMEND_SCRIPT_LENGTH = 3;
 
 /**
- * Rank the team's + public styles against the current script/one-liner.
+ * Rank the organization's + public styles against the current script/one-liner.
  *
  * Auth-gated (the underlying server fn is billed, like Enhance) and
  * caller-gated via `enabled` so the LLM call is only spent on an explicit
@@ -113,7 +114,7 @@ export function useRecommendedStyles(
 }
 
 /**
- * Add a sequence's automatic style to the team library (#1213). The style row
+ * Add a sequence's automatic style to the organization library (#1213). The style row
  * keeps its id, so the sequence badge only needs the detail + list refreshed.
  */
 export function usePromoteSequenceStyle() {

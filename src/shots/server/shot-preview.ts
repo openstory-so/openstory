@@ -32,7 +32,7 @@ const logger = getLogger(['openstory', 'shots', 'shot-preview']);
 
 type PreviewTarget = {
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
   frameId: string;
@@ -55,7 +55,7 @@ export function triggerShotPreview(
     '/image',
     {
       userId: target.userId,
-      teamId: target.teamId,
+      organizationId: target.organizationId,
       sequenceId: target.sequenceId,
       prompt: target.prompt,
       model: SHOT_PREVIEW_IMAGE_MODEL,
@@ -89,11 +89,18 @@ async function previewCostMicros(aspectRatio: AspectRatio) {
 export async function redrawShotPreview(
   context: Pick<
     ShotEditContext,
-    'scopedDb' | 'user' | 'teamId' | 'shot' | 'frame' | 'sequence' | 'scene'
+    | 'scopedDb'
+    | 'user'
+    | 'organizationId'
+    | 'shot'
+    | 'frame'
+    | 'sequence'
+    | 'scene'
   >,
   motionPrompt: string
 ): Promise<void> {
-  const { scopedDb, user, teamId, shot, frame, sequence, scene } = context;
+  const { scopedDb, user, organizationId, shot, frame, sequence, scene } =
+    context;
   if (!rendersReferenceOnly(shot, sequence)) return;
   try {
     const characters = await scopedDb.characters.list(sequence.id);
@@ -111,7 +118,7 @@ export async function redrawShotPreview(
     );
     await triggerShotPreview({
       userId: user.id,
-      teamId,
+      organizationId,
       sequenceId: sequence.id,
       shotId: shot.id,
       frameId: frame.id,
@@ -154,7 +161,7 @@ export async function redrawShotPreviewInRun(
         deduplicationId: target.deduplicationId,
         enforcement: await scopedDb.liveRead.compliance.listEnforcementFor(
           target.userId,
-          target.teamId
+          target.organizationId
         ),
       }
     );

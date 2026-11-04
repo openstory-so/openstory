@@ -99,18 +99,18 @@ vi.doMock('@/models/server/db/api-keys', () => ({
   })),
 }));
 
-const mockTeamManagementGetMembers = vi.fn();
-const mockTeamManagementCreateInvitation = vi.fn();
+const mockOrganizationManagementGetMembers = vi.fn();
+const mockOrganizationManagementCreateInvitation = vi.fn();
 
-vi.doMock('@/platform/server/db/scoped/team-management', () => ({
-  createTeamManagementReadMethods: vi.fn(() => ({
-    getMembers: mockTeamManagementGetMembers,
+vi.doMock('@/platform/server/db/scoped/organization-management', () => ({
+  createOrganizationManagementReadMethods: vi.fn(() => ({
+    getMembers: mockOrganizationManagementGetMembers,
     getMemberEmail: vi.fn(),
   })),
-  createTeamManagementMethods: vi.fn(() => ({
-    getMembers: mockTeamManagementGetMembers,
+  createOrganizationManagementMethods: vi.fn(() => ({
+    getMembers: mockOrganizationManagementGetMembers,
     getMemberEmail: vi.fn(),
-    createInvitation: mockTeamManagementCreateInvitation,
+    createInvitation: mockOrganizationManagementCreateInvitation,
   })),
 }));
 
@@ -136,14 +136,14 @@ const mockLocationsGetById = vi.fn();
 const mockLocationsList = vi.fn();
 const mockLocationsListWithReferences = vi.fn();
 const mockLocationsGetShotIdsForLocation = vi.fn();
-const mockLocationsListTeam = vi.fn();
+const mockLocationsListOrganization = vi.fn();
 const mockLocationsAttach = vi.fn();
 const mockCreateLocationsMethods = vi.fn(() => ({
   getById: mockLocationsGetById,
   list: mockLocationsList,
   listWithReferences: mockLocationsListWithReferences,
   getShotIdsForLocation: mockLocationsGetShotIdsForLocation,
-  listTeam: mockLocationsListTeam,
+  listOrganization: mockLocationsListOrganization,
   attach: mockLocationsAttach,
 }));
 
@@ -177,7 +177,7 @@ vi.doMock('#db-client', () => ({
 
 const { createScopedDb } = await import('./scoped');
 
-const TEAM_ID = 'team_01';
+const ORGANIZATION_ID = 'organization_01';
 const USER_ID = 'user_01';
 
 describe('createScopedDb', () => {
@@ -210,14 +210,14 @@ describe('createScopedDb', () => {
       mockLocationsList,
       mockLocationsListWithReferences,
       mockLocationsGetShotIdsForLocation,
-      mockLocationsListTeam,
+      mockLocationsListOrganization,
       mockLocationsAttach,
       mockBillingGetBalance,
       mockBillingDeductCredits,
       mockApiKeysResolveKey,
       mockApiKeysSaveKey,
-      mockTeamManagementGetMembers,
-      mockTeamManagementCreateInvitation,
+      mockOrganizationManagementGetMembers,
+      mockOrganizationManagementCreateInvitation,
       mockGetDb,
       mockSelect,
       mockFrom,
@@ -228,9 +228,9 @@ describe('createScopedDb', () => {
     dbChain = wireDbChain();
   });
 
-  it('exposes teamId and userId', () => {
-    const db = createScopedDb(TEAM_ID, USER_ID);
-    expect(db.teamId).toBe(TEAM_ID);
+  it('exposes organizationId and userId', () => {
+    const db = createScopedDb(ORGANIZATION_ID, USER_ID);
+    expect(db.organizationId).toBe(ORGANIZATION_ID);
     expect(db.userId).toBe(USER_ID);
   });
 
@@ -239,7 +239,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'seq_1' }];
       mockSequencesList.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.sequences.list();
 
       expect(mockSequencesList).toHaveBeenCalled();
@@ -257,7 +257,7 @@ describe('createScopedDb', () => {
         analysisModel: 'model_1',
       };
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.sequences.create(params);
 
       expect(mockSequencesCreate).toHaveBeenCalledWith(params);
@@ -265,10 +265,10 @@ describe('createScopedDb', () => {
     });
 
     it('getById() delegates to sub-module', async () => {
-      const sentinel = { id: 'seq_1', teamId: TEAM_ID };
+      const sentinel = { id: 'seq_1', organizationId: ORGANIZATION_ID };
       mockSequencesGetById.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.sequences.getById('seq_1');
 
       expect(mockSequencesGetById).toHaveBeenCalledWith('seq_1');
@@ -278,14 +278,14 @@ describe('createScopedDb', () => {
 
   describe('sequence()', () => {
     it('updateStatus() delegates to sub-module', async () => {
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       await db.sequence('seq_01').updateStatus('processing');
 
       expect(mockUpdateStatus).toHaveBeenCalledWith('processing');
     });
 
     it('updateStatus() passes error parameter', async () => {
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       await db.sequence('seq_01').updateStatus('failed', 'Something broke');
 
       expect(mockUpdateStatus).toHaveBeenCalledWith(
@@ -300,7 +300,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'style_1' }];
       mockStylesList.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.styles.list();
 
       expect(mockStylesList).toHaveBeenCalled();
@@ -312,7 +312,7 @@ describe('createScopedDb', () => {
       mockStylesCreate.mockResolvedValue(sentinel);
 
       const data = { name: 'Noir' };
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.styles.create(data);
 
       expect(mockStylesCreate).toHaveBeenCalledWith(data);
@@ -323,7 +323,7 @@ describe('createScopedDb', () => {
       const sentinel = { id: 'style_1' };
       mockStylesUpdate.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.styles.update('style_1', { name: 'Updated' });
 
       expect(mockStylesUpdate).toHaveBeenCalledWith('style_1', {
@@ -335,7 +335,7 @@ describe('createScopedDb', () => {
     it('delete() delegates to sub-module', async () => {
       mockStylesDelete.mockResolvedValue(undefined);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       await db.styles.delete('style_1');
 
       expect(mockStylesDelete).toHaveBeenCalledWith('style_1');
@@ -347,7 +347,7 @@ describe('createScopedDb', () => {
       const sentinel = { id: 'char_01', name: 'Hero' };
       mockCharactersGetById.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.characters.getById('char_01');
 
       expect(mockCharactersGetById).toHaveBeenCalledWith('char_01');
@@ -358,7 +358,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'char_01', name: 'Hero' }];
       mockCharactersList.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.characters.list('seq_01');
 
       expect(mockCharactersList).toHaveBeenCalledWith('seq_01');
@@ -369,7 +369,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'char_01', sheetStatus: 'completed' }];
       mockCharactersListWithSheets.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.characters.listWithSheets('seq_01');
 
       expect(mockCharactersListWithSheets).toHaveBeenCalledWith('seq_01');
@@ -380,7 +380,7 @@ describe('createScopedDb', () => {
       const sentinel = ['shot_01', 'shot_02'];
       mockCharactersGetShotIdsForCharacter.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.characters.getShotIdsForCharacter(
         'seq_01',
         'char_01'
@@ -395,12 +395,12 @@ describe('createScopedDb', () => {
   });
 
   describe('locations', () => {
-    it('is built for the team: every statement is team-scoped (#1695)', () => {
-      createScopedDb(TEAM_ID, USER_ID);
+    it('is built for the organization: every statement is organization-scoped (#1695)', () => {
+      createScopedDb(ORGANIZATION_ID, USER_ID);
 
       expect(mockCreateLocationsMethods).toHaveBeenCalledWith(
         expect.anything(),
-        TEAM_ID
+        ORGANIZATION_ID
       );
     });
 
@@ -408,7 +408,7 @@ describe('createScopedDb', () => {
       const sentinel = { id: 'loc_01', name: 'Park' };
       mockLocationsGetById.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.locations.getById('seq_01', 'loc_01');
 
       expect(mockLocationsGetById).toHaveBeenCalledWith('seq_01', 'loc_01');
@@ -419,7 +419,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'loc_01' }];
       mockLocationsList.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.locations.list('seq_01');
 
       expect(mockLocationsList).toHaveBeenCalledWith('seq_01');
@@ -430,7 +430,7 @@ describe('createScopedDb', () => {
       const sentinel = [{ id: 'loc_01', referenceStatus: 'completed' }];
       mockLocationsListWithReferences.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.locations.listWithReferences('seq_01');
 
       expect(mockLocationsListWithReferences).toHaveBeenCalledWith('seq_01');
@@ -441,7 +441,7 @@ describe('createScopedDb', () => {
       const sentinel = ['shot_01', 'shot_03'];
       mockLocationsGetShotIdsForLocation.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.locations.getShotIdsForLocation(
         'seq_01',
         'loc_01'
@@ -454,14 +454,14 @@ describe('createScopedDb', () => {
       expect(result).toEqual(sentinel);
     });
 
-    it('listTeam() delegates to sub-module, taking no team argument', async () => {
+    it('listOrganization() delegates to sub-module, taking no organization argument', async () => {
       const sentinel = [{ id: 'loc_01', usedAnywhere: false }];
-      mockLocationsListTeam.mockResolvedValue(sentinel);
+      mockLocationsListOrganization.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.locations.listTeam();
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
+      const result = await db.locations.listOrganization();
 
-      expect(mockLocationsListTeam).toHaveBeenCalledWith();
+      expect(mockLocationsListOrganization).toHaveBeenCalledWith();
       expect(result).toEqual(sentinel);
     });
 
@@ -469,7 +469,7 @@ describe('createScopedDb', () => {
       const sentinel = { id: 'loc_01', attached: true };
       mockLocationsAttach.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.locations.attach('seq_01', 'loc_01', {
         actorId: USER_ID,
       });
@@ -486,7 +486,7 @@ describe('createScopedDb', () => {
       const sentinel = { id: 'shot_01' };
       mockWhere.mockResolvedValue([sentinel]);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.shots.getById('shot_01');
 
       expect(result).toEqual(sentinel);
@@ -495,7 +495,7 @@ describe('createScopedDb', () => {
     it('getById() returns null when not found', async () => {
       mockWhere.mockResolvedValue([]);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.shots.getById('shot_99');
 
       expect(result).toBeNull();
@@ -507,7 +507,7 @@ describe('createScopedDb', () => {
       const sentinel = { styles: [], vfx: [], audio: [] };
       mockLibraryGetAll.mockResolvedValue(sentinel);
 
-      const db = createScopedDb(TEAM_ID, USER_ID);
+      const db = createScopedDb(ORGANIZATION_ID, USER_ID);
       const result = await db.library.getAll();
 
       expect(mockLibraryGetAll).toHaveBeenCalled();

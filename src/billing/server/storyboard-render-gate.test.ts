@@ -32,7 +32,7 @@ function makeScopedDb(opts: { remaining: number; growOk?: boolean }) {
   const zeroReservation = vi.fn().mockResolvedValue(undefined);
   const checkAutoTopUp = vi.fn().mockResolvedValue(undefined);
   const stub = {
-    teamId: 'team_1',
+    organizationId: 'team_1',
     billing: { growReservation, zeroReservation, checkAutoTopUp },
   };
   // gate only touches billing
@@ -125,7 +125,7 @@ describe('gateStoryboardRenders', () => {
     expect(zeroReservation).toHaveBeenCalledWith('res_1');
     expect(checkAutoTopUp).toHaveBeenCalledTimes(1);
     expect(reportReservationShort).toHaveBeenCalledWith({
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       neededMicros: micros(3_000_000),
       remainingMicros: micros(1_000_000),

@@ -3,15 +3,15 @@
  *
  * Returns the shared state document (overall status, per-shot image/video
  * status + URLs, music, poster, counts) derived from the DB, with a `_links`
- * affordance catalog attached. Team-scoped via the API key's owner, so a key can
- * only read its own team's sequences.
+ * affordance catalog attached. Organization-scoped via the API key's owner, so a key can
+ * only read its own organization's sequences.
  *
  * Pass `?wait=60s` (also `30`, `2m`, `1500ms`; capped 90s) to long-poll: the
  * request blocks until the sequence changes or reaches a terminal state, so an
  * agent without a sleep tool can create→watch in one call.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import {
   buildSequenceState,
@@ -25,7 +25,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/sequences/$id')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ params, context, request }) =>
         runApiV1Handler(async () => {

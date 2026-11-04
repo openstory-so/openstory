@@ -2,13 +2,13 @@
  * Resolvers that turn the public API's human-friendly references into the
  * concrete ids / uploads `createSequences` expects:
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
- *   - character: id | name     → castCharacterIds (a team character)
- *   - location:id | name         → suggestedLocationIds (a team location, #1695)
+ *   - character: id | name     → castCharacterIds (an organization character)
+ *   - location:id | name         → suggestedLocationIds (an organization location, #1695)
  *   - element: hosted URL        → ingested DraftElementUploadInput
  *
- * Every lookup goes through a team-scoped read (styles: team-owned + public;
- * characters and locations: the team's only), so a caller can never resolve
- * another team's private entry.
+ * Every lookup goes through an organization-scoped read (styles: organization-owned + public;
+ * characters and locations: the organization's only), so a caller can never resolve
+ * another organization's private entry.
  */
 
 import type { Style } from '@/platform/server/db/schema';
@@ -39,7 +39,7 @@ function matchesRef(ref: string, candidate: { id: string; name: string }) {
 }
 
 // Narrow dependency surfaces: each resolver depends only on what it actually
-// uses — the team-scoped `list()` for matching, plus an injected `create*`
+// uses — the organization-scoped `list()` for matching, plus an injected `create*`
 // thunk for inline-create. The thunk (wired by the orchestrator) owns the heavy
 // create-with-ingest path, keeping these resolvers pure and cast-free to test.
 type StyleDeps = { styles: Pick<ScopedDb['styles'], 'list'> };
@@ -54,11 +54,11 @@ type LocationCreate = Exclude<
 >;
 
 type CharacterResolveDeps = {
-  characters: Pick<ScopedDb['characters'], 'listTeam'>;
+  characters: Pick<ScopedDb['characters'], 'listOrganization'>;
   createCharacter: (input: CharacterCreate) => Promise<{ id: string }>;
 };
 type LocationResolveDeps = {
-  locations: Pick<ScopedDb['locations'], 'listTeam'>;
+  locations: Pick<ScopedDb['locations'], 'listOrganization'>;
   createLocation: (input: LocationCreate) => Promise<{ id: string }>;
 };
 
@@ -78,7 +78,7 @@ function partition<T>(items: readonly (string | T)[]): {
 
 /**
  * Resolve a style reference to the full style row. With no reference, auto-pick
- * the most popular team-or-public style. Throws 404 if a given reference matches
+ * the most popular organization-or-public style. Throws 404 if a given reference matches
  * nothing. Returns the row (not just the id) so callers can apply the style's
  * recommended aspect ratio, mirroring the new-sequence page.
  */
@@ -92,7 +92,7 @@ export async function resolveStyle(
   const [mostPopular] = styles;
   if (!mostPopular) {
     throw new NotFoundError(
-      'No styles are available to this team. Create a style first.'
+      'No styles are available to this organization. Create a style first.'
     );
   }
   if (!styleRef) {
@@ -108,10 +108,10 @@ export async function resolveStyle(
 
 /**
  * Resolve a mixed list of character items — reference strings (id|name) and
- * inline create objects — into the team characters to cast into the new
- * sequence (`castCharacterIds`). A string names one of the team's characters,
+ * inline create objects — into the organization characters to cast into the new
+ * sequence (`castCharacterIds`). A string names one of the organization's characters,
  * by id then by name; two of that name is a conflict that asks for the id.
- * An inline create whose name a team character already has is a conflict; a
+ * An inline create whose name an organization character already has is a conflict; a
  * repeat of an earlier create in this list reuses it. New names are delegated
  * to `deps.createCharacter`.
  */
@@ -123,9 +123,9 @@ export async function resolveCharacterIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  const team = await deps.characters.listTeam();
-  /** The one team character `ref` names, or null; several is a conflict. */
-  const named = (ref: string, matches: typeof team): string | null => {
+  const existing = await deps.characters.listOrganization();
+  /** The one organization character `ref` names, or null; several is a conflict. */
+  const named = (ref: string, matches: typeof existing): string | null => {
     if (matches.length > 1) {
       throw new ConflictError(
         `"${ref}" names ${matches.length} characters. Use the id: ${matches.map((c) => c.id).join(', ')}.`
@@ -135,12 +135,12 @@ export async function resolveCharacterIds(
   };
 
   for (const ref of refs) {
-    const byId = team.find((c) => c.id === ref);
+    const byId = existing.find((c) => c.id === ref);
     const id =
       byId?.id ??
       named(
         ref,
-        team.filter((c) => matchesRef(ref, c))
+        existing.filter((c) => matchesRef(ref, c))
       );
     if (!id) throw new NotFoundError(`No character found matching "${ref}".`);
     ids.push(id);
@@ -154,11 +154,11 @@ export async function resolveCharacterIds(
       ids.push(earlier);
       continue;
     }
-    const taken = team.filter((c) => slugify(c.name) === slug);
+    const taken = existing.filter((c) => slugify(c.name) === slug);
     if (taken.length > 0) {
       // Reusing it would drop this create's description and person flag.
       throw new ConflictError(
-        `The team already has a character named "${create.name}". Pass its name or id as a string to cast it: ${taken.map((c) => c.id).join(', ')}.`
+        `The organization already has a character named "${create.name}". Pass its name or id as a string to cast it: ${taken.map((c) => c.id).join(', ')}.`
       );
     }
     const character = await deps.createCharacter(create);
@@ -171,10 +171,10 @@ export async function resolveCharacterIds(
 
 /**
  * Resolve a mixed list of location items — reference strings (id|name) and
- * inline create objects — into a deduped list of team location ids for
- * `suggestedLocationIds`. A string names one of the team's locations, by id
+ * inline create objects — into a deduped list of organization location ids for
+ * `suggestedLocationIds`. A string names one of the organization's locations, by id
  * then by name; two of that name is a conflict that asks for the id. An inline
- * create whose name a team location (or an earlier create in this list) has
+ * create whose name an organization location (or an earlier create in this list) has
  * reuses it. New names are delegated to `deps.createLocation`.
  */
 export async function resolveLocationIds(
@@ -185,9 +185,9 @@ export async function resolveLocationIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  const team = await deps.locations.listTeam();
-  /** The one team location `ref` names, or null; several is a conflict. */
-  const named = (ref: string, matches: typeof team): string | null => {
+  const existing = await deps.locations.listOrganization();
+  /** The one organization location `ref` names, or null; several is a conflict. */
+  const named = (ref: string, matches: typeof existing): string | null => {
     if (matches.length > 1) {
       throw new ConflictError(
         `"${ref}" names ${matches.length} locations. Use the id: ${matches.map((l) => l.id).join(', ')}.`
@@ -197,12 +197,12 @@ export async function resolveLocationIds(
   };
 
   for (const ref of refs) {
-    const byId = team.find((l) => l.id === ref);
+    const byId = existing.find((l) => l.id === ref);
     const id =
       byId?.id ??
       named(
         ref,
-        team.filter((l) => matchesRef(ref, l))
+        existing.filter((l) => matchesRef(ref, l))
       );
     if (!id) throw new NotFoundError(`No location found matching "${ref}".`);
     ids.push(id);
@@ -215,7 +215,7 @@ export async function resolveLocationIds(
       created.get(slug) ??
       named(
         create.name,
-        team.filter((l) => slugify(l.name) === slug)
+        existing.filter((l) => slugify(l.name) === slug)
       );
     if (existingId) {
       ids.push(existingId);
@@ -241,7 +241,7 @@ export async function resolveLocationIds(
  * request stays fast.
  */
 export async function ingestElements(
-  teamId: string,
+  organizationId: string,
   elements: ApiCreateSequenceInput['elements']
 ): Promise<DraftElementUploadInput[]> {
   if (!elements || elements.length === 0) return [];
@@ -251,7 +251,7 @@ export async function ingestElements(
       const { storagePath, publicUrl, extension } = await ingestImageToBucket(
         el.url,
         STORAGE_BUCKETS.ELEMENTS,
-        teamId,
+        organizationId,
         DRAFT_ELEMENT_UPLOAD_PREFIX,
         {
           label: el.token

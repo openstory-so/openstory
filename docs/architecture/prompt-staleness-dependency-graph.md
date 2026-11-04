@@ -128,7 +128,7 @@ flowchart TD
     script --> split["scene-split-workflow<br/>LLM → scenes + continuity<br/>+ characterBible + locationBible + elementBible"]
 
     split --> cbib["character-bible-workflow ⊟<br/>persists characters (CAST)<br/>→ character-sheet ⊟"]
-    split --> locmatch["location-matching-workflow<br/>script location ↔ team location<br/>a match is a link (#1695)"]
+    split --> locmatch["location-matching-workflow<br/>script location ↔ organization location<br/>a match is a link (#1695)"]
     locmatch --> lbib["location-bible-workflow<br/>persists locations, links the matched<br/>→ location-sheet ⊟ for the ones made here"]
     split --> elem["element-sheet-workflow ⊟<br/>auto-detected elements"]
 
@@ -274,7 +274,7 @@ Key consequences of the shape:
   is rendered as, so that is a bible field now and the style is out of the
   sheet hash; a style change stales no character sheet. The shot still
   reads the style.
-- **A character is the team's, and every sequence reads its current
+- **A character is the organization's, and every sequence reads its current
   version (#2017).** The bible a shot's hashes read, the voice its clips
   bind, and a look's clothing, styling and sheet are the character's own,
   whichever sequence made the shot. An edit from any sequence stales the
@@ -485,7 +485,7 @@ Pre-#1785 digests (no `talentSheetHash` channel) and pre-#2065 digests
 ```ts
 sha256Hex({
   artifact: 'location:sheet',
-  version: 3, // #1695: the place is the team's; no sequence style.
+  version: 3, // #1695: the place is the organization's; no sequence style.
   // Every field `buildLocationSheetPrompt` reads (#1785): the projection the
   // prompt hashes use (`projectLocationForPrompt`) plus `rendering`, which
   // only the sheet reads. `name` is a label.
@@ -502,7 +502,7 @@ sha256Hex({
 });
 ```
 
-A location belongs to the team (#1695, `team-locations.md`), so this digest
+A location belongs to the organization (#1695, `organization-locations.md`), so this digest
 reads nothing of a sequence:
 
 - **No style.** The bible's required `rendering` is the only thing the sheet
@@ -881,7 +881,7 @@ with nothing edited.
 
 The same shape (stamp = raw payload, verify = transformed DB row) is latent for
 any future bible enrichment. It does not arise for a matched location (#1695):
-a match links the script location to the team's and no bible is rewritten.
+a match links the script location to the organization's and no bible is rewritten.
 
 > **Fixed by computing the cast bible once, before any stamp site is reached**
 > (`analyze-script-workflow.ts`, `buildCastCharacterBible`). Every prompt

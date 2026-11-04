@@ -18,7 +18,7 @@ import type Stripe from 'stripe';
 export type StripeWebhookContext = {
   stripeEvent: Stripe.Event | null;
   scopedDb: ScopedDb | null;
-  teamId: string | null;
+  organizationId: string | null;
   userId: string | null;
 };
 
@@ -34,7 +34,7 @@ export const stripeWebhookMiddleware = createMiddleware().server(
         context: {
           stripeEvent: null as Stripe.Event | null,
           scopedDb: null as ScopedDb | null,
-          teamId: null as string | null,
+          organizationId: null as string | null,
           userId: null as string | null,
         },
       });
@@ -78,21 +78,21 @@ export const stripeWebhookMiddleware = createMiddleware().server(
         );
       }
       const metadata = obj.metadata;
-      if (!('teamId' in metadata && 'userId' in metadata)) {
+      if (!('organizationId' in metadata && 'userId' in metadata)) {
         throw Response.json(
           {
-            error: `Stripe event ${event.id} missing teamId or userId in metadata`,
+            error: `Stripe event ${event.id} missing organizationId or userId in metadata`,
           },
           { status: 400 }
         );
       }
 
-      const teamId = metadata.teamId;
+      const organizationId = metadata.organizationId;
       const userId = metadata.userId;
-      if (typeof teamId !== 'string' || typeof userId !== 'string') {
+      if (typeof organizationId !== 'string' || typeof userId !== 'string') {
         throw Response.json(
           {
-            error: `Stripe event ${event.id} missing teamId or userId in metadata`,
+            error: `Stripe event ${event.id} missing organizationId or userId in metadata`,
           },
           { status: 400 }
         );
@@ -100,8 +100,8 @@ export const stripeWebhookMiddleware = createMiddleware().server(
       return next({
         context: {
           stripeEvent: event,
-          scopedDb: createScopedDb(teamId, userId),
-          teamId,
+          scopedDb: createScopedDb(organizationId, userId),
+          organizationId,
           userId,
         },
       });

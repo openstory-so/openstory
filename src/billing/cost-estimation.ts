@@ -496,7 +496,7 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
 
   // The script stage always runs scene-split's three calls: scenes, bibles,
   // shot-list (which also carries the dialogue, #1585). Location matching
-  // calls the LLM when the team has library locations, and that output is
+  // calls the LLM when the organization has library locations, and that output is
   // short, so three stand-ins cover the common case.
   const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);

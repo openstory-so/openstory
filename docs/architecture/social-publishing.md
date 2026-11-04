@@ -1,14 +1,14 @@
 # Publishing to social (#1267)
 
-"Publish to social…" sends a finished render to a team's own TikTok,
+"Publish to social…" sends a finished render to an organization's own TikTok,
 Instagram, YouTube, LinkedIn, Facebook, X, Threads and Bluesky accounts
 through [Upload-Post](https://www.upload-post.com).
 
-## Opt-in per team
+## Opt-in per organization
 
-- The team adds an Upload-Post key in **Settings → API Keys → Publishing**
-  (`team_api_keys`, provider `upload_post`). There is no platform key:
-  `platformKeyFor('upload_post')` is `undefined`, so a team without its own
+- The organization adds an Upload-Post key in **Settings → API Keys → Publishing**
+  (`organization_api_keys`, provider `upload_post`). There is no platform key:
+  `platformKeyFor('upload_post')` is `undefined`, so an organization without its own
   key has no publishing at all.
 - Without an active, valid key the Download menu has no "Publish to social…"
   item and the product looks exactly as before. `getSocialPublishingFn`
@@ -34,8 +34,8 @@ through [Upload-Post](https://www.upload-post.com).
    platforms (`captionMax` on `SOCIAL_PLATFORMS`: YouTube 100, X 280,
    Bluesky 300, Threads 500, the rest 2200).
 3. `publishSequenceExportFn` checks the caller is a member of the sequence's
-   team (a system admin viewing another team's sequence may not post on that
-   team's accounts), that the export belongs to the sequence and is `ready`,
+   organization (a system admin viewing another organization's sequence may not post on that
+   organization's accounts), that the export belongs to the sequence and is `ready`,
    absolutizes its URL (`toShareableUrl`) and hands it to Upload-Post **by
    URL** with `async_upload=true`. Upload-Post fetches the MP4 itself and
    answers in seconds, so the Worker never streams the file (#1893) and never
@@ -50,7 +50,7 @@ through [Upload-Post](https://www.upload-post.com).
 
 Publishing is a public side effect, so the rules are:
 
-- The request id is **derived** from every reviewed value — team, export,
+- The request id is **derived** from every reviewed value — organization, export,
   profile, platforms, caption, description, and the visibility of the
   platforms that use one (`derivePublishRequestId`, client-safe so the dialog
   can compute it too). The same publish always has the same id; changing
