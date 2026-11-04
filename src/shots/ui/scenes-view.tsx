@@ -1,3 +1,4 @@
+import { MessageSquare } from 'lucide-react';
 import { openAssistant } from '@/assistant/ui/assistant-store';
 import { Button } from '@/ui/shadcn/button';
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
@@ -1836,14 +1837,19 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-11 md:h-8"
+                        className="h-11 px-2 md:h-8 md:px-2.5"
+                        aria-label="Chat about this"
                         onClick={() =>
                           openAssistant({
                             context: [],
                           })
                         }
                       >
-                        Chat about this
+                        <MessageSquare className="h-4 w-4 md:h-3.5 md:w-3.5 @[40rem]/viewbar:hidden" />
+                        {/* Labelled only when the view bar has room. */}
+                        <span className="hidden @[40rem]/viewbar:inline">
+                          Chat about this
+                        </span>
                       </Button>
                       <CopyScriptButton sequenceId={sequenceId} />
                       <SequenceDownloadMenu
