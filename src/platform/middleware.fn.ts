@@ -25,6 +25,7 @@ import {
 import {
   createScopedDb,
   createSystemAdminScopedDb,
+  getFirstOrganizationId,
   getSequenceByIdUnscoped,
   type ScopedDb,
 } from '@/platform/server/db/scoped';
@@ -352,18 +353,31 @@ export const authWithOrganizationMiddleware = createMiddleware({
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
     const request = getRequest();
-    const organizationId = context.session.session.activeOrganizationId;
-    if (!organizationId) {
-      throw new Error('No active organization on this session');
-    }
-    const { organization, compliance } = await resolveOrganizationAndCompliance(
-      context.user.id,
-      request.method,
-      organizationId
-    );
+    const activeId = context.session.session.activeOrganizationId;
+    let { organization, compliance } = activeId
+      ? await resolveOrganizationAndCompliance(
+          context.user.id,
+          request.method,
+          activeId
+        )
+      : { organization: null, compliance: null };
 
+    // Leaving clears the active organization and removal leaves it dangling: move to the first one.
     if (!organization || !compliance) {
-      throw new Error('You are not a member of the active organization');
+      const firstId = await getFirstOrganizationId(context.user.id);
+      if (!firstId) throw new Error('This account belongs to no organization');
+      await getAuth().api.setActiveOrganization({
+        headers: request.headers,
+        body: { organizationId: firstId },
+      });
+      ({ organization, compliance } = await resolveOrganizationAndCompliance(
+        context.user.id,
+        request.method,
+        firstId
+      ));
+      if (!organization || !compliance) {
+        throw new Error('You are not a member of the active organization');
+      }
     }
 
     if (!compliance.enforcement.canAccess) {

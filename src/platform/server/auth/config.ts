@@ -322,9 +322,12 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
         allowUserToCreateOrganization: false,
         teams: { enabled: false },
         sendInvitationEmail: async (data) => {
+          if (!runtimeEnv.VITE_APP_URL) {
+            throw new Error('VITE_APP_URL is required to send invitations');
+          }
           const acceptUrl = new URL(
             '/organization/accept-invitation',
-            runtimeEnv.VITE_APP_URL || 'http://localhost:3000'
+            runtimeEnv.VITE_APP_URL
           );
           acceptUrl.searchParams.set('id', data.id);
           const result = await sendOrganizationInvitationEmail({
