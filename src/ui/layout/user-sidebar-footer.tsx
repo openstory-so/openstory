@@ -4,22 +4,28 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import { SidebarMenuButton, SidebarMenuItem } from '@/ui/shadcn/sidebar';
 import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useUser } from '@/platform/ui/use-user';
-import { authClient } from '@/platform/ui/auth/client';
+import { authClient, authData } from '@/platform/ui/auth/client';
 import { rememberLastPage } from '@/platform/ui/auth/last-page';
 import {
   sessionQueryOptions,
   useAuthSession,
 } from '@/platform/ui/auth/session-query';
+import { avatarStyle, getInitials } from '@/ui/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   BarChart3,
+  Check,
   ChevronsUpDown,
   LogIn,
   LogOut,
@@ -28,6 +34,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 export function UserSidebarFooter() {
   const { data: user, isLoading } = useUser();
@@ -107,9 +114,11 @@ export function UserSidebarFooter() {
             size="lg"
             className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
           >
-            <Avatar className="h-8 w-8 rounded-lg">
+            <Avatar>
               <AvatarImage src={user.image || undefined} alt={displayName} />
-              <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+              <AvatarFallback style={avatarStyle(displayName)}>
+                {initials}
+              </AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{displayName}</span>
@@ -126,28 +135,9 @@ export function UserSidebarFooter() {
           side="top"
           align="end"
           sideOffset={4}
-          className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+          className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-lg"
         >
-          <DropdownMenuLabel className="p-0 font-normal">
-            <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-              <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.image || undefined} alt={displayName} />
-                <AvatarFallback className="rounded-lg">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{displayName}</span>
-                {userEmail && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {userEmail}
-                  </span>
-                )}
-              </div>
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <OrganizationSwitchList open={menuOpen} />
+          <OrganizationSwitcher open={menuOpen} />
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link to="/settings">
@@ -176,81 +166,86 @@ export function UserSidebarFooter() {
   );
 }
 
-function OrganizationSwitchList({ open }: { open: boolean }) {
+function OrganizationAvatar({
+  name,
+  logo,
+}: {
+  name: string;
+  logo?: string | null;
+}) {
+  return (
+    <Avatar className="rounded-lg after:rounded-lg">
+      <AvatarImage className="rounded-lg" src={logo || undefined} alt="" />
+      <AvatarFallback className="rounded-lg" style={avatarStyle(name)}>
+        {getInitials(name)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+/** The active organization as a row; its submenu lists the others. */
+function OrganizationSwitcher({ open }: { open: boolean }) {
   const { data: session } = useAuthSession();
   const activeId = session?.session.activeOrganizationId ?? null;
-  const [error, setError] = useState<string | null>(null);
-  const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const activeName = session?.membership?.organizationName ?? 'No organization';
   const organizations = useQuery({
     queryKey: ['organization', 'list'],
     enabled: open,
-    queryFn: async () => {
-      const result = await authClient.organization.list();
-      if (result.error || result.data == null) {
-        throw new Error(
-          result.error?.message ?? 'Could not load organizations'
-        );
-      }
-      return result.data;
-    },
+    queryFn: () => authData(authClient.organization.list()),
   });
 
-  if (!open) return null;
-  if (organizations.isPending) {
-    return (
-      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-        Loading organizations…
-      </DropdownMenuLabel>
+  // Every loader and query on the page is per organization: reload, do not
+  // chase them. The auth client's cache clear leaves mounted queries orphaned.
+  const switchTo = (organizationId: string) =>
+    authData(authClient.organization.setActive({ organizationId })).then(
+      () => window.location.reload(),
+      (error: Error) =>
+        toast.error('Could not switch organization', {
+          description: error.message,
+        })
     );
-  }
-  if (organizations.isError) {
-    return (
-      <DropdownMenuLabel className="text-xs font-normal text-destructive">
-        {organizations.error.message}
-      </DropdownMenuLabel>
-    );
-  }
-  const rows = organizations.data;
-  if (rows.length === 0) return null;
-  if (rows.length === 1) {
-    return <DropdownMenuLabel>{rows[0]?.name}</DropdownMenuLabel>;
-  }
 
   return (
-    <>
-      {rows.map((organization) => (
-        <DropdownMenuItem
-          key={organization.id}
-          disabled={switchingId !== null || organization.id === activeId}
-          onSelect={(event) => {
-            event.preventDefault();
-            setSwitchingId(organization.id);
-            setError(null);
-            void authClient.organization
-              .setActive({ organizationId: organization.id })
-              .then((result) => {
-                if (result.error) {
-                  setError(
-                    result.error.message ?? 'Could not switch organization'
-                  );
-                }
-              })
-              .finally(() => setSwitchingId(null));
-          }}
-        >
-          {switchingId === organization.id
-            ? 'Switching…'
-            : organization.id === activeId
-              ? `${organization.name} (current)`
-              : organization.name}
-        </DropdownMenuItem>
-      ))}
-      {error ? (
-        <DropdownMenuLabel className="text-xs font-normal text-destructive">
-          {error}
-        </DropdownMenuLabel>
-      ) : null}
-    </>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-2">
+        <OrganizationAvatar name={activeName} />
+        <span className="flex-1 truncate">{activeName}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent className="min-w-56">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            Organizations
+          </DropdownMenuLabel>
+          {organizations.isPending ? (
+            <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+          ) : organizations.isError ? (
+            <DropdownMenuLabel className="text-xs font-normal text-destructive">
+              {organizations.error.message}
+            </DropdownMenuLabel>
+          ) : (
+            organizations.data.map((organization) => (
+              <DropdownMenuItem
+                key={organization.id}
+                className="gap-2"
+                onSelect={() => {
+                  if (organization.id !== activeId)
+                    void switchTo(organization.id);
+                }}
+              >
+                <OrganizationAvatar
+                  name={organization.name}
+                  logo={organization.logo}
+                />
+                <span className="flex-1 truncate">{organization.name}</span>
+                {organization.id === activeId ? (
+                  <Check className="size-4" aria-label="Current" />
+                ) : null}
+              </DropdownMenuItem>
+            ))
+          )}
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 }
 
@@ -279,18 +274,4 @@ function AdminMenuItem() {
       </DropdownMenuItem>
     </>
   );
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  if (!first || !last) return '';
-  if (parts.length === 1) {
-    return first.substring(0, 2).toUpperCase();
-  }
-  const firstChar = first[0];
-  const lastChar = last[0];
-  if (!firstChar || !lastChar) return '';
-  return (firstChar + lastChar).toUpperCase();
 }

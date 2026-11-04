@@ -3,9 +3,14 @@
  * Manage BYOK (Bring Your Own Key) for AI providers
  */
 
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { z } from 'zod';
 import { ApiKeySettings } from '@/ui/settings/api-key-settings';
+import {
+  ADMIN_PERMISSION,
+  sessionHasPermission,
+} from '@/platform/ui/auth/organization-permission';
+import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
 
 const searchSchema = z.object({
   success: z.string().optional(),
@@ -14,6 +19,13 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/_app/settings/api-keys')({
   validateSearch: searchSchema,
+  // Keys are organization-wide: only an admin may read or change them.
+  beforeLoad: async ({ context: { queryClient } }) => {
+    const session = await queryClient.ensureQueryData(sessionQueryOptions);
+    if (!sessionHasPermission(session, ADMIN_PERMISSION)) {
+      throw redirect({ to: '/settings/organization' });
+    }
+  },
   component: ApiKeysPage,
   staticData: { breadcrumb: 'API Keys' },
 });

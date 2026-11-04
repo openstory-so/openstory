@@ -74,3 +74,15 @@ export const authClient = createAuthClient({
 
 // Sign-in / OTP / Google / passkeys only. Session *reads* go through
 // `useAuthSession` / `sessionQueryOptions` (see `src/platform/session.fn.ts`).
+
+/** Unwrap an auth client result; a refusal becomes a thrown Error. */
+export async function authData<T>(
+  result: Promise<{ data: T | null; error: { message?: string } | null }>
+): Promise<T> {
+  const settled = await result;
+  if (settled.error) {
+    throw new Error(settled.error.message ?? 'Auth request failed');
+  }
+  if (settled.data == null) throw new Error('Auth request failed');
+  return settled.data;
+}
