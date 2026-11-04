@@ -211,36 +211,6 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
     });
   });
 
-  test('a run queued with teamId (#813) reads it as organizationId', async () => {
-    let seen: string | undefined;
-    class TestWorkflow extends OpenStoryWorkflowEntrypoint<TestPayload> {
-      protected override readonly failureLabel = 'Test run';
-
-      protected override runImpl(
-        event: Readonly<WorkflowEvent<TestPayload>>
-      ): Promise<unknown> {
-        seen = event.payload.organizationId;
-        return Promise.resolve('ok');
-      }
-    }
-    type Ctor = ConstructorParameters<typeof TestWorkflow>;
-    const workflow = new TestWorkflow(
-      asStub<Ctor[0]>(undefined),
-      asStub<Ctor[1]>({})
-    );
-    await workflow.run(
-      {
-        ...makeEvent(false),
-        payload: asStub<TestPayload>({
-          userId: 'u1',
-          teamId: 'legacy-organization',
-        }),
-      },
-      makeStep()
-    );
-    expect(seen).toBe('legacy-organization');
-  });
-
   test.each([ENGINE_ABORT, DO_RESET])(
     'platform interruption "%s": rethrows without onFailure or parent failure-notify',
     async (message) => {

@@ -170,7 +170,7 @@ and must be wired in four places (a test in
    binding so the sequence chip can status a child whose instance id has no
    trigger key (`continue:…`, `element-sheets:…`).
 
-The base class validates `userId`/`organizationId` on the payload (a run queued before #813 may still say `teamId`; the base reads that too), builds a
+The base class validates `userId`/`organizationId` on the payload, builds a
 `ScopedDb`, and sanitizes/handles failures. Subclasses implement
 `runImpl(event, step, scopedDb)`, run steps via
 `step.do('step-name', async () => { ... })` (durable, auto-retried), and write
