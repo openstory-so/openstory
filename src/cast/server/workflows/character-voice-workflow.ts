@@ -38,7 +38,10 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { VoicePreview } from '@/platform/server/db/schema';
 import { getGenerationChannel } from '@/platform/realtime';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  castStorageDir,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
@@ -261,7 +264,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.organizationId}/${sequenceId ?? 'org'}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${castStorageDir(input.organizationId, sequenceId, 'characters', characterDbId)}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,

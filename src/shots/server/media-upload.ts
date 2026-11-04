@@ -59,6 +59,7 @@ import {
   organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
+  castStorageDir,
 } from '@/platform/server/storage/buckets';
 
 import { getLogger } from '@/platform/logger';
@@ -662,7 +663,12 @@ export async function setCharacterSheetFromUpload(
       },
       versionId: variant.id,
       sheetUrl: data.publicUrl,
-      storageDir: `${context.organizationId}/${sequenceId ?? 'org'}/${character.id}`,
+      storageDir: castStorageDir(
+        context.organizationId,
+        sequenceId,
+        'characters',
+        character.id
+      ),
     });
   }
   return updated;
@@ -742,7 +748,12 @@ export async function setLocationSheetFromUpload(
     subject: { kind: 'location', locationId: location.id },
     versionId: variant.id,
     sheetUrl: data.publicUrl,
-    storageDir: `${context.organizationId}/${sequenceId ?? 'org'}/${location.id}`,
+    storageDir: castStorageDir(
+      context.organizationId,
+      sequenceId,
+      'locations',
+      location.id
+    ),
   });
   return updated;
 }

@@ -31,6 +31,7 @@ import {
   organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
+  castStorageDir,
 } from '@/platform/server/storage/buckets';
 import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { createServerFn } from '@tanstack/react-start';
@@ -196,9 +197,7 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
-      context.sequence
-        ? `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`
-        : `${organizationKeyPrefix(context.organizationId)}/characters/${data.characterId}/${generateId()}`,
+      `${castStorageDir(context.organizationId, context.sequence?.id ?? null, 'characters', data.characterId)}/${generateId()}`,
       data.filename,
       'image'
     );
@@ -236,9 +235,7 @@ export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
-      context.sequence
-        ? `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`
-        : `${organizationKeyPrefix(context.organizationId)}/locations/${data.locationDbId}/${generateId()}`,
+      `${castStorageDir(context.organizationId, context.sequence?.id ?? null, 'locations', data.locationDbId)}/${generateId()}`,
       data.filename,
       'image'
     );

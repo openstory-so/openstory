@@ -232,7 +232,7 @@ sheet hash read no sequence style.
   (`LocationSheetWorkflowInput`). What changes:
   - It reports on the location's own channel, `locationChannelId(null, id)`
     = `location:<id>`. Through a sequence the channel is the sequence's.
-  - It stores under `<organization>/org/<location>/`.
+  - It stores under `org/<organization>/locations/<location>/`.
   - The image model is the live sheet version's, else the default.
   - No sequence event is written (the bible edit, the sheet pick).
 

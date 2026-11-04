@@ -26,6 +26,19 @@ export type StorageBucket =
 export const organizationKeyPrefix = (organizationId: string) =>
   `org/${organizationId}`;
 
+/** A character's or location's folder: under its sequence, or the organization's own. */
+export function castStorageDir(
+  organizationId: string,
+  sequenceId: string | null,
+  kind: 'characters' | 'locations',
+  id: string
+): string {
+  const org = organizationKeyPrefix(organizationId);
+  return sequenceId
+    ? `${org}/sequences/${sequenceId}/${kind}/${id}`
+    : `${org}/${kind}/${id}`;
+}
+
 /** The organization a bucket-relative key belongs to: `org/<id>/…`, `teams/<id>/…` or `<id>/…`. */
 export function keyOwner(segments: readonly string[]): string | undefined {
   return segments[0] === 'org' || segments[0] === 'teams'

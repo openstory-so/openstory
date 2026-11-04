@@ -16,7 +16,10 @@ import type { ImageGenerationParams } from '@/stills/server/image-generation';
 import { buildLocationSheetPrompt } from '@/cast/location-prompt';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getGenerationChannel } from '@/platform/realtime';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  castStorageDir,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
@@ -115,7 +118,12 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channelId = locationChannelId(sequenceId, locationDbId);
-    const storageDir = `${organizationId}/${sequenceId ?? 'org'}/${locationDbId}`;
+    const storageDir = castStorageDir(
+      organizationId,
+      sequenceId,
+      'locations',
+      locationDbId
+    );
 
     // Step 2: Generate the location reference image — reseeds on a content
     // flag, then one softened prompt (#1293). The upload rides the same step:
