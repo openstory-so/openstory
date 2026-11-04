@@ -10,6 +10,7 @@
  * tier wherever a real model is required.
  */
 
+import { organizationKeyPrefix } from '@/platform/server/storage/buckets';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
@@ -65,20 +66,23 @@ export function uploadExtensionList(surface: UploadMediaSurface): string {
 
 /**
  * Parse a finalize-time media URL back to its bucket-relative `storagePath`
- * (the form the variant tables store), enforcing the team namespace: the key
- * must live exactly under `<bucket>/teams/<teamId>/` with no empty or `..`
+ * (the form the variant tables store), enforcing the organization namespace: the key
+ * must live exactly under `<bucket>/org/<organizationId>/` (or the pre-#813 `teams/`) with no empty or `..`
  * segments (same boundary as `isValidElementStoragePath`). Returns null when
  * the URL is not a stored `/r2/` URL or escapes the namespace.
  */
 export function parseUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
-  teamId: string
+  organizationId: string
 ): string | null {
   const key = r2KeyFromUrl(publicUrl);
   if (key === null) return null;
-  const prefix = `${bucket}/teams/${teamId}/`;
-  if (!key.startsWith(prefix)) return null;
+  const prefix = [
+    `${bucket}/${organizationKeyPrefix(organizationId)}/`,
+    `${bucket}/teams/${organizationId}/`,
+  ].find((p) => key.startsWith(p));
+  if (!prefix) return null;
   const rest = key.slice(prefix.length);
   if (rest.length === 0) return null;
   if (rest.split('/').some((seg) => seg === '' || seg === '..')) return null;

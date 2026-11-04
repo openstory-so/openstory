@@ -16,7 +16,11 @@ import {
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
-import { teams, uploadAttestations, user } from '@/platform/server/db/schema';
+import {
+  organization,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import { sha256Hex } from '@/platform/compliance/hash';
 import {
   LIKENESS_CLEARED_V1,
@@ -33,8 +37,8 @@ const mockAnalyzeClip = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
-  analyzeTalentMediaForTeam: mockAnalyze,
-  analyzeTalentClipForTeam: mockAnalyzeClip,
+  analyzeTalentMediaForOrganization: mockAnalyze,
+  analyzeTalentClipForOrganization: mockAnalyzeClip,
 }));
 
 const {
@@ -50,10 +54,10 @@ const {
 
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
-const TEAM_ID = generateId();
+const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
 const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
-const url = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
+const url = `/r2/talent/${ORGANIZATION_ID}/temp/01ABC.png`;
 
 function verdict(subjectKind: 'human' | 'animated' | 'other') {
   mockAnalyze.mockResolvedValueOnce({ subjectKind, isCharacterSheet: false });
@@ -62,7 +66,9 @@ function verdict(subjectKind: 'human' | 'animated' | 'other') {
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db
+    .insert(organization)
+    .values([{ id: ORGANIZATION_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -74,7 +80,7 @@ beforeEach(async () => {
 
 describe('classifyUpload', () => {
   it('clears a non-person and records the finding, once', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     verdict('other');
 
     const first = await classifyUpload({
@@ -94,7 +100,7 @@ describe('classifyUpload', () => {
     );
     expect(await db.select().from(uploadAttestations)).toMatchObject([
       {
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
         userId: USER_ID,
         subjectType: 'uploaded_image',
         subjectId: await sha256Hex(url),
@@ -121,7 +127,7 @@ describe('classifyUpload', () => {
   });
 
   it('records a detected person and asks for the sign-off, without re-running vision', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     verdict('human');
 
     expect(
@@ -143,7 +149,7 @@ describe('classifyUpload', () => {
   });
 
   it('leaves no row when the classifier fails, so the gate keeps refusing', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     mockAnalyze.mockRejectedValueOnce(new Error('vision down'));
 
     await expect(
@@ -156,8 +162,8 @@ describe('classifyUpload', () => {
   });
 
   it('has Gemini watch a stored clip, keyed by the clip (#1930)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mov`;
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+    const clip = `/r2/talent/${ORGANIZATION_ID}/uploads/01CLIP.mov`;
     mockAnalyzeClip.mockResolvedValueOnce({
       subjectKind: 'human',
       isCharacterSheet: false,
@@ -172,7 +178,7 @@ describe('classifyUpload', () => {
     expect(rights).toEqual({ status: 'needs_portrait' });
     expect(mockAnalyzeClip).toHaveBeenCalledWith(
       expect.objectContaining({
-        key: `talent/${TEAM_ID}/uploads/01CLIP.mov`,
+        key: `talent/${ORGANIZATION_ID}/uploads/01CLIP.mov`,
         mimeType: 'video/quicktime',
       })
     );
@@ -182,8 +188,8 @@ describe('classifyUpload', () => {
     );
   });
 
-  it('refuses another team’s stored clip, and reads nothing', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+  it('refuses another organization’s stored clip, and reads nothing', async () => {
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const clip = `/r2/talent/${generateId()}/uploads/01CLIP.mp4`;
 
     await expect(
@@ -193,11 +199,11 @@ describe('classifyUpload', () => {
   });
 
   it('reads ownership off the owner segment, not a substring (#2192)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     for (const url of [
-      `/r2/talent/${generateId()}/uploads/${TEAM_ID}/01X.png`,
-      `/r2/thumbnails/teams/${generateId()}/${TEAM_ID}/01X.png`,
-      `/r2/talent/${TEAM_ID}/uploads/../../${generateId()}/01X.png`,
+      `/r2/talent/${generateId()}/uploads/${ORGANIZATION_ID}/01X.png`,
+      `/r2/thumbnails/teams/${generateId()}/${ORGANIZATION_ID}/01X.png`,
+      `/r2/talent/${ORGANIZATION_ID}/uploads/../../${generateId()}/01X.png`,
     ]) {
       await expect(
         classifyUpload({ scopedDb, userId: USER_ID, url, request })
@@ -207,7 +213,7 @@ describe('classifyUpload', () => {
   });
 
   it('refuses a clip that is not ours, and records nothing', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const clip = 'https://example.com/someone.mp4';
 
     await expect(
@@ -221,7 +227,7 @@ describe('classifyUpload', () => {
 
 describe('attestUploads', () => {
   it('lets the user mark a cleared upload as a real person (#1847)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     await recordLikenessFinding(scopedDb, [url], 'animated', request);
     expect(await likenessFromLedger(scopedDb, url)).toBe('none');
 
@@ -245,7 +251,7 @@ describe('attestUploads', () => {
   });
 
   it('records the portrait statement with the basis; a repeat is a no-op', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     await recordLikenessFinding(scopedDb, [url], 'human', request);
 
     const claim = {
@@ -278,7 +284,7 @@ describe('attestUploads', () => {
   });
 
   it('keeps a same-second portrait sign-off as signed even if the finding row is inserted later', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const subjectId = await sha256Hex(url);
     const attestedAt = new Date('2026-09-14T12:00:00.000Z');
     const findingId = generateId();
@@ -286,7 +292,7 @@ describe('attestUploads', () => {
 
     const base = {
       userId: USER_ID,
-      teamId: TEAM_ID,
+      organizationId: ORGANIZATION_ID,
       subjectType: 'uploaded_image' as const,
       subjectId,
       attestedAt,
@@ -317,10 +323,10 @@ describe('attestUploads', () => {
 
 describe('likenessFromLedger', () => {
   it('maps cleared to none, a detected or signed person to real, unknown to null (#1674, #1682)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const cleared = `/r2/talent/${TEAM_ID}/temp/cleared.png`;
-    const signed = `/r2/talent/${TEAM_ID}/temp/signed.png`;
-    const unknown = `/r2/talent/${TEAM_ID}/temp/unknown.png`;
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+    const cleared = `/r2/talent/${ORGANIZATION_ID}/temp/cleared.png`;
+    const signed = `/r2/talent/${ORGANIZATION_ID}/temp/signed.png`;
+    const unknown = `/r2/talent/${ORGANIZATION_ID}/temp/unknown.png`;
     verdict('other');
     expect(
       await classifyUpload({
@@ -360,9 +366,9 @@ describe('likenessFromLedger', () => {
 
 describe('realPersonUrls', () => {
   it('counts a detected, signed or retired-statement row as a real person, and never throws (#2065)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const at = (name: string) =>
-      `/r2/characters/${TEAM_ID}/uploads/${name}.png`;
+      `/r2/characters/${ORGANIZATION_ID}/uploads/${name}.png`;
     await recordLikenessFinding(scopedDb, [at('cleared')], 'other', request);
     await recordLikenessFinding(scopedDb, [at('detected')], 'human', request);
     // A statement this code no longer writes: fails closed.
@@ -387,8 +393,8 @@ describe('realPersonUrls', () => {
 
 describe('carryUploadRights', () => {
   it('covers the moved URL with the same evidence', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const libraryUrl = `/r2/talent/${TEAM_ID}/tal1/01ABC.png`;
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+    const libraryUrl = `/r2/talent/${ORGANIZATION_ID}/tal1/01ABC.png`;
     await recordLikenessFinding(scopedDb, [url], 'human', request);
     await attestUploads(
       scopedDb,
@@ -417,17 +423,21 @@ describe('carryUploadRights', () => {
   });
 
   it('refuses to carry an unchecked URL', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     await expect(
-      carryUploadRights(scopedDb, url, `/r2/talent/${TEAM_ID}/tal1/x.png`)
+      carryUploadRights(
+        scopedDb,
+        url,
+        `/r2/talent/${ORGANIZATION_ID}/tal1/x.png`
+      )
     ).rejects.toBeInstanceOf(AttestationRequiredError);
   });
 });
 
 describe('carryUploadRightsIfChecked', () => {
   it('leaves an unchecked copy unchecked instead of failing the copy', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const copy = `/r2/elements/${TEAM_ID}/seq2/01COPY.mp4`;
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+    const copy = `/r2/elements/${ORGANIZATION_ID}/seq2/01COPY.mp4`;
 
     await carryUploadRightsIfChecked(scopedDb, url, copy);
     expect(await db.select().from(uploadAttestations)).toEqual([]);

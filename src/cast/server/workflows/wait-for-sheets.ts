@@ -68,7 +68,7 @@ type PollArgs<TRow> = {
    * Reads the entities and splits them into the rows it saw plus the subset of
    * `ids` that are NOT yet ready. Only entities the scoped read actually
    * returns are considered — an id the read doesn't return (deleted, or
-   * another team's private row) is treated as "not pending" so we never wait
+   * another organization's private row) is treated as "not pending" so we never wait
    * the full timeout for something matching will skip anyway.
    */
   check: () => Promise<{ rows: TRow[]; pendingIds: string[] }>;

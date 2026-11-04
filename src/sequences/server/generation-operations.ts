@@ -140,7 +140,7 @@ function decodePlanToken(encoded: string, sequenceId: string): PlanToken {
   return token.data;
 }
 
-type Actor = { userId: string; teamId: string };
+type Actor = { userId: string; organizationId: string };
 
 const shotList = z.array(z.string());
 /** What a stale/missing plan does, per stage. */
@@ -323,7 +323,7 @@ async function prepareGeneration(
         await onLaunched(
           await launchUpdateStale({
             userId: actor.userId,
-            teamId: actor.teamId,
+            organizationId: actor.organizationId,
             sequenceId: sequence.id,
             plan,
             runKey,
@@ -384,7 +384,7 @@ async function prepareGeneration(
         () =>
           triggerContinue(scopedDb, {
             userId: actor.userId,
-            teamId: actor.teamId,
+            organizationId: actor.organizationId,
             sequence,
             plan,
             stopAt,
@@ -405,7 +405,7 @@ async function prepareRetry(
   const context = {
     sequence,
     user: { id: actor.userId },
-    teamId: actor.teamId,
+    organizationId: actor.organizationId,
     scopedDb,
   };
   const smartOnly = request.retry === 'smart';
@@ -679,7 +679,7 @@ export async function startExportOperation(
   // One decision: the refusal and the reported action are the start's own.
   const { row, workflowRunId, action } = await startExport(scopedDb, {
     userId: actor.userId,
-    teamId: actor.teamId,
+    organizationId: actor.organizationId,
     sequenceId,
     cut,
     refuseOtherCut: true,

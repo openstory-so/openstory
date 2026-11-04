@@ -9,14 +9,19 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import { sequences, styles, teams, user } from '@/platform/server/db/schema';
+import {
+  sequences,
+  styles,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createSequencesMethods } from './sequences';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 let styleId = '';
 
@@ -32,21 +37,23 @@ beforeEach(async () => {
   await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   await db.insert(user).values({
     id: userId,
     name: 'U',
     email: `${userId}@example.com`,
   });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -68,7 +75,7 @@ describe('sequences.create model defaults', () => {
     const id = generateId();
     await db.insert(sequences).values({
       id,
-      teamId,
+      organizationId,
       title: 'raw',
       styleId,
     });
@@ -81,7 +88,7 @@ describe('sequences.create model defaults', () => {
   });
 
   it('substitutes app-level defaults when models are omitted', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
       title: 'omitted',
@@ -93,7 +100,7 @@ describe('sequences.create model defaults', () => {
   });
 
   it('persists an explicit analysisModel', async () => {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
       title: 'explicit',

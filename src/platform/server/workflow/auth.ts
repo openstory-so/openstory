@@ -25,8 +25,8 @@ export function validateSequenceAuth(
     throw new AuthenticationError('Workflow context missing userId');
   }
 
-  if (!context.teamId) {
-    throw new AuthenticationError('Workflow context missing teamId');
+  if (!context.organizationId) {
+    throw new AuthenticationError('Workflow context missing organizationId');
   }
 
   if (!context.sequenceId) {

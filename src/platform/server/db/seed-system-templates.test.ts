@@ -22,7 +22,7 @@ import {
   appMetadata,
   locations,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { ensureSystemTemplatesSeeded } from './seed-system-templates';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
@@ -65,11 +65,11 @@ describe('ensureSystemTemplatesSeeded', () => {
     const logs: string[] = [];
     await ensureSystemTemplatesSeeded(db, (m) => logs.push(m));
 
-    const [systemTeam] = await db
+    const [systemOrganization] = await db
       .select()
-      .from(teams)
-      .where(eq(teams.slug, 'system-templates'));
-    expect(systemTeam).toBeDefined();
+      .from(organization)
+      .where(eq(organization.slug, 'system-templates'));
+    expect(systemOrganization).toBeDefined();
 
     const counts = await templateCounts();
     expect(counts.styles).toBe(DEFAULT_SYSTEM_STYLES.length);

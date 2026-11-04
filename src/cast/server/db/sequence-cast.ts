@@ -1,5 +1,5 @@
 /**
- * Sequence cast (#2017): the links between a sequence and the team
+ * Sequence cast (#2017): the links between a sequence and the organization
  * characters it uses.
  *
  * A link holds only what is the sequence's: the script id, the soft-remove
@@ -23,7 +23,7 @@ import { ConflictError, NotFoundError } from '@/platform/errors';
 /**
  * The one meaning of "a sequence casts this character" (#2017): a cast link
  * that is not removed, in a sequence that is not archived. `exceptSequenceId`
- * leaves one sequence out. `selectTeam` joins on the same two conditions, so
+ * leaves one sequence out. `selectOrganization` joins on the same two conditions, so
  * the list, the character page and the voice release agree.
  */
 export const castElsewhere = (
@@ -43,7 +43,7 @@ export const castElsewhere = (
  */
 export const analysisMayNotRewrite = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   characterId: string,
   sequenceId: string
 ): Promise<boolean> => {
@@ -52,7 +52,12 @@ export const analysisMayNotRewrite = async (
       shared: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${characterId} AND (o.sequence_id != ${sequenceId} OR o.attached))`,
     })
     .from(characters)
-    .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
+    .where(
+      and(
+        eq(characters.id, characterId),
+        eq(characters.organizationId, organizationId)
+      )
+    );
   if (!row) throw new NotFoundError(`Character ${characterId} not found`);
   return Boolean(row.shared);
 };
@@ -111,13 +116,13 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
   [db.delete(sequenceCast).where(where)] as const;
 
 /**
- * The team's characters that go when a sequence is hard-deleted: the ones
+ * The organization's characters that go when a sequence is hard-deleted: the ones
  * only it ever cast and the writer did not attach. Read before the delete, because the links that say so
  * are deleted first. A condition on `characters`.
  */
 export const charactersOnlyIn = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string
 ): Promise<SQL> => {
   const rows = await db
@@ -127,8 +132,8 @@ export const charactersOnlyIn = async (
     .where(
       and(
         eq(sequenceCast.sequenceId, sequenceId),
-        eq(characters.teamId, teamId),
-        // An attached character is the team's, whoever else casts it (#2065).
+        eq(characters.organizationId, organizationId),
+        // An attached character is the organization's, whoever else casts it (#2065).
         eq(sequenceCast.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`
       )

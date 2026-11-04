@@ -83,7 +83,7 @@ const {
 
 /** Every field the composer can set, with values distinct from the server defaults. */
 const INPUT = {
-  teamId: 'team_1',
+  organizationId: 'team_1',
   script: 'INT. LAUNDROMAT - NIGHT',
   styleId: 'style_1',
   title: 'Firefly Courier',

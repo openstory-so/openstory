@@ -94,7 +94,7 @@ async function putMultipart(
   const { signal, timeoutMs } = options ?? {};
 
   // The single-upload URL encodes the destination as ?bucket&path — reuse it so
-  // multipart targets the exact same object (and same team-scoping check).
+  // multipart targets the exact same object (and same organization-scoping check).
   const parsed = new URL(uploadUrl, globalThis.location.origin);
   const bucket = parsed.searchParams.get('bucket');
   const path = parsed.searchParams.get('path');

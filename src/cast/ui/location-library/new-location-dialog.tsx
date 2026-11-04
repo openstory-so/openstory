@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { LocationMediaUpload } from '@/cast/ui/location-library/location-media-upload';
-import { useCreateTeamLocation } from '@/cast/ui/use-team-locations';
+import { useCreateOrganizationLocation } from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -38,7 +38,7 @@ export const NewLocationDialog: React.FC<{
   const [files, setFiles] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const createLocation = useCreateTeamLocation();
+  const createLocation = useCreateOrganizationLocation();
   const hydrated = useHydrated();
 
   const close = () => {
@@ -98,9 +98,9 @@ export const NewLocationDialog: React.FC<{
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="new-team-location-name">Name</Label>
+            <Label htmlFor="new-organization-location-name">Name</Label>
             <Input
-              id="new-team-location-name"
+              id="new-organization-location-name"
               name="name"
               autoComplete="off"
               placeholder="Coffee shop…"
@@ -108,11 +108,11 @@ export const NewLocationDialog: React.FC<{
             />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="new-team-location-description">
+            <Label htmlFor="new-organization-location-description">
               Description (optional)
             </Label>
             <Textarea
-              id="new-team-location-description"
+              id="new-organization-location-description"
               name="description"
               rows={3}
             />

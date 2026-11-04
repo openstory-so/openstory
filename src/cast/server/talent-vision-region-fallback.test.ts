@@ -91,7 +91,7 @@ vi.doMock('@tanstack/ai', () => ({
 const { analyzeTalentClip, analyzeTalentMedia, TALENT_VISION_MODEL } =
   await import('./talent-vision');
 
-const IMAGES = ['/r2/team-1/uploads/talent.png'];
+const IMAGES = ['/r2/organization-1/uploads/talent.png'];
 
 beforeEach(() => {
   adapterModels.length = 0;
@@ -123,7 +123,7 @@ describe('analyzeTalentMedia region fallback', () => {
 
     const result = await analyzeTalentMedia({
       imageUrls: IMAGES,
-      llmKey: { key: 'k', via: 'llmtr', source: 'team' },
+      llmKey: { key: 'k', via: 'llmtr', source: 'organization' },
       resolveLlmKey,
     });
 

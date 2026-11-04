@@ -11,7 +11,7 @@ import { readToolDefinition } from '../tool-context';
 export const listSequences = readToolDefinition({
   name: 'list_sequences',
   description:
-    'List your team’s sequences, most recently updated first, with compact counts and a pagination cursor. Models are sequence defaults; inspect shots for selected asset models.',
+    'List your organization’s sequences, most recently updated first, with compact counts and a pagination cursor. Models are sequence defaults; inspect shots for selected asset models.',
   inputSchema: z.strictObject({
     limit: z.int().min(1).max(100).default(20),
     cursor: z.string().min(1).max(512).optional(),

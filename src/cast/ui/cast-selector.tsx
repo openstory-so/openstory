@@ -5,7 +5,7 @@
  */
 
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
-import type { TeamCharacter } from '@/cast/server/db/characters';
+import type { OrganizationCharacter } from '@/cast/server/db/characters';
 import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
@@ -25,20 +25,20 @@ import { Check, User, X } from 'lucide-react';
 import { useState } from 'react';
 
 type CastSelectorProps = {
-  /** The team's characters; undefined while they load. */
-  characters: readonly TeamCharacter[] | undefined;
+  /** The organization's characters; undefined while they load. */
+  characters: readonly OrganizationCharacter[] | undefined;
   failed: boolean;
-  /** Signed out there is no team. */
+  /** Signed out there is no organization. */
   signedOut: boolean;
   selectedIds: readonly string[];
   onSelectionChange: (ids: string[]) => void;
   disabled: boolean;
 };
 
-const Picture: React.FC<{ character: TeamCharacter; iconClass: string }> = ({
-  character,
-  iconClass,
-}) => {
+const Picture: React.FC<{
+  character: OrganizationCharacter;
+  iconClass: string;
+}> = ({ character, iconClass }) => {
   // The portrait drawn from the sheet; a sheet from before portraits is cropped.
   const portraitUrl = character.sheetPortraitUrl;
   const url = portraitUrl ?? character.sheetImageUrl;
@@ -73,7 +73,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
 
   const selected = (characters ?? []).filter((c) => selectedIds.includes(c.id));
   // A pick the list no longer has (deleted since, or a draft from another
-  // team). Create would refuse it, so it is shown and removable, not dropped.
+  // organization). Create would refuse it, so it is shown and removable, not dropped.
   const gone = characters
     ? selectedIds.filter((id) => !characters.some((c) => c.id === id))
     : [];

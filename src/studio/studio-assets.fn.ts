@@ -1,7 +1,7 @@
 /**
  * Images and Videos (#1274).
  *
- * Team-scoped create/list/favorite/delete for studio `generated_assets`.
+ * Organization-scoped create/list/favorite/delete for studio `generated_assets`.
  * Always on — unlike `/models` this is not gated by MODELS_ENABLED. The work
  * lives in `@/studio/server/` (shared with the MCP Studio tools, #1985) so
  * the Start compiler does not ship the workflow client into the browser
@@ -10,9 +10,9 @@
 
 import { getSignedUploadUrl } from '#storage';
 import {
-  TEAM_USER_UPLOAD_PREFIX,
-  teamUserUploadStoragePath,
-} from '@/cast/server/team-user-upload';
+  ORGANIZATION_USER_UPLOAD_PREFIX,
+  organizationUserUploadStoragePath,
+} from '@/cast/server/organization-user-upload';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
@@ -27,7 +27,7 @@ import {
 } from '@/studio/server/create-studio-asset';
 import {
   deleteStudioAsset,
-  draftStudioPromptForTeam,
+  draftStudioPromptForOrganization,
   getStudioEditHistory,
   setStudioAssetFavorite,
 } from '@/studio/server/studio-asset-actions';
@@ -42,7 +42,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 
 /** Who asked, for an upload a create has to check itself (#2192). */
 function likenessRequest() {
@@ -54,23 +54,23 @@ function likenessRequest() {
 }
 
 export const createStudioAssetsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
     return createStudioAssets(context.scopedDb, data, likenessRequest());
   });
 
 /**
- * Everything this team has uploaded to the composer, newest first. Uploads
+ * Everything this organization has uploaded to the composer, newest first. Uploads
  * have no DB row: the R2 prefix is the record, and the ULID key orders them
  * by time.
  */
 export const listStudioUploadsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
     const files = await listFiles(
       STORAGE_BUCKETS.TALENT,
-      `${context.teamId}/${TEAM_USER_UPLOAD_PREFIX}`,
+      `${context.organizationId}/${ORGANIZATION_USER_UPLOAD_PREFIX}`,
       { limit: 1000 }
     );
     return files
@@ -89,13 +89,17 @@ export const listStudioUploadsFn = createServerFn({ method: 'GET' })
  * prefix {@link listStudioUploadsFn} reads (#1634).
  */
 export const presignStudioUploadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const ext = getExtensionFromUrl(data.filename);
     return getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,
-      teamUserUploadStoragePath(context.teamId, generateId(), ext),
+      organizationUserUploadStoragePath(
+        context.organizationId,
+        generateId(),
+        ext
+      ),
       getMimeTypeFromExtension(ext)
     );
   });
@@ -109,7 +113,7 @@ const listStudioAssetsInputSchema = z.object({
 });
 
 export const listStudioAssetsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(listStudioAssetsInputSchema.optional()))
   .handler(async ({ context, data }) => {
     return context.scopedDb.generatedAssets.list({
@@ -124,7 +128,7 @@ export const listStudioAssetsFn = createServerFn({ method: 'GET' })
 
 /** Render a finished Ark draft at 1080p from its task id (#1756). */
 export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
     return renderStudioAssetAtQuality(
@@ -136,7 +140,7 @@ export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
 
 /** Rewrite a finished clip from a prompt (#1925); see `editStudioAsset`. */
 export const editStudioAssetFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -158,14 +162,14 @@ export const editStudioAssetFn = createServerFn({ method: 'POST' })
 
 /** The prompts a clip was made from (#1925); see `getStudioEditHistory`. */
 export const getStudioEditHistoryFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
     return getStudioEditHistory(context.scopedDb, data.id);
   });
 
 export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -179,16 +183,16 @@ export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })
   });
 
 export const deleteStudioAssetFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
     return deleteStudioAsset(context.scopedDb, data.id);
   });
 
-/** Draft a prompt from the attached references; see `draftStudioPromptForTeam`. */
+/** Draft a prompt from the attached references; see `draftStudioPromptForOrganization`. */
 export const draftStudioPromptFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(studioPromptDraftInputSchema))
   .handler(async ({ context, data }) => {
-    return draftStudioPromptForTeam(context.scopedDb, data);
+    return draftStudioPromptForOrganization(context.scopedDb, data);
   });

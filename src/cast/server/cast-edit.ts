@@ -6,9 +6,9 @@
  *
  * Every function takes the sequence id the caller authorised and refuses a
  * row of another sequence (live or soft-deleted rows both pass, so restore
- * can reach them). The `…TeamCharacter…` and `…TeamLocation…` ones are the
+ * can reach them). The `…OrganizationCharacter…` and `…OrganizationLocation…` ones are the
  * Characters and Locations pages' (#2065, #1695): no sequence, scoped to the
- * team.
+ * organization.
  */
 import { renderingOfStyle } from '@/cast/rendering';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
@@ -130,7 +130,7 @@ function defaultLookOf<
 
 /**
  * The character, when it belongs to this sequence (live or soft-deleted),
- * or, from no sequence (null), one of the team's at its current version
+ * or, from no sequence (null), one of the organization's at its current version
  * (#2017). Only a read through a sequence carries the link.
  */
 export async function requireCharacter(
@@ -224,7 +224,7 @@ export async function createCharacter(
  * then, so no voice field is taken here. No event is recorded: events are
  * per sequence.
  */
-export async function createTeamCharacter(
+export async function createOrganizationCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   {
@@ -234,7 +234,7 @@ export async function createTeamCharacter(
     ...bible
   }: Omit<CharacterBibleFields, 'voiceDescription'> & { name: string }
 ) {
-  const character = await scopedDb.characters.createForTeam(
+  const character = await scopedDb.characters.createForOrganization(
     {
       name,
       ...bible,
@@ -274,7 +274,7 @@ async function requireCurrentCharacter(
  * the character's current pointer. A sequence that casts it keeps the
  * version it pinned and reads "not the current version".
  */
-export async function updateTeamCharacter(
+export async function updateOrganizationCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
@@ -310,7 +310,7 @@ export async function updateTeamCharacter(
 }
 
 /**
- * Cast a team character into a sequence (#2050): the `@` picker and the
+ * Cast an organization character into a sequence (#2050): the `@` picker and the
  * cast panel's Add Character. One link pinning her current version, a cast
  * look per look; nothing is copied and no generation starts. Refused while a
  * live cast member has her name (`characters.attach`).
@@ -373,7 +373,7 @@ export async function updateCharacter(
 /**
  * Soft-remove a character from the sequence (undoable). Scene continuity
  * tags are kept, so a restore is lossless. The character, its voice
- * included, is the team's and stays as it is (#2017).
+ * included, is the organization's and stays as it is (#2017).
  */
 export async function deleteCharacter(
   scopedDb: ScopedDb,
@@ -405,8 +405,8 @@ export async function restoreCharacter(
 const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
 
 /**
- * Delete one of the team's characters (#2065). Soft: it leaves the
- * Characters page and the `@` picker, and `restoreTeamCharacter` brings it
+ * Delete one of the organization's characters (#2065). Soft: it leaves the
+ * Characters page and the `@` picker, and `restoreOrganizationCharacter` brings it
  * back. Refused while a sequence, archived ones included, still casts it;
  * the db write carries the same condition, so a sequence that casts it
  * between the check and the write still stops it. The delete is written
@@ -415,7 +415,7 @@ const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
  * no sequence can cast it while the provider call runs. A failed release
  * puts the character back. Restoring does not bring the voice back.
  */
-export async function deleteTeamCharacter(
+export async function deleteOrganizationCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string
@@ -423,7 +423,7 @@ export async function deleteTeamCharacter(
   if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
     throw new ConflictError(STILL_CAST_MESSAGE);
   }
-  if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
+  if (!(await scopedDb.characters.softDeleteForOrganization(characterId))) {
     throw new ConflictError(STILL_CAST_MESSAGE);
   }
   try {
@@ -434,17 +434,17 @@ export async function deleteTeamCharacter(
       actor.userId
     );
   } catch (error) {
-    await scopedDb.characters.restoreForTeam(characterId);
+    await scopedDb.characters.restoreForOrganization(characterId);
     throw error;
   }
   return { characterId };
 }
 
-export async function restoreTeamCharacter(
+export async function restoreOrganizationCharacter(
   scopedDb: ScopedDb,
   characterId: string
 ) {
-  if (!(await scopedDb.characters.restoreForTeam(characterId))) {
+  if (!(await scopedDb.characters.restoreForOrganization(characterId))) {
     throw new NotFoundError('Character not found');
   }
   return { characterId };
@@ -709,8 +709,8 @@ export async function selectCharacterLookVersion(
 
 // ── Looks from no sequence (#2065) ──────────────────────────────────────────
 
-/** A look of one of the team's characters, at its current version. */
-async function requireTeamLook(
+/** A look of one of the organization's characters, at its current version. */
+async function requireOrganizationLook(
   scopedDb: Pick<ScopedDb, 'characters'>,
   characterId: string,
   lookId: string
@@ -723,7 +723,7 @@ async function requireTeamLook(
 }
 
 /** Add an outfit from the Characters page. No sequence uses it yet. */
-export async function createTeamCharacterLook(
+export async function createOrganizationCharacterLook(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
@@ -743,14 +743,14 @@ export async function createTeamCharacterLook(
 }
 
 /** Rename a look or edit its clothing / styling from the Characters page. */
-export async function updateTeamCharacterLook(
+export async function updateOrganizationCharacterLook(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
   lookId: string,
   patch: Partial<LookInput>
 ) {
-  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  const look = await requireOrganizationLook(scopedDb, characterId, lookId);
   if (look.deletedAt) {
     throw new ValidationError(
       `${look.name} was removed. Restore the look first.`
@@ -780,26 +780,26 @@ export async function updateTeamCharacterLook(
 }
 
 /** Remove a look (undoable). Refused for the default look and a worn one. */
-export async function removeTeamCharacterLook(
+export async function removeOrganizationCharacterLook(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
   lookId: string
 ) {
-  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  const look = await requireOrganizationLook(scopedDb, characterId, lookId);
   const deletedAt = await scopedDb.characterLooks.remove(null, look.id, {
     actorId: actor.userId,
   });
   return { characterId, lookId: look.id, name: look.name, deletedAt };
 }
 
-export async function restoreTeamCharacterLook(
+export async function restoreOrganizationCharacterLook(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
   lookId: string
 ) {
-  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  const look = await requireOrganizationLook(scopedDb, characterId, lookId);
   await scopedDb.characterLooks.restore(null, look.id, {
     actorId: actor.userId,
   });
@@ -810,7 +810,7 @@ export async function restoreTeamCharacterLook(
 
 /**
  * The location, when this sequence uses it (live or removed), or, from no
- * sequence (null), one of the team's at its current version (#1695). Only a
+ * sequence (null), one of the organization's at its current version (#1695). Only a
  * read through a sequence carries the link.
  */
 export async function requireLocation(
@@ -886,7 +886,7 @@ export async function createLocation(
 }
 
 /**
- * Use one of the team's locations in a sequence (#1695): one link, nothing
+ * Use one of the organization's locations in a sequence (#1695): one link, nothing
  * copied and no generation started. Refused while a live location of the
  * sequence has its name (`locations.attach`).
  */
@@ -903,7 +903,7 @@ export async function attachLocation(
 
 /**
  * Edit a location's bible fields; only the sent fields change. The location
- * is the team's: every sequence that uses it reads the edit. From no
+ * is the organization's: every sequence that uses it reads the edit. From no
  * sequence (null) the same write records no event.
  */
 export async function updateLocation(
@@ -923,7 +923,7 @@ export async function updateLocation(
 
 /**
  * Soft-remove a location from the sequence (undoable; continuity tags are
- * kept). The location stays the team's.
+ * kept). The location stays the organization's.
  */
 export async function deleteLocation(
   scopedDb: ScopedDb,
@@ -952,17 +952,17 @@ export async function restoreLocation(
 }
 
 /**
- * Delete one of the team's locations (#1695). Soft: it leaves the Locations
- * page and the pickers, and `restoreTeamLocation` brings it back. Refused
+ * Delete one of the organization's locations (#1695). Soft: it leaves the Locations
+ * page and the pickers, and `restoreOrganizationLocation` brings it back. Refused
  * while a sequence, archived ones included, still uses it: the db write
  * carries the condition.
  */
-export async function deleteTeamLocation(
+export async function deleteOrganizationLocation(
   scopedDb: ScopedDb,
   locationDbId: string
 ) {
   await requireLocation(scopedDb, null, locationDbId);
-  if (!(await scopedDb.locations.softDeleteForTeam(locationDbId))) {
+  if (!(await scopedDb.locations.softDeleteForOrganization(locationDbId))) {
     throw new ConflictError(
       'A sequence still uses this location. Remove it from its sequences first.'
     );
@@ -970,12 +970,12 @@ export async function deleteTeamLocation(
   return { locationDbId };
 }
 
-export async function restoreTeamLocation(
+export async function restoreOrganizationLocation(
   scopedDb: ScopedDb,
   locationDbId: string
 ) {
-  await scopedDb.locations.restoreForTeam(locationDbId);
-  // Another team's id, or one that never existed, restored nothing.
+  await scopedDb.locations.restoreForOrganization(locationDbId);
+  // Another organization's id, or one that never existed, restored nothing.
   await requireLocation(scopedDb, null, locationDbId);
   return { locationDbId };
 }
@@ -1009,7 +1009,7 @@ export async function selectLocationSheetVersion(
 
 /**
  * A sheet version of a location this sequence uses or, from no sequence, of
- * one of the team's.
+ * one of the organization's.
  */
 async function requireLocationSheetVersion(
   scopedDb: ScopedDb,

@@ -117,7 +117,7 @@ describe('stitch share', () => {
         }
         return json({
           api_key: 'osk_1',
-          team: { id: 't', name: 'T' },
+          organization: { id: 't', name: 'T' },
         });
       }
       if (headers.get('authorization') !== 'Bearer osk_1' || options.reject) {
@@ -133,7 +133,7 @@ describe('stitch share', () => {
             url: `${url.origin}/stitch/S1`,
             _links: {
               upload: {
-                href: '/api/storage/upload?bucket=stitches&path=team/S1/{name}&contentType={type}',
+                href: '/api/storage/upload?bucket=stitches&path=organization/S1/{name}&contentType={type}',
                 method: 'PUT',
                 templated: true,
               },
@@ -195,9 +195,9 @@ describe('stitch share', () => {
         'GET /api/v1/device/token?device_code=dev&wait=60s',
         'GET /api/v1/device/token?device_code=dev&wait=60s',
         'POST /api/v1/stitches',
-        'PUT /api/storage/upload?bucket=stitches&path=team/S1/0.png&contentType=image%2Fpng',
-        'PUT /api/storage/upload?bucket=stitches&path=team/S1/1.wav&contentType=audio%2Fwav',
-        'PUT /api/storage/upload?bucket=stitches&path=team/S1/2.mp4&contentType=video%2Fmp4',
+        'PUT /api/storage/upload?bucket=stitches&path=organization/S1/0.png&contentType=image%2Fpng',
+        'PUT /api/storage/upload?bucket=stitches&path=organization/S1/1.wav&contentType=audio%2Fwav',
+        'PUT /api/storage/upload?bucket=stitches&path=organization/S1/2.mp4&contentType=video%2Fmp4',
         'POST /api/v1/stitches/S1/publish',
       ]);
       expect(first.calls[6]?.type).toBe('video/mp4');

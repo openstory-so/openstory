@@ -65,7 +65,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
   ): Promise<RegenerateShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
-    const { sequenceId, teamId, triggerKind, triggerId } = input;
+    const { sequenceId, organizationId, triggerKind, triggerId } = input;
     // ============================================================
     // Top-level validation (re-throws as NonRetryableError via the base
     // class's WorkflowValidationError re-wrap). Inside step.do we use
@@ -141,7 +141,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
           variantOnly: false,
-          teamId,
+          organizationId,
           sequenceId,
           shotId: snapshot.shotId,
           // Mandatory alongside `shotId` — without it the child renders and
@@ -228,7 +228,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
     await step.do('trigger-variant-regen', async () => {
       const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
         input.userId,
-        teamId
+        organizationId
       );
       const limit = VARIANT_TRIGGER_CONCURRENCY;
       for (let i = 0; i < succeeded.length; i += limit) {
@@ -241,7 +241,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
               '/variant-image',
               {
                 userId: input.userId,
-                teamId,
+                organizationId,
                 sequenceId,
                 shotId: result.shotId,
                 frameId: snapshot.frameId ?? undefined,

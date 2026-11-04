@@ -93,7 +93,7 @@ function useTracked(exportId: string): Tracked | null {
 
 type PublishDialogProps = {
   onClose: () => void;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   /** The ready render of the current cut. Captured when the dialog opens. */
   exportId: string;
@@ -105,7 +105,7 @@ type Step =
   | { kind: 'review'; input: PublishInput };
 
 export function PublishDialog(props: PublishDialogProps) {
-  const { onClose, teamId, exportId } = props;
+  const { onClose, organizationId, exportId } = props;
   const current = useTracked(exportId);
   const [step, setStep] = useState<Step>({ kind: 'form', draft: null });
 
@@ -125,7 +125,7 @@ export function PublishDialog(props: PublishDialogProps) {
         </DialogHeader>
         {current ? (
           <PublishTracking
-            teamId={teamId}
+            organizationId={organizationId}
             tracked={current}
             onClose={onClose}
             onNewPost={() => {
@@ -135,7 +135,7 @@ export function PublishDialog(props: PublishDialogProps) {
           />
         ) : step.kind === 'review' ? (
           <PublishReview
-            teamId={teamId}
+            organizationId={organizationId}
             input={step.input}
             onBack={() => setStep({ kind: 'form', draft: step.input })}
             onPublished={(outcome) =>
@@ -194,7 +194,7 @@ export function PublishDialog(props: PublishDialogProps) {
 }
 
 function PublishForm({
-  teamId,
+  organizationId,
   sequenceId,
   exportId,
   defaultTitle,
@@ -207,8 +207,8 @@ function PublishForm({
 }) {
   const id = useId();
   const { data: profiles } = useSuspenseQuery({
-    queryKey: ['social-profiles', teamId],
-    queryFn: () => listSocialProfilesFn({ data: { teamId } }),
+    queryKey: ['social-profiles', organizationId],
+    queryFn: () => listSocialProfilesFn({ data: { organizationId } }),
     staleTime: 60_000,
   });
   const [profileName, setProfileName] = useState(
@@ -417,12 +417,12 @@ function PublishForm({
 }
 
 function PublishReview({
-  teamId,
+  organizationId,
   input,
   onBack,
   onPublished,
 }: {
-  teamId: string;
+  organizationId: string;
   input: PublishInput;
   onBack: () => void;
   onPublished: (outcome: Omit<Tracked, 'startedAt'>) => void;
@@ -430,7 +430,10 @@ function PublishReview({
   const posthog = usePostHog();
   const publish = useMutation({
     mutationFn: async (): Promise<PublishOutcome> => {
-      const requestId = await derivePublishRequestId({ ...input, teamId });
+      const requestId = await derivePublishRequestId({
+        ...input,
+        organizationId,
+      });
       try {
         return await publishSequenceExportFn({ data: input });
       } catch {
@@ -554,12 +557,12 @@ function progressMessage(
 }
 
 function PublishTracking({
-  teamId,
+  organizationId,
   tracked,
   onClose,
   onNewPost,
 }: {
-  teamId: string;
+  organizationId: string;
   tracked: Tracked;
   onClose: () => void;
   onNewPost: () => void;
@@ -573,7 +576,8 @@ function PublishTracking({
     dataUpdatedAt,
   } = useQuery({
     queryKey: ['social-publish-status', requestId],
-    queryFn: () => getSocialPublishStatusFn({ data: { teamId, requestId } }),
+    queryFn: () =>
+      getSocialPublishStatusFn({ data: { organizationId, requestId } }),
     refetchInterval: (query) => {
       if (query.state.status === 'error') return false;
       const state = query.state.data?.state;

@@ -76,7 +76,7 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'characterSheetVariants.promoteIfPending',
     userSelect: 'characterSheetVariants.select',
   },
-  // A location is the team's (#1695): the pointer and the claim are on its
+  // A location is the organization's (#1695): the pointer and the claim are on its
   // own row, whichever sequence (or none) started the run. The bible parent
   // claims through the conditional twin (#1863): taken only while the bible
   // version its upsert returned still holds.
@@ -273,7 +273,7 @@ describe('claim discipline (#1130)', () => {
   test('every claim domain exposes claim, clear and promote', async () => {
     vi.doMock('#db-client', () => ({ getDb: () => ({}) }));
     const { createScopedDb } = await import('@/platform/server/db/scoped');
-    const scopedDb = createScopedDb('team', 'user');
+    const scopedDb = createScopedDb('organization', 'user');
 
     const missing: string[] = [];
     for (const [name, domain] of Object.entries(CLAIM_DOMAINS)) {

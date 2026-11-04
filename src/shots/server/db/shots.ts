@@ -52,7 +52,7 @@ type ShotWithSequence = Shot & {
   sequence: Pick<
     Sequence,
     | 'id'
-    | 'teamId'
+    | 'organizationId'
     | 'title'
     | 'status'
     | 'styleId'
@@ -672,7 +672,7 @@ export function createShotsMethods(db: Database) {
           sequence: {
             columns: {
               id: true,
-              teamId: true,
+              organizationId: true,
               title: true,
               status: true,
               styleId: true,

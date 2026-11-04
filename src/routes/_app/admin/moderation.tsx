@@ -123,7 +123,7 @@ const ReportsTab: React.FC = () => {
     mutationFn: (input: {
       reportId: string;
       subjectUserId?: string;
-      subjectTeamId?: string;
+      subjectOrganizationId?: string;
       reason: ContentReportReason;
       action: 'generation_suspended' | 'account_suspended' | 'content_removed';
       notes?: string;
@@ -192,7 +192,7 @@ const ReportsTab: React.FC = () => {
                   </Field>
                   <Field label="Owner">
                     {report.subjectUserEmail ??
-                      report.subjectTeamName ??
+                      report.subjectOrganizationName ??
                       'Not yet attributed'}
                   </Field>
                   <Field label="Trace">{report.traceId ?? '—'}</Field>
@@ -252,20 +252,21 @@ const ReportsTab: React.FC = () => {
                     variant="destructive"
                     disabled={
                       enforceMutation.isPending ||
-                      (!report.subjectUserId && !report.subjectTeamId)
+                      (!report.subjectUserId && !report.subjectOrganizationId)
                     }
                     onClick={() =>
                       enforceMutation.mutate({
                         reportId: report.id,
                         subjectUserId: report.subjectUserId ?? undefined,
-                        subjectTeamId: report.subjectTeamId ?? undefined,
+                        subjectOrganizationId:
+                          report.subjectOrganizationId ?? undefined,
                         reason: report.reason,
                         action: 'generation_suspended',
                         notes: notes[report.id],
                       })
                     }
                     title={
-                      report.subjectUserId || report.subjectTeamId
+                      report.subjectUserId || report.subjectOrganizationId
                         ? 'Pause new generations on the reported account'
                         : 'Attribute the report to an account first — use Trace content'
                     }
@@ -277,13 +278,14 @@ const ReportsTab: React.FC = () => {
                     variant="destructive"
                     disabled={
                       enforceMutation.isPending ||
-                      (!report.subjectUserId && !report.subjectTeamId)
+                      (!report.subjectUserId && !report.subjectOrganizationId)
                     }
                     onClick={() =>
                       enforceMutation.mutate({
                         reportId: report.id,
                         subjectUserId: report.subjectUserId ?? undefined,
-                        subjectTeamId: report.subjectTeamId ?? undefined,
+                        subjectOrganizationId:
+                          report.subjectOrganizationId ?? undefined,
                         reason: report.reason,
                         action: 'account_suspended',
                         notes: notes[report.id],
@@ -350,7 +352,7 @@ const TraceTab: React.FC = () => {
   const attributeMutation = useMutation({
     mutationFn: (input: {
       reportId: string;
-      subjectTeamId?: string;
+      subjectOrganizationId?: string;
       subjectUserId?: string;
     }) => attributeContentReportFn({ data: input }),
     onSuccess: () => {
@@ -366,7 +368,7 @@ const TraceTab: React.FC = () => {
   const enforceMutation = useMutation({
     mutationFn: (input: {
       subjectUserId?: string;
-      subjectTeamId?: string;
+      subjectOrganizationId?: string;
       reason: ContentReportReason;
       action: 'generation_suspended' | 'account_suspended';
       reportId?: string;
@@ -437,7 +439,9 @@ const TraceTab: React.FC = () => {
               <Field label="Account">
                 {row.userEmail ?? row.userName ?? row.userId ?? 'Unknown user'}
               </Field>
-              <Field label="Team">{row.teamName ?? row.teamId}</Field>
+              <Field label="Organization">
+                {row.organizationName ?? row.organizationId}
+              </Field>
               <Field label="Model">
                 {row.provider} · {row.model}
               </Field>
@@ -467,13 +471,14 @@ const TraceTab: React.FC = () => {
                   size="sm"
                   variant="outline"
                   disabled={
-                    attributeMutation.isPending || (!row.userId && !row.teamId)
+                    attributeMutation.isPending ||
+                    (!row.userId && !row.organizationId)
                   }
                   onClick={() =>
                     attributeMutation.mutate({
                       reportId,
                       subjectUserId: row.userId ?? undefined,
-                      subjectTeamId: row.teamId,
+                      subjectOrganizationId: row.organizationId,
                     })
                   }
                 >
@@ -484,12 +489,13 @@ const TraceTab: React.FC = () => {
                 size="sm"
                 variant="destructive"
                 disabled={
-                  enforceMutation.isPending || (!row.userId && !row.teamId)
+                  enforceMutation.isPending ||
+                  (!row.userId && !row.organizationId)
                 }
                 onClick={() =>
                   enforceMutation.mutate({
                     subjectUserId: row.userId ?? undefined,
-                    subjectTeamId: row.teamId,
+                    subjectOrganizationId: row.organizationId,
                     reason: enforcementReason,
                     action: 'generation_suspended',
                     reportId,
@@ -502,12 +508,13 @@ const TraceTab: React.FC = () => {
                 size="sm"
                 variant="destructive"
                 disabled={
-                  enforceMutation.isPending || (!row.userId && !row.teamId)
+                  enforceMutation.isPending ||
+                  (!row.userId && !row.organizationId)
                 }
                 onClick={() =>
                   enforceMutation.mutate({
                     subjectUserId: row.userId ?? undefined,
-                    subjectTeamId: row.teamId,
+                    subjectOrganizationId: row.organizationId,
                     reason: enforcementReason,
                     action: 'account_suspended',
                     reportId,

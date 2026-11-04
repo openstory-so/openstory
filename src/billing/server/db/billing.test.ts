@@ -6,7 +6,7 @@
  * with an `idempotencyKey`, the balance UPDATE and the transaction INSERT run
  * in one atomic `db.batch` guarded by the partial unique index on
  * `(team_id, idempotency_key)` — a replay is a no-op that recovers the
- * original transaction id instead of double-debiting the team.
+ * original transaction id instead of double-debiting the organization.
  */
 
 import { micros, negateMicros } from '@/billing/money';
@@ -16,7 +16,7 @@ import { generateId } from '@/platform/id';
 import {
   creditReservations,
   credits,
-  teams,
+  organization,
   transactions,
   user,
 } from '@/platform/server/db/schema';
@@ -26,7 +26,7 @@ import { createBillingMethods } from './billing';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 const STARTING_BALANCE = 100_000_000; // $100
@@ -35,16 +35,20 @@ async function seed() {
   await db.delete(transactions);
   await db.delete(creditReservations);
   await db.delete(credits);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
-  await db.insert(credits).values({ teamId, balance: STARTING_BALANCE });
+  await db
+    .insert(credits)
+    .values({ organizationId, balance: STARTING_BALANCE });
 }
 
 beforeAll(async () => {
@@ -63,7 +67,7 @@ describe('deductCredits with an idempotencyKey', () => {
   const rawCost = micros(1_000_000); // $1
 
   it('debits once and writes a single ledger row', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const result = await billing.deductCredits(rawCost, {
       idempotencyKey: 'wf-instance-1:image',
     });
@@ -75,7 +79,7 @@ describe('deductCredits with an idempotencyKey', () => {
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.amount).toBe(negateMicros(rawCost));
     // The balanceAfter subquery must see the post-UPDATE balance (the batch
@@ -85,7 +89,7 @@ describe('deductCredits with an idempotencyKey', () => {
   });
 
   it('replay with the same key is a no-op that returns the original transaction id', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
 
     const first = await billing.deductCredits(rawCost, {
       idempotencyKey: 'wf-instance-1:image',
@@ -101,18 +105,18 @@ describe('deductCredits with an idempotencyKey', () => {
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(1);
 
     const [credit] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(credit?.balance).toBe(STARTING_BALANCE - rawCost);
   });
 
   it('distinct keys are distinct charges', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
 
     await billing.deductCredits(rawCost, {
       idempotencyKey: 'wf-instance-1:image',
@@ -124,7 +128,7 @@ describe('deductCredits with an idempotencyKey', () => {
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(2);
 
     // Each ledger row must persist the balance as of ITS charge — a stale
@@ -141,19 +145,22 @@ describe('deductCredits with an idempotencyKey', () => {
     const [credit] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(credit?.balance).toBe(STARTING_BALANCE - 2 * rawCost);
   });
 
-  it('the same key under a different team charges both teams (key is team-scoped)', async () => {
-    const otherTeamId = generateId();
-    await db.insert(teams).values({ id: otherTeamId, name: 'T2', slug: 't2' });
+  it('the same key under a different organization charges both organizations (key is organization-scoped)', async () => {
+    const otherOrganizationId = generateId();
     await db
-      .insert(credits)
-      .values({ teamId: otherTeamId, balance: STARTING_BALANCE });
+      .insert(organization)
+      .values({ id: otherOrganizationId, name: 'T2', slug: 't2' });
+    await db.insert(credits).values({
+      organizationId: otherOrganizationId,
+      balance: STARTING_BALANCE,
+    });
 
-    const billingA = createBillingMethods(db, teamId, userId);
-    const billingB = createBillingMethods(db, otherTeamId, userId);
+    const billingA = createBillingMethods(db, organizationId, userId);
+    const billingB = createBillingMethods(db, otherOrganizationId, userId);
 
     const a = await billingA.deductCredits(rawCost, {
       idempotencyKey: 'shared-key',
@@ -172,7 +179,7 @@ describe('deductCredits without an idempotencyKey (keyless path)', () => {
   const rawCost = micros(1_000_000);
 
   it('charges on every call (HTTP single-shot semantics preserved)', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
 
     const r1 = await billing.deductCredits(rawCost, {
       description: 'one',
@@ -187,13 +194,13 @@ describe('deductCredits without an idempotencyKey (keyless path)', () => {
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.idempotencyKey === null)).toBe(true);
   });
 
   it('returns early without writing anything for a non-positive cost', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
 
     const result = await billing.deductCredits(micros(0));
 
@@ -203,14 +210,14 @@ describe('deductCredits without an idempotencyKey (keyless path)', () => {
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(0);
   });
 });
 
 describe('getTransactionHistory (#1881)', () => {
   it('pages newest first and reports hasMore without a count', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     for (let i = 0; i < 3; i++) {
       await billing.deductCredits(micros(1_000));
     }
@@ -225,13 +232,13 @@ describe('getTransactionHistory (#1881)', () => {
   });
 
   it('breaks same-second ties by id, not insert order', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const createdAt = new Date('2026-01-01T00:00:00Z');
     // Inserted out of id order, so insert order alone would read B, C, A.
     for (const id of ['01A', '01C', '01B']) {
       await db.insert(transactions).values({
         id,
-        teamId,
+        organizationId,
         type: 'credit_usage',
         amount: -1,
         balanceAfter: 0,
@@ -247,7 +254,7 @@ describe('getTransactionHistory (#1881)', () => {
   });
 
   it('reports no more when the page is exactly full', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     for (let i = 0; i < 2; i++) {
       await billing.deductCredits(micros(1_000));
     }
@@ -258,7 +265,7 @@ describe('getTransactionHistory (#1881)', () => {
   });
 
   it('filters by type', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.addCredits(micros(1_000_000), {
       type: 'credit_adjustment',
       description: 'seed',
@@ -273,7 +280,7 @@ describe('getTransactionHistory (#1881)', () => {
 
 describe('getAvailable asOfMs (#1881)', () => {
   it('stamps each snapshot with the database clock, never going back', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const first = await billing.getAvailable();
     await billing.deductCredits(micros(1_000_000));
     const second = await billing.getAvailable();
@@ -283,12 +290,14 @@ describe('getAvailable asOfMs (#1881)', () => {
     expect(second.balance).toBe(STARTING_BALANCE - 1_000_000);
   });
 
-  it('reads a team with no credits row as zero', async () => {
-    const otherTeamId = generateId();
-    await db.insert(teams).values({ id: otherTeamId, name: 'O', slug: 'o' });
+  it('reads an organization with no credits row as zero', async () => {
+    const otherOrganizationId = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganizationId, name: 'O', slug: 'o' });
     const funds = await createBillingMethods(
       db,
-      otherTeamId,
+      otherOrganizationId,
       userId
     ).getAvailable();
     expect(funds.balance).toBe(0);
@@ -303,9 +312,9 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     await db
       .update(credits)
       .set({ balance: 5_000_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const results = await Promise.all(
       Array.from({ length: 10 }, (_, i) =>
         billing.createReservation(cost, {
@@ -327,18 +336,18 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     const txRows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(txRows).toHaveLength(0);
 
     const holds = await db
       .select()
       .from(creditReservations)
-      .where(eq(creditReservations.teamId, teamId));
+      .where(eq(creditReservations.organizationId, organizationId));
     expect(holds).toHaveLength(5);
   });
 
   it('a child preflight includes its own hold but excludes other runs holds', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const own = await billing.createReservation(micros(2_000_000), {
       idempotencyKey: 'own',
     });
@@ -375,7 +384,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
   });
 
   it('replay of the same reservation key is a no-op', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const first = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -393,12 +402,12 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     const holds = await db
       .select()
       .from(creditReservations)
-      .where(eq(creditReservations.teamId, teamId));
+      .where(eq(creditReservations.organizationId, organizationId));
     expect(holds).toHaveLength(1);
   });
 
   it('capture equal actual posts usage and leaves leftover 0', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -423,7 +432,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
   });
 
   it('capture under actual leaves leftover held until zeroReservation', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -453,7 +462,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
   });
 
   it('capture over actual grows the hold when available covers the extra', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -498,7 +507,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(1);
   });
 
@@ -506,9 +515,9 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     await db
       .update(credits)
       .set({ balance: 1_000_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -536,9 +545,9 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     await db
       .update(credits)
       .set({ balance: 1_000_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -572,9 +581,9 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     await db
       .update(credits)
       .set({ balance: held })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(held, {
       idempotencyKey: 'run-1:reserve',
     });
@@ -611,7 +620,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
   });
 
   it('expired remaining does not reduce available', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
       ttlMs: 1,
@@ -625,7 +634,7 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
   });
 
   it('capture after expiry of this row still posts usage', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const created = await billing.createReservation(cost, {
       idempotencyKey: 'run-1:reserve',
       ttlMs: 1,
@@ -650,9 +659,9 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     await db
       .update(credits)
       .set({ balance: 500_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const result = await billing.tryDeductCredits(cost, {
       description: 'Motion generation',
       idempotencyKey: 'wf-1:motion',
@@ -663,13 +672,13 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     const [credit] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(credit?.balance).toBe(500_000);
 
     const rows = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.teamId, teamId));
+      .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(0);
   });
 });

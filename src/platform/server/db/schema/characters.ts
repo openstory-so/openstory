@@ -9,7 +9,7 @@ import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
-import { teams } from './teams';
+import { organization } from './organization';
 
 const SHEET_STATUSES = [
   'pending',
@@ -39,7 +39,7 @@ export type VoicePreview = {
 /**
  * Characters table
  *
- * A character belongs to the team (#2017). A sequence uses one through a
+ * A character belongs to the organization (#2017). A sequence uses one through a
  * `sequence_cast` link that holds the script id and the soft-remove; the
  * character itself, at its current bible, voice and looks, is what every
  * sequence reads.
@@ -51,11 +51,11 @@ export const characters = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    // The team that owns the character (#2017).
-    teamId: text()
+    // The organization that owns the character (#2017).
+    organizationId: text()
       .notNull()
-      .references(() => teams.id),
-    // Unread since #2065: every team character is listed and attachable.
+      .references(() => organization.id),
+    // Unread since #2065: every organization character is listed and attachable.
     // Dropped in a follow-up (a native drop, no rebuild).
     legacyInLibrary: integer('in_library', { mode: 'boolean' })
       .default(false)
@@ -124,7 +124,7 @@ export const characters = snakeCase.table(
       'pending_promote_sheet_version_id'
     ),
     // Timestamps
-    // Deleted from the team (#2065): off the Characters page and the `@`
+    // Deleted from the organization (#2065): off the Characters page and the `@`
     // picker, rows kept. Null while live. Not the same as a sequence
     // removing it, which is `sequence_cast.removedAt`.
     deletedAt: integer({ mode: 'timestamp' }),
@@ -135,7 +135,7 @@ export const characters = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_characters_team').on(table.teamId)]
+  (table) => [index('idx_characters_organization').on(table.organizationId)]
 );
 
 // Type exports
@@ -228,7 +228,7 @@ export type Character = Omit<
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
   | 'legacyInLibrary'
-  // The row's own `deletedAt` (deleted from the team) on a read from no
+  // The row's own `deletedAt` (deleted from the organization) on a read from no
   // sequence; a cast read carries its link's, from `CharacterCast`.
   | 'deletedAt'
   | 'selectedBibleVersionId'
@@ -299,8 +299,8 @@ export type NewCharacter = Omit<
   | 'legacyInLibrary'
   | 'deletedAt'
   | 'selectedBibleVersionId'
-  // The scoped module's own team.
-  | 'teamId'
+  // The scoped module's own organization.
+  | 'organizationId'
 > &
   // The sequence that casts it, and how (#2017).
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &

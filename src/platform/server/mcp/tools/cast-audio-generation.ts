@@ -1,7 +1,7 @@
 /**
  * MCP tools that generate or cancel cast, music, dialogue and prompt work
  * (#1979): regenerate a character or location sheet, recast with another
- * of the team's locations, design a character voice, generate music or
+ * of the organization's locations, design a character voice, generate music or
  * rewrite its prompt, record a shot's dialogue again, and cancel what is in
  * flight. Each calls the function the editor's server fn calls; MCP adds only
  * the parent-chain check.
@@ -179,7 +179,7 @@ const cancelCharacterVoiceTool = openstoryTool({
 const regenerateLocationSheetTool = openstoryTool({
   name: 'regenerate_location_sheet',
   description:
-    'Generate a new reference sheet for a location from its current bible and its uploaded photos (spends credits). The location is the team’s: the new sheet is the sheet in every sequence that uses it, and stills set there go stale in each once it lands. It reads no sequence style, only the bible’s rendering line. Poll get_location for status.',
+    'Generate a new reference sheet for a location from its current bible and its uploaded photos (spends credits). The location is the organization’s: the new sheet is the sheet in every sequence that uses it, and stills set there go stale in each once it lands. It reads no sequence style, only the bible’s rendering line. Poll get_location for status.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: locationInput.extend({ imageModel }),
@@ -211,12 +211,12 @@ const regenerateLocationSheetTool = openstoryTool({
 const recastLocationTool = openstoryTool({
   name: 'recast_location',
   description:
-    'Switch a sequence’s location to another of the team’s locations (list_library_locations). The sequence’s link is re-pointed: nothing is copied and no sheet is drawn, the scenes set there now read the other location’s bible and sheet as they are, and the shots set there are rendered again (spends credits). The old location stays the team’s, unchanged, and other sequences that use it are not touched. locationId in the result is the location the sequence now uses. Refused when the other location has no completed reference sheet, or when the sequence already uses it.',
+    'Switch a sequence’s location to another of the organization’s locations (list_library_locations). The sequence’s link is re-pointed: nothing is copied and no sheet is drawn, the scenes set there now read the other location’s bible and sheet as they are, and the shots set there are rendered again (spends credits). The old location stays the organization’s, unchanged, and other sequences that use it are not touched. locationId in the result is the location the sequence now uses. Refused when the other location has no completed reference sheet, or when the sequence already uses it.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: locationInput.extend({
     libraryLocationId: ulidSchema.describe(
-      'The team location to switch to (list_library_locations).'
+      'The organization location to switch to (list_library_locations).'
     ),
   }),
   outputSchema: z.object({

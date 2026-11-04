@@ -146,7 +146,7 @@ export const planGenerationTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const plan = await planGeneration(
       scopedDb,
-      { userId, teamId: scopedDb.teamId },
+      { userId, organizationId: scopedDb.organizationId },
       input.sequenceId,
       toRequest(input)
     );
@@ -167,7 +167,7 @@ export const retryFailedWorkTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const plan = await planGeneration(
       scopedDb,
-      { userId, teamId: scopedDb.teamId },
+      { userId, organizationId: scopedDb.organizationId },
       input.sequenceId,
       { mode: 'retry', retry: input.mode }
     );
@@ -190,7 +190,7 @@ export const executeGenerationTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const operation = await executeGeneration(
       scopedDb,
-      { userId, teamId: scopedDb.teamId },
+      { userId, organizationId: scopedDb.organizationId },
       input.sequenceId,
       input.planToken
     );
@@ -280,7 +280,7 @@ export const startExportTool = openstoryTool({
   run: async (input, { scopedDb, userId }) => {
     const started = await startExportOperation(
       scopedDb,
-      { userId, teamId: scopedDb.teamId },
+      { userId, organizationId: scopedDb.organizationId },
       input.sequenceId
     );
     return {

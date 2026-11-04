@@ -1,6 +1,6 @@
 /**
  * Recast a sequence's location (#1695): the trigger re-pointed the
- * sequence's link at another of the team's locations, and this run
+ * sequence's link at another of the organization's locations, and this run
  * re-renders every shot set there. No sheet is drawn.
  *
  * The workflow reads nothing: the per-shot regenerate snapshots are resolved
@@ -68,7 +68,7 @@ async function buildRegeneratePayload(
 
   return {
     userId: input.userId,
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     sequenceId,
     shotIds: input.shotSnapshots.map((s) => s.shotId),
     triggerKind: 'location' as const,

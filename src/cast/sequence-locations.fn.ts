@@ -35,7 +35,7 @@ export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
 /**
  * Create a location by hand (no storyboard run) — starts reference-less
  * (`referenceStatus: 'pending'`); the sheet comes later from Generate. It
- * is the team's from the start. `locationId` is a shortened name
+ * is the organization's from the start. `locationId` is a shortened name
  * (`loc_office`) like script-extracted `loc_001`, uniqued among the
  * sequence's script ids. `rendering` left out takes the sequence style's.
  */
@@ -94,7 +94,7 @@ const locationIdInput = z.object({
 /**
  * Soft-remove a location from the sequence (undoable; toast Undo calls the
  * restore fn). Scene continuity tags are NOT stripped — undo is lossless. The
- * location stays the team's.
+ * location stays the organization's.
  */
 export const softDeleteSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -124,7 +124,7 @@ export const restoreSequenceLocationFn = createServerFn({ method: 'POST' })
   );
 
 /**
- * Use one of the team's locations in this sequence (#1695): one link, nothing
+ * Use one of the organization's locations in this sequence (#1695): one link, nothing
  * copied, no generation started. Idempotent for a location the sequence
  * already uses; refused while a live location here has the same name.
  */
@@ -159,7 +159,7 @@ export const getShotIdsForLocationFn = createServerFn({ method: 'GET' })
   });
 
 // `sequenceId` null is the Locations page (#1695): the location is the
-// team's, so its sheet is read and drawn the same from no sequence.
+// organization's, so its sheet is read and drawn the same from no sequence.
 const castLocationInput = z.object({
   sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,
@@ -167,7 +167,7 @@ const castLocationInput = z.object({
 
 /**
  * One location as the sequence uses it or, from no sequence, at its current
- * version. Null, not an error, when it is gone or another team's.
+ * version. Null, not an error, when it is gone or another organization's.
  */
 export const getLocationFn = createServerFn({ method: 'GET' })
   .middleware([castAccessMiddleware])
@@ -220,7 +220,7 @@ export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
   );
 
 /**
- * Replace a location of this sequence with another of the team's: the link
+ * Replace a location of this sequence with another of the organization's: the link
  * is re-pointed and the shots set there are re-rendered. No sheet is drawn.
  */
 export const recastLocationFn = createServerFn({ method: 'POST' })

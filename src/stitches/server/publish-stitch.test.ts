@@ -19,7 +19,7 @@ const LINE = '/r2/stitches/T/S/1.wav';
 const row = (publishedAt: Date | null) =>
   asStub<Stitch>({
     id: 'S',
-    teamId: 'T',
+    organizationId: 'T',
     userId: 'U',
     publishedAt,
     createdAt: new Date('2026-10-19T00:00:00Z'),
@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 describe('publishStitch (#2127)', () => {
-  it('404s a stitch the team does not have', async () => {
+  it('404s a stitch the organization does not have', async () => {
     getById.mockResolvedValue(null);
     await expect(publishStitch(args)).rejects.toMatchObject({
       code: 'NOT_FOUND',

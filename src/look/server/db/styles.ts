@@ -1,6 +1,6 @@
 /**
  * Scoped Styles Sub-module
- * Team-scoped style library CRUD (includes public styles in listing).
+ * Organization-scoped style library CRUD (includes public styles in listing).
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -31,7 +31,7 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'db', 'styles']);
 
-// `listByIds` chunks its id list per query. It binds only id params (no team
+// `listByIds` chunks its id list per query. It binds only id params (no organization
 // filter), so it could go to D1's 100-bound-parameter ceiling; we hold it at 90
 // to match the sibling sequences.listShotsByIds batch size.
 const STYLES_BY_IDS_BATCH = 90;
@@ -40,14 +40,17 @@ type StylesListOptions = {
   orderBy?: 'popular' | 'sortOrder';
 };
 
-function boundRowsOwnedBy(teamId: string) {
-  return or(isNull(styles.sequenceId), eq(styles.teamId, teamId));
+function boundRowsOwnedBy(organizationId: string) {
+  return or(
+    isNull(styles.sequenceId),
+    eq(styles.organizationId, organizationId)
+  );
 }
 
-/** The team's library: own + public rows, never a sequence-bound one. */
-function libraryVisibleTo(teamId: string) {
+/** The organization's library: own + public rows, never a sequence-bound one. */
+function libraryVisibleTo(organizationId: string) {
   return and(
-    or(eq(styles.teamId, teamId), eq(styles.isPublic, true)),
+    or(eq(styles.organizationId, organizationId), eq(styles.isPublic, true)),
     isNull(styles.sequenceId)
   );
 }
@@ -55,12 +58,12 @@ function libraryVisibleTo(teamId: string) {
 /**
  * A style's URL/asset slug is derived from its name (`styleSlug`) and is the key
  * the `?style=<slug>` composer prefill (and every style asset path) resolves on.
- * A team only ever sees its own styles plus public ones, so the slug must be
+ * An organization only ever sees its own styles plus public ones, so the slug must be
  * unique within that union — otherwise a slug would be ambiguous for that
- * account. Enforced here (no DB constraint can express "unique across this team
+ * account. Enforced here (no DB constraint can express "unique across this organization
  * ∪ all public") on create + rename. `excludeId` skips the row being renamed.
  *
- * This guards against the future where teams can author styles; public styles
+ * This guards against the future where organizations can author styles; public styles
  * are seeded with already-unique names.
  *
  * Sequence-bound (automatic) styles are outside the library, so they neither
@@ -68,7 +71,7 @@ function libraryVisibleTo(teamId: string) {
  */
 async function assertSlugAvailable(
   db: Database,
-  teamId: string,
+  organizationId: string,
   name: string,
   excludeId?: string
 ): Promise<void> {
@@ -78,7 +81,7 @@ async function assertSlugAvailable(
     .from(styles)
     .where(
       and(
-        libraryVisibleTo(teamId),
+        libraryVisibleTo(organizationId),
         excludeId ? ne(styles.id, excludeId) : undefined
       )
     );
@@ -93,7 +96,7 @@ async function assertSlugAvailable(
   }
 }
 
-function createStylesReadMethods(db: Database, teamId: string) {
+function createStylesReadMethods(db: Database, organizationId: string) {
   return {
     list: async (options: StylesListOptions = {}): Promise<Style[]> => {
       const orderBy = options.orderBy ?? 'sortOrder';
@@ -104,17 +107,20 @@ function createStylesReadMethods(db: Database, teamId: string) {
       return await db
         .select()
         .from(styles)
-        .where(libraryVisibleTo(teamId))
+        .where(libraryVisibleTo(organizationId))
         .orderBy(...order);
     },
 
-    /** The automatic style bound to one of this team's sequences, if any. */
+    /** The automatic style bound to one of this organization's sequences, if any. */
     getBoundToSequence: async (sequenceId: string): Promise<Style | null> => {
       const result = await db
         .select()
         .from(styles)
         .where(
-          and(eq(styles.sequenceId, sequenceId), eq(styles.teamId, teamId))
+          and(
+            eq(styles.sequenceId, sequenceId),
+            eq(styles.organizationId, organizationId)
+          )
         )
         .limit(1);
       return result[0] ?? null;
@@ -122,13 +128,13 @@ function createStylesReadMethods(db: Database, teamId: string) {
 
     /**
      * Library rows resolve by id alone (a sequence may reference a public
-     * style); a sequence-bound one is private to its team.
+     * style); a sequence-bound one is private to its organization.
      */
     getById: async (styleId: string): Promise<Style | null> => {
       const result = await db
         .select()
         .from(styles)
-        .where(and(eq(styles.id, styleId), boundRowsOwnedBy(teamId)))
+        .where(and(eq(styles.id, styleId), boundRowsOwnedBy(organizationId)))
         .limit(1);
       return result[0] ?? null;
     },
@@ -153,7 +159,9 @@ function createStylesReadMethods(db: Database, teamId: string) {
           db
             .select()
             .from(styles)
-            .where(and(inArray(styles.id, batch), boundRowsOwnedBy(teamId)))
+            .where(
+              and(inArray(styles.id, batch), boundRowsOwnedBy(organizationId))
+            )
         )
       );
       return results.flat();
@@ -162,8 +170,8 @@ function createStylesReadMethods(db: Database, teamId: string) {
 }
 
 /**
- * Public (anonymous) styles reads. Takes no team scope at all, so this code
- * path cannot express a team-scoped query — the isPublic filter is the entire
+ * Public (anonymous) styles reads. Takes no organization scope at all, so this code
+ * path cannot express an organization-scoped query — the isPublic filter is the entire
  * data boundary for the unauthenticated style-catalogue endpoint.
  */
 export function createPublicStylesReadMethods(db: Database) {
@@ -180,11 +188,11 @@ export function createPublicStylesReadMethods(db: Database) {
 
 export function createStylesMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
-    ...createStylesReadMethods(db, teamId),
+    ...createStylesReadMethods(db, organizationId),
 
     // Server-managed columns (isPublic, isTemplate, usageCount, …) are
     // excluded from the parameter type AND scrubbed at runtime: the type
@@ -194,18 +202,20 @@ export function createStylesMethods(
     create: async (
       data: Omit<NewStyle, ServerManagedStyleColumn>
     ): Promise<Style> => {
-      await assertSlugAvailable(db, teamId, data.name);
+      await assertSlugAvailable(db, organizationId, data.name);
       const result = await db
         .insert(styles)
         .values({
           ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
-          teamId,
+          organizationId,
           createdBy: userId,
         })
         .returning();
       const style = result[0];
       if (!style) {
-        throw new Error(`Failed to create Style for team ${teamId}`);
+        throw new Error(
+          `Failed to create Style for organization ${organizationId}`
+        );
       }
       return style;
     },
@@ -215,12 +225,14 @@ export function createStylesMethods(
       data: Partial<Omit<Style, ServerManagedStyleColumn>>
     ): Promise<Style | undefined> => {
       if (data.name !== undefined) {
-        await assertSlugAvailable(db, teamId, data.name, styleId);
+        await assertSlugAvailable(db, organizationId, data.name, styleId);
       }
       const result = await db
         .update(styles)
         .set(stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS))
-        .where(and(eq(styles.id, styleId), eq(styles.teamId, teamId)))
+        .where(
+          and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
+        )
         .returning();
       return Array.isArray(result) ? result[0] : undefined;
     },
@@ -228,7 +240,9 @@ export function createStylesMethods(
     delete: async (styleId: string): Promise<void> => {
       await db
         .delete(styles)
-        .where(and(eq(styles.id, styleId), eq(styles.teamId, teamId)));
+        .where(
+          and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
+        );
     },
 
     /**
@@ -247,7 +261,7 @@ export function createStylesMethods(
         .values({
           ...params.draft,
           sequenceId: params.sequenceId,
-          teamId,
+          organizationId,
           createdBy: userId,
         })
         .returning();
@@ -277,7 +291,7 @@ export function createStylesMethods(
           and(
             eq(styles.id, params.styleId),
             eq(styles.sequenceId, params.sequenceId),
-            eq(styles.teamId, teamId)
+            eq(styles.organizationId, organizationId)
           )
         )
         .returning({ id: styles.id });
@@ -285,7 +299,7 @@ export function createStylesMethods(
     },
 
     /**
-     * Promote a sequence-bound style into the team library: clears the
+     * Promote a sequence-bound style into the organization library: clears the
      * binding under the library's slug-uniqueness rule. The sequence keeps
      * pointing at the same row, so nothing downstream re-snapshots.
      */
@@ -294,7 +308,7 @@ export function createStylesMethods(
       name: string;
       previewUrl: string | null;
     }): Promise<Style> => {
-      await assertSlugAvailable(db, teamId, params.name);
+      await assertSlugAvailable(db, organizationId, params.name);
       const rows = await db
         .update(styles)
         .set({
@@ -306,7 +320,7 @@ export function createStylesMethods(
         .where(
           and(
             eq(styles.id, params.styleId),
-            eq(styles.teamId, teamId),
+            eq(styles.organizationId, organizationId),
             isNotNull(styles.sequenceId)
           )
         )

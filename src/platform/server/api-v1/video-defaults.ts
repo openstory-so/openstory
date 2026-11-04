@@ -1,8 +1,8 @@
 /**
- * What a request that names no video model gets, for THIS team.
+ * What a request that names no video model gets, for THIS organization.
  *
  * Seedance 2.5 renders (and drafts) only on the BytePlus via, so the default
- * depends on the team's route: asked the same way the picker asks
+ * depends on the organization's route: asked the same way the picker asks
  * (`getViaAvailabilityFn`), so the API and the app start a new sequence on
  * the same model with the same "Draft first".
  */
@@ -13,7 +13,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 
 export type ApiVideoDefaults = {
   videoModel: ImageToVideoModel;
-  /** Whether this team reaches BytePlus — the only route that drafts. */
+  /** Whether this organization reaches BytePlus — the only route that drafts. */
   byteplus: boolean;
 };
 
@@ -24,7 +24,7 @@ export async function resolveApiVideoDefaults(
   const byteplus =
     claimBytePlusVia({
       native: true,
-      usingOwnFalKey: falKey?.source === 'team',
+      usingOwnFalKey: falKey?.source === 'organization',
     }) === 'byteplus';
   return { videoModel: defaultVideoModelFor({ byteplus }), byteplus };
 }

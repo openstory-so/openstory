@@ -26,7 +26,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import type { Database } from '@/platform/server/db/client';
@@ -42,9 +42,11 @@ let sceneIds: DbSceneId[] = [];
 /** Scene at orderIndex 1 of a DIFFERENT sequence — must never be touched. */
 let otherSceneId: DbSceneId = dbSceneId('');
 
-async function createSequence(teamId: string, styleId: string) {
+async function createSequence(organizationId: string, styleId: string) {
   const id = generateId();
-  await db.insert(sequences).values({ id, teamId, title: 'S', styleId });
+  await db
+    .insert(sequences)
+    .values({ id, organizationId, title: 'S', styleId });
   return id;
 }
 
@@ -55,14 +57,16 @@ async function seed() {
   await db.delete(scenes);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
 
-  const teamId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  const organizationId = generateId();
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -77,8 +81,8 @@ async function seed() {
     .returning();
   if (!style) throw new Error('test setup: style insert returned nothing');
 
-  sequenceId = await createSequence(teamId, style.id);
-  otherSequenceId = await createSequence(teamId, style.id);
+  sequenceId = await createSequence(organizationId, style.id);
+  otherSequenceId = await createSequence(organizationId, style.id);
 
   const shotsMethods = createShotsMethods(db);
 

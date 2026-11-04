@@ -1,7 +1,7 @@
 /**
  * Scoped Admin Sub-module
  * Admin-only operations: gift token creation, listing, and redemption.
- * Not team-scoped (admin operations span all teams).
+ * Not organization-scoped (admin operations span all organizations).
  */
 
 import { withSequencePosters } from '@/sequences/server/db/sequence-poster';
@@ -29,7 +29,7 @@ import {
   type Sequence,
 } from '@/platform/server/db/schema';
 import type { ShotView } from '@/shots/shot-view';
-import { teamMembers, teams } from '@/platform/server/db/schema/teams';
+import { member, organization } from '@/platform/server/db/schema/organization';
 import { ValidationError } from '@/platform/errors';
 import {
   and,
@@ -85,8 +85,8 @@ export type UserActivityRow = {
   email: string;
   createdAt: Date;
   status: string | null;
-  teamId: string;
-  teamName: string;
+  organizationId: string;
+  organizationName: string;
   sequenceCount: number;
   failedCount: number;
   avgAnalysisDurationMs: number | null;
@@ -165,7 +165,7 @@ export function createAdminMethods(db: Database) {
     }));
   }
 
-  // ---- Support: cross-team sequence/shot access ----
+  // ---- Support: cross-organization sequence/shot access ----
 
   type SequenceWithCreator = Sequence & {
     creatorName: string | null;
@@ -181,11 +181,11 @@ export function createAdminMethods(db: Database) {
 
     const trimmed = search?.trim().toLowerCase();
 
-    // Resolve a person via TEAM MEMBERSHIP, not the sequence creator. Support
-    // ("show me this customer's account") means their whole team's work, and
+    // Resolve a person via ORGANIZATION MEMBERSHIP, not the sequence creator. Support
+    // ("show me this customer's account") means their whole organization's work, and
     // `sequences.createdBy` is not a reliable handle for it: it is nullable and
     // `ON DELETE SET NULL`, so a `user`-table rebuild nulls it wholesale (the
-    // #612-class incident that stranded 174 prod sequences). Matching any team
+    // #612-class incident that stranded 174 prod sequences). Matching any organization
     // member keeps lookup working even when the creator column is lost again.
     const memberUser = alias(user, 'member_user');
     const searchClause = trimmed
@@ -194,11 +194,11 @@ export function createAdminMethods(db: Database) {
           exists(
             db
               .select({ one: sql`1` })
-              .from(teamMembers)
-              .innerJoin(memberUser, eq(memberUser.id, teamMembers.userId))
+              .from(member)
+              .innerJoin(memberUser, eq(memberUser.id, member.userId))
               .where(
                 and(
-                  eq(teamMembers.teamId, sequences.teamId),
+                  eq(member.organizationId, sequences.organizationId),
                   or(
                     like(sql`lower(${memberUser.name})`, `%${trimmed}%`),
                     like(sql`lower(${memberUser.email})`, `%${trimmed}%`)
@@ -232,7 +232,7 @@ export function createAdminMethods(db: Database) {
     return assembleShotViews(db, rows);
   }
 
-  // ---- Support: cross-team studio images/videos (#1568) ----
+  // ---- Support: cross-organization studio images/videos (#1568) ----
 
   type StudioAssetWithCreator = GeneratedAsset & {
     creatorName: string | null;
@@ -267,11 +267,11 @@ export function createAdminMethods(db: Database) {
           exists(
             db
               .select({ one: sql`1` })
-              .from(teamMembers)
-              .innerJoin(memberUser, eq(memberUser.id, teamMembers.userId))
+              .from(member)
+              .innerJoin(memberUser, eq(memberUser.id, member.userId))
               .where(
                 and(
-                  eq(teamMembers.teamId, generatedAssets.teamId),
+                  eq(member.organizationId, generatedAssets.organizationId),
                   or(
                     like(sql`lower(${memberUser.name})`, `%${trimmed}%`),
                     like(sql`lower(${memberUser.email})`, `%${trimmed}%`)
@@ -329,10 +329,10 @@ export function createAdminMethods(db: Database) {
   // ---- User activity reporting ----
 
   async function listUserActivity(): Promise<UserActivityRow[]> {
-    // Subquery: sequence stats per team (count, failures, avg duration)
+    // Subquery: sequence stats per organization (count, failures, avg duration)
     const seqStatsSq = db
       .select({
-        teamId: sequences.teamId,
+        organizationId: sequences.organizationId,
         count: count().as('seq_count'),
         failedCount:
           sql<number>`sum(case when ${sequences.status} = 'failed' then 1 else 0 end)`.as(
@@ -344,13 +344,13 @@ export function createAdminMethods(db: Database) {
           ),
       })
       .from(sequences)
-      .groupBy(sequences.teamId)
+      .groupBy(sequences.organizationId)
       .as('seq_stats');
 
-    // Subquery: credit spending, purchases, and gifts per team
+    // Subquery: credit spending, purchases, and gifts per organization
     const txSumsSq = db
       .select({
-        teamId: transactions.teamId,
+        organizationId: transactions.organizationId,
         spent:
           sql<number>`coalesce(sum(case when ${transactions.type} = 'credit_usage' then abs(${transactions.amount}) else 0 end), 0)`.as(
             'spent'
@@ -365,7 +365,7 @@ export function createAdminMethods(db: Database) {
           ),
       })
       .from(transactions)
-      .groupBy(transactions.teamId)
+      .groupBy(transactions.organizationId)
       .as('tx_sums');
 
     const rows = await db
@@ -375,8 +375,8 @@ export function createAdminMethods(db: Database) {
         email: user.email,
         createdAt: user.createdAt,
         status: user.status,
-        teamId: teams.id,
-        teamName: teams.name,
+        organizationId: organization.id,
+        organizationName: organization.name,
         sequenceCount: sql<number>`coalesce(${seqStatsSq.count}, 0)`,
         failedCount: sql<number>`coalesce(${seqStatsSq.failedCount}, 0)`,
         avgAnalysisDurationMs: sql<
@@ -388,11 +388,11 @@ export function createAdminMethods(db: Database) {
         currentBalanceMicros: sql<number>`coalesce(${credits.balance}, 0)`,
       })
       .from(user)
-      .innerJoin(teamMembers, eq(user.id, teamMembers.userId))
-      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-      .leftJoin(seqStatsSq, eq(teams.id, seqStatsSq.teamId))
-      .leftJoin(txSumsSq, eq(teams.id, txSumsSq.teamId))
-      .leftJoin(credits, eq(teams.id, credits.teamId))
+      .innerJoin(member, eq(user.id, member.userId))
+      .innerJoin(organization, eq(member.organizationId, organization.id))
+      .leftJoin(seqStatsSq, eq(organization.id, seqStatsSq.organizationId))
+      .leftJoin(txSumsSq, eq(organization.id, txSumsSq.organizationId))
+      .leftJoin(credits, eq(organization.id, credits.organizationId))
       .orderBy(desc(user.createdAt));
 
     return rows;

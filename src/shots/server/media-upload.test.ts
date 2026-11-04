@@ -33,7 +33,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
   videoVariants,
 } from '@/platform/server/db/schema';
@@ -71,7 +71,7 @@ let sequenceId = '';
 let shotId = '';
 let frameId = '';
 let actorId = '';
-let teamId = '';
+let organizationId = '';
 let styleId = '';
 
 // The staleness verify runs through a real ScopedDb, so point the client
@@ -94,18 +94,20 @@ async function seed() {
   await db.delete(renderSegments);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   actorId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db.insert(user).values({ id: actorId, name: 'U', email: 'u@e.com' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -122,7 +124,7 @@ async function seed() {
   styleId = style.id;
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
   const [shot] = await db
     .insert(shots)
     .values({ sequenceId, shotNumber: 1, durationMs: 4000 })
@@ -251,7 +253,7 @@ const SCENE_WITH_REFS: Scene = {
 };
 
 async function seedCharacterWithSheet(sheetInputHash: string) {
-  const row = await createCharactersMethods(db, teamId).create(
+  const row = await createCharactersMethods(db, organizationId).create(
     {
       sequenceId,
       characterId: 'char_001',
@@ -276,7 +278,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   });
   // Return the RESOLVED read — the sheet lives on the version row now (#1419),
   // and the staleness hash is computed from it.
-  const resolved = await createCharactersMethods(db, teamId).getById(
+  const resolved = await createCharactersMethods(db, organizationId).getById(
     sequenceId,
     row.id
   );
@@ -288,7 +290,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
 /** The scoped DB + sequence shape `computeShotStaleness` verifies against. */
 function stalenessArgs() {
   return {
-    scopedDb: createScopedDb(teamId, actorId),
+    scopedDb: createScopedDb(organizationId, actorId),
     sequence: {
       id: sequenceId,
       styleId,
@@ -362,43 +364,43 @@ beforeEach(async () => {
 });
 
 describe('parseUploadedStoragePath', () => {
-  const ownTeam = '01TEAM';
-  it('accepts a stored URL under the team prefix and strips the bucket', () => {
+  const ownOrganization = '01ORG';
+  it('accepts a stored URL under the organization prefix and strips the bucket', () => {
     expect(
       parseUploadedStoragePath(
-        '/r2/thumbnails/teams/01TEAM/sequences/s/frames/f/x.png',
+        '/r2/thumbnails/teams/01ORG/sequences/s/frames/f/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
-    ).toBe('teams/01TEAM/sequences/s/frames/f/x.png');
+    ).toBe('teams/01ORG/sequences/s/frames/f/x.png');
   });
-  it('rejects the wrong bucket, wrong team, traversal, and external URLs', () => {
+  it('rejects the wrong bucket, wrong organization, traversal, and external URLs', () => {
     expect(
       parseUploadedStoragePath(
-        '/r2/videos/teams/01TEAM/x.mp4',
+        '/r2/videos/teams/01ORG/x.mp4',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
         '/r2/thumbnails/teams/OTHER/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
-        '/r2/thumbnails/teams/01TEAM/../OTHER/x.png',
+        '/r2/thumbnails/teams/01ORG/../OTHER/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
     expect(
       parseUploadedStoragePath(
         'https://evil.example/x.png',
         'thumbnails',
-        ownTeam
+        ownOrganization
       )
     ).toBeNull();
   });
@@ -776,7 +778,7 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       await import('@/cast/server/production-staleness');
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
-    const scopedDb = createScopedDb(teamId, actorId);
+    const scopedDb = createScopedDb(organizationId, actorId);
     const mia = await scopedDb.characters.create(
       {
         sequenceId,
@@ -812,13 +814,13 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       .where(eq(styles.id, styleId));
     const sequence = await scopedDb.sequences.getById(sequenceId);
     if (!sequence) throw new Error('test setup: no sequence');
-    const url = `/r2/characters/teams/${teamId}/sheets/gala.png`;
+    const url = `/r2/characters/teams/${organizationId}/sheets/gala.png`;
     // The upload gate reads the likeness ledger: not a person.
     await recordLikenessFinding(scopedDb, [url], 'other', {});
 
     // No default sheet yet: the upload is not refused.
     await setCharacterSheetFromUpload(
-      { scopedDb, user: { id: actorId }, teamId, sequence },
+      { scopedDb, user: { id: actorId }, organizationId, sequence },
       { characterId: mia.id, lookId: gala.id, publicUrl: url }
     );
     const uploaded = await scopedDb.characterLooks.getById(gala.id);
@@ -832,8 +834,8 @@ describe('character sheet upload for a look other than the default (#2015)', () 
     // so it now reads stale, as a look drawn before that face would.
     await scopedDb.characterSheetVariants.applyConvergent({
       lookId: mia.id,
-      url: `/r2/characters/teams/${teamId}/sheets/mia.png`,
-      storagePath: `teams/${teamId}/sheets/mia.png`,
+      url: `/r2/characters/teams/${organizationId}/sheets/mia.png`,
+      storagePath: `teams/${organizationId}/sheets/mia.png`,
       inputHash: null,
       model: 'test-model',
     });
@@ -841,7 +843,7 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
         .status
     ).toBe('stale');
-    // The ledger row holds the team; the next seed deletes teams.
+    // The ledger row holds the organization; the next seed deletes organization.
     await db.delete(uploadAttestations);
   });
 });

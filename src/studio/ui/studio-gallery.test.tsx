@@ -12,7 +12,7 @@ import {
 function asset(input: GeneratedAsset['input']): GeneratedAsset {
   return {
     id: '01STUDIOASSET000000000000',
-    teamId: 'team',
+    organizationId: 'organization',
     userId: 'user',
     provider: 'fal',
     endpointId: 'fal-ai/example',

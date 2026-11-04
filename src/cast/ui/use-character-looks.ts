@@ -4,7 +4,7 @@
  * look edit re-stales its sheet and the shots of the scenes that wear it.
  *
  * `sequenceId` null is the Characters page editing a character no sequence
- * casts (#2065): the write goes to the team fns and no pin moves.
+ * casts (#2065): the write goes to the organization fns and no pin moves.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
@@ -15,13 +15,13 @@ import {
   updateCharacterLookFn,
 } from '@/cast/character-looks.fn';
 import {
-  createTeamCharacterLookFn,
-  removeTeamCharacterLookFn,
-  restoreTeamCharacterLookFn,
-  updateTeamCharacterLookFn,
-} from '@/cast/team-characters.fn';
+  createOrganizationCharacterLookFn,
+  removeOrganizationCharacterLookFn,
+  restoreOrganizationCharacterLookFn,
+  updateOrganizationCharacterLookFn,
+} from '@/cast/organization-characters.fn';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
-import { teamCharacterKeys } from '@/cast/ui/use-team-characters';
+import { organizationCharacterKeys } from '@/cast/ui/use-organization-characters';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 
 type LookRef = {
@@ -44,7 +44,9 @@ async function refresh(queryClient: QueryClient) {
     queryKey: ['character-sheet-variants'],
   });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-  void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+  void queryClient.invalidateQueries({
+    queryKey: organizationCharacterKeys.all,
+  });
   await queryClient.invalidateQueries({ queryKey: sequenceCharacterKeys.all });
 }
 
@@ -56,7 +58,7 @@ export function useCreateCharacterLook() {
       ...look
     }: Omit<LookRef, 'lookId'> & LookFields) =>
       sequenceId === null
-        ? createTeamCharacterLookFn({ data: look })
+        ? createOrganizationCharacterLookFn({ data: look })
         : createCharacterLookFn({ data: { sequenceId, ...look } }),
     onSuccess: () => refresh(queryClient),
   });
@@ -67,7 +69,7 @@ export function useUpdateCharacterLook() {
   return useMutation({
     mutationFn: ({ sequenceId, ...look }: LookRef & Partial<LookFields>) =>
       sequenceId === null
-        ? updateTeamCharacterLookFn({ data: look })
+        ? updateOrganizationCharacterLookFn({ data: look })
         : updateCharacterLookFn({ data: { sequenceId, ...look } }),
     onSuccess: () => refresh(queryClient),
   });
@@ -78,7 +80,7 @@ export function useRemoveCharacterLook() {
   return useMutation({
     mutationFn: ({ sequenceId, ...look }: LookRef) =>
       sequenceId === null
-        ? removeTeamCharacterLookFn({ data: look })
+        ? removeOrganizationCharacterLookFn({ data: look })
         : removeCharacterLookFn({ data: { sequenceId, ...look } }),
     onSuccess: () => refresh(queryClient),
   });
@@ -90,7 +92,7 @@ export async function restoreCharacterLook(
   { sequenceId, ...look }: LookRef
 ) {
   await (sequenceId === null
-    ? restoreTeamCharacterLookFn({ data: look })
+    ? restoreOrganizationCharacterLookFn({ data: look })
     : restoreCharacterLookFn({ data: { sequenceId, ...look } }));
   await refresh(queryClient);
 }

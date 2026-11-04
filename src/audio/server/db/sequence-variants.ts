@@ -555,12 +555,12 @@ export function createSequenceVariantsMethods(db: Database) {
 
     // ── Divergent (parked) tracks ─────────────────────────────────────────
     /**
-     * Aggregate parked-track counts across a team's sequences. Powers the
+     * Aggregate parked-track counts across an organization's sequences. Powers the
      * corner-dot indicator on the sequence dashboard — a single round-trip
-     * keyed by `teamId` instead of N per-sequence calls.
+     * keyed by `organizationId` instead of N per-sequence calls.
      */
-    listDivergentByTeam: async (
-      teamId: string
+    listDivergentByOrganization: async (
+      organizationId: string
     ): Promise<Array<{ sequenceId: string; hasMusic: boolean }>> => {
       const musicRows = await db
         .select({ sequenceId: sequenceMusicVariants.sequenceId })
@@ -571,7 +571,7 @@ export function createSequenceVariantsMethods(db: Database) {
         )
         .where(
           and(
-            eq(sequences.teamId, teamId),
+            eq(sequences.organizationId, organizationId),
             sql`${sequenceMusicVariants.divergedAt} IS NOT NULL`,
             sql`${sequenceMusicVariants.discardedAt} IS NULL`
           )

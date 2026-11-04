@@ -9,7 +9,12 @@ import {
   emailOTPClient,
   inferAdditionalFields,
   lastLoginMethodClient,
+  organizationClient,
 } from 'better-auth/client/plugins';
+import {
+  organizationAc,
+  organizationRoles,
+} from '@/platform/auth/organization-access';
 import { createAuthClient } from 'better-auth/react';
 import { getQueryClient } from '@/ui/query-client';
 import {
@@ -59,8 +64,25 @@ export const authClient = createAuthClient({
     lastLoginMethodClient({
       cookieName: lastUsedLoginMethodCookieName(cookiePrefix),
     }),
+    organizationClient({
+      ac: organizationAc,
+      roles: organizationRoles,
+      teams: { enabled: false },
+    }),
   ],
 });
 
 // Sign-in / OTP / Google / passkeys only. Session *reads* go through
 // `useAuthSession` / `sessionQueryOptions` (see `src/platform/session.fn.ts`).
+
+/** Unwrap an auth client result; a refusal becomes a thrown Error. */
+export async function authData<T>(
+  result: Promise<{ data: T | null; error: { message?: string } | null }>
+): Promise<T> {
+  const settled = await result;
+  if (settled.error) {
+    throw new Error(settled.error.message ?? 'Auth request failed');
+  }
+  if (settled.data == null) throw new Error('Auth request failed');
+  return settled.data;
+}

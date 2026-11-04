@@ -18,7 +18,7 @@ import {
  * the #1600 version tables, the #2015 looks, the #2017 cast links, the #1695
  * location links and photos, and the sheet variants and voice versions
  * (nothing cascades from `characters` or a location). A test that wipes
- * characters, locations, sequences or teams calls this first.
+ * characters, locations, sequences or organizations calls this first.
  */
 export async function clearVersionRows(db: Database): Promise<void> {
   await db.delete(sequenceCast);

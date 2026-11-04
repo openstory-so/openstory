@@ -24,15 +24,20 @@ export const Route = createFileRoute('/api/billing/webhook')({
     middleware: [stripeWebhookMiddleware],
     handlers: {
       POST: async ({ context }) => {
-        const { stripeEvent: event, scopedDb, teamId, userId } = context;
+        const {
+          stripeEvent: event,
+          scopedDb,
+          organizationId,
+          userId,
+        } = context;
         if (!event || !scopedDb) {
           return Response.json({ received: true }, { status: 200 });
         }
 
         try {
-          if (teamId && userId) {
+          if (organizationId && userId) {
             captureCheckoutAnalyticsForStripeEvent(event, {
-              teamId,
+              organizationId,
               userId,
             });
           }
@@ -128,11 +133,13 @@ export const Route = createFileRoute('/api/billing/webhook')({
               });
 
               if (result) {
-                logger.info(`Added $${amountUsd} credits to team ${teamId}`);
-                if (teamId) {
+                logger.info(
+                  `Added $${amountUsd} credits to organization ${organizationId}`
+                );
+                if (organizationId) {
                   const posthog = getPostHogClient();
                   posthog?.capture({
-                    distinctId: teamId,
+                    distinctId: organizationId,
                     event: 'credits_added',
                     properties: {
                       amount_usd: amountUsd,
@@ -155,7 +162,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
 
               if (type === 'auto_top_up') {
                 logger.info(
-                  `Auto-top-up payment succeeded for team ${paymentIntent.metadata.teamId}`
+                  `Auto-top-up payment succeeded for organization ${paymentIntent.metadata.organizationId}`
                 );
                 break;
               }
@@ -172,7 +179,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
               );
               if (!idempotencyKey || isNaN(amountUsd)) {
                 logger.error('Direct top-up intent missing metadata', {
-                  teamId,
+                  organizationId,
                   data: paymentIntent.metadata,
                 });
                 break;
@@ -187,7 +194,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
 
               if (granted) {
                 logger.warn('Reconciled a direct top-up the server fn missed', {
-                  teamId,
+                  organizationId,
                   amountMicros,
                   stripePaymentIntentId: paymentIntent.id,
                 });

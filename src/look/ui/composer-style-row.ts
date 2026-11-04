@@ -48,7 +48,7 @@ export function stylesForComposerCategory(
 
 /**
  * First style in the filtered row, falling back to the catalogue head when
- * the requested family is empty (custom teams with no cinematic styles).
+ * the requested family is empty (custom organization with no cinematic styles).
  */
 export function defaultComposerStyle(
   styles: Style[],

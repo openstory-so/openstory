@@ -7,7 +7,7 @@ import {
 } from '@/platform/server/test/seed';
 import { testOnlyGuard } from './route';
 
-// `preset` makes the team character the full-sequence e2e casts.
+// `preset` makes the organization character the full-sequence e2e casts.
 const CreateCharacterSchema = z.union([
   z.object({
     sequenceId: z.string(),
@@ -18,7 +18,10 @@ const CreateCharacterSchema = z.union([
       .enum(['pending', 'generating', 'completed', 'failed'])
       .optional(),
   }),
-  z.object({ teamId: z.string().min(1), preset: z.literal('scarlett') }),
+  z.object({
+    organizationId: z.string().min(1),
+    preset: z.literal('scarlett'),
+  }),
 ]);
 
 export const Route = createFileRoute('/api/test/character')({
@@ -30,7 +33,7 @@ export const Route = createFileRoute('/api/test/character')({
           const body = CreateCharacterSchema.parse(await request.json());
           if ('preset' in body) {
             return Response.json(
-              await createScarlettTestCharacter(body.teamId)
+              await createScarlettTestCharacter(body.organizationId)
             );
           }
 

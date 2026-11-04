@@ -9,7 +9,6 @@
 
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 import { getAuth } from '@/platform/server/auth/config';
-import { resolveUserTeam } from '@/platform/server/db/scoped';
 import { ValidationError } from './errors';
 import { CONTACT_EMAIL } from '@/ui/marketing/constants';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
@@ -42,14 +41,14 @@ export const submitFeedbackFn = createServerFn({ method: 'POST' })
       headers: getRequest().headers,
     });
     const user = session?.user ?? null;
-    const team = user ? await resolveUserTeam(user.id) : null;
+    const organizationId = session?.session.activeOrganizationId ?? null;
     const userEmail = user?.email ?? data.email ?? '';
 
     const result = await sendFeedbackEmail({
       to: CONTACT_EMAIL,
       userName: user?.name ?? 'Anonymous visitor',
       userEmail: userEmail || 'not provided',
-      teamId: team?.teamId ?? '—',
+      organizationId: organizationId ?? '—',
       message: data.message,
     });
 
@@ -57,7 +56,7 @@ export const submitFeedbackFn = createServerFn({ method: 'POST' })
       distinctId: user?.id ?? 'anonymous',
       event: 'feedback_submitted',
       properties: {
-        teamId: team?.teamId ?? null,
+        organizationId,
         userEmail: userEmail || null,
         anonymous: !user,
         emailSent: result.success,

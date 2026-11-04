@@ -66,14 +66,14 @@ describe('generateMusic native ElevenLabs', () => {
     });
     uploadFile.mockResolvedValue({
       publicUrl: 'https://cdn.example/music.mp3',
-      path: 'audio/team/seq/music/x.mp3',
-      fullPath: 'audio/team/seq/music/x.mp3',
+      path: 'audio/organization/seq/music/x.mp3',
+      fullPath: 'audio/organization/seq/music/x.mp3',
     });
 
     const result = await generateMusic({
       prompt: 'lo-fi beat',
       duration: 61,
-      teamId: 'team_1',
+      organizationId: 'team_1',
       sequenceId: 'seq_1',
       credentials: {
         userId: 'user_1',

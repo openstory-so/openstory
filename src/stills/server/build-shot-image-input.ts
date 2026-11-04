@@ -44,7 +44,7 @@ export async function buildShotImageWorkflowInput(opts: {
   shot: Shot;
   model: TextToImageModel;
   userId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   aspectRatio: AspectRatio;
   resolution: Resolution;
@@ -76,7 +76,7 @@ export async function buildShotImageWorkflowInput(opts: {
     shot,
     model,
     userId,
-    teamId,
+    organizationId,
     sequenceId,
     aspectRatio,
     resolution,
@@ -142,7 +142,7 @@ export async function buildShotImageWorkflowInput(opts: {
 
   return {
     userId,
-    teamId,
+    organizationId,
     prompt,
     model,
     imageSize: aspectRatioToImageSize(aspectRatio),

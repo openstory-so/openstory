@@ -184,7 +184,7 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
-/** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal team), fal. */
+/** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal organization), fal. */
 async function resolveImageVia(
   model: ImageGenerationParams['model'],
   credentials: CredentialScopedDb | undefined
@@ -210,7 +210,7 @@ async function resolveImageVia(
     return {
       via: claimBytePlusVia({
         native: true,
-        usingOwnFalKey: falKey?.source === 'team',
+        usingOwnFalKey: falKey?.source === 'organization',
       }),
       xaiKey,
       googleKey,
@@ -280,7 +280,7 @@ async function generateImageInternal(
         })
       );
       endpoint = gemini.nativeModel;
-      usedOwnKey = googleKey.source === 'team';
+      usedOwnKey = googleKey.source === 'organization';
       break;
     }
     case 'xai': {
@@ -330,7 +330,7 @@ async function generateImageInternal(
               debug: false,
             });
       endpoint = nativeModel;
-      usedOwnKey = xaiKey.source === 'team';
+      usedOwnKey = xaiKey.source === 'organization';
       break;
     }
     case 'fal': {
@@ -356,7 +356,7 @@ async function generateImageInternal(
       const built = buildImageRequest(params);
       const { prompt, ...modelOptions } = built.input;
       endpoint = built.endpointId;
-      usedOwnKey = key.source === 'team';
+      usedOwnKey = key.source === 'organization';
 
       // Bound so a hung fal.subscribe fails the workflow step and CF can retry
       // (#826). Native activity `timeout` since @tanstack/ai@0.44 / ai-fal@0.10.

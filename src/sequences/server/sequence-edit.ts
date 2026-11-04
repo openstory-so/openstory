@@ -100,7 +100,7 @@ export async function archiveSequence(
 ): Promise<void> {
   const prevStatus = sequence.status;
   if (prevStatus === 'archived') return;
-  // The cast is the team's: a voice is held until its character is deleted
+  // The cast is the organization's: a voice is held until its character is deleted
   // (#2017), so an archive touches none.
   await scopedDb.sequence(sequence.id).updateStatus('archived');
   await scopedDb.sequenceEvents.record({

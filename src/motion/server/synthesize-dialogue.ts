@@ -84,7 +84,7 @@ type DialogueCharge = {
  */
 export async function generateDialogueSpeechCall(input: {
   apiKey: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   lines: readonly DialogueCallLine[];
 }): Promise<DialogueSpeechCall> {
@@ -129,7 +129,7 @@ export async function generateDialogueSpeechCall(input: {
   const speechId = generateId();
   const uploaded = await uploadFile(
     STORAGE_BUCKETS.AUDIO,
-    `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
+    `${input.organizationId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
     wav,
     { contentType: 'audio/wav', upsert: true }
   );

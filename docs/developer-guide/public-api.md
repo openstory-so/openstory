@@ -30,7 +30,7 @@ an OAuth access token. Two ways to get a key:
   `verification_url`. Show the user the code and URL (or open
   `verification_url_complete`), then `GET
 /api/v1/device/token?device_code=…&wait=60s` until it returns `200 { api_key,
-team }`. While the user decides you get `428 authorization_pending` (keep
+organization }`. While the user decides you get `428 authorization_pending` (keep
   polling; `?wait` blocks server-side), `429 slow_down` if you poll faster than
   `interval` without `?wait`, `403 access_denied`, or `410 expired_token` (codes
   last 10 minutes; start again). Both endpoints are rate limited per IP.
@@ -44,7 +44,7 @@ Authorization: Bearer <key>
 x-api-key: <key>
 ```
 
-Keys are team-scoped — a key only ever sees its own team's sequences — and rate
+Keys are organization-scoped — a key only ever sees its own organization's sequences — and rate
 limited to **10 requests/second**; exceeding it returns `429` with a `Retry-After`
 header.
 
@@ -66,7 +66,7 @@ authorization server:
 - **Authorize:** send the user to `/api/auth/oauth2/authorize` with PKCE
   (`S256`), the scopes you need, and `resource=<origin>/api/v1` (RFC 8707) so
   the token is issued for this API. They sign in if needed, then approve on
-  the consent page, which names your app and the team the grant bills to.
+  the consent page, which names your app and the organization the grant bills to.
 - **Token:** exchange the code at `/api/auth/oauth2/token`. Access tokens are
   JWTs valid for an hour; request `offline_access` for a refresh token.
 
@@ -113,7 +113,7 @@ talk to `POST /mcp`, not the REST API. Each request is independent (MCP
   well-known hosted MCP clients, or loopback). Requests with no `Origin`
   (curl, CLIs) are allowed. A disallowed `Origin` is `403`.
 
-The first tool is `whoami` (caller user + team) so a client can verify the
+The first tool is `whoami` (caller user + `organization`) so a client can verify the
 connection before production tools land.
 
 ## Create a sequence
@@ -149,7 +149,7 @@ off, shots render straight to video from the reference sheets and no stills are
 made. `draftMotion` (default `true`) renders low-resolution drafts first on
 Seedance 2.5, to be rendered at quality once you like them; other video models
 render finished clips. With no `videoModels`, the sequence starts on Seedance 2.5
-where your team can reach it, and on Seedance 2.0 otherwise.
+where your organization can reach it, and on Seedance 2.0 otherwise.
 Speaking characters get a designed voice wherever this deployment can design one. There is no `voices` field.
 See `GET /api/v1` or the OpenAPI spec for the full request schema.
 
@@ -192,7 +192,7 @@ end-to-end success.
 
 ## List your sequences
 
-`GET /api/v1/sequences` returns your team's sequences, most recent first. Each
+`GET /api/v1/sequences` returns your organization's sequences, most recent first. Each
 entry is a compact summary of the status document — `status`, `aspectRatio`,
 `style`, `models`, `poster`, `music`, and the ready/failed `counts`, but **not**
 the per-frame array — with a `self` link to its full status document.

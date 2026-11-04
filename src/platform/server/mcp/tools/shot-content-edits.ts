@@ -48,7 +48,7 @@ const promptType = z
   .enum(['visual', 'motion'])
   .describe('visual = the still’s prompt; motion = the video’s prompt.');
 
-/** A live shot of this team's sequence, loaded as the editor loads it. */
+/** A live shot of this organization's sequence, loaded as the editor loads it. */
 export async function shotEdit(
   scopedDb: ScopedDb,
   userId: string,
@@ -67,7 +67,12 @@ export async function shotEdit(
   ) {
     throw new NotFoundError('Shot not found in this sequence.');
   }
-  return { ...target, scopedDb, user: { id: userId }, teamId: scopedDb.teamId };
+  return {
+    ...target,
+    scopedDb,
+    user: { id: userId },
+    organizationId: scopedDb.organizationId,
+  };
 }
 
 const specVerdict = z

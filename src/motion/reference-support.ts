@@ -288,7 +288,7 @@ type ShotJob = {
   /** The assembled text the provider reads; null when none is written. */
   prompt: string | null;
   /**
-   * Seedance 2.5 goes to BytePlus Ark for this team (`seedanceRunsOnArk`).
+   * Seedance 2.5 goes to BytePlus Ark for this organization (`seedanceRunsOnArk`).
    * Read only by the Seedance 2.5 edit rule.
    */
   onArk: boolean;

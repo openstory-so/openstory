@@ -25,11 +25,11 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   videoVariants,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team-scoped export rows
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real organization-scoped export rows
 import { createScopedDb } from '@/platform/server/db/scoped';
 import { dbSceneId } from '@/shots/scene-id';
 
@@ -42,7 +42,7 @@ const { previewExport, resolveExportCut, startExport } =
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let sequenceId: string;
 let videoId: string;
 
@@ -54,16 +54,18 @@ afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   const styleId = generateId();
   const sceneId = dbSceneId(generateId());
   const segmentId = generateId();
   videoId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 's',
     config: {
       mood: 'neutral',
@@ -77,7 +79,7 @@ beforeEach(async () => {
   });
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId });
   await db.insert(scenes).values({ id: sceneId, sequenceId, orderIndex: 0 });
   await db.insert(renderSegments).values({
     id: segmentId,
@@ -105,11 +107,11 @@ beforeEach(async () => {
   triggerWorkflow.mockResolvedValue('export-run');
 });
 
-const scoped = () => createScopedDb(teamId, generateId());
+const scoped = () => createScopedDb(organizationId, generateId());
 const start = async () =>
   startExport(scoped(), {
     userId: generateId(),
-    teamId,
+    organizationId,
     sequenceId,
     cut: await resolveExportCut(scoped(), sequenceId),
   });
@@ -147,7 +149,7 @@ describe('export service', () => {
     const first = await start();
     const sameCut = await startExport(scoped(), {
       userId: generateId(),
-      teamId,
+      organizationId,
       sequenceId,
       cut: await resolveExportCut(scoped(), sequenceId),
       refuseOtherCut: true,
@@ -163,7 +165,7 @@ describe('export service', () => {
     await expect(
       startExport(scoped(), {
         userId: generateId(),
-        teamId,
+        organizationId,
         sequenceId,
         cut: await resolveExportCut(scoped(), sequenceId),
         refuseOtherCut: true,

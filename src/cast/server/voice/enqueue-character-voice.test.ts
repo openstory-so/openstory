@@ -43,7 +43,7 @@ function character(
     styling: null,
     // Cast in its sequence (#2017).
     castId: 'cast-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
@@ -76,7 +76,7 @@ function makeScopedDb(overrides: {
   const releaseCharacterVoice = vi.fn();
   // stub of the enqueue surface
   const scopedDb = asStub<ScopedDb>({
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     characters: {
       listLiveVoiceClaims,
       createPendingVoiceClaim,

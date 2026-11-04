@@ -31,27 +31,27 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 
 // ============================================================================
-// Presign upload — drafts go under the user's default team's `uploads/`
+// Presign upload — drafts go under the active organization's `uploads/`
 // folder, a permanent sequence-agnostic key that attach points rows at without
 // moving anything (#1471). Persisted uploads (existing sequence) must use the
-// *sequence's* teamId in the path so the attach check passes for users whose
-// default team differs from the sequence's team (multi-team members and system
+// *sequence's* organizationId in the path so the attach check passes for users whose
+// active organization differs from the sequence's (multi-org members and system
 // admins).
 // ============================================================================
 
 export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
+    const storagePath = `${context.organizationId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,
@@ -74,7 +74,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/${data.sequenceId}/${uploadId}.${ext}`;
+    const storagePath = `${context.organizationId}/${data.sequenceId}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,
@@ -95,7 +95,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -108,7 +108,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
     const { scopedDb } = context;
     const llmKeyInfo =
       await scopedDb.apiKeys.resolveLlmKey(ELEMENT_VISION_MODEL);
-    if (llmKeyInfo.source !== 'team') {
+    if (llmKeyInfo.source !== 'organization') {
       const estimatedCost = estimateLLMCost(1);
       const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
       if (!canAfford) {
@@ -188,7 +188,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
     elementKindOrThrow(data.filename);
     return await attachElementUpload({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       sequenceId: data.sequenceId,
       path: data.path,
@@ -355,7 +355,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => ({
     element: await replaceElementUpload({
       scopedDb: context.scopedDb,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       userId: context.user.id,
       sequenceId: context.sequence.id,
       elementId: data.elementId,

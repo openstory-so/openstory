@@ -34,7 +34,7 @@ Workflow:
      reconnect later.
 
 List your sequences:
-  GET /api/v1/sequences returns your team's sequences, most recent first. Each
+  GET /api/v1/sequences returns your organization's sequences, most recent first. Each
   entry is a compact summary (status, aspect ratio, style, models, poster,
   music, and ready/failed counts) with a 'self' link to its full status
   document. Page with ?limit (default 20, max 100) and the opaque ?cursor from
@@ -52,7 +52,7 @@ Enhance only (no sequence):
   as an 'event: error' shot.
 
 Styles (create your own look):
-  POST /api/v1/styles creates a team-owned library style you can then pass as
+  POST /api/v1/styles creates an organization-owned library style you can then pass as
   'style' to POST /api/v1/sequences. Send a 'name' and a complete v2 'config'
   (look: mood, artStyle, lighting, colorPalette, colorGrading; motion: camera,
   pace, energy) plus optional description/category/tags. Responds 201
@@ -73,15 +73,15 @@ Authentication:
     /api/v1/device/code, show the user the returned user_code and
     verification_url (or open verification_url_complete), then GET the 'poll'
     link — /api/v1/device/token?device_code=…&wait=60s — until it returns 200
-    { api_key, team }. While the user decides you get 428 authorization_pending
+    { api_key, organization }. While the user decides you get 428 authorization_pending
     (keep polling; ?wait blocks server-side so you needn't sleep), 429 slow_down
     if you poll faster than 'interval' without ?wait, 403 access_denied, or 410
     expired_token (codes last 10 minutes; start again). The key is a normal
-    team-scoped key the user can revoke under Settings → Developer.
+    organization-scoped key the user can revoke under Settings → Developer.
   - Manually: the user creates a key in the dashboard under Settings →
     Developer and gives it to you.
   Send the key as either
-  'Authorization: Bearer <key>' or 'x-api-key: <key>'. Keys are team-scoped and
+  'Authorization: Bearer <key>' or 'x-api-key: <key>'. Keys are organization-scoped and
   rate limited to 10 requests/second.
   OAuth 2.1 is also supported ("login with OpenStory") for apps that can run an
   authorization-code + PKCE flow — hosted MCP clients, forks of OpenStory,
@@ -168,7 +168,8 @@ export function createStyleLink(): HalLink {
   return {
     href: STYLES_PATH,
     method: 'POST',
-    title: 'Create a team style from a complete v2 config. Responds 201.',
+    title:
+      'Create an organization style from a complete v2 config. Responds 201.',
     contentType: 'application/json',
     examples: [EXAMPLE_CREATE_STYLE_BODY],
   };
@@ -262,7 +263,7 @@ export function buildRootDocument(): RootDocument {
         method: 'GET',
         templated: true,
         title:
-          "List your team's sequences (most recent first; cursor-paginated)",
+          "List your organization's sequences (most recent first; cursor-paginated)",
       },
       'enhance-script': enhanceScriptLink(),
       'create-style': createStyleLink(),
@@ -275,7 +276,7 @@ export function buildRootDocument(): RootDocument {
       },
       'list-styles': getLink(
         STYLES_PATH,
-        "List your team's library styles and the public templates"
+        "List your organization's library styles and the public templates"
       ),
       style: {
         href: `${STYLES_PATH}/{id}`,

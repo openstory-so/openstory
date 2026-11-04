@@ -53,7 +53,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
@@ -85,18 +85,18 @@ export const getShotsFn = createServerFn({ method: 'GET' })
  * connection pool, queued every subsequent navigation request, and killed
  * the WebProcess (root cause of the "Can't open this page" report).
  *
- * Team scoping is enforced by the join inside `sequences.listShotsByIds`,
- * so caller-supplied ids from another team return nothing rather than leak.
+ * Organization scoping is enforced by the join inside `sequences.listShotsByIds`,
+ * so caller-supplied ids from another organization return nothing rather than leak.
  * The row is a {@link SequenceListShot}: still and clip urls, their statuses,
  * and the two prompt strings. A full shot view (metadata, variant rows,
  * dialogue) is what crashed this call on the 128 MB isolate (#1897).
  * `listShotsByIds` chunks the ids to respect D1's bound-parameter limit, so
- * the cap here is only an abuse guard on request size — a team's full sequence
+ * the cap here is only an abuse guard on request size — an organization's full sequence
  * list (which the sequences/eval pages send) used to overflow the old 500 cap
  * once it grew past 500 sequences (#957).
  */
 export const getShotsForSequencesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z.object({
@@ -804,7 +804,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ data, context }) => {
-    const { sequence, teamId, user, scopedDb } = context;
+    const { sequence, organizationId, user, scopedDb } = context;
     const { plan, creditFloorMicros } = await prepareUpdateStale({
       scopedDb,
       userId: user.id,
@@ -822,7 +822,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
     // launchUpdateStale → triggerWorkflow, which runs the generation gate.
     const workflowRunId = await launchUpdateStale({
       userId: user.id,
-      teamId,
+      organizationId,
       sequenceId: sequence.id,
       plan,
       // Embed the sequence id in the instance id (the timestamp+uuid tail

@@ -9,10 +9,10 @@ type Owned = { sequenceId: string; deletedAt?: Date | null };
  * The one parent-chain authorisation for id-addressed production reads.
  *
  * Most per-table reads (`frameVariants.listByFrame`, `shots.getById`, …) carry
- * no team filter: the editor's server fns load the sequence first and only then
+ * no organization filter: the editor's server fns load the sequence first and only then
  * follow ids. A caller that takes raw ids from outside (MCP) calls this before
  * the same reads. Every check starts at `sequences.getById`, which IS
- * team-scoped, and walks down: a row must belong to that sequence, be live, and
+ * organization-scoped, and walks down: a row must belong to that sequence, be live, and
  * hang off a live parent.
  */
 export function productionAccess(scopedDb: ScopedDb) {

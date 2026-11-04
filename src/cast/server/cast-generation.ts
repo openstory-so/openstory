@@ -1,7 +1,7 @@
 /**
  * Cast generation shared by the editor's server fns and the MCP tools
  * (#1979): regenerate a character or location sheet, replace a sequence's
- * location with another of the team's, design a character's voice and
+ * location with another of the organization's, design a character's voice and
  * cancel that design. Each spends credits through the workflow it triggers.
  */
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
@@ -79,7 +79,7 @@ export async function regenerateCharacterSheet(
   const payload = await buildRegenerateCharacterSheetPayload({
     scopedDb,
     userId: actor.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequence,
     character,
     lookId: data.lookId,
@@ -225,7 +225,7 @@ export async function cancelCharacterVoice(
 
 /**
  * Regenerate a location's sheet from its current bible and photos. The
- * location is the team's: the new sheet is every sequence's.
+ * location is the organization's: the new sheet is every sequence's.
  */
 export async function regenerateLocationSheet(
   scopedDb: ScopedDb,
@@ -243,7 +243,7 @@ export async function regenerateLocationSheet(
   const payload = await buildRegenerateLocationSheetPayload({
     scopedDb,
     userId: actor.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     sequence,
     location,
     imageModel: data.imageModel,
@@ -309,7 +309,7 @@ export async function regenerateLocationSheet(
 }
 
 /**
- * Replace the location a sequence uses with another of the team's (#1695):
+ * Replace the location a sequence uses with another of the organization's (#1695):
  * the link is re-pointed, then the shots now set at the new location are
  * re-rendered. No sheet is drawn and no claim is taken: the sequence reads
  * the other location's sheet as it is.
@@ -367,7 +367,7 @@ export async function recastLocation(
     locationDbId: location.id,
     locationName: location.name,
     sequenceId: sequence.id,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     userId: actor.userId,
     imageModel,
     aspectRatio: sequence.aspectRatio,

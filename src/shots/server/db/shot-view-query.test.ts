@@ -18,7 +18,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -41,15 +41,17 @@ async function assemble() {
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
 
-  const teamId = generateId();
+  const organizationId = generateId();
   const sequenceId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const style = required(
     (
       await db
         .insert(styles)
         .values({
-          teamId,
+          organizationId,
           name: 'default',
           config: {
             mood: 'neutral',
@@ -67,7 +69,7 @@ beforeAll(async () => {
   );
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
   const shot = required(
     (
       await db.insert(shots).values({ sequenceId, shotNumber: 1 }).returning()
@@ -210,7 +212,7 @@ it('projects pendingUpscaleUrl from a generating pending-promote version', async
  */
 it('projects fewer columns than D1 accepts, including a caller join', async () => {
   const { sql } = selectShotViewRows(db)
-    // A caller team filter. Under a bare `db.select()` this join dragged in
+    // A caller organization filter. Under a bare `db.select()` this join dragged in
     // every `sequences` column too.
     .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
     .toSQL();

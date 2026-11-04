@@ -1,16 +1,14 @@
 /**
  * OAuth provider wiring (#1456): issuer resolution and the plugin options
- * that tie a grant to a team.
+ * that tie a grant to an organization.
  */
 
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const envState: { VITE_APP_URL?: string } = {};
-const resolveUserTeam = vi.fn();
 
 vi.doMock('#env', () => ({ getEnv: () => envState }));
-vi.doMock('@/platform/server/db/scoped', () => ({ resolveUserTeam }));
 
 const {
   apiResourceIdentifier,
@@ -58,7 +56,6 @@ const session = {
 
 beforeEach(() => {
   envState.VITE_APP_URL = '';
-  resolveUserTeam.mockReset();
 });
 
 describe('resolveOAuthIssuer', () => {
@@ -150,25 +147,31 @@ describe('createOAuthProviderPlugins', () => {
     expect(source).toMatch(/disabledPaths:\s*\[\s*'\/token'\s*\]/);
   });
 
-  it('bills a grant to the user default team and stamps it on the token', async () => {
+  it('bills a grant to the session active organization and stamps it on the token', async () => {
     envState.VITE_APP_URL = 'https://openstory.so';
-    resolveUserTeam.mockResolvedValue({ teamId: 'team_1', teamName: 'T' });
     const options = providerOptions();
 
-    const referenceId = await options.postLogin?.consentReferenceId({
-      user,
-      session,
-      scopes: [],
-    });
-    expect(referenceId).toBe('team_1');
-    expect(resolveUserTeam).toHaveBeenCalledWith('user_1');
+    expect(
+      await options.postLogin?.consentReferenceId({
+        user,
+        session,
+        scopes: [],
+      })
+    ).toBeUndefined();
+    expect(
+      await options.postLogin?.consentReferenceId({
+        user,
+        session: { ...session, activeOrganizationId: 'org_active' },
+        scopes: [],
+      })
+    ).toBe('org_active');
 
     expect(
       await options.customAccessTokenClaims?.({
-        referenceId: 'team_1',
+        referenceId: 'organization_1',
         scopes: [],
       })
-    ).toEqual({ team_id: 'team_1' });
+    ).toEqual({ organization_id: 'organization_1' });
     expect(await options.customAccessTokenClaims?.({ scopes: [] })).toEqual({});
     expect(
       await options.postLogin?.shouldRedirect({

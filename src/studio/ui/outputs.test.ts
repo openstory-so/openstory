@@ -16,7 +16,7 @@ function asset(
 ): GeneratedAsset {
   return {
     id: '01STUDIOASSET000000000000',
-    teamId: 'team',
+    organizationId: 'organization',
     userId: 'user',
     provider: 'fal',
     endpointId: 'fal-ai/example',
@@ -62,8 +62,11 @@ describe('studioPrimaryOutput', () => {
 describe('studio share and download', () => {
   it('absolutizes an origin-relative media URL for the clipboard', () => {
     expect(
-      studioShareUrl('/r2/videos/team/clip.mp4', 'https://app.example.com')
-    ).toBe('https://app.example.com/r2/videos/team/clip.mp4');
+      studioShareUrl(
+        '/r2/videos/organization/clip.mp4',
+        'https://app.example.com'
+      )
+    ).toBe('https://app.example.com/r2/videos/organization/clip.mp4');
   });
 
   it('leaves an already-absolute URL unchanged', () => {
@@ -76,8 +79,8 @@ describe('studio share and download', () => {
   });
 
   it('asks the worker to attach the file instead of playing it', () => {
-    expect(studioDownloadHref('/r2/videos/team/clip.mp4')).toBe(
-      '/r2/videos/team/clip.mp4?download'
+    expect(studioDownloadHref('/r2/videos/organization/clip.mp4')).toBe(
+      '/r2/videos/organization/clip.mp4?download'
     );
     expect(studioDownloadHref('/r2/a.png?v=1')).toBe('/r2/a.png?v=1&download');
   });

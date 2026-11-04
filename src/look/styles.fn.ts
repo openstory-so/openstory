@@ -3,7 +3,7 @@
  * End-to-end type-safe functions for style library operations
  */
 
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import { requireOrganizationAdminAccess } from '@/platform/server/auth/action-utils';
 import type { Sequence, Style } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -15,7 +15,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 export { getPublicStylesFn } from './public-styles.fn';
@@ -25,11 +25,11 @@ export { getPublicStylesFn } from './public-styles.fn';
 // ============================================================================
 
 /**
- * Get all styles accessible to the user (team + public)
+ * Get all styles accessible to the user (organization + public)
  * @returns Array of styles
  */
 export const getStylesFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(
     zodValidator(
       z
@@ -51,13 +51,13 @@ const getStyleInputSchema = z.object({
 
 /**
  * Get a single style by ID.
- * @returns The style, or `null` when it is not visible to this team — a
+ * @returns The style, or `null` when it is not visible to this organization — a
  * deleted / de-listed style still referenced by a persisted composer draft,
- * or another team's automatic style (#1271). That is an outcome, not a
+ * or another organization's automatic style (#1271). That is an outcome, not a
  * failure: a throw here was retried by the query client and logged at error.
  */
 export const getStyleFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(getStyleInputSchema))
   .handler(async ({ data, context }): Promise<Style | null> => {
     return context.scopedDb.styles.getById(data.styleId);
@@ -65,8 +65,8 @@ export const getStyleFn = createServerFn({ method: 'GET' })
 
 /**
  * The style a sequence was generated with, resolved in the sequence's own
- * team scope — so an admin reviewing another team's sequence still sees its
- * automatic style, which `getStyleFn` (viewer's team) hides (#1271). The id
+ * organization scope — so an admin reviewing another organization's sequence still sees its
+ * automatic style, which `getStyleFn` (viewer's organization) hides (#1271). The id
  * comes from the sequence row, never from the client.
  */
 export const getSequenceStyleFn = createServerFn({ method: 'GET' })
@@ -84,7 +84,7 @@ export const getSequenceStyleFn = createServerFn({ method: 'GET' })
  * @returns The created style
  */
 export const createStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(createStyleSchema))
   .handler(async ({ data, context }) => {
     return context.scopedDb.styles.create(data);
@@ -103,7 +103,7 @@ const updateStyleInputSchema = updateStyleSchema.extend({
  * @returns The updated style
  */
 export const updateStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(updateStyleInputSchema))
   .handler(async ({ data, context }) => {
     const { styleId, ...updateData } = data;
@@ -131,17 +131,17 @@ const deleteStyleInputSchema = z.object({
  * Delete a style (requires admin/owner role)
  */
 export const deleteStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(deleteStyleInputSchema))
   .handler(async ({ data, context }) => {
-    // Style lookup without team scoping (need to discover the team first)
+    // Style lookup without organization scoping (need to discover the organization first)
     const style = await context.scopedDb.styles.getById(data.styleId);
 
     if (!style) {
       throw new NotFoundError('Style not found');
     }
 
-    await requireTeamAdminAccess(context.user.id, style.teamId);
+    await requireOrganizationAdminAccess(context.user.id, style.organizationId);
 
     await context.scopedDb.styles.delete(data.styleId);
 
@@ -176,12 +176,12 @@ export function assertPromotableAutoStyle(
 }
 
 /**
- * Add a sequence's automatic style to the team library under `name`. The
+ * Add a sequence's automatic style to the organization library under `name`. The
  * sequence's poster becomes the style's preview; the sequence keeps pointing
  * at the same (now library) row.
  */
 export const promoteSequenceStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(promoteSequenceStyleInputSchema))
   .handler(async ({ data, context }) => {
     const sequence = await context.scopedDb.sequences.getForUser({

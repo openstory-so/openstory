@@ -40,7 +40,7 @@ flowchart TD
     HLP --> DB
 ```
 
-**Key principle**: Server functions and services never call `getDb()` directly. All database access goes through `context.db` which is pre-scoped to the authenticated team.
+**Key principle**: Server functions and services never call `getDb()` directly. All database access goes through `context.db` which is pre-scoped to the authenticated organization.
 
 ---
 
@@ -60,7 +60,7 @@ import type {
 import { AuthorizationError } from '@/platform/errors';
 
 export interface ScopedDbContext {
-  readonly teamId: string;
+  readonly organizationId: string;
   readonly userId: string;
 
   sequences: {
@@ -99,14 +99,17 @@ export interface ScopedDbContext {
   };
 }
 
-export function createScopedDb(teamId: string, userId: string): ScopedDbContext;
+export function createScopedDb(
+  organizationId: string,
+  userId: string
+): ScopedDbContext;
 ```
 
 Each method includes authorization checks:
 
-- `get()` methods verify `resource.teamId === teamId`
-- `list()` methods filter by `teamId`
-- `create()` methods set `teamId` automatically
+- `get()` methods verify `resource.organizationId === organizationId`
+- `list()` methods filter by `organizationId`
+- `create()` methods set `organizationId` automatically
 - `update()/delete()` verify ownership before mutating
 
 ### 1.2 Add AuthorizationError
@@ -132,12 +135,12 @@ Update `src/platform/middleware.fn.ts`:
 ```typescript
 import { createScopedDb, type ScopedDbContext } from '@/lib/db/scoped-context';
 
-export type TeamContext = AuthContext & {
-  teamId: string;
+export type OrganizationContext = AuthContext & {
+  organizationId: string;
   db: ScopedDbContext; // Add scoped context
 };
 
-export type SequenceContext = TeamContext & {
+export type SequenceContext = OrganizationContext & {
   sequence: Sequence;
 };
 
@@ -146,19 +149,21 @@ export type FrameContext = SequenceContext & {
 };
 ```
 
-### 2.2 Update authWithTeamMiddleware
+### 2.2 Update authWithOrganizationMiddleware
 
 ```typescript
-export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
+export const authWithOrganizationMiddleware = createMiddleware({
+  type: 'function',
+})
   .middleware([authMiddleware])
   .server(async ({ next, context }) => {
-    const team = await getUserDefaultTeam(context.user.id);
-    if (!team) throw new Error('No team found for user');
+    const organization = await getUserDefaultOrganization(context.user.id);
+    if (!organization) throw new Error('No organization found for user');
 
     return next({
       context: {
-        teamId: team.teamId,
-        db: createScopedDb(team.teamId, context.user.id),
+        organizationId: organization.organizationId,
+        db: createScopedDb(organization.organizationId, context.user.id),
       },
     });
   });
@@ -166,7 +171,7 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
 
 ### 2.3 Update resource middleware to also provide db
 
-Both `sequenceAccessMiddleware` and `frameAccessMiddleware` should provide `context.db` scoped to the resource's team.
+Both `sequenceAccessMiddleware` and `frameAccessMiddleware` should provide `context.db` scoped to the resource's organization.
 
 ---
 
@@ -230,7 +235,7 @@ export function createFrameService(db: ScopedDbContext) {
 ### 3.3 Other Services
 
 - `character.service.ts` - Same pattern
-- `team.service.ts` - Same pattern
+- `organization.service.ts` - Same pattern
 - `email-service.ts` - Remains unchanged (no DB, external API)
 - `script-analysis-audit.service.ts` - Evaluate if needs scoping
 
@@ -251,7 +256,7 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
   .handler(async ({ data, context }) => {
     const seq = await getSequenceById(data.sequenceId);
     if (!seq) throw new Error('Sequence not found');
-    await requireTeamMemberAccess(context.user.id, seq.teamId);
+    await requireOrganizationMemberAccess(context.user.id, seq.organizationId);
     return sequenceService.getSequence(data.sequenceId, data.includeFrames);
   });
 ```
@@ -260,10 +265,10 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
 
 ```typescript
 export const getSequenceFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .inputValidator(zodValidator(getSequenceInputSchema))
   .handler(async ({ data, context }) => {
-    // Impossible to access wrong team - db is scoped
+    // Impossible to access wrong organization - db is scoped
     return context.db.sequences.get(data.sequenceId, data.includeFrames);
   });
 ```
@@ -289,7 +294,7 @@ Update `src/look/styles.fn.ts` - currently uses `getDb()` directly:
 // Remove: import { getDb } from '#db-client';
 
 export const createStyleFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .inputValidator(zodValidator(createStyleSchema))
   .handler(async ({ data, context }) => {
     return context.db.styles.create({
@@ -305,7 +310,7 @@ Migrate remaining files:
 
 - `ai.ts`
 - `invite-codes.ts`
-- `teams.ts`
+- `organizations.ts`
 - `user.ts`
 
 ---
@@ -350,7 +355,7 @@ Update `.oxlintrc.json`:
               {
                 "group": [
                   "@/lib/db/helpers/*",
-                  "!@/lib/db/helpers/team-permissions"
+                  "!@/lib/db/helpers/organization-permissions"
                 ],
                 "message": "Use context.db methods instead of direct DB helper imports in server functions."
               }
@@ -400,19 +405,19 @@ Create `src/lib/db/scoped-context.test.ts`:
 import { createScopedDb } from './scoped-context';
 
 describe('ScopedDbContext', () => {
-  it('throws AuthorizationError when accessing resource from wrong team', async () => {
-    const db = createScopedDb('team-a', 'user-1');
-    // Assuming sequence belongs to team-b
-    await expect(db.sequences.get('seq-from-team-b')).rejects.toThrow(
+  it('throws AuthorizationError when accessing resource from wrong organization', async () => {
+    const db = createScopedDb('organization-a', 'user-1');
+    // Assuming sequence belongs to organization-b
+    await expect(db.sequences.get('seq-from-organization-b')).rejects.toThrow(
       AuthorizationError
     );
   });
 
-  it('allows access to resources in the same team', async () => {
-    const db = createScopedDb('team-a', 'user-1');
-    // Assuming sequence belongs to team-a
-    const seq = await db.sequences.get('seq-from-team-a');
-    expect(seq.teamId).toBe('team-a');
+  it('allows access to resources in the same organization', async () => {
+    const db = createScopedDb('organization-a', 'user-1');
+    // Assuming sequence belongs to organization-a
+    const seq = await db.sequences.get('seq-from-organization-a');
+    expect(seq.organizationId).toBe('organization-a');
   });
 });
 ```
@@ -429,24 +434,24 @@ bunx oxlint --type-aware src/functions/
 
 ## File Changes Summary
 
-| File                                    | Change Type                       |
-| --------------------------------------- | --------------------------------- |
-| `src/lib/db/scoped-context.ts`          | New file                          |
-| `src/lib/errors.ts`                     | Add AuthorizationError            |
-| `src/platform/middleware.fn.ts`         | Update context types + middleware |
-| `src/lib/services/sequence.service.ts`  | Refactor to factory               |
-| `src/lib/services/frame.service.ts`     | Refactor to factory               |
-| `src/lib/services/character.service.ts` | Refactor to factory               |
-| `src/lib/services/team.service.ts`      | Refactor to factory               |
-| `src/sequences/sequences.fn.ts`         | Use context.db                    |
-| `src/functions/frames.ts`               | Use context.db                    |
-| `src/look/styles.fn.ts`                 | Use context.db                    |
-| `src/functions/teams.ts`                | Use context.db                    |
-| `src/models/ai.fn.ts`                   | Use context.db                    |
-| `src/functions/invite-codes.ts`         | Use context.db                    |
-| `src/platform/user.fn.ts`               | Use context.db                    |
-| `.oxlintrc.json`                        | Add no-restricted-imports rules   |
-| `src/lib/db/scoped-context.test.ts`     | New test file                     |
+| File                                       | Change Type                       |
+| ------------------------------------------ | --------------------------------- |
+| `src/lib/db/scoped-context.ts`             | New file                          |
+| `src/lib/errors.ts`                        | Add AuthorizationError            |
+| `src/platform/middleware.fn.ts`            | Update context types + middleware |
+| `src/lib/services/sequence.service.ts`     | Refactor to factory               |
+| `src/lib/services/frame.service.ts`        | Refactor to factory               |
+| `src/lib/services/character.service.ts`    | Refactor to factory               |
+| `src/lib/services/organization.service.ts` | Refactor to factory               |
+| `src/sequences/sequences.fn.ts`            | Use context.db                    |
+| `src/functions/frames.ts`                  | Use context.db                    |
+| `src/look/styles.fn.ts`                    | Use context.db                    |
+| `src/functions/organizations.ts`           | Use context.db                    |
+| `src/models/ai.fn.ts`                      | Use context.db                    |
+| `src/functions/invite-codes.ts`            | Use context.db                    |
+| `src/platform/user.fn.ts`                  | Use context.db                    |
+| `.oxlintrc.json`                           | Add no-restricted-imports rules   |
+| `src/lib/db/scoped-context.test.ts`        | New test file                     |
 
 ---
 

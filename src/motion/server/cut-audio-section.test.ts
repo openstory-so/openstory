@@ -85,9 +85,9 @@ const { cutAudioSection, cutSpanningSection } =
   await import('./cut-audio-section');
 
 const base = {
-  storageKey: 'audio/team-1/seq-1/dialogue-recordings/rec-1.wav',
+  storageKey: 'audio/org-1/seq-1/dialogue-recordings/rec-1.wav',
   speechId: 'rec-1',
-  teamId: 'team-1',
+  organizationId: 'org-1',
   sequenceId: 'seq-1',
 };
 
@@ -244,7 +244,7 @@ describe('cutAudioSection', () => {
       toSeconds: 2.5,
       minDurationSeconds: 1.8,
     });
-    const path = 'team-1/seq-1/dialogue-sections/rec-1_1235_2500_1800.wav';
+    const path = 'org-1/seq-1/dialogue-sections/rec-1_1235_2500_1800.wav';
     expect(uploadFile.mock.calls[0]?.[1]).toBe(path);
     expect(cut.path).toBe(`audio/${path}`);
     expect(cut.url).toContain(path);
@@ -255,7 +255,7 @@ describe('cutAudioSection', () => {
       toSeconds: 2,
     });
     expect(unfloored.path).toBe(
-      'audio/team-1/seq-1/dialogue-sections/rec-1_1000_2000_0.wav'
+      'audio/org-1/seq-1/dialogue-sections/rec-1_1000_2000_0.wav'
     );
   });
 
@@ -270,7 +270,7 @@ describe('cutAudioSection', () => {
 
     expect(cut.durationSeconds).toBeCloseTo(2 + AUDIO_MIN_PAD_SLACK_SECONDS, 5);
     expect(cut.path).toBe(
-      'audio/team-1/seq-1/dialogue-sections/rec-1_1000_2250_2000.wav'
+      'audio/org-1/seq-1/dialogue-sections/rec-1_1000_2250_2000.wav'
     );
     expect(readStorageStream).not.toHaveBeenCalled();
     expect(uploadFile).not.toHaveBeenCalled();
@@ -319,7 +319,7 @@ describe('cutSpanningSection (#1794)', () => {
   it('sends one longer section, from the first member start to the last member end', async () => {
     const joined = await cutSpanningSection(
       [clip('a', 'rec-1', 7.43), clip('b', 'rec-1', 2.96)],
-      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+      { organizationId: 'org-1', sequenceId: 'seq-1', getSection }
     );
 
     expect(joined).toHaveLength(1);
@@ -338,7 +338,7 @@ describe('cutSpanningSection (#1794)', () => {
     });
     const joined = await cutSpanningSection(
       [legacy('a', 7.43), legacy('b', 2.96)],
-      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+      { organizationId: 'org-1', sequenceId: 'seq-1', getSection }
     );
 
     expect(joined).toHaveLength(1);
@@ -352,7 +352,7 @@ describe('cutSpanningSection (#1794)', () => {
     for (const clips of [apart, unknown]) {
       expect(
         await cutSpanningSection(clips, {
-          teamId: 'team-1',
+          organizationId: 'org-1',
           sequenceId: 'seq-1',
           getSection,
         })

@@ -91,7 +91,7 @@ describe('ingestImageToBucket', () => {
 
     const url = 'https://slow.example/portrait.png';
     await expect(
-      ingestImageToBucket(url, 'talent', 'team-1', 'temp', {
+      ingestImageToBucket(url, 'talent', 'organization-1', 'temp', {
         label: 'Character "Ada" reference image #2',
       })
     ).rejects.toSatisfy((error: unknown) => {
@@ -186,7 +186,7 @@ describe('ingestImageToBucket', () => {
     const ingested = await ingestImageToBucket(
       'https://share.example.com/x',
       'talent',
-      'team-1',
+      'organization-1',
       'temp',
       { label: 'Character "Ada" reference image #1' }
     );
@@ -209,7 +209,7 @@ describe('ingestImageToBucket', () => {
       ingestImageToBucket(
         'https://share.example.com/x',
         'talent',
-        'team-1',
+        'organization-1',
         'temp',
         { label: 'Character "Ada" reference image #2' }
       )
@@ -229,7 +229,7 @@ describe('ingestImageToBucket', () => {
       ingestImageToBucket(
         'https://share.example.com/start',
         'talent',
-        'team-1',
+        'organization-1',
         'temp'
       )
     ).rejects.toThrow(/redirect blocked/);

@@ -306,7 +306,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       const childBody: ImageWorkflowInput = {
         userId: input.userId,
         variantOnly: false,
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         reservationId: input.reservationId,
         prompt: visualPrompt,
         model,
@@ -366,13 +366,13 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           const enforcement =
             await scopedDb.liveRead.compliance.listEnforcementFor(
               input.userId,
-              input.teamId
+              input.organizationId
             );
           await triggerWorkflow<ShotVariantWorkflowInput>(
             '/variant-image',
             {
               userId: input.userId,
-              teamId: input.teamId,
+              organizationId: input.organizationId,
               sequenceId,
               shotId: matchedShot?.shotId,
               frameId: matchedShot?.frameId ?? undefined,

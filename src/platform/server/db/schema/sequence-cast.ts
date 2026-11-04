@@ -1,7 +1,7 @@
 /**
- * Sequence cast (#2017): which team characters an episode uses.
+ * Sequence cast (#2017): which organization characters an episode uses.
  *
- * A character belongs to the team. A sequence (an episode) never copies one
+ * A character belongs to the organization. A sequence (an episode) never copies one
  * and never pins a version of one: it holds a cast link, and reads the
  * character's current bible, voice, looks and sheets like every other
  * sequence. The link holds only what is the sequence's: the id the script

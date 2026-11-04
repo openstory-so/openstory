@@ -2,10 +2,10 @@
  * ElevenLabs env — native TTS, Voice Design, and Music (#1552 / #1640).
  *
  * Platform key only: `API_KEY_PROVIDERS` has no `'elevenlabs'`. Designed
- * voices live in the account that created them, so a team key would not see
+ * voices live in the account that created them, so an organization key would not see
  * voices we design (same shape as `ARK_API_KEY`). Workflows spend the key
  * through `scopedDb.credentials.resolveKey('elevenlabs')`, which reads this
- * module rather than `team_api_keys`.
+ * module rather than `organization_api_keys`.
  */
 
 import { getEnv } from '#env';

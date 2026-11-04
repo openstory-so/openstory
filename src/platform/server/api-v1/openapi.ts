@@ -167,7 +167,7 @@ export function buildOpenApiDocument(): JsonObject {
       { name: 'auth', description: 'Obtain an API key via device-code login.' },
       { name: 'sequences', description: 'Create and watch video sequences.' },
       { name: 'scripts', description: 'Enhance scripts without generating.' },
-      { name: 'styles', description: 'Create and browse team styles.' },
+      { name: 'styles', description: 'Create and browse organization styles.' },
       {
         name: 'stitches',
         description: 'Share a cut from the stitch CLI as a public page.',
@@ -282,10 +282,10 @@ export function buildOpenApiDocument(): JsonObject {
                 'application/json': {
                   schema: {
                     type: 'object',
-                    required: ['api_key', 'team'],
+                    required: ['api_key', 'organization'],
                     properties: {
                       api_key: { type: 'string' },
-                      team: {
+                      organization: {
                         type: 'object',
                         required: ['id', 'name'],
                         properties: {
@@ -314,9 +314,9 @@ export function buildOpenApiDocument(): JsonObject {
       [`${API_V1_BASE}/sequences`]: {
         get: {
           tags: ['sequences'],
-          summary: "List this team's sequences",
+          summary: "List this organization's sequences",
           description:
-            "List the API key team's sequences, most recent first (by updatedAt). Each entry is a compact summary — status-document scalars plus a `counts` block, without the per-shot array — and carries a HAL `self` link to its full status document. Archived sequences are excluded. Page with ?limit (default 20, max 100) and the opaque ?cursor returned in the response's `next` link.",
+            "List the API key organization's sequences, most recent first (by updatedAt). Each entry is a compact summary — status-document scalars plus a `counts` block, without the per-shot array — and carries a HAL `self` link to its full status document. Archived sequences are excluded. Page with ?limit (default 20, max 100) and the opaque ?cursor returned in the response's `next` link.",
           parameters: [
             {
               name: 'limit',
@@ -347,7 +347,7 @@ export function buildOpenApiDocument(): JsonObject {
             },
             '400': errorResponse('Invalid limit or cursor.'),
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
         },
@@ -383,7 +383,7 @@ export function buildOpenApiDocument(): JsonObject {
             },
             '400': errorResponse('Invalid JSON or request body.'),
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
         },
@@ -417,7 +417,7 @@ export function buildOpenApiDocument(): JsonObject {
             },
             '400': errorResponse('Invalid JSON or request body.'),
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '404': errorResponse('No style found matching the reference.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
@@ -428,7 +428,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['styles'],
           summary: 'List styles',
           description:
-            "Your team's library styles plus the public templates, as full documents. Sequence-bound automatic styles are excluded.",
+            "Your organization's library styles plus the public templates, as full documents. Sequence-bound automatic styles are excluded.",
           responses: {
             '200': {
               description: 'The style documents.',
@@ -439,7 +439,7 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
         },
@@ -447,7 +447,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['styles'],
           summary: 'Create a style',
           description:
-            'Create a team-owned library style to pass as `style` when creating sequences. Send `name` and a complete v2 `config` (validated as-is; v1 is rejected). Public/template flags, usage counts and sequence binding are server-managed and cannot be set.',
+            'Create an organization-owned library style to pass as `style` when creating sequences. Send `name` and a complete v2 `config` (validated as-is; v1 is rejected). Public/template flags, usage counts and sequence binding are server-managed and cannot be set.',
           requestBody: {
             required: true,
             content: {
@@ -469,9 +469,9 @@ export function buildOpenApiDocument(): JsonObject {
             },
             '400': errorResponse('Invalid JSON or request body.'),
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '409': errorResponse(
-              "The name's URL slug collides with a style visible to this team."
+              "The name's URL slug collides with a style visible to this organization."
             ),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
@@ -502,7 +502,7 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '404': errorResponse('Style not found.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
@@ -541,7 +541,7 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '404': errorResponse('No such sequence for this key.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
@@ -677,7 +677,7 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '401': errorResponse('Missing or invalid API key.'),
-            '403': errorResponse('No team associated with the key.'),
+            '403': errorResponse('No organization associated with the key.'),
             '404': errorResponse('No such sequence for this key.'),
           },
         },

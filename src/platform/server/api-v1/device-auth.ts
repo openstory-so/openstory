@@ -9,9 +9,11 @@
  */
 
 import { getAuth } from '@/platform/server/auth/config';
+import type { ApiKeyMetadata } from '@/platform/server/auth/public-api-key';
 import {
   pruneExpiredDeviceCodes,
-  resolveUserTeam,
+  getDeviceGrantOrganizationId,
+  getUserOrganizationMembership,
 } from '@/platform/server/db/scoped';
 import { APIError } from 'better-auth/api';
 import { env as workerEnv } from 'cloudflare:workers';
@@ -33,7 +35,11 @@ export type DeviceTokenResult =
         | 'expired_token'
         | 'access_denied';
     }
-  | { status: 'approved'; apiKey: string; team: { id: string; name: string } };
+  | {
+      status: 'approved';
+      apiKey: string;
+      organization: { id: string; name: string };
+    };
 
 const PLUGIN_ERRORS = [
   'authorization_pending',
@@ -74,13 +80,15 @@ export async function assertDeviceLoginRate(request: Request): Promise<void> {
  * endpoint isn't an existence oracle. Approval consumes the code in the plugin
  * and mints the key here — a second call with the same code is `invalid_grant`
  * to the plugin, which we fold into `expired_token` below. Anything that fails
- * after the plugin consumed the code (team lookup, key creation) burns it: the
+ * after the plugin consumed the code (organization lookup, key creation) burns it: the
  * agent gets one 500, then 410s, and must start again.
  */
 export async function exchangeDeviceCode(
   deviceCode: string
 ): Promise<DeviceTokenResult> {
   const auth = getAuth();
+  // Read first: the plugin deletes the code row, and this one with it, on exchange.
+  const organizationId = await getDeviceGrantOrganizationId(deviceCode);
   let accessToken: string;
   try {
     ({ access_token: accessToken } = await auth.api.deviceToken({
@@ -116,19 +124,30 @@ export async function exchangeDeviceCode(
   if (!found) throw new Error('Device login session vanished before exchange');
   const userId = found.user.id;
 
-  const team = await resolveUserTeam(userId);
-  if (!team) throw new Error('No team found for user');
+  if (!organizationId) {
+    throw new Error('Device login was approved without an organization');
+  }
+  const membership = await getUserOrganizationMembership(
+    userId,
+    organizationId
+  );
+  if (!membership)
+    throw new Error('Not a member of the device login organization');
 
   const created = await auth.api.createApiKey({
     body: {
       userId,
       name: `Agent login · ${new Date().toISOString().slice(0, 10)}`,
       prefix: 'osk_',
+      metadata: { organizationId } satisfies ApiKeyMetadata,
     },
   });
   return {
     status: 'approved',
     apiKey: created.key,
-    team: { id: team.teamId, name: team.teamName },
+    organization: {
+      id: membership.organizationId,
+      name: membership.organizationName,
+    },
   };
 }

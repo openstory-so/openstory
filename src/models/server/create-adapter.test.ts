@@ -193,10 +193,13 @@ afterEach(() => {
 
 describe('createAdapter LLMTR routing', () => {
   it('routes via:"llmtr" through openaiCompatibleText, translating the slug', () => {
-    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', {
+      key: 'llmtr-organization',
+      via: 'llmtr',
+    });
 
     const call = lastLlmtrCall();
-    expect(call.config.apiKey).toBe('llmtr-team');
+    expect(call.config.apiKey).toBe('llmtr-organization');
     expect(call.config.baseURL).toBe(LLMTR_URL);
     expect(call.config.name).toBe('llmtr');
     expect(call.config.api).toBe('responses');
@@ -208,7 +211,7 @@ describe('createAdapter LLMTR routing', () => {
 
   it('keeps the id unchanged for a model LLMTR spells the same way', () => {
     createAdapter('anthropic/claude-fable-5.1', {
-      key: 'llmtr-team',
+      key: 'llmtr-organization',
       via: 'llmtr',
     });
 
@@ -220,7 +223,7 @@ describe('createAdapter LLMTR routing', () => {
 
   it('sends every OpenAI model through Responses', () => {
     createAdapter('openai/gpt-5.4-mini', {
-      key: 'llmtr-team',
+      key: 'llmtr-organization',
       via: 'llmtr',
     });
     expect(lastLlmtrCall().config.api).toBe('responses');
@@ -230,7 +233,7 @@ describe('createAdapter LLMTR routing', () => {
   it('throws when via:"llmtr" meets a model LLMTR does not carry', () => {
     expect(() =>
       createAdapter('anthropic/claude-opus-5-fast', {
-        key: 'llmtr-team',
+        key: 'llmtr-organization',
         via: 'llmtr',
       })
     ).toThrow(/LLMTR does not carry model/);
@@ -242,13 +245,16 @@ describe('createAdapter LLMTR routing', () => {
     // Aimock's OpenRouter fixtures are the wrong wire format for the
     // Chat Completions adapter. LLMTR stays on its own URL.
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
-    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', {
+      key: 'llmtr-organization',
+      via: 'llmtr',
+    });
 
     expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
   });
 
-  it('never resolves a platform LLMTR key — LLMTR is team BYOK only', () => {
+  it('never resolves a platform LLMTR key — LLMTR is organization BYOK only', () => {
     expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toBeUndefined();
     testEnv.OPENROUTER_KEY = 'platform-or';
     expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toEqual({
@@ -261,12 +267,12 @@ describe('createAdapter LLMTR routing', () => {
 
 describe('createAdapter routing (issue #895)', () => {
   it('routes via:"fal" to fal’s OpenRouter endpoint and rewrites auth to "Key"', async () => {
-    createAdapter(MODEL, { key: 'sk-fal-team', via: 'fal' });
+    createAdapter(MODEL, { key: 'sk-fal-organization', via: 'fal' });
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
     if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
-    expect(call.key).toBe('sk-fal-team');
+    expect(call.key).toBe('sk-fal-organization');
     expect(call.config.serverURL).toBe(FAL_URL);
     if (!call.config.httpClient) throw new Error('expected an httpClient');
 
@@ -275,25 +281,25 @@ describe('createAdapter routing (issue #895)', () => {
     const sent = await sendThroughClient(call.config.httpClient, {
       Authorization: 'Bearer sdk-set-this',
     });
-    expect(sent.headers.get('Authorization')).toBe('Key sk-fal-team');
+    expect(sent.headers.get('Authorization')).toBe('Key sk-fal-organization');
   });
 
   it('routes via:"openrouter" directly: no serverURL override, no auth hook', () => {
-    createAdapter(MODEL, { key: 'sk-or-team', via: 'openrouter' });
+    createAdapter(MODEL, { key: 'sk-or-organization', via: 'openrouter' });
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
     if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
-    expect(call.key).toBe('sk-or-team');
+    expect(call.key).toBe('sk-or-organization');
     expect(call.config.serverURL).toBeUndefined();
     expect(call.config.httpClient).toBeUndefined();
   });
 
   it('lets OPENROUTER_BASE_URL (aimock) win over the fal proxy URL', () => {
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
-    createAdapter(MODEL, { key: 'sk-fal-team', via: 'fal' });
+    createAdapter(MODEL, { key: 'sk-fal-organization', via: 'fal' });
 
-    // E2E stays hermetic regardless of which key the team resolved.
+    // E2E stays hermetic regardless of which key the organization resolved.
     expect(lastCall().config.serverURL).toBe('http://localhost:4010/v1');
   });
 
@@ -365,12 +371,12 @@ describe('getPlatformLlmKey', () => {
 
 describe('native xAI routing (issue #1167)', () => {
   it('sends a Grok model to xAI under its native model name', () => {
-    createAdapter(MODEL, { key: 'xai-team', via: 'xai' });
+    createAdapter(MODEL, { key: 'xai-organization', via: 'xai' });
 
     expect(grokCalls).toStrictEqual([
       {
         model: 'grok-4.7',
-        key: 'xai-team',
+        key: 'xai-organization',
         config: expect.objectContaining({ fetch: expect.any(Function) }),
       },
     ]);
@@ -381,7 +387,7 @@ describe('native xAI routing (issue #1167)', () => {
   });
 
   it('maps grok-4.20 onto the reasoning build xAI actually serves', () => {
-    createAdapter('x-ai/grok-4.20', { key: 'xai-team', via: 'xai' });
+    createAdapter('x-ai/grok-4.20', { key: 'xai-organization', via: 'xai' });
 
     expect(grokCalls.at(-1)?.model).toBe('grok-4.20-0309-reasoning');
   });
@@ -392,7 +398,7 @@ describe('native xAI routing (issue #1167)', () => {
     // header" — its text for any non-sk-or key. Fail loudly instead.
     expect(() =>
       createAdapter('anthropic/claude-opus-5-fast', {
-        key: 'xai-team',
+        key: 'xai-organization',
         via: 'xai',
       })
     ).toThrow(/xAI key cannot be sent to OpenRouter/);
@@ -418,17 +424,21 @@ describe('native Google routing', () => {
 
   it('maps gemini-3.8-flash onto the name Google serves', () => {
     createAdapter('google/gemini-3.8-flash', {
-      key: 'google-team',
+      key: 'google-organization',
       via: 'google',
     });
     expect(geminiCalls.at(-1)?.model).toBe('gemini-3.8-flash');
   });
 
   it('sends a Gemini model to Google under its native model name', () => {
-    createAdapter(GEMINI_MODEL, { key: 'google-team', via: 'google' });
+    createAdapter(GEMINI_MODEL, { key: 'google-organization', via: 'google' });
 
     expect(geminiCalls).toStrictEqual([
-      { model: 'gemini-3.1-pro-preview', key: 'google-team', config: {} },
+      {
+        model: 'gemini-3.1-pro-preview',
+        key: 'google-organization',
+        config: {},
+      },
     ]);
     // The OpenRouter factories must not also fire — a double-construct would
     // mean the request shape and the adapter disagreed.
@@ -440,13 +450,13 @@ describe('native Google routing', () => {
   it('points the adapter at GEMINI_BASE_URL (aimock) when set', () => {
     testEnv.GEMINI_BASE_URL = 'http://localhost:4010/gemini';
     createAdapter('google/gemini-3-flash-preview', {
-      key: 'google-team',
+      key: 'google-organization',
       via: 'google',
     });
 
     expect(geminiCalls.at(-1)).toStrictEqual({
       model: 'gemini-3-flash-preview',
-      key: 'google-team',
+      key: 'google-organization',
       config: { httpOptions: { baseUrl: 'http://localhost:4010/gemini' } },
     });
   });
@@ -456,7 +466,7 @@ describe('native Google routing', () => {
     // "Missing Authentication header", so the mismatch fails loudly instead.
     expect(() =>
       createAdapter('anthropic/claude-sonnet-5.5', {
-        key: 'google-team',
+        key: 'google-organization',
         via: 'google',
       })
     ).toThrow(/Google key cannot be sent to OpenRouter/);

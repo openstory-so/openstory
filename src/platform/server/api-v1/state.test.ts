@@ -126,7 +126,7 @@ function makeShot(
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
     id: 'seq-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     title: 'Test Sequence',
     script: 'A test script',
     status: 'processing',
@@ -174,7 +174,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
@@ -447,29 +447,29 @@ describe('buildSequenceState', () => {
         makeShot({
           shot: { id: 'f1' },
           sources: {
-            image: still('f1', '/r2/thumbnails/team/t1.png'),
-            video: render({ url: '/r2/videos/team/v1.mp4' }),
+            image: still('f1', '/r2/thumbnails/organization/t1.png'),
+            video: render({ url: '/r2/videos/organization/v1.mp4' }),
           },
         }),
       ]),
       makeSequence({
-        posterUrl: '/r2/thumbnails/team/poster.png',
+        posterUrl: '/r2/thumbnails/organization/poster.png',
         musicStatus: 'completed',
-        musicUrl: '/r2/audio/team/music.mp3',
+        musicUrl: '/r2/audio/organization/music.mp3',
       })
     );
 
     expect(state.poster).toEqual({
-      url: 'https://api.example.com/r2/thumbnails/team/poster.png',
+      url: 'https://api.example.com/r2/thumbnails/organization/poster.png',
     });
     expect(state.music.url).toBe(
-      'https://api.example.com/r2/audio/team/music.mp3'
+      'https://api.example.com/r2/audio/organization/music.mp3'
     );
     expect(state.shots[0]?.image.url).toBe(
-      'https://api.example.com/r2/thumbnails/team/t1.png'
+      'https://api.example.com/r2/thumbnails/organization/t1.png'
     );
     expect(state.shots[0]?.video.url).toBe(
-      'https://api.example.com/r2/videos/team/v1.mp4'
+      'https://api.example.com/r2/videos/organization/v1.mp4'
     );
   });
 

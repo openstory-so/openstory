@@ -81,7 +81,7 @@ export const attributeContentReportFn = createServerFn({ method: 'POST' })
     zodValidator(
       z.object({
         reportId: ulidSchema,
-        subjectTeamId: ulidSchema.optional(),
+        subjectOrganizationId: ulidSchema.optional(),
         subjectUserId: z.string().max(200).optional(),
       })
     )
@@ -89,7 +89,7 @@ export const attributeContentReportFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     await context.adminScopedDb.moderation.attributeReport({
       reportId: data.reportId,
-      subjectTeamId: data.subjectTeamId ?? null,
+      subjectOrganizationId: data.subjectOrganizationId ?? null,
       subjectUserId: data.subjectUserId ?? null,
     });
     return { ok: true };
@@ -140,24 +140,30 @@ export const traceContentFn = createServerFn({ method: 'GET' })
   });
 
 /** Everything an account generated — evidence for an enforcement decision. */
-export const listTeamProvenanceFn = createServerFn({ method: 'GET' })
+export const listOrganizationProvenanceFn = createServerFn({ method: 'GET' })
   .middleware([systemAdminMiddleware])
   .validator(
     zodValidator(
       z.object({
-        teamId: ulidSchema,
+        organizationId: ulidSchema,
         limit: z.number().int().min(1).max(200).optional(),
       })
     )
   )
   .handler(async ({ context, data }) => {
     const [provenance, attestations] = await Promise.all([
-      context.adminScopedDb.moderation.listProvenanceForTeam(data.teamId, {
-        limit: data.limit,
-      }),
-      context.adminScopedDb.moderation.listAttestationsForTeam(data.teamId, {
-        limit: data.limit,
-      }),
+      context.adminScopedDb.moderation.listProvenanceForOrganization(
+        data.organizationId,
+        {
+          limit: data.limit,
+        }
+      ),
+      context.adminScopedDb.moderation.listAttestationsForOrganization(
+        data.organizationId,
+        {
+          limit: data.limit,
+        }
+      ),
     ]);
     return { provenance, attestations };
   });
@@ -172,7 +178,7 @@ export const applyEnforcementFn = createServerFn({ method: 'POST' })
     zodValidator(
       z.object({
         subjectUserId: z.string().max(200).optional(),
-        subjectTeamId: ulidSchema.optional(),
+        subjectOrganizationId: ulidSchema.optional(),
         action: z.enum(ENFORCEMENT_ACTIONS),
         reason: z.enum(CONTENT_REPORT_REASONS),
         notes: z.string().max(5000).optional(),
@@ -183,9 +189,9 @@ export const applyEnforcementFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!data.subjectUserId && !data.subjectTeamId) {
+    if (!data.subjectUserId && !data.subjectOrganizationId) {
       throw new ValidationError(
-        'An enforcement action needs a subject user or team'
+        'An enforcement action needs a subject user or organization'
       );
     }
 
@@ -195,7 +201,7 @@ export const applyEnforcementFn = createServerFn({ method: 'POST' })
 
     const action = await context.adminScopedDb.moderation.applyEnforcement({
       subjectUserId: data.subjectUserId ?? null,
-      subjectTeamId: data.subjectTeamId ?? null,
+      subjectOrganizationId: data.subjectOrganizationId ?? null,
       action: data.action,
       reason: data.reason,
       notes: data.notes ?? null,
@@ -212,7 +218,7 @@ export const applyEnforcementFn = createServerFn({ method: 'POST' })
       action: data.action,
       reason: data.reason,
       subjectUserId: data.subjectUserId,
-      subjectTeamId: data.subjectTeamId,
+      subjectOrganizationId: data.subjectOrganizationId,
       actorUserId: context.user.id,
       expiresAt,
     });
@@ -249,7 +255,7 @@ export const listEnforcementFn = createServerFn({ method: 'GET' })
     zodValidator(
       z.object({
         subjectUserId: z.string().max(200).optional(),
-        subjectTeamId: ulidSchema.optional(),
+        subjectOrganizationId: ulidSchema.optional(),
         limit: z.number().int().min(1).max(200).optional(),
       })
     )

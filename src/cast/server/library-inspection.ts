@@ -13,8 +13,8 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { NotFoundError } from '@/platform/errors';
 
 const schemas = {
-  // One of the team's locations at its current bible, with its live sheet
-  // (#1695: the location library became the team's locations).
+  // One of the organization's locations at its current bible, with its live sheet
+  // (#1695: the location library became the organization's locations).
   location: createSelectSchema(locations, {
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -95,7 +95,7 @@ const notFound = () => new NotFoundError('Library resource not found.');
 
 /**
  * Every row of one library collection, through the reads the library UI uses.
- * Locations are the team's, so resolving the parent through them is what
+ * Locations are the organization's, so resolving the parent through them is what
  * authorises its children.
  */
 async function libraryRows(
@@ -107,7 +107,7 @@ async function libraryRows(
     (await scopedDb.locations.getCurrent(id)) ?? Promise.reject(notFound());
   switch (kind) {
     case 'location':
-      return scopedDb.locations.listTeam();
+      return scopedDb.locations.listOrganization();
     case 'location_sheet':
       return scopedDb.locations.listPhotos((await location(parentId)).id);
     case 'location_sheet_version':
@@ -126,7 +126,7 @@ export async function listLibraryResources(
 ) {
   const page = await readPage(
     input,
-    [scopedDb.teamId, kind, parentId],
+    [scopedDb.organizationId, kind, parentId],
     pageRows(await libraryRows(scopedDb, kind, parentId))
   );
   return {

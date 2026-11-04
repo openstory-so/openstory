@@ -43,7 +43,7 @@ function makePng(width: number, height: number): Uint8Array {
 }
 
 const ids = {
-  teamId: 'team_1',
+  organizationId: 'org_1',
   sequenceId: 'seq_1',
   shotId: 'shot_1',
 };
@@ -132,9 +132,9 @@ describe('cropTileFromGrid', () => {
       contentType: 'image/png',
     });
     uploadFile.mockResolvedValue({
-      publicUrl: '/r2/thumbnails/teams/team_1/tile.png',
-      path: 'thumbnails/teams/team_1/tile.png',
-      fullPath: 'thumbnails/teams/team_1/tile.png',
+      publicUrl: '/r2/thumbnails/teams/org_1/tile.png',
+      path: 'thumbnails/teams/org_1/tile.png',
+      fullPath: 'thumbnails/teams/org_1/tile.png',
     });
 
     const result = await cropTileFromGrid({
@@ -149,14 +149,14 @@ describe('cropTileFromGrid', () => {
     expect(uploadFile).toHaveBeenCalledWith(
       'thumbnails',
       expect.stringMatching(
-        /^teams\/team_1\/sequences\/seq_1\/frames\/shot_1\/variant-tile-.*\.png$/
+        /^org\/org_1\/sequences\/seq_1\/frames\/shot_1\/variant-tile-.*\.png$/
       ),
       expect.any(Uint8Array),
       { contentType: 'image/png' }
     );
     expect(result).toEqual({
-      url: '/r2/thumbnails/teams/team_1/tile.png',
-      path: 'thumbnails/teams/team_1/tile.png',
+      url: '/r2/thumbnails/teams/org_1/tile.png',
+      path: 'thumbnails/teams/org_1/tile.png',
     });
     expect(free).toHaveBeenCalledTimes(2);
   });

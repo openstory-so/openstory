@@ -43,7 +43,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 
 import { getLogger } from '@/platform/logger';
@@ -102,7 +102,7 @@ const shortenPromptInputSchema = z.object({
 });
 
 export const shortenPromptFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(shortenPromptInputSchema))
   .handler(async ({ data, context }) => {
     enforceRateLimit(promptShorteningRateLimiter, getClientIP());
@@ -308,7 +308,7 @@ const enhanceScriptInputSchema = z
 export type EnhanceScriptInput = z.infer<typeof enhanceScriptInputSchema>;
 
 export const enhanceScriptStreamFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(enhanceScriptInputSchema))
   .handler(async function* ({ data, context }) {
     // IP rate-limit the dashboard path here: the shared core is also driven
@@ -317,7 +317,7 @@ export const enhanceScriptStreamFn = createServerFn({ method: 'POST' })
     yield* streamScriptEnhancement(data, {
       scopedDb: context.scopedDb,
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
     });
   });
 
@@ -439,13 +439,13 @@ export function rankStyleRecommendations(
 }
 
 /**
- * Rank the team's + public styles against a script (or one-liner) and return a
+ * Rank the organization's + public styles against a script (or one-liner) and return a
  * diverse, popularity-tie-broken shortlist with a short reason each. Powers the
  * "Recommended for your script" picker row. Auth-gated and
  * billed like script enhancement.
  */
 export const recommendStylesForScriptFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(recommendStylesInputSchema))
   .handler(async ({ data, context }) => {
     enforceRateLimit(recommendStylesRateLimiter, getClientIP());
@@ -519,7 +519,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
     // (silently dropping all output would hide it).
     if (result.recommendations.length > 0 && recommendations.length === 0) {
       logger.warn('Style recommendation: all model picks were unusable', {
-        teamId: context.teamId,
+        organizationId: context.organizationId,
         returned: result.recommendations.length,
         catalogSize: styles.length,
       });

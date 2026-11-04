@@ -22,7 +22,7 @@ import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
   generatedAssets,
-  teams,
+  organization,
   uploadAttestations,
   user,
 } from '@/platform/server/db/schema';
@@ -56,7 +56,7 @@ vi.doMock('@/platform/realtime', () => ({
     emit: vi.fn().mockResolvedValue(undefined),
     history: async () => [],
   }),
-  billingChannelId: (teamId: string) => `billing:${teamId}`,
+  billingChannelId: (organizationId: string) => `billing:${organizationId}`,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
@@ -72,8 +72,8 @@ vi.doMock('@/cast/server/sequence-elements/media-duration', () => ({
 }));
 // The likeness classifier a create runs on an unchecked upload (#2192).
 vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
-  analyzeTalentMediaForTeam: mockAnalyzeUpload,
-  analyzeTalentClipForTeam: mockAnalyzeUpload,
+  analyzeTalentMediaForOrganization: mockAnalyzeUpload,
+  analyzeTalentClipForOrganization: mockAnalyzeUpload,
 }));
 // The upload's own check run (#2192); none unless a test starts one.
 vi.doMock('@/platform/server/workflow/run-outcome', () => ({
@@ -83,7 +83,7 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
 }));
 // Ark is not configured in this harness; flip this to make the via claim
-// answer 'byteplus' the way a production team on the platform key sees it.
+// answer 'byteplus' the way a production organization on the platform key sees it.
 let bytePlusLive = false;
 vi.doMock('@/models/server/byteplus-config', async (importOriginal) => {
   const actual =
@@ -111,13 +111,15 @@ const renderStudioAssetAtQuality = (
 ) => studioCreate.renderStudioAssetAtQuality(scopedDb, assetId, TEST_REQUEST);
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
-const TEAM_ID = generateId();
+const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
   await db.insert(user).values([{ id: USER_ID, name: 'U', email: 'u@e.com' }]);
-  await db.insert(teams).values([{ id: TEAM_ID, name: 'T', slug: 't' }]);
+  await db
+    .insert(organization)
+    .values([{ id: ORGANIZATION_ID, name: 'T', slug: 't' }]);
 });
 
 afterAll(() => closeDb());
@@ -192,7 +194,7 @@ describe('studioCreateInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('lets Seedance 2.5 through the static schema — the via gate is per team', () => {
+  it('lets Seedance 2.5 through the static schema — the via gate is per organization', () => {
     const result = studioCreateInputSchema.safeParse({
       activity: 'video',
       prompt: 'the fox turns toward camera',
@@ -296,7 +298,7 @@ describe('studioCreateInputSchema', () => {
 
 describe('createStudioAssets', () => {
   it('refuses Seedance 2.5 where BytePlus is not live — public fal 2.5 is not a studio option', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -323,7 +325,7 @@ describe('createStudioAssets', () => {
     mockRequireGenerationAllowed.mockRejectedValue(
       new AccountRestrictedError('paused')
     );
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -345,7 +347,7 @@ describe('createStudioAssets', () => {
     mockReserveRunCredits.mockRejectedValueOnce(
       new InsufficientCreditsError('Insufficient credits for image generation')
     );
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -367,7 +369,7 @@ describe('createStudioAssets', () => {
     mockTriggerWorkflow
       .mockResolvedValueOnce('wf-a')
       .mockResolvedValueOnce('wf-b');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     const result = await createStudioAssets(scopedDb, {
       activity: 'image',
@@ -400,7 +402,7 @@ describe('createStudioAssets', () => {
       '/studio',
       expect.objectContaining({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
         reservationId: 'res-studio-1',
         ownsReservation: true,
         input: expect.objectContaining({
@@ -421,7 +423,7 @@ describe('createStudioAssets', () => {
       distinctId: USER_ID,
       event: 'studio_generation_started',
       properties: expect.objectContaining({
-        team_id: TEAM_ID,
+        team_id: ORGANIZATION_ID,
         activity: 'image',
         model: 'gpt_image_2',
         count: 2,
@@ -439,7 +441,7 @@ describe('createStudioAssets', () => {
           'Insufficient credits for image generation'
         )
       );
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const zero = vi
       .spyOn(scopedDb.billing, 'zeroReservation')
       .mockResolvedValue(undefined);
@@ -463,7 +465,7 @@ describe('createStudioAssets', () => {
 
   it('marks the reserved row failed when the workflow trigger throws', async () => {
     mockTriggerWorkflow.mockRejectedValueOnce(new Error('binding exploded'));
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -494,7 +496,7 @@ describe('createStudioAssets', () => {
     mockTriggerWorkflow
       .mockResolvedValueOnce('wf-a')
       .mockRejectedValueOnce(new Error('binding exploded'));
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const zero = vi.spyOn(scopedDb.billing, 'zeroReservation');
 
     await expect(
@@ -521,7 +523,7 @@ describe('createStudioAssets', () => {
   });
 
   it('lists studio assets newest-first and can filter favorites', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const first = await createStudioAssets(scopedDb, {
       activity: 'image',
       prompt: 'first',
@@ -573,7 +575,7 @@ describe('createStudioAssets', () => {
     bytePlusLive = true;
     // Inside Ark's 1.8–30.2s asset window, outside the 4–30s edit window.
     mockMeasureStoredMediaDuration.mockResolvedValue(2);
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
     await recordLikenessFinding(
@@ -609,7 +611,7 @@ describe('createStudioAssets', () => {
   it('refuses a Seedance 2.5 reference clip outside Ark 1.8–30.2s before any hold (#2205)', async () => {
     bytePlusLive = true;
     mockMeasureStoredMediaDuration.mockResolvedValue(45);
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -632,7 +634,7 @@ describe('createStudioAssets', () => {
   it('refuses Seedance 2.5 clips that each fit but together pass Ark 30.2s (#2210)', async () => {
     bytePlusLive = true;
     mockMeasureStoredMediaDuration.mockResolvedValue(20);
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -657,7 +659,7 @@ describe('createStudioAssets', () => {
 
   it('checks every model’s clip window, not only Seedance on Ark (#2210)', async () => {
     mockMeasureStoredMediaDuration.mockResolvedValue(20);
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -697,7 +699,7 @@ describe('createStudioAssets', () => {
     bytePlusLive = true;
     // The length comes from the stored file, not the request.
     mockMeasureStoredMediaDuration.mockResolvedValue(2);
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -725,7 +727,7 @@ describe('createStudioAssets', () => {
   it('refuses when our own reference video cannot be read (#2036)', async () => {
     bytePlusLive = true;
     mockMeasureStoredMediaDuration.mockRejectedValue(new Error('R2 is down'));
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -753,7 +755,7 @@ describe('createStudioAssets', () => {
       'bytedance/seedance-2.5/reference-to-video': rate,
       'bytedance/seedance-2.5/text-to-video': rate,
     });
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
@@ -807,7 +809,7 @@ describe('createStudioAssets', () => {
   });
 
   it('reserves a video row against the T2V endpoint with no image model', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const result = await createStudioAssets(scopedDb, {
       activity: 'video',
       prompt: 'the fox turns toward camera',
@@ -879,7 +881,7 @@ describe('renderStudioAssetAtQuality (#1756)', () => {
   async function seedDraft(
     extra: Partial<typeof generatedAssets.$inferInsert> = {}
   ) {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const row = await scopedDb.generatedAssets.insert({
       provider: 'byteplus',
       endpointId: 'dreamina-seedance-2-5-260628',
@@ -933,9 +935,9 @@ describe('renderStudioAssetAtQuality (#1756)', () => {
   });
 
   it('re-resolves a draft’s reference clip from its id (#2203)', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const clipId = generateId();
-    const stored = `/r2/teams/${TEAM_ID}/studio/${clipId}/video.mp4`;
+    const stored = `/r2/teams/${ORGANIZATION_ID}/studio/${clipId}/video.mp4`;
     await scopedDb.generatedAssets.insert({
       id: clipId,
       provider: 'byteplus',
@@ -998,7 +1000,7 @@ describe('renderStudioAssetAtQuality (#1756)', () => {
 });
 
 describe('upload rights gate (#1581)', () => {
-  const uploadUrl = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
+  const uploadUrl = `/r2/talent/${ORGANIZATION_ID}/temp/01ABC.png`;
   const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
   const base = {
     activity: 'image' as const,
@@ -1023,7 +1025,7 @@ describe('upload rights gate (#1581)', () => {
 
   it('checks an unchecked upload itself, then gates on the answer (#2192)', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     // The check fails: refused, no hold, no row, nothing recorded.
     mockAnalyzeUpload.mockRejectedValueOnce(new Error('vision down'));
@@ -1040,7 +1042,7 @@ describe('upload rights gate (#1581)', () => {
     expect(await db.select().from(generatedAssets)).toEqual([]);
 
     // No person: checked here and generated, with no earlier check.
-    const cleared = `/r2/talent/${TEAM_ID}/temp/01CLEAR.png`;
+    const cleared = `/r2/talent/${ORGANIZATION_ID}/temp/01CLEAR.png`;
     mockAnalyzeUpload.mockResolvedValueOnce({ subjectKind: 'other' });
     await createStudioAssets(scopedDb, {
       ...base,
@@ -1051,7 +1053,7 @@ describe('upload rights gate (#1581)', () => {
 
   it('refuses while the upload’s own check is still running, with no second check', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     mockReadInstance
       .mockResolvedValueOnce({ kind: 'read', status: 'running' })
       .mockResolvedValueOnce({ kind: 'missing' });
@@ -1067,7 +1069,7 @@ describe('upload rights gate (#1581)', () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const { attestUploads, recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await recordLikenessFinding(scopedDb, [uploadUrl], 'human', request);
     await expect(
@@ -1096,8 +1098,8 @@ describe('upload rights gate (#1581)', () => {
   it('a still the check cleared generates with nothing signed', async () => {
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const logoUrl = `/r2/talent/${TEAM_ID}/temp/01LOGO.png`;
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+    const logoUrl = `/r2/talent/${ORGANIZATION_ID}/temp/01LOGO.png`;
 
     await recordLikenessFinding(scopedDb, [logoUrl], 'other', request);
     await createStudioAssets(scopedDb, {
@@ -1109,7 +1111,7 @@ describe('upload rights gate (#1581)', () => {
 
   it('gates the video paths too: reference mode and frames', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
@@ -1130,7 +1132,9 @@ describe('upload rights gate (#1581)', () => {
       createStudioAssets(scopedDb, {
         ...video,
         mode: 'reference',
-        referenceVideos: [{ url: `/r2/talent/${TEAM_ID}/uploads/01WALK.mp4` }],
+        referenceVideos: [
+          { url: `/r2/talent/${ORGANIZATION_ID}/uploads/01WALK.mp4` },
+        ],
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
@@ -1141,10 +1145,10 @@ describe('upload rights gate (#1581)', () => {
       await import('@/platform/errors');
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const oldId = generateId();
-    const oldClip = `/r2/videos/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
-    const upload = `/r2/talent/${TEAM_ID}/uploads/01OLD.mp4`;
+    const oldClip = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${oldId}/video.mp4`;
+    const upload = `/r2/talent/${ORGANIZATION_ID}/uploads/01OLD.mp4`;
     const old = await scopedDb.generatedAssets.insert({
       id: oldId,
       provider: 'byteplus',
@@ -1186,8 +1190,8 @@ describe('upload rights gate (#1581)', () => {
     );
     for (const url of [
       `/r2/videos/teams/${generateId()}/studio/${old.id}/video.mp4`,
-      `/r2/elements/${TEAM_ID}/seq-1/01COPY.mp4`,
-      `/r2/teams/${TEAM_ID}/studio/${old.id}/other.mp4`,
+      `/r2/elements/${ORGANIZATION_ID}/seq-1/01COPY.mp4`,
+      `/r2/teams/${ORGANIZATION_ID}/studio/${old.id}/other.mp4`,
     ]) {
       await expect(
         createStudioAssets(scopedDb, {
@@ -1214,7 +1218,7 @@ describe('upload rights gate (#1581)', () => {
       status: 'completed',
       outputs: [
         {
-          url: `/r2/videos/teams/${TEAM_ID}/studio/${old.id}/image.png`,
+          url: `/r2/videos/teams/${ORGANIZATION_ID}/studio/${old.id}/image.png`,
           contentType: 'image/png',
         },
       ],
@@ -1230,9 +1234,9 @@ describe('upload rights gate (#1581)', () => {
 
   it('uses the output stored on the clip, and a traversable address is refused (#2203)', async () => {
     const { ValidationError } = await import('@/platform/errors');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const clipId = generateId();
-    const stored = `/r2/videos/teams/${TEAM_ID}/studio/${clipId}/video.mp4`;
+    const stored = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${clipId}/video.mp4`;
     const clip = await scopedDb.generatedAssets.insert({
       id: clipId,
       provider: 'byteplus',
@@ -1264,7 +1268,7 @@ describe('upload rights gate (#1581)', () => {
       expect.anything()
     );
 
-    const prefix = `/r2/videos/teams/${TEAM_ID}/studio/${clip.id}`;
+    const prefix = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${clip.id}`;
     for (const forged of [
       `${prefix}/video.mp4/../../unchecked.mp4`,
       `${prefix}/%2e%2e/unchecked.mp4`,
@@ -1283,11 +1287,11 @@ describe('upload rights gate (#1581)', () => {
 
   it('refuses a stored reference clip that is neither an id nor an address (#2203)', async () => {
     const { ValidationError } = await import('@/platform/errors');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const badClips: JsonValue[] = [null, { assetId: 1 }, { url: 1 }, []];
     for (const referenceClip of badClips) {
       const id = generateId();
-      const stored = `/r2/videos/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+      const stored = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${id}/video.mp4`;
       await scopedDb.generatedAssets.insert({
         id,
         provider: 'byteplus',
@@ -1316,10 +1320,10 @@ describe('upload rights gate (#1581)', () => {
 
   // The stored key carries its bucket (`videos/teams/…`, #2202). The
   // composer sends the clip id, so the file itself is not checked (#2203).
-  it("takes the team's own clip as a reference without checking its file", async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+  it("takes the organization's own clip as a reference without checking its file", async () => {
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     const id = generateId();
-    const clip = `/r2/videos/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+    const clip = `/r2/videos/teams/${ORGANIZATION_ID}/studio/${id}/video.mp4`;
     await scopedDb.generatedAssets.insert({
       id,
       provider: 'byteplus',
@@ -1349,32 +1353,34 @@ describe('upload rights gate (#1581)', () => {
   });
 
   it('lets library stills through untouched', async () => {
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
     await createStudioAssets(scopedDb, {
       ...video,
       mode: 'frames',
-      startImageUrl: `/r2/talent/${TEAM_ID}/tal1/headshot.png`,
+      startImageUrl: `/r2/talent/${ORGANIZATION_ID}/tal1/headshot.png`,
     });
     expect(await db.select().from(uploadAttestations)).toEqual([]);
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it("another team's clearance does not cover this team", async () => {
+  it("another organization's clearance does not cover this organization", async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
-    const otherTeam = generateId();
-    await db.insert(teams).values([{ id: otherTeam, name: 'O', slug: 'o' }]);
+    const otherOrganization = generateId();
+    await db
+      .insert(organization)
+      .values([{ id: otherOrganization, name: 'O', slug: 'o' }]);
     const url = 'https://example.com/anyone.jpg';
 
     await recordLikenessFinding(
-      createScopedDb(otherTeam, USER_ID),
+      createScopedDb(otherOrganization, USER_ID),
       [url],
       'other',
       request
     );
     await expect(
-      createStudioAssets(createScopedDb(TEAM_ID, USER_ID), {
+      createStudioAssets(createScopedDb(ORGANIZATION_ID, USER_ID), {
         ...base,
         referenceImages: [url],
       })

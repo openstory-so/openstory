@@ -44,24 +44,24 @@ describe('assetDownloadUrl', () => {
   it('prefers an /r2 url and appends download', () => {
     expect(
       assetDownloadUrl({
-        url: '/r2/team/a.png?x=1',
+        url: '/r2/organization/a.png?x=1',
         storagePath: 'other.png',
       })
-    ).toBe('/r2/team/a.png?download');
+    ).toBe('/r2/organization/a.png?download');
   });
 
   it('builds from a storage key when the url is a provider address', () => {
     expect(
       assetDownloadUrl({
         url: 'https://r2/v.mp4',
-        storagePath: '/r2/team/seq/v.mp4',
+        storagePath: '/r2/organization/seq/v.mp4',
       })
-    ).toBe('/r2/team/seq/v.mp4?download');
+    ).toBe('/r2/organization/seq/v.mp4?download');
   });
 
   it('drops a path that climbs out of the bucket', () => {
     expect(
-      assetDownloadUrl({ url: null, storagePath: 'team/../../secret' })
+      assetDownloadUrl({ url: null, storagePath: 'organization/../../secret' })
     ).toBeNull();
   });
 });
@@ -94,7 +94,7 @@ describe('projectSequenceAssets', () => {
           frameId: 'frame',
           kind: 'model',
           url: null,
-          storagePath: 'team/still.png',
+          storagePath: 'organization/still.png',
           status: 'completed',
           discardedAt: null,
         },
@@ -103,7 +103,7 @@ describe('projectSequenceAssets', () => {
           frameId: 'frame',
           kind: 'model',
           url: null,
-          storagePath: 'team/old.png',
+          storagePath: 'organization/old.png',
           status: 'completed',
           discardedAt: new Date(),
         },
@@ -114,7 +114,7 @@ describe('projectSequenceAssets', () => {
           id: 'vid',
           renderSegmentId: 'seg',
           url: null,
-          storagePath: 'team/v.mp4',
+          storagePath: 'organization/v.mp4',
           status: 'completed',
           discardedAt: null,
         },
@@ -153,8 +153,8 @@ describe('projectSequenceAssets', () => {
             id: 'still-1',
             frameId: 'frame',
             kind: 'model',
-            url: '/r2/team/still.png',
-            storagePath: 'team/still.png',
+            url: '/r2/organization/still.png',
+            storagePath: 'organization/still.png',
             status: 'completed',
             discardedAt: null,
           },
@@ -163,7 +163,7 @@ describe('projectSequenceAssets', () => {
             frameId: 'frame',
             kind: 'model',
             url: null,
-            storagePath: 'team/old.png',
+            storagePath: 'organization/old.png',
             status: 'completed',
             discardedAt: new Date(),
           },
@@ -189,8 +189,8 @@ describe('projectSequenceAssets', () => {
       speeches: [
         {
           id: 'speech',
-          url: '/r2/team/speech.wav',
-          storageKey: 'team/speech.wav',
+          url: '/r2/organization/speech.wav',
+          storageKey: 'organization/speech.wav',
         },
       ],
       sections: [
@@ -250,8 +250,8 @@ describe('projectSequenceAssets', () => {
           characterId: 'ada',
           lookId: null,
           url: null,
-          storagePath: 'team/sheet.png',
-          portraitUrl: '/r2/team/portrait.png',
+          storagePath: 'organization/sheet.png',
+          portraitUrl: '/r2/organization/portrait.png',
           status: 'completed',
           discardedAt: null,
         },
@@ -259,20 +259,20 @@ describe('projectSequenceAssets', () => {
       style: {
         id: 'style',
         previewUrl: 'https://cdn.example/preview.png',
-        sampleVideos: [{ url: '/r2/team/sample.mp4', order: 0 }],
+        sampleVideos: [{ url: '/r2/organization/sample.mp4', order: 0 }],
       },
       elements: [
         {
           id: 'el',
           token: 'LOGO',
           imageUrl: null,
-          imagePath: 'team/logo.png',
+          imagePath: 'organization/logo.png',
         },
         {
           id: 'bad',
           token: 'not a token',
-          imageUrl: '/r2/team/x.mp3',
-          imagePath: 'team/x.mp3',
+          imageUrl: '/r2/organization/x.mp3',
+          imagePath: 'organization/x.mp3',
         },
       ],
     });
@@ -302,8 +302,8 @@ describe('projectSequenceAssets', () => {
       id: 'ada',
       characterId: 'ada',
       lookId: null,
-      url: '/r2/team/sheet.png',
-      storagePath: 'team/sheet.png',
+      url: '/r2/organization/sheet.png',
+      storagePath: 'organization/sheet.png',
       portraitUrl: null,
       status: 'completed',
       discardedAt: null,
@@ -314,8 +314,8 @@ describe('projectSequenceAssets', () => {
       deleted: false,
       isDefault: true,
       selectedSheetVersionId: null,
-      sheetImageUrl: '/r2/team/sheet.png',
-      sheetImagePath: 'team/sheet.png',
+      sheetImageUrl: '/r2/organization/sheet.png',
+      sheetImagePath: 'organization/sheet.png',
       sheetPortraitUrl: null,
     };
     const selected = project({
@@ -347,8 +347,8 @@ describe('projectSequenceAssets', () => {
           id: 'room',
           name: 'Room',
           selectedReferenceVersionId: null,
-          referenceImageUrl: '/r2/team/room.png',
-          referenceImagePath: 'team/room.png',
+          referenceImageUrl: '/r2/organization/room.png',
+          referenceImagePath: 'organization/room.png',
           referencePortraitUrl: null,
         },
       ],
@@ -356,8 +356,8 @@ describe('projectSequenceAssets', () => {
         {
           id: 'room',
           locationId: 'room',
-          url: '/r2/team/room.png',
-          storagePath: 'team/room.png',
+          url: '/r2/organization/room.png',
+          storagePath: 'organization/room.png',
           portraitUrl: null,
           status: 'completed',
           discardedAt: null,
@@ -376,8 +376,8 @@ describe('projectSequenceAssets', () => {
   it('leaves rendered cuts out until they are asked for', () => {
     const source = {
       exports: [
-        { id: 'new', url: null, storagePath: 'team/new.mp4' },
-        { id: 'old', url: null, storagePath: 'team/old.mp4' },
+        { id: 'new', url: null, storagePath: 'organization/new.mp4' },
+        { id: 'old', url: null, storagePath: 'organization/old.mp4' },
       ],
     };
     expect(project(source)).toEqual([]);

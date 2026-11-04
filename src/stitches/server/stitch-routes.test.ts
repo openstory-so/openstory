@@ -2,7 +2,7 @@
  * The two stitch routes of the public API (#2127), driven as the CLI drives
  * them: POST the cut, then POST publish. The scoped db and the publish step
  * are fakes; what is pinned is the wire: the 400s, the 201 and its links, and
- * that the stored cut carries the middleware's team, never the body's.
+ * that the stored cut carries the middleware's organization, never the body's.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ const postPublish = z
   .parse(PublishRoute.options.server?.handlers).POST;
 
 const context = {
-  teamId: 'TEAM',
+  organizationId: 'ORG',
   user: { id: 'USER', email: 'u@example.com' },
   scopedDb: { stitches: { create } },
 };
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   create.mockImplementation(async (input) => ({
     ...input,
-    teamId: 'TEAM',
+    organizationId: 'ORG',
     userId: 'USER',
     createdAt: new Date('2026-10-19T00:00:00Z'),
   }));
@@ -84,7 +84,7 @@ describe('POST /api/v1/stitches', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('201s an unpublished row on the team path with upload and publish links', async () => {
+  it('201s an unpublished row on the organization path with upload and publish links', async () => {
     const res = await createCall(JSON.stringify({ cut }));
     expect(res.status).toBe(201);
     const input = z
@@ -99,8 +99,8 @@ describe('POST /api/v1/stitches', () => {
       })
       .parse(create.mock.calls[0]?.[0]);
     expect(input.cut.clips[0]).toEqual({
-      videoUrl: `/r2/stitches/TEAM/${input.id}/0.mp4`,
-      posterUrl: `/r2/stitches/TEAM/${input.id}/1.png`,
+      videoUrl: `/r2/stitches/ORG/${input.id}/0.mp4`,
+      posterUrl: `/r2/stitches/ORG/${input.id}/1.png`,
     });
     const body = z
       .object({
@@ -115,7 +115,7 @@ describe('POST /api/v1/stitches', () => {
     expect(body.id).toBe(input.id);
     expect(body.url).toBe(`https://os.test/stitch/${input.id}`);
     expect(body._links.upload.href).toBe(
-      `/api/storage/upload?bucket=stitches&path=TEAM/${input.id}/{name}&contentType={type}`
+      `/api/storage/upload?bucket=stitches&path=ORG/${input.id}/{name}&contentType={type}`
     );
     expect(body._links.publish.href).toBe(
       `/api/v1/stitches/${input.id}/publish`

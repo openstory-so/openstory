@@ -1,6 +1,6 @@
 /**
  * Agent plan → execute → status (#1460) on migrated SQLite, so sequence,
- * scene and shot access is the real team scope. The editor's planners,
+ * scene and shot access is the real organization scope. The editor's planners,
  * pricing, credit check and launchers are mocked: their behaviour has its
  * own tests; these pin the contract around them.
  */
@@ -24,11 +24,11 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team scope, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real organization scope, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import { dbSceneId } from '@/shots/scene-id';
 import { asStub } from '@/test/as-stub';
@@ -119,7 +119,7 @@ const {
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let userId: string;
 let sequenceId: string;
 let sceneId: string;
@@ -167,7 +167,7 @@ afterAll(() => closeDb());
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
@@ -175,13 +175,15 @@ beforeEach(async () => {
   updateAllRun = `local_update-stale-shots_${sequenceId}-plan-k`;
   storyboardRun = `local_storyboard_storyboard-${sequenceId}-k`;
   const styleId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@test.invalid` });
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 's',
     config: {
       mood: 'neutral',
@@ -195,7 +197,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'S',
     styleId,
     status: 'completed',
@@ -224,8 +226,8 @@ beforeEach(async () => {
   readProductionStatus.mockResolvedValue({ failures: [] });
 });
 
-const scoped = () => createScopedDb(teamId, userId);
-const actor = () => ({ userId, teamId });
+const scoped = () => createScopedDb(organizationId, userId);
+const actor = () => ({ userId, organizationId });
 const execute = (planToken: string, db = scoped()) =>
   executeGeneration(db, actor(), sequenceId, planToken);
 
@@ -505,7 +507,7 @@ describe('get_operation_status', () => {
     expect(getWorkflowRunOutcome).not.toHaveBeenCalled();
   });
 
-  it('refuses a run id that is not this sequence’s, and another team’s sequence', async () => {
+  it('refuses a run id that is not this sequence’s, and another organization’s sequence', async () => {
     await expect(
       status([`local_update-stale-shots_${generateId()}-plan-k`])
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });

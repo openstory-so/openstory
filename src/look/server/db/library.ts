@@ -1,6 +1,6 @@
 /**
  * Scoped Library Sub-module
- * Team-scoped library resource aggregation (styles, vfx, audio).
+ * Organization-scoped library resource aggregation (styles, vfx, audio).
  */
 
 import { asc, desc, eq } from 'drizzle-orm';
@@ -8,7 +8,7 @@ import type { Database } from '@/platform/server/db/client';
 import { audio, styles, vfx } from '@/platform/server/db/schema';
 import type { Audio, Style, Vfx } from '@/platform/server/db/schema';
 
-export function createLibraryMethods(db: Database, teamId: string) {
+export function createLibraryMethods(db: Database, organizationId: string) {
   return {
     getAll: async (): Promise<{
       styles: Style[];
@@ -19,7 +19,7 @@ export function createLibraryMethods(db: Database, teamId: string) {
         db
           .select()
           .from(styles)
-          .where(eq(styles.teamId, teamId))
+          .where(eq(styles.organizationId, organizationId))
           .orderBy(
             asc(styles.sortOrder),
             desc(styles.usageCount),
@@ -28,12 +28,12 @@ export function createLibraryMethods(db: Database, teamId: string) {
         db
           .select()
           .from(vfx)
-          .where(eq(vfx.teamId, teamId))
+          .where(eq(vfx.organizationId, organizationId))
           .orderBy(desc(vfx.createdAt)),
         db
           .select()
           .from(audio)
-          .where(eq(audio.teamId, teamId))
+          .where(eq(audio.organizationId, organizationId))
           .orderBy(desc(audio.createdAt)),
       ]);
 

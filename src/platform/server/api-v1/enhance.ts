@@ -38,12 +38,12 @@ const logger = getLogger(['openstory', 'api-v1']);
 export type EnhanceContext = {
   scopedDb: ScopedDb;
   user: { id: string };
-  teamId: string;
+  organizationId: string;
 };
 
 /**
  * The model the enhancer shapes the script for: the caller's, else what a new
- * sequence would start on for this team — so an enhanced script fits the
+ * sequence would start on for this organization — so an enhanced script fits the
  * model `POST /sequences` then defaults to.
  */
 export async function resolveEnhanceVideoModel(
@@ -97,7 +97,7 @@ export async function buildEnhanceGenerator(
   return streamScriptEnhancement(data, {
     scopedDb: ctx.scopedDb,
     userId: ctx.user.id,
-    teamId: ctx.teamId,
+    organizationId: ctx.organizationId,
   });
 }
 

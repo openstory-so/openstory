@@ -38,7 +38,10 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { VoicePreview } from '@/platform/server/db/schema';
 import { getGenerationChannel } from '@/platform/realtime';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  castStorageDir,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
@@ -261,7 +264,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.teamId}/${sequenceId ?? 'team'}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${castStorageDir(input.organizationId, sequenceId, 'characters', characterDbId)}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,
@@ -374,7 +377,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
                 scopedDb.credentials.resolveKey('elevenlabs'),
               ]);
               // ponytail: a take that fails the check is re-recorded by the
-              // step retry and not billed to the team; the platform eats it.
+              // step retry and not billed to the organization; the platform eats it.
               const made = await recordRangeRead({
                 seedKey: seed.key,
                 elevenLabsKey: eleven.key,
@@ -470,7 +473,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     await step.do('record-provenance', async () => {
       if (!asset.path) return;
       await recordProvenance(scopedDb.provenance, {
-        teamId: input.teamId,
+        organizationId: input.organizationId,
         userId: input.userId,
         assetKind: 'character_voice',
         assetId: input.characterDbId,

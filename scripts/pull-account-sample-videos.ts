@@ -111,7 +111,7 @@ async function apiGet(href: string, apiKey: string): Promise<unknown> {
   return res.json();
 }
 
-/** Walk every page of the team's sequences, most-recent-first. */
+/** Walk every page of the organization's sequences, most-recent-first. */
 async function listAllSequences(apiKey: string): Promise<SequenceListItem[]> {
   const all: SequenceListItem[] = [];
   let href: string | null = `/api/v1/sequences?limit=${PAGE_LIMIT}`;

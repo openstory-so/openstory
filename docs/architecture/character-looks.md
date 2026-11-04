@@ -18,7 +18,7 @@ versions, and a claim.
     `selectedLookVersionId` (the look's current definition).
   - The sheet: `selectedSheetVersionId`, `pendingPromoteSheetVersionId` (the
     sheet claim), `sheetStatus`, `sheetError`. One sheet per look, shared by
-    every sequence that casts the character (#2017, `team-characters.md`).
+    every sequence that casts the character (#2017, `organization-characters.md`).
 - **`character_look_versions`** — the definition: `name`, `clothing`,
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
@@ -264,9 +264,9 @@ location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
 - It is charged as its own line ("Sheet portrait"). A hold for the estimate
   is taken before the paid call (its own, not the sheet run's reservation):
   no hold, no call, and the tile crops. A replayed hold that no longer
-  holds the money is no hold. The team pays only for a portrait it gets: a
+  holds the money is no hold. The organization pays only for a portrait it gets: a
   failed call, or an image that could not be stored or recorded, releases
-  the hold and costs nothing. A team's own key does not lift the hold.
+  the hold and costs nothing. An organization's own key does not lift the hold.
 - Each portrait has a provenance row under its sheet's kind; one that could
   not be recorded is deleted.
 - A voice-only character has no sheet and gets no portrait, an upload
@@ -337,7 +337,7 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   `characterLooks.linkFromAnalysis` matches each look the model named (by
   id, or by name among every live look she has) and adds a look only for a
   name she lacks. No look of hers is rewritten or
-  removed by another sequence's analysis. See `team-characters.md`.
+  removed by another sequence's analysis. See `organization-characters.md`.
 
 ## Editing
 

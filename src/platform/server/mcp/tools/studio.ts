@@ -10,7 +10,7 @@ import { resolutionSchema } from '@/models/resolutions';
 import { ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { fromShareableUrl } from '@/platform/server/storage/buckets';
-import { watchClipForTeam } from '@/models/server/watch-clip';
+import { watchClipForOrganization } from '@/models/server/watch-clip';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -23,7 +23,7 @@ import {
 } from '@/studio/server/create-studio-asset';
 import {
   deleteStudioAsset,
-  draftStudioPromptForTeam,
+  draftStudioPromptForOrganization,
   getStudioEditHistory,
   setStudioAssetFavorite,
 } from '@/studio/server/studio-asset-actions';
@@ -205,7 +205,7 @@ const deleteStudioAssetTool = openstoryTool({
 const draftStudioPromptTool = openstoryTool({
   name: 'draft_studio_prompt',
   description:
-    'Write a Studio prompt from the attached references with an AI model (uses credits unless the team has its own key). currentPrompt, when sent, is the brief it follows; with no references and no brief it invents one. Starts no generation; pass the prompt to create_studio_assets.',
+    'Write a Studio prompt from the attached references with an AI model (uses credits unless the organization has its own key). currentPrompt, when sent, is the brief it follows; with no references and no brief it invents one. Starts no generation; pass the prompt to create_studio_assets.',
   scope: 'generate',
   annotations: paid,
   inputSchema: z.strictObject({
@@ -225,7 +225,7 @@ const draftStudioPromptTool = openstoryTool({
   }),
   outputSchema: z.object({ prompt: z.string() }),
   run: async (input, { scopedDb }) => ({
-    data: await draftStudioPromptForTeam(
+    data: await draftStudioPromptForOrganization(
       scopedDb,
       studioPromptDraftInputSchema.parse({
         ...input,
@@ -245,7 +245,7 @@ const draftStudioPromptTool = openstoryTool({
 const watchClipTool = openstoryTool({
   name: 'watch_clip',
   description:
-    'Ask one question about a stored video and get an answer from a model that watches the whole clip (uses credits unless the team has its own Gemini key). Takes any clip URL a tool returned: a shot video, a Studio asset or an upload. Describe what happens, check continuity, judge a take, find a moment.',
+    'Ask one question about a stored video and get an answer from a model that watches the whole clip (uses credits unless the organization has its own Gemini key). Takes any clip URL a tool returned: a shot video, a Studio asset or an upload. Describe what happens, check continuity, judge a take, find a moment.',
   scope: 'generate',
   annotations: paid,
   inputSchema: z.strictObject({
@@ -254,7 +254,7 @@ const watchClipTool = openstoryTool({
   }),
   outputSchema: z.object({ answer: z.string(), model: z.string() }),
   run: async (input, { scopedDb }) => ({
-    data: await watchClipForTeam(scopedDb, {
+    data: await watchClipForOrganization(scopedDb, {
       url: fromShareableUrl(input.url),
       question: input.question,
     }),

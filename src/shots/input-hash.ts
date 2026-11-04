@@ -548,7 +548,7 @@ function locationSheetHashBody(input: LocationSheetHashInput): unknown {
   const lb = input.locationBible;
   return {
     artifact: 'location:sheet',
-    version: 3, // #1695: the place is the team's; no sequence style.
+    version: 3, // #1695: the place is the organization's; no sequence style.
     locationBible: {
       ...projectLocationForPrompt(lb),
       rendering: trim(lb.rendering),

@@ -27,9 +27,10 @@ import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
 import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 import {
-  getUserTeamMembership,
-  resolveUserTeam,
+  getUserById,
+  getUserOrganizationMembership,
 } from '@/platform/server/db/scoped';
+import { sessionOrganizationId } from '@/platform/server/auth/request-principal';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
 import { mcpJsonRpcError, mcpUnauthorized } from './json-rpc';
@@ -41,8 +42,8 @@ type McpAuthKind = 'oauth' | 'api_key';
 /** Identity tools (whoami) need; extra on AuthInfo carries this, not secrets. */
 export type McpCallerIdentity = {
   user: User;
-  teamId: string;
-  teamName: string;
+  organizationId: string;
+  organizationName: string;
 };
 
 export type McpAuthContext = McpCallerIdentity & {
@@ -70,24 +71,28 @@ function mcpInternalError(): Response {
   );
 }
 
-async function resolveTeamContext(
+async function resolveOrganizationContext(
   user: User,
-  oauth: OAuthAccessToken | null
+  oauth: OAuthAccessToken | null,
+  organizationId: string | null
 ): Promise<McpAuthContext | Response> {
-  const team = oauth?.teamId
-    ? await getUserTeamMembership(user.id, oauth.teamId)
-    : await resolveUserTeam(user.id);
+  const membership = organizationId
+    ? await getUserOrganizationMembership(user.id, organizationId)
+    : null;
 
-  if (!team) {
+  if (!membership) {
     return mcpJsonRpcError(
       403,
-      oauth?.teamId
-        ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
-        : 'No team is associated with this account.'
+      oauth
+        ? 'This token was issued for an organization you no longer belong to. Re-authorize the app.'
+        : 'This key is not linked to an organization you belong to.'
     );
   }
 
-  const compliance = await loadComplianceState(user.id, team.teamId);
+  const compliance = await loadComplianceState(
+    user.id,
+    membership.organizationId
+  );
   if (!compliance.enforcement.canAccess) {
     return mcpJsonRpcError(
       403,
@@ -99,8 +104,8 @@ async function resolveTeamContext(
   const kind: McpAuthKind = oauth ? 'oauth' : 'api_key';
   return {
     user,
-    teamId: team.teamId,
-    teamName: team.teamName,
+    organizationId: membership.organizationId,
+    organizationName: membership.organizationName,
     session: null,
     oauth,
     kind,
@@ -149,12 +154,14 @@ export async function authenticateMcpRequest(
     }
     if (!token) return mcpUnauthorized({ invalidToken: true, request });
 
-    const { internalAdapter } = await auth.$context;
-    const user = await internalAdapter.findUserById(token.userId);
+    const user = await getUserById(token.userId);
     if (!user) return mcpUnauthorized({ invalidToken: true, request });
 
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- adapter row matches getSession's user
-    const ctx = await resolveTeamContext(user as User, token);
+    const ctx = await resolveOrganizationContext(
+      user,
+      token,
+      token.organizationId ?? null
+    );
     if (ctx instanceof Response) return ctx;
     return ctx;
   }
@@ -162,7 +169,11 @@ export async function authenticateMcpRequest(
   try {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) return mcpUnauthorized({ request });
-    const ctx = await resolveTeamContext(session.user, null);
+    const ctx = await resolveOrganizationContext(
+      session.user,
+      null,
+      await sessionOrganizationId(session, request.headers)
+    );
     if (ctx instanceof Response) return ctx;
     const presented =
       bearer?.startsWith(PUBLIC_API_KEY_PREFIX) === true

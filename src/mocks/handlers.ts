@@ -50,9 +50,9 @@ export const handlers = [
         },
         isAuthenticated: true,
         isAnonymous: false,
-        teamId: 'demo-team',
-        teamRole: 'owner',
-        teamName: 'Demo Team',
+        organizationId: 'demo-organization',
+        organizationRole: 'owner',
+        organizationName: 'Demo Organization',
       },
     });
   }),

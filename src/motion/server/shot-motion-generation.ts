@@ -89,7 +89,7 @@ export async function generateShotMotion(
   context: ShotEditContext,
   data: z.infer<typeof generateMotionSchema>
 ) {
-  const { shot, frame, sequence, teamId } = context;
+  const { shot, frame, sequence, organizationId } = context;
 
   // Explicit empty/whitespace override is refused before still/model
   // guards so a stale tab gets the same sentence as the disabled button.
@@ -127,7 +127,7 @@ export async function generateShotMotion(
     sequenceModel: sequence.videoModel,
   });
   // Draft first is Ark-only (#1756). The inspector sends a boolean it
-  // resolved against the via; an API caller or a saved `true` on a team
+  // resolved against the via; an API caller or a saved `true` on an organization
   // that since moved to its own fal key is refused HERE, before the hold
   // and the version row, not inside the run.
   const draft = data.draft ?? sequence.draftMotion;
@@ -140,7 +140,7 @@ export async function generateShotMotion(
     )) !== 'byteplus'
   ) {
     throw new ValidationError(
-      `Draft first needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[model].name} is routed to fal for this team — turn Draft first off`
+      `Draft first needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[model].name} is routed to fal for this organization — turn Draft first off`
     );
   }
   // Save the authored text and linked references before snapshotting any
@@ -563,7 +563,7 @@ export async function generateShotMotion(
       );
       const workflowInput: BatchMotionMusicWorkflowInput = {
         userId: context.user.id,
-        teamId,
+        organizationId,
         sequenceId: sequence.id,
         reservationId,
         includeMusic: false,

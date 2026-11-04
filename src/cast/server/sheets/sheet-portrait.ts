@@ -51,7 +51,7 @@ const PORTRAIT: Record<
 };
 
 /**
- * Draw and store the portrait of one sheet. Null when the team cannot pay
+ * Draw and store the portrait of one sheet. Null when the organization cannot pay
  * for it or the draw failed: the sheet is the artifact that matters and
  * still lands, and tiles crop it as they did before portraits. Inside a
  * workflow, call it in one `step.do`: the image is stored before the step
@@ -60,12 +60,12 @@ const PORTRAIT: Record<
  * The money, in order:
  * - A hold for the estimate is taken before the paid call. A sheet run's
  *   reservation covers the sheet, not this, and a check with no hold would
- *   let two runs spend one balance. No hold, no call. A team's own key does
+ *   let two runs spend one balance. No hold, no call. An organization's own key does
  *   not lift it: which key serves this model is known only once the call
  *   returns.
  *   A hold found already spent or released (a replay of a run that got
  *   this far before) is no hold either.
- * - The team pays only for a portrait it gets. A call that fails, or an
+ * - The organization pays only for a portrait it gets. A call that fails, or an
  *   image that could not be stored or recorded, releases the hold and costs
  *   nothing; neither is something a user can cause.
  * - An image is kept only with its audit row (#1180): one that could not be
@@ -143,7 +143,7 @@ export async function drawSheetPortrait(args: {
     const stored = await storeGeneratedPng(result.imageUrls[0], bucket, path);
     try {
       await recordProvenance(scopedDb.provenance, {
-        teamId: scopedDb.teamId,
+        organizationId: scopedDb.organizationId,
         userId: args.userId,
         assetKind: kind === 'character' ? 'character_sheet' : 'location_sheet',
         assetId: args.subjectId,

@@ -60,7 +60,7 @@ function makeDb() {
 function fail(versionId: string | undefined, scopedDb: WorkflowScopedDb) {
   const payload: UpscaleShotVariantWorkflowInput = {
     userId: 'u1',
-    teamId: 't1',
+    organizationId: 't1',
     sequenceId: 'seq_1',
     shotId: 'shot_1',
     frameId: 'frame_1',

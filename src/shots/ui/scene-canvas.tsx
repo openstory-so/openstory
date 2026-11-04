@@ -282,7 +282,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
                 draftLabel={draftLabel}
                 variant="overlay"
                 publish={{
-                  teamId: sequence.teamId,
+                  organizationId: sequence.organizationId,
                   sequenceId: sequence.id,
                   defaultTitle: sequence.title,
                 }}

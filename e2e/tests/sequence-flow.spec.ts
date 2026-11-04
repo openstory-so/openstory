@@ -90,7 +90,7 @@ testWithUser.describe('Variant Selection', () => {
 
     // Create pre-seeded sequence with shot that has variant image (unique name)
     testSequence = await createTestSequence(
-      testUser.teamId,
+      testUser.organizationId,
       testUser.id,
       `E2E Variant Test Sequence ${crypto.randomUUID().slice(0, 8)}`
     );
@@ -278,7 +278,7 @@ testWithUser.describe('Theatre stitcher clip language (#1744)', () => {
   testWithUser.beforeEach(async ({ page, testUser }) => {
     await setupMockRoutes(page);
     testSequence = await createTestSequence(
-      testUser.teamId,
+      testUser.organizationId,
       testUser.id,
       `E2E Theatre Clip Language ${crypto.randomUUID().slice(0, 8)}`
     );

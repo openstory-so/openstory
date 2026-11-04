@@ -4,7 +4,7 @@
  * Every image a user brings in is checked for a real person before anything
  * uses it, and a real person needs the uploader's portrait sign-off. The
  * ledger row is keyed by the SHA-256 of the stored URL, so one still is
- * checked once per team no matter where it is used next.
+ * checked once per organization no matter where it is used next.
  */
 
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';

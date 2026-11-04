@@ -7,7 +7,7 @@ function getStylePreviewUrl(styleName: string): string {
   return `https://${getPublicAssetsDomain()}/styles/${styleSlug(styleName)}/thumbnail.webp`;
 }
 
-// Default style templates that can be imported into any team.
+// Default style templates that can be imported into any organization.
 // The new optional fields (sampleVideos, recommendedImageModel,
 // recommendedVideoModel, defaultAspectRatio, useCases) can be set per-template
 // where the style has an opinion; the mapper below fills in safe defaults for
@@ -15,7 +15,7 @@ function getStylePreviewUrl(styleName: string): string {
 type StyleTemplateEntry = Omit<
   Style,
   | 'id'
-  | 'teamId'
+  | 'organizationId'
   | 'sequenceId'
   | 'createdAt'
   | 'updatedAt'
@@ -3311,10 +3311,10 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
   },
 ];
 
-// System styles without teamId - teamId will be added during seeding.
+// System styles without organizationId - organizationId will be added during seeding.
 // Templates are authored as v2; a test in style-config.test.ts parses every
 // entry so a bad template fails here instead of at seed time.
-export const DEFAULT_SYSTEM_STYLES: Omit<Style, 'id' | 'teamId'>[] =
+export const DEFAULT_SYSTEM_STYLES: Omit<Style, 'id' | 'organizationId'>[] =
   DEFAULT_STYLE_TEMPLATES.map((style) => ({
     ...style,
     sequenceId: null,
@@ -3328,11 +3328,11 @@ export const DEFAULT_SYSTEM_STYLES: Omit<Style, 'id' | 'teamId'>[] =
     useCases: style.useCases ?? [],
   }));
 
-// Mock styles for testing - includes mock IDs and teamId
+// Mock styles for testing - includes mock IDs and organizationId
 export const MOCK_SYSTEM_STYLES: Style[] = DEFAULT_SYSTEM_STYLES.map(
   (style) => ({
     ...style,
     id: style.name.replace(/\s+/g, '-').toLowerCase(),
-    teamId: 'mock-system-team-id', // Mock team ID for testing
+    organizationId: 'mock-system-organization-id', // Mock organization ID for testing
   })
 );

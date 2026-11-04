@@ -43,7 +43,7 @@ function hasByokCoverage(data: BillingGateStatus): boolean {
 }
 
 /**
- * Gate for credit-consuming actions. A team fal key bypasses credits for
+ * Gate for credit-consuming actions. An organization fal key bypasses credits for
  * everything (LLM calls route through fal's OpenRouter endpoint).
  */
 export function useBillingGate() {

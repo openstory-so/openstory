@@ -18,9 +18,9 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 vi.mock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: vi.fn(),
 }));
-import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import { analyzeTalentMediaForOrganization } from '@/cast/server/talent/analyze-talent-media';
 vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
-  analyzeTalentMediaForTeam: vi.fn(),
+  analyzeTalentMediaForOrganization: vi.fn(),
 }));
 import {
   characterBibleVersions,
@@ -60,7 +60,7 @@ import type { User } from '@/platform/server/auth/config';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real organization-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
@@ -74,8 +74,8 @@ import {
   shots,
   shotPromptVersions,
   styles,
-  teamMembers,
-  teams,
+  member,
+  organization,
   renderSegments,
   videoVariants,
   sequenceExports,
@@ -88,7 +88,10 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
-import { updateCharacter, updateTeamCharacter } from '@/cast/server/cast-edit';
+import {
+  updateCharacter,
+  updateOrganizationCharacter,
+} from '@/cast/server/cast-edit';
 import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
 import {
   LIKENESS_CLEARED_V1,
@@ -100,7 +103,7 @@ import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId: string;
+let organizationId: string;
 let sequenceId: string;
 let sceneId: string;
 let shotId: string;
@@ -112,7 +115,7 @@ let videoId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
 /** A character as analysis writes it: bible version, cast link, default look. */
 const castCharacter = (character: NewCharacter) =>
-  createScopedDb(teamId, actorId).characters.create(character, {
+  createScopedDb(organizationId, actorId).characters.create(character, {
     source: 'analysis',
     createdBy: null,
   });
@@ -212,7 +215,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', undefined);
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
   shotId = generateId();
@@ -220,11 +223,13 @@ beforeEach(async () => {
   segmentId = generateId();
   imageId = generateId();
   videoId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: organizationId });
   const styleId = generateId();
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 'Noir',
     config: {
       mood: 'neutral',
@@ -238,7 +243,7 @@ beforeEach(async () => {
   });
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'Test sequence',
     styleId,
     status: 'completed',
@@ -323,11 +328,11 @@ beforeEach(async () => {
   await db
     .insert(user)
     .values({ id: actorId, name: 'Actor', email: `${actorId}@test.invalid` });
-  scopedDb = createScopedDb(teamId, actorId);
+  scopedDb = createScopedDb(organizationId, actorId);
   queries.length = 0;
 });
 
-describe('entity identity and team ownership', () => {
+describe('entity identity and organization ownership', () => {
   it.each([
     'get_sequence',
     'get_sequence_status',
@@ -335,7 +340,7 @@ describe('entity identity and team ownership', () => {
     'get_scene',
     'list_shots',
     'get_shot',
-  ])('%s rejects a foreign team before child reads', async (name) => {
+  ])('%s rejects a foreign organization before child reads', async (name) => {
     scopedDb = createScopedDb(generateId(), generateId());
     const args = {
       sequenceId,
@@ -348,7 +353,7 @@ describe('entity identity and team ownership', () => {
     });
     expect(queries).toHaveLength(1);
   });
-  it('lists only the current team', async () => {
+  it('lists only the current organization', async () => {
     expect(await data('list_sequences', {})).toMatchObject({
       sequences: [{ id: sequenceId }],
       nextCursor: null,
@@ -377,9 +382,12 @@ describe('entity identity and team ownership', () => {
       .from(sequences)
       .where(eq(sequences.id, sequenceId));
     if (!seq) throw new Error('fixture');
-    await db
-      .insert(sequences)
-      .values({ id: other, teamId, title: 'Other', styleId: seq.styleId });
+    await db.insert(sequences).values({
+      id: other,
+      organizationId,
+      title: 'Other',
+      styleId: seq.styleId,
+    });
     for (const [name, args] of [
       ['get_scene', { sceneId }],
       ['get_shot', { shotId }],
@@ -807,7 +815,7 @@ describe('complete production reads', () => {
     });
     await db.insert(locations).values({
       id: locationId,
-      teamId,
+      organizationId,
       legacyName: 'Office',
       legacyDescription: 'Bright office',
       legacyConsistencyTag: 'office',
@@ -952,7 +960,7 @@ describe('complete production reads', () => {
       )
     ).toEqual([]);
   });
-  it('every new tool rejects a foreign team', async () => {
+  it('every new tool rejects a foreign organization', async () => {
     scopedDb = createScopedDb(generateId(), generateId());
     for (const [name, args] of reads()) {
       expect(await call(name, { sequenceId, ...args }), name).toMatchObject({
@@ -965,9 +973,12 @@ describe('complete production reads', () => {
     const other = generateId();
     const sequence = await scopedDb.sequences.getById(sequenceId);
     if (!sequence) throw new Error('fixture');
-    await db
-      .insert(sequences)
-      .values({ id: other, teamId, title: 'Other', styleId: sequence.styleId });
+    await db.insert(sequences).values({
+      id: other,
+      organizationId,
+      title: 'Other',
+      styleId: sequence.styleId,
+    });
     for (const [name, args] of reads().filter(
       ([, args]) => Object.keys(args).length > 0
     )) {
@@ -1282,11 +1293,11 @@ describe('complete production reads', () => {
     expect(firstDoc.document.nextOffset).toBe(4000);
   });
   it('reads a location only through a sequence that uses it, and excludes deleted entities and deleted parents', async () => {
-    // One of the team's locations that this sequence has no link to (#1695).
+    // One of the organization's locations that this sequence has no link to (#1695).
     const unlinked = generateId();
     await db
       .insert(locations)
-      .values({ id: unlinked, teamId, legacyName: 'Pier' });
+      .values({ id: unlinked, organizationId, legacyName: 'Pier' });
     await db.insert(locationSheetVariants).values({
       id: unlinked,
       locationId: unlinked,
@@ -1555,7 +1566,7 @@ describe('Studio, Gallery and library reads', () => {
   let audioId: string;
   let vfxId: string;
   let galleryStyleId: string;
-  let foreignTeamId: string;
+  let foreignOrganizationId: string;
   const listResult = z.object({
     items: z.array(z.object({ id: z.string() })),
     nextCursor: z.string().nullable(),
@@ -1583,14 +1594,16 @@ describe('Studio, Gallery and library reads', () => {
     audioId = generateId();
     vfxId = generateId();
     galleryStyleId = generateId();
-    foreignTeamId = generateId();
-    await db
-      .insert(teams)
-      .values({ id: foreignTeamId, name: 'Foreign', slug: foreignTeamId });
-    // One of the team's locations, used by no sequence (#1695).
+    foreignOrganizationId = generateId();
+    await db.insert(organization).values({
+      id: foreignOrganizationId,
+      name: 'Foreign',
+      slug: foreignOrganizationId,
+    });
+    // One of the organization's locations, used by no sequence (#1695).
     await db.insert(locations).values({
       id: libraryLocationId,
-      teamId,
+      organizationId,
       legacyName: 'Studio lot',
     });
     // An uploaded photo: what the `location_sheet` kind reads.
@@ -1614,7 +1627,7 @@ describe('Studio, Gallery and library reads', () => {
       .values({ id: userId, name: 'User', email: `${userId}@test.invalid` });
     await db.insert(generatedAssets).values({
       id: assetId,
-      teamId,
+      organizationId,
       userId,
       source: 'studio',
       provider: 'fal',
@@ -1627,17 +1640,20 @@ describe('Studio, Gallery and library reads', () => {
       isFavorite: true,
       costMicros: 500,
     });
-    await db
-      .insert(audio)
-      .values({ id: audioId, teamId, name: 'Music', fileUrl: '/r2/music.mp3' });
-    await db.insert(vfx).values({ id: vfxId, teamId, name: 'Rain' });
+    await db.insert(audio).values({
+      id: audioId,
+      organizationId,
+      name: 'Music',
+      fileUrl: '/r2/music.mp3',
+    });
+    await db.insert(vfx).values({ id: vfxId, organizationId, name: 'Rain' });
     const sequenceStyle = await scopedDb.sequences.getById(sequenceId);
     if (!sequenceStyle?.styleId) throw new Error('Missing fixture style');
     const sourceStyle = await scopedDb.styles.getById(sequenceStyle.styleId);
     if (!sourceStyle) throw new Error('Missing fixture style');
     await db.insert(styles).values({
       id: galleryStyleId,
-      teamId: foreignTeamId,
+      organizationId: foreignOrganizationId,
       name: 'Cinematic Noir',
       config: sourceStyle.config,
       isPublic: true,
@@ -1696,7 +1712,7 @@ describe('Studio, Gallery and library reads', () => {
         'path',
         'imagePath',
         'storagePath',
-        'teamId',
+        'organizationId',
         'createdBy',
       ])
         expect(detail).not.toHaveProperty(key);
@@ -1714,7 +1730,7 @@ describe('Studio, Gallery and library reads', () => {
     expect(queries.some((q) => /^(insert|update|delete)/i.test(q))).toBe(false);
   });
   it('rejects private foreign parents and every descendant; a location is never public', async () => {
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     for (const [name, id] of [
       ['get_library_location', libraryLocationId],
       ['get_generated_asset', assetId],
@@ -1738,7 +1754,7 @@ describe('Studio, Gallery and library reads', () => {
       listResult.parse(await data('list_library_locations', {})).items
     ).toEqual([]);
   });
-  it('lists every location of the team, used or not, with the sequences using them (#1695)', async () => {
+  it('lists every location of the organization, used or not, with the sequences using them (#1695)', async () => {
     const used = await scopedDb.locations.create(
       {
         sequenceId,
@@ -1788,9 +1804,9 @@ describe('Studio, Gallery and library reads', () => {
       rendering: '3D animated, Pixar-like',
       sequences: [{ id: sequenceId }],
     });
-    expect(detail).not.toHaveProperty('teamId');
-    // Deleted from the team: gone from both reads.
-    await scopedDb.locations.softDeleteForTeam(libraryLocationId);
+    expect(detail).not.toHaveProperty('organizationId');
+    // Deleted from the organization: gone from both reads.
+    await scopedDb.locations.softDeleteForOrganization(libraryLocationId);
     expect(
       page
         .parse(await data('list_library_locations', {}))
@@ -1803,7 +1819,7 @@ describe('Studio, Gallery and library reads', () => {
   it('does not expose private or sequence-bound styles through Gallery or direct IDs', async () => {
     const ownStyleId = (await scopedDb.sequences.getById(sequenceId))?.styleId;
     if (!ownStyleId) throw new Error('Missing style');
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect((await call('get_style', { id: ownStyleId })).isError).toBe(true);
     expect(
       listResult.parse(await data('list_styles', {})).items.map((x) => x.id)
@@ -1828,12 +1844,12 @@ describe('Studio, Gallery and library reads', () => {
       gallery.samples.find((x) => x.styleId === galleryStyleId)?.video.url
     ).toBe('https://openstory.test/r2/styles/noir/canonical.mp4');
   });
-  it('binds cursors to collection, team and parent and keeps large fields out of lists', async () => {
+  it('binds cursors to collection, organization and parent and keeps large fields out of lists', async () => {
     const gallery = await scopedDb.styles.getById(galleryStyleId);
     if (!gallery) throw new Error('Missing gallery style');
     await db.insert(styles).values({
       id: generateId(),
-      teamId,
+      organizationId,
       name: 'Second',
       description: 'x'.repeat(50000),
       config: gallery.config,
@@ -1849,11 +1865,11 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_library_locations', { cursor: first.nextCursor }))
         .isError
     ).toBe(true);
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(
       (await call('list_styles', { cursor: first.nextCursor })).isError
     ).toBe(true);
-    scopedDb = createScopedDb(teamId, generateId());
+    scopedDb = createScopedDb(organizationId, generateId());
     await db.insert(locationReferencePhotos).values({
       id: generateId(),
       locationId: libraryLocationId,
@@ -1886,7 +1902,7 @@ describe('Studio, Gallery and library reads', () => {
         expect(item).not.toHaveProperty('input');
       }
   });
-  it('lists every character of the team, with the sequences casting them, and pages them', async () => {
+  it('lists every character of the organization, with the sequences casting them, and pages them', async () => {
     const [ada, bea, cy] = [
       await castCharacter({
         rendering: 'Photoreal live action',
@@ -1946,8 +1962,8 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_styles', { cursor: first.nextCursor })).isError
     ).toBe(true);
 
-    // Another team sees none of them, and cannot use this team's cursor.
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    // Another organization sees none of them, and cannot use this organization's cursor.
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(page.parse(await data('list_library_characters', {})).items).toEqual(
       []
     );
@@ -1955,7 +1971,7 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_library_characters', { cursor: first.nextCursor }))
         .isError
     ).toBe(true);
-    scopedDb = createScopedDb(teamId, generateId());
+    scopedDb = createScopedDb(organizationId, generateId());
   });
   it('binds asset cursors to all filters and windows long input without truncation', async () => {
     const asset = await scopedDb.generatedAssets.getById(assetId);
@@ -2032,7 +2048,7 @@ describe('Studio, Gallery and library reads', () => {
     const otherLocation = generateId();
     await db
       .insert(locations)
-      .values({ id: otherLocation, teamId, legacyName: 'Other' });
+      .values({ id: otherLocation, organizationId, legacyName: 'Other' });
     for (const [kind, id] of [
       ['location_sheet', locationSheetId],
       ['location_sheet_version', locationVersionId],
@@ -2047,7 +2063,7 @@ describe('Studio, Gallery and library reads', () => {
         ).isError
       ).toBe(true);
   });
-  it('continues past filtered upload pages and binds storage cursors to team', async () => {
+  it('continues past filtered upload pages and binds storage cursors to organization', async () => {
     vi.mocked(listFilesPage).mockResolvedValueOnce({
       files: [
         {
@@ -2067,13 +2083,13 @@ describe('Studio, Gallery and library reads', () => {
     await data('list_studio_uploads', { limit: 1, cursor: first.nextCursor });
     expect(listFilesPage).toHaveBeenLastCalledWith(
       'talent',
-      `${teamId}/uploads`,
+      `${organizationId}/uploads`,
       {
         limit: 1,
         cursor: 'r2-next',
       }
     );
-    scopedDb = createScopedDb(foreignTeamId, generateId());
+    scopedDb = createScopedDb(foreignOrganizationId, generateId());
     expect(
       (await call('list_studio_uploads', { cursor: first.nextCursor })).isError
     ).toBe(true);
@@ -2241,7 +2257,7 @@ describe('update_scene (#1459)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -2381,7 +2397,7 @@ describe('structure edits (#1979)', () => {
     ).toMatchObject({ title: 'Renamed', targetDurationSeconds: null });
   });
 
-  it('refuses an empty update and another team’s sequence', async () => {
+  it('refuses an empty update and another organization’s sequence', async () => {
     expect(await call('update_sequence', { sequenceId })).toMatchObject({
       isError: true,
       structuredContent: { error: { code: 'VALIDATION_ERROR' } },
@@ -2534,7 +2550,7 @@ describe('structure edits (#1979)', () => {
     if (!fixture) throw new Error('Missing fixture sequence');
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: fixture.styleId,
       status: 'completed',
@@ -2926,11 +2942,11 @@ describe('cast and music edits (#1979)', () => {
     if (!fixture) throw new Error('Missing fixture sequence');
     await db
       .insert(sequences)
-      .values({ id, teamId, title: 'Other', styleId: fixture.styleId });
+      .values({ id, organizationId, title: 'Other', styleId: fixture.styleId });
     return id;
   }
 
-  it('add_character_to_sequence casts a team character into another sequence, once (#2050)', async () => {
+  it('add_character_to_sequence casts an organization character into another sequence, once (#2050)', async () => {
     const ada = await castCharacter({
       rendering: 'Photoreal live action',
       sequenceId,
@@ -2941,7 +2957,7 @@ describe('cast and music edits (#1979)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -2986,7 +3002,7 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject(refusal('CONFLICT'));
   });
 
-  it('add_location_to_sequence links a team location into another sequence, once (#1695)', async () => {
+  it('add_location_to_sequence links an organization location into another sequence, once (#1695)', async () => {
     const pier = await scopedDb.locations.create(
       {
         sequenceId,
@@ -3000,7 +3016,7 @@ describe('cast and music edits (#1979)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -3060,7 +3076,7 @@ describe('cast and music edits (#1979)', () => {
         locationId: quay.id,
       })
     ).toMatchObject(refusal('CONFLICT'));
-    // Another team's location, or one that does not exist.
+    // Another organization's location, or one that does not exist.
     expect(
       await call('add_location_to_sequence', {
         sequenceId,
@@ -3271,11 +3287,11 @@ describe('cast and music edits (#1979)', () => {
       { look: drawing.id, statement: LIKENESS_CLEARED_V1, real: false },
     ];
     for (const { look, statement, real } of sheets) {
-      const url = `/r2/characters/${teamId}/uploads/${look}.png`;
+      const url = `/r2/characters/${organizationId}/uploads/${look}.png`;
       await scopedDb.characterSheetVariants.applyConvergent({
         lookId: look,
         url,
-        storagePath: `characters/${teamId}/uploads/${look}.png`,
+        storagePath: `characters/${organizationId}/uploads/${look}.png`,
         inputHash: null,
         model: USER_UPLOAD_MODEL,
       });
@@ -3340,14 +3356,14 @@ describe('cast and music edits (#1979)', () => {
     expect(list.find((c) => c.id === drawing.id)?.isPerson).toBe(false);
     // From no sequence every sequence's sheets count, an archived
     // sequence's too: the edit is refused and the read says why.
-    const teamLock = async (character: { id: string }) =>
+    const organizationLock = async (character: { id: string }) =>
       await personLockOf(scopedDb, { id: character.id });
     // A bible version is shared: another sequence that casts her, with no
     // upload of its own, cannot make her not a person either.
     const sequenceA = generateId();
     await db.insert(sequences).values({
       id: sequenceA,
-      teamId,
+      organizationId,
       title: 'A',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -3366,12 +3382,14 @@ describe('cast and music edits (#1979)', () => {
       .set({ status: 'archived' })
       .where(eq(sequences.id, sequenceId));
     await expect(
-      updateTeamCharacter(scopedDb, actor, photo.id, notPerson)
+      updateOrganizationCharacter(scopedDb, actor, photo.id, notPerson)
     ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
-    expect(await teamLock(photo)).toEqual({ reason: 'upload' });
-    expect(await teamLock(drawing)).toBeNull();
-    await updateTeamCharacter(scopedDb, actor, photo.id, { isPerson: true });
-    await updateTeamCharacter(scopedDb, actor, drawing.id, notPerson);
+    expect(await organizationLock(photo)).toEqual({ reason: 'upload' });
+    expect(await organizationLock(drawing)).toBeNull();
+    await updateOrganizationCharacter(scopedDb, actor, photo.id, {
+      isPerson: true,
+    });
+    await updateOrganizationCharacter(scopedDb, actor, drawing.id, notPerson);
   });
 
   it('reads and selects character voices and sheet versions', async () => {
@@ -3905,7 +3923,7 @@ describe('generation and uploads (#1979)', () => {
           fullPath: `${bucket}/${path}`,
         })
       );
-    vi.mocked(analyzeTalentMediaForTeam)
+    vi.mocked(analyzeTalentMediaForOrganization)
       .mockReset()
       .mockResolvedValue(asStub({ subjectKind: 'other' }));
   });
@@ -3941,13 +3959,13 @@ describe('generation and uploads (#1979)', () => {
     await db
       .update(credits)
       .set({ balance: 100_000_000 })
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(
       await data('generate_shot_image', { sequenceId, shotId })
     ).toMatchObject({ shotId, workflowRunId: 'run-1', alreadyInFlight: false });
     expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId, teamId }),
+      expect.objectContaining({ shotId, organizationId }),
       expect.anything()
     );
     expect(
@@ -4044,7 +4062,7 @@ describe('generation and uploads (#1979)', () => {
     expect(stored.rights).toBe('cleared');
     expect(stored.upload).toMatch(
       new RegExp(
-        `^/r2/thumbnails/teams/${teamId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
+        `^/r2/thumbnails/org/${organizationId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
       )
     );
     const set = z
@@ -4099,7 +4117,7 @@ describe('generation and uploads (#1979)', () => {
       .where(eq(stitches.id, result.id));
     // Stored through storeUpload's checks, so the row is born published.
     expect(row?.publishedAt).not.toBeNull();
-    const prefix = `/r2/stitches/${teamId}/${result.id}/`;
+    const prefix = `/r2/stitches/${organizationId}/${result.id}/`;
     const clip = row?.cut.clips[0];
     if (!clip || !('imageUrl' in clip)) throw new Error('expected a still');
     expect(clip.imageUrl).toMatch(new RegExp(`^${prefix}\\w+\\.png$`));
@@ -4126,7 +4144,7 @@ describe('generation and uploads (#1979)', () => {
   });
 
   it('create_stitch needs the portrait sign-off for a real person in a still', async () => {
-    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+    vi.mocked(analyzeTalentMediaForOrganization).mockResolvedValue(
       asStub({ subjectKind: 'human' })
     );
     const cut = {
@@ -4168,7 +4186,7 @@ describe('generation and uploads (#1979)', () => {
   });
 
   it('needs the portrait sign-off for a real person', async () => {
-    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+    vi.mocked(analyzeTalentMediaForOrganization).mockResolvedValue(
       asStub({ subjectKind: 'human' })
     );
     const args = {
@@ -4287,7 +4305,7 @@ describe('generation and uploads (#1979)', () => {
     expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
       music: { variantId },
     });
-    expect(vi.mocked(analyzeTalentMediaForTeam)).not.toHaveBeenCalled();
+    expect(vi.mocked(analyzeTalentMediaForOrganization)).not.toHaveBeenCalled();
   });
 });
 
@@ -4314,16 +4332,16 @@ describe('Studio create and edit (#1985)', () => {
           fullPath: `${bucket}/${path}`,
         })
       );
-    vi.mocked(analyzeTalentMediaForTeam)
+    vi.mocked(analyzeTalentMediaForOrganization)
       .mockReset()
       .mockResolvedValue(asStub({ subjectKind: 'other' }));
   });
   async function fund() {
     await db
       .insert(credits)
-      .values({ teamId, balance: 100_000_000 })
+      .values({ organizationId, balance: 100_000_000 })
       .onConflictDoUpdate({
-        target: credits.teamId,
+        target: credits.organizationId,
         set: { balance: 100_000_000 },
       });
   }
@@ -4334,7 +4352,7 @@ describe('Studio create and edit (#1985)', () => {
     const id = generateId();
     await db.insert(generatedAssets).values({
       id,
-      teamId,
+      organizationId,
       userId: actorId,
       source: 'studio',
       provider: 'fal',
@@ -4365,7 +4383,7 @@ describe('Studio create and edit (#1985)', () => {
       })
     );
     expect(stored.upload).toMatch(
-      new RegExp(`^/r2/talent/${teamId}/uploads/\\w+\\.png$`)
+      new RegExp(`^/r2/talent/${organizationId}/uploads/\\w+\\.png$`)
     );
     const args = {
       activity: 'image',
@@ -4385,7 +4403,7 @@ describe('Studio create and edit (#1985)', () => {
     expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
       '/studio',
       expect.objectContaining({
-        teamId,
+        organizationId,
         input: expect.objectContaining({ referenceImages: [stored.upload] }),
       }),
       expect.anything()
@@ -4470,7 +4488,7 @@ describe('Studio create and edit (#1985)', () => {
     );
   });
 
-  it('favourites and deletes only this team’s Studio assets', async () => {
+  it('favourites and deletes only this organization’s Studio assets', async () => {
     const id = await studioVideo({});
     expect(
       await data('set_studio_asset_favorite', { id, isFavorite: true })
@@ -4482,14 +4500,14 @@ describe('Studio create and edit (#1985)', () => {
     expect(await call('delete_studio_asset', { id })).toMatchObject(
       refusal('NOT_FOUND')
     );
-    const otherTeam = generateId();
+    const otherOrganization = generateId();
     await db
-      .insert(teams)
-      .values({ id: otherTeam, name: 'O', slug: otherTeam });
+      .insert(organization)
+      .values({ id: otherOrganization, name: 'O', slug: otherOrganization });
     const foreign = generateId();
     await db.insert(generatedAssets).values({
       id: foreign,
-      teamId: otherTeam,
+      organizationId: otherOrganization,
       userId: actorId,
       source: 'studio',
       provider: 'fal',
@@ -4524,7 +4542,7 @@ describe('Studio create and edit (#1985)', () => {
     });
   });
 
-  it('refuses a prompt draft the team cannot pay for', async () => {
+  it('refuses a prompt draft the organization cannot pay for', async () => {
     vi.stubEnv('OPENROUTER_KEY', 'or-test');
     expect(
       await call('draft_studio_prompt', { activity: 'image' })
@@ -4535,7 +4553,7 @@ describe('Studio create and edit (#1985)', () => {
     vi.stubEnv('OPENROUTER_KEY', 'or-test');
     expect(
       await call('watch_clip', {
-        url: '/r2/uploads/team/clip.mp4',
+        url: '/r2/uploads/organization/clip.mp4',
         question: 'What happens in this clip?',
       })
     ).toMatchObject(refusal('VALIDATION_ERROR'));
@@ -4604,8 +4622,8 @@ describe('production-context resources (#1462)', () => {
       {
         caller: {
           user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
-          teamId,
-          teamName: 'T',
+          organizationId,
+          organizationName: 'T',
         },
         origin: 'https://openstory.test',
         scoped: () => ({
@@ -4724,7 +4742,7 @@ describe('production-context resources (#1462)', () => {
     const otherSequence = generateId();
     await db.insert(sequences).values({
       id: otherSequence,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
@@ -4770,8 +4788,8 @@ describe('official MCP client transport (#1463)', () => {
   ) {
     const auth = asStub<McpAuthContext>({
       user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
-      teamId,
-      teamName: 'T',
+      organizationId,
+      organizationName: 'T',
       kind: scopes ? 'oauth' : 'api_key',
       keyHint: 'osk_…test',
       clientId: 'vitest',
@@ -5063,7 +5081,7 @@ describe('library styles', () => {
     isError: true,
     structuredContent: { error: { code } },
   });
-  it('creates, edits and deletes a team style; delete needs an admin', async () => {
+  it('creates, edits and deletes an organization style; delete needs an admin', async () => {
     const created = z
       .object({ id: z.string(), name: z.string(), isTemplate: z.boolean() })
       .parse(
@@ -5099,9 +5117,13 @@ describe('library styles', () => {
     expect((await call('delete_style', { styleId: created.id })).isError).toBe(
       true
     );
-    await db
-      .insert(teamMembers)
-      .values({ teamId, userId: actorId, role: 'admin' });
+    await db.insert(member).values({
+      id: generateId(),
+      organizationId,
+      userId: actorId,
+      role: 'admin',
+      createdAt: new Date(),
+    });
     expect(await data('delete_style', { styleId: created.id })).toEqual({
       styleId: created.id,
     });

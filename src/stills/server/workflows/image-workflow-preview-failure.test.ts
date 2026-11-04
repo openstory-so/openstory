@@ -41,7 +41,7 @@ describe('ImageWorkflow onFailure skipStorage', () => {
     const payload: ImageWorkflowInput = {
       userId: 'u1',
       variantOnly: false,
-      teamId: 't1',
+      organizationId: 't1',
       sequenceId: 'seq_1',
       prompt: 'preview',
       shotId: 'shot_1',

@@ -18,7 +18,7 @@ vi.doMock('../use-sequences-with-shots', () => ({
   useSequencesWithShots: ownData,
 }));
 vi.doMock('@/audio/ui/use-sequence-variants', () => ({
-  useTeamDivergentSequenceVariants: variants,
+  useOrganizationDivergentSequenceVariants: variants,
 }));
 vi.doMock('@/look/ui/use-styles', () => ({ useStyles: () => ({ data: [] }) }));
 vi.doMock('@tanstack/react-query', () => ({
@@ -84,7 +84,7 @@ describe('sequences landing page loading', () => {
     );
     expect(shotsQueries).toHaveBeenCalledWith({ queries: [] });
   });
-  it('loads support results without own-team or per-sequence shot requests', () => {
+  it('loads support results without own-organization or per-sequence shot requests', () => {
     const html = renderToStaticMarkup(
       <EvalView
         search={{ support: true }}

@@ -7,7 +7,7 @@
  * for an API key, and redirect the user back to settings.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { completeOpenRouterOAuth } from '@/platform/server/byok/complete-oauth';
 import { getOAuthCookieClearHeader } from '@/platform/server/byok/openrouter-oauth-cookie';
 import { createFileRoute } from '@tanstack/react-router';
@@ -33,7 +33,7 @@ function redirectResponse(path: string, secureCookies: boolean): Response {
 
 export const Route = createFileRoute('/api/openrouter/callback')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       GET: async ({ request, context }) => {
         const url = new URL(request.url);
@@ -50,7 +50,12 @@ export const Route = createFileRoute('/api/openrouter/callback')({
 
         try {
           await completeOpenRouterOAuth(
-            { teamId: context.teamId, code, csrfState, secureCookies },
+            {
+              organizationId: context.organizationId,
+              code,
+              csrfState,
+              secureCookies,
+            },
             context.scopedDb
           );
 

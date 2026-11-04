@@ -21,13 +21,18 @@ import type { ElementVisionWorkflowInput } from '@/platform/server/workflow/type
  */
 export async function copySequenceElements(params: {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   sourceSequenceId: string;
   targetSequenceId: string;
 }): Promise<void> {
-  const { scopedDb, teamId, userId, sourceSequenceId, targetSequenceId } =
-    params;
+  const {
+    scopedDb,
+    organizationId,
+    userId,
+    sourceSequenceId,
+    targetSequenceId,
+  } = params;
 
   const sourceElements = await scopedDb.sequenceElements.list(sourceSequenceId);
   if (sourceElements.length === 0) return;
@@ -40,7 +45,7 @@ export async function copySequenceElements(params: {
     let targetPath: string | null = null;
     if (source.imagePath) {
       const ext = getExtensionFromUrl(source.imagePath);
-      const targetRelative = `${teamId}/${targetSequenceId}/${newId}.${ext}`;
+      const targetRelative = `${organizationId}/${targetSequenceId}/${newId}.${ext}`;
       targetPath = `elements/${targetRelative}`;
 
       const sourceRelative = source.imagePath.startsWith('elements/')
@@ -80,7 +85,7 @@ export async function copySequenceElements(params: {
     if (!carryVision && publicUrl && source.kind === 'image') {
       const input: ElementVisionWorkflowInput = {
         userId,
-        teamId,
+        organizationId,
         sequenceId: targetSequenceId,
         elementId: element.id,
         imageUrl: publicUrl,

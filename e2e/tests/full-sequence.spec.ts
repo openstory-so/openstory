@@ -131,11 +131,11 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
-    scarlett = await createScarlettCharacter(testUser.teamId);
-    // Locations belong to the team (#1695), so the one the recorded
-    // location match names is made for this test's own team.
-    testLocation = await createSunlitLoftLocation(testUser.teamId);
-    styleId = await createTestStyle(testUser.teamId);
+    scarlett = await createScarlettCharacter(testUser.organizationId);
+    // Locations belong to the organization (#1695), so the one the recorded
+    // location match names is made for this test's own organization.
+    testLocation = await createSunlitLoftLocation(testUser.organizationId);
+    styleId = await createTestStyle(testUser.organizationId);
   });
 
   testWithUser.afterEach(async () => {
@@ -256,7 +256,7 @@ SUPER:  CORAL.  OUT NOW.
         { timeout: t(60_000) }
       );
 
-      // 5. Cast Scarlett, a team character with no sheet yet (#2135): the
+      // 5. Cast Scarlett, an organization character with no sheet yet (#2135): the
       // run binds the script's SCARLETT to her and draws her sheet.
       if (!scarlett) throw new Error('scarlett not initialised');
       const castButton = page.getByRole('button', {

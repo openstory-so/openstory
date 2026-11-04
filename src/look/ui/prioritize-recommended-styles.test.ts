@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 function makeStyle(id: string): Style {
   return {
     id,
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: null,
     name: id,
     description: null,

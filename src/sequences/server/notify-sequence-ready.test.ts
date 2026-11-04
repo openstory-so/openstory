@@ -26,7 +26,7 @@ function makeScopedDb(opts: { claim: boolean }) {
   const getBalance = vi.fn(async () => usdToMicros(6.4));
   const getForUser = vi.fn(async () => ({ title: 'The Long Walk' }));
   const stub = {
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequences: { claimReadyEmailSend, releaseReadyEmailSend },
     liveRead: {
       sequences: { getForUser },
@@ -85,7 +85,7 @@ describe('notifySequenceReady', () => {
       distinctId: 'u1',
       event: 'sequence_content_ready',
       properties: expect.objectContaining({
-        team_id: 'team-1',
+        team_id: 'organization-1',
         sequence_id: 'seq_1',
         title: 'The Long Walk',
         watch_url: 'https://openstory.so/sequences/seq_1/scenes',

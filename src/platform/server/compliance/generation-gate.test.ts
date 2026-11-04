@@ -11,7 +11,7 @@ vi.doMock('@/platform/server/db/scoped', () => ({
 const { requireGenerationAllowed } = await import('./generation-gate');
 
 const USER_ID = 'user_1';
-const TEAM_ID = 'team_1';
+const ORGANIZATION_ID = 'organization_1';
 const NOW = new Date('2026-08-12T12:00:00Z');
 
 function enforcementRow(
@@ -20,7 +20,7 @@ function enforcementRow(
   return {
     id: 'enf_1',
     subjectUserId: USER_ID,
-    subjectTeamId: null,
+    subjectOrganizationId: null,
     action: 'generation_suspended',
     reason: 'portrait_rights',
     notes: null,
@@ -52,7 +52,7 @@ describe('requireGenerationAllowed', () => {
     await expect(
       requireGenerationAllowed({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
       })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
   });
@@ -65,7 +65,7 @@ describe('requireGenerationAllowed', () => {
     await expect(
       requireGenerationAllowed({
         userId: USER_ID,
-        teamId: TEAM_ID,
+        organizationId: ORGANIZATION_ID,
       })
     ).resolves.toBeUndefined();
   });

@@ -7,7 +7,7 @@ import {
   credits,
   giftTokenRedemptions,
   giftTokens,
-  teams,
+  organization,
   transactions,
   user,
 } from '@/platform/server/db/schema';
@@ -17,8 +17,8 @@ import { createBillingMethods } from './billing';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
-let otherTeamId = '';
+let organizationId = '';
+let otherOrganizationId = '';
 let userId = '';
 let otherUserId = '';
 
@@ -31,24 +31,24 @@ async function seed() {
   await db.delete(transactions);
   await db.delete(creditReservations);
   await db.delete(credits);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
-  otherTeamId = generateId();
+  organizationId = generateId();
+  otherOrganizationId = generateId();
   userId = generateId();
   otherUserId = generateId();
-  await db.insert(teams).values([
-    { id: teamId, name: 'T', slug: `t-${teamId}` },
-    { id: otherTeamId, name: 'O', slug: `o-${otherTeamId}` },
+  await db.insert(organization).values([
+    { id: organizationId, name: 'T', slug: `t-${organizationId}` },
+    { id: otherOrganizationId, name: 'O', slug: `o-${otherOrganizationId}` },
   ]);
   await db.insert(user).values([
     { id: userId, name: 'U', email: `${userId}@example.com` },
     { id: otherUserId, name: 'O', email: `${otherUserId}@example.com` },
   ]);
   await db.insert(credits).values([
-    { teamId, balance: 0 },
-    { teamId: otherTeamId, balance: 0 },
+    { organizationId, balance: 0 },
+    { organizationId: otherOrganizationId, balance: 0 },
   ]);
 }
 
@@ -71,12 +71,12 @@ async function insertCode(opts: {
 
 function redeem(
   code: string,
-  who: { teamId: string; userId: string } = { teamId, userId }
+  who: { organizationId: string; userId: string } = { organizationId, userId }
 ) {
-  const billing = createBillingMethods(db, who.teamId, who.userId);
+  const billing = createBillingMethods(db, who.organizationId, who.userId);
   return billing.redeemGiftToken({
     code,
-    teamId: who.teamId,
+    organizationId: who.organizationId,
     userId: who.userId,
     addCredits: billing.addCredits,
   });
@@ -108,7 +108,7 @@ describe('redeemGiftToken', () => {
     const [row] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(row?.balance).toBe(TEN_DOLLARS);
   });
 
@@ -139,7 +139,7 @@ describe('redeemGiftToken', () => {
     const [row] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(row?.balance).toBe(TEN_DOLLARS);
   });
 
@@ -147,7 +147,9 @@ describe('redeemGiftToken', () => {
     await insertCode({ code: 'TEAM01' });
     expect((await redeem('TEAM01')).status).toBe('redeemed');
 
-    expect(await redeem('TEAM01', { teamId, userId: otherUserId })).toEqual({
+    expect(
+      await redeem('TEAM01', { organizationId, userId: otherUserId })
+    ).toEqual({
       status: 'refused',
       reason: 'one_per_account',
     });
@@ -156,8 +158,12 @@ describe('redeemGiftToken', () => {
   it('says fully redeemed when another account used the last slot', async () => {
     await insertCode({ code: 'FULL01' });
     expect(
-      (await redeem('FULL01', { teamId: otherTeamId, userId: otherUserId }))
-        .status
+      (
+        await redeem('FULL01', {
+          organizationId: otherOrganizationId,
+          userId: otherUserId,
+        })
+      ).status
     ).toBe('redeemed');
 
     expect(await redeem('FULL01')).toEqual({
@@ -167,7 +173,7 @@ describe('redeemGiftToken', () => {
     const [row] = await db
       .select({ balance: credits.balance })
       .from(credits)
-      .where(eq(credits.teamId, teamId));
+      .where(eq(credits.organizationId, organizationId));
     expect(row?.balance).toBe(0);
   });
 
@@ -176,7 +182,7 @@ describe('redeemGiftToken', () => {
     await db.insert(giftTokenRedemptions).values({
       id: generateId(),
       giftTokenId: tokenId,
-      teamId,
+      organizationId,
       userId: null,
     });
 

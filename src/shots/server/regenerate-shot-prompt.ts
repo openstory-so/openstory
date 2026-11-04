@@ -48,7 +48,7 @@ import { redrawShotPreview } from './shot-preview';
 
 type RegenerateContext = Pick<
   ShotEditContext,
-  'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'teamId'
+  'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'organizationId'
 >;
 
 /**
@@ -115,7 +115,7 @@ export async function regenerateShotPrompt(
     replace: { visual: boolean; motion: boolean };
   }
 ): Promise<RegenerateShotPromptResult> {
-  const { shot, frame, sequence, scopedDb, user, teamId } = context;
+  const { shot, frame, sequence, scopedDb, user, organizationId } = context;
   const shotReferenceOnly = rendersReferenceOnly(shot, sequence);
 
   const spec = await loadShotSpecState(context, scene);
@@ -302,7 +302,7 @@ export async function regenerateShotPrompt(
       '/shot-spec-rewrite',
       {
         userId: user.id,
-        teamId,
+        organizationId,
         sequenceId: sequence.id,
         shotId: shot.id,
         frameId: frame.id,

@@ -86,7 +86,7 @@ export async function prepareShotImageWorkflowInput(args: {
   scopedDb: ScopedDb;
   sequence: {
     id: string;
-    teamId: string;
+    organizationId: string;
     aspectRatio: AspectRatio;
     resolution: Resolution;
     imageModel: string | null;
@@ -298,7 +298,7 @@ export async function prepareShotImageWorkflowInput(args: {
   return {
     userId,
     variantOnly: false,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     prompt,
     model,
     imageSize: aspectRatioToImageSize(sequence.aspectRatio),

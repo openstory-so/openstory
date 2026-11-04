@@ -10,8 +10,8 @@ import { generateId } from '@/platform/id';
 import {
   creditReservations,
   credits,
-  teamBillingSettings,
-  teams,
+  organizationBillingSettings,
+  organization,
   transactions,
   user,
 } from '@/platform/server/db/schema';
@@ -75,7 +75,7 @@ function cardDeclinedError(declineCode = 'insufficient_funds') {
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 beforeAll(async () => {
@@ -94,14 +94,16 @@ beforeEach(async () => {
   });
   await db.delete(transactions);
   await db.delete(creditReservations);
-  await db.delete(teamBillingSettings);
+  await db.delete(organizationBillingSettings);
   await db.delete(credits);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
@@ -112,9 +114,11 @@ async function seedSettings(overrides: {
   thresholdMicros: number | null;
   amountMicros?: number;
 }) {
-  await db.insert(credits).values({ teamId, balance: overrides.balance });
-  await db.insert(teamBillingSettings).values({
-    teamId,
+  await db
+    .insert(credits)
+    .values({ organizationId, balance: overrides.balance });
+  await db.insert(organizationBillingSettings).values({
+    organizationId,
     stripeCustomerId: 'cus_1',
     autoTopUpEnabled: true,
     autoTopUpThresholdMicros: overrides.thresholdMicros,
@@ -126,15 +130,15 @@ function balanceOf() {
   return db
     .select({ balance: credits.balance })
     .from(credits)
-    .where(eq(credits.teamId, teamId))
+    .where(eq(credits.organizationId, organizationId))
     .then(([row]) => row?.balance);
 }
 
 function settingsOf() {
   return db
     .select()
-    .from(teamBillingSettings)
-    .where(eq(teamBillingSettings.teamId, teamId))
+    .from(organizationBillingSettings)
+    .where(eq(organizationBillingSettings.organizationId, organizationId))
     .then(([row]) => row);
 }
 
@@ -148,7 +152,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: { receipt_url: 'https://receipt' },
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
 
     // $100 credited + 7% fee → $107.00 charged
@@ -166,7 +170,7 @@ describe('maybeAutoTopUp', () => {
   it('does not charge when the balance is above the threshold', async () => {
     await seedSettings({ balance: 50_000_000, thresholdMicros: 5_000_000 });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
 
     expect(paymentIntentCreate).not.toHaveBeenCalled();
@@ -182,7 +186,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     const held = await billing.createReservation(micros(5_000_000), {
       idempotencyKey: 'hold-1',
     });
@@ -204,7 +208,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
 
     expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
@@ -220,7 +224,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
 
     expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
@@ -233,7 +237,7 @@ describe('maybeAutoTopUp', () => {
       cardDeclinedError('insufficient_funds')
     );
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await expect(billing.checkAutoTopUp()).resolves.toBeUndefined();
 
     expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
@@ -246,7 +250,7 @@ describe('maybeAutoTopUp', () => {
     expect(loggerError).toHaveBeenCalledWith(
       'Auto top-up declined',
       expect.objectContaining({
-        teamId,
+        organizationId,
         declineCode: 'insufficient_funds',
       })
     );
@@ -256,7 +260,7 @@ describe('maybeAutoTopUp', () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     paymentIntentCreate.mockRejectedValue(cardDeclinedError());
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
     await billing.checkAutoTopUp();
     await billing.checkAutoTopUp();
@@ -265,21 +269,21 @@ describe('maybeAutoTopUp', () => {
     expect(customersRetrieve).toHaveBeenCalledTimes(1);
     expect(loggerDebug).toHaveBeenCalledWith(
       'Auto top-up skipped: decline cooldown',
-      expect.objectContaining({ teamId })
+      expect.objectContaining({ organizationId })
     );
   });
 
   it('retries after the decline cooldown expires', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(
           Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
         ),
         autoTopUpDeclineCode: 'insufficient_funds',
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_retry',
@@ -287,7 +291,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
 
     expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
@@ -298,12 +302,12 @@ describe('maybeAutoTopUp', () => {
   it('retries immediately after a successful credit purchase clears the decline', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(),
         autoTopUpDeclineCode: 'generic_decline',
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_after_purchase',
@@ -311,7 +315,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.addCredits(micros(1_000_000), {
       description: 'Top-up',
     });
@@ -325,12 +329,12 @@ describe('maybeAutoTopUp', () => {
   it('retries immediately after auto-top-up settings are saved', async () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(),
         autoTopUpDeclineCode: 'card_declined',
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
 
     paymentIntentCreate.mockResolvedValue({
       id: 'pi_after_settings',
@@ -338,7 +342,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.updateAutoTopUpSettings({
       enabled: true,
       thresholdMicros: micros(5_000_000),
@@ -359,7 +363,7 @@ describe('maybeAutoTopUp', () => {
       latest_charge: null,
     });
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
     await billing.checkAutoTopUp();
 
@@ -371,7 +375,7 @@ describe('maybeAutoTopUp', () => {
     await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
     paymentIntentCreate.mockRejectedValue(new Error('stripe is down'));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await expect(billing.checkAutoTopUp()).rejects.toThrow('stripe is down');
     expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
   });
@@ -379,7 +383,7 @@ describe('maybeAutoTopUp', () => {
 
 describe('decline notice (#1499)', () => {
   async function declineOnce() {
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.checkAutoTopUp();
     return billing;
   }
@@ -387,13 +391,13 @@ describe('decline notice (#1499)', () => {
   /** Let the decline cooldown lapse so the next attempt reaches Stripe. */
   async function expireCooldown() {
     await db
-      .update(teamBillingSettings)
+      .update(organizationBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(
           Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
         ),
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
   }
 
   beforeEach(async () => {
@@ -406,7 +410,7 @@ describe('decline notice (#1499)', () => {
 
     expect(notifyAutoTopUpFailed).toHaveBeenCalledTimes(1);
     expect(notifyAutoTopUpFailed.mock.calls[0]?.[0]).toMatchObject({
-      teamId,
+      organizationId,
       userId,
       balanceMicros: 3_000_000,
     });
@@ -415,7 +419,7 @@ describe('decline notice (#1499)', () => {
   it('stays silent on every later attempt, and refreshes the cooldown', async () => {
     await declineOnce();
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     for (let i = 0; i < 3; i++) {
       await expireCooldown();
       await billing.checkAutoTopUp();
@@ -435,7 +439,7 @@ describe('decline notice (#1499)', () => {
   it('re-arms once the card is fixed', async () => {
     await declineOnce();
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await billing.clearAutoTopUpFailure();
     await billing.checkAutoTopUp();
 
@@ -445,7 +449,7 @@ describe('decline notice (#1499)', () => {
   it('does not fail the debit when the email send throws', async () => {
     notifyAutoTopUpFailed.mockRejectedValueOnce(new Error('mailbox full'));
 
-    const billing = createBillingMethods(db, teamId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
     await expect(billing.checkAutoTopUp()).resolves.toBeUndefined();
 
     // Still paused — the claim is never released, or the retry loop resumes.
@@ -455,8 +459,8 @@ describe('decline notice (#1499)', () => {
 
 describe('updateAutoTopUpSettings validation', () => {
   it('rejects an amount that would not lift the balance past the threshold', async () => {
-    await db.insert(credits).values({ teamId, balance: 0 });
-    const billing = createBillingMethods(db, teamId, userId);
+    await db.insert(credits).values({ organizationId, balance: 0 });
+    const billing = createBillingMethods(db, organizationId, userId);
 
     await expect(
       billing.updateAutoTopUpSettings({

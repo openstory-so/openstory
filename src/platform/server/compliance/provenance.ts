@@ -92,7 +92,7 @@ export function parseTraceId(input: string): string | null {
  * provenance row with a null prompt hash is far better than no row.
  */
 export type ProvenanceFacts = {
-  teamId: string;
+  organizationId: string;
   userId?: string | null;
   assetKind: ProvenanceAssetKind;
   assetId: string;
@@ -116,7 +116,7 @@ async function buildProvenanceRow(
 ): Promise<NewContentProvenance> {
   const referenceImageCount = facts.referenceImageCount ?? 0;
   return {
-    teamId: facts.teamId,
+    organizationId: facts.organizationId,
     userId: facts.userId ?? null,
     assetKind: facts.assetKind,
     assetId: facts.assetId,
@@ -183,7 +183,7 @@ export async function recordProvenance(
     logger.error('provenance insert returned no id for {assetKind} {assetId}', {
       assetKind: facts.assetKind,
       assetId: facts.assetId,
-      teamId: facts.teamId,
+      organizationId: facts.organizationId,
       model: facts.model,
     });
     throw new Error(

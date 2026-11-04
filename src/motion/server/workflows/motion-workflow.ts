@@ -292,7 +292,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       const wireClips = packedClip
         ? await step.do('cut-spanning-section', () =>
             cutSpanningSection(audioClips, {
-              teamId: input.teamId,
+              organizationId: input.organizationId,
               sequenceId,
               minDurationSeconds:
                 getMotionReferenceEndpoint(model)?.audioSeconds?.min,
@@ -355,7 +355,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
-    // Step 0: Estimate cost and check the team can afford it. The estimate only
+    // Step 0: Estimate cost and check the organization can afford it. The estimate only
     // gates affordability — the exact charge is computed from fal's billed
     // units after the clip completes (see actualCost below).
     const { duration, usedOwnKey: gatedUsedOwnKey } = await step.do(
@@ -386,7 +386,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         });
 
         const falKeyInfo = await scopedDb.credentials.resolveKey('fal');
-        const usedOwnKey = falKeyInfo.source === 'team';
+        const usedOwnKey = falKeyInfo.source === 'organization';
         if (cost > 0 && !usedOwnKey && !input.reservationId) {
           const canAfford =
             await scopedDb.liveRead.billing.hasEnoughCredits(cost);
@@ -870,7 +870,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // flags `body.image_urls` (a reference sheet, not a still), which
         // matches `flaggedInputs`' image test — so without this check the
         // rescue would swap to Grok, commit the model onto `video_variants`,
-        // and then die inside `resolveMotionEndpoint` on a team with no xAI
+        // and then die inside `resolveMotionEndpoint` on an organization with no xAI
         // key. `canRenderReferenceOnly` knows the via, so Grok still rescues
         // the shot wherever it genuinely can.
         const fallbackCanServe =
@@ -1256,7 +1256,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   // several MB and will fail the 1 MiB step.do cap — park
                   // it in R2 before this result is checkpointed.
                   if (!videoUrlFitsWorkflowCheckpoint(url)) {
-                    if (!input.teamId || !input.sequenceId || !input.shotId) {
+                    if (
+                      !input.organizationId ||
+                      !input.sequenceId ||
+                      !input.shotId
+                    ) {
                       throw new Error(
                         'Native Gemini returned inline video bytes too large to checkpoint'
                       );
@@ -1269,7 +1273,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                         : undefined;
                     const stored = await uploadVideoToStorage({
                       videoUrl: url,
-                      teamId: input.teamId,
+                      organizationId: input.organizationId,
                       sequenceId: input.sequenceId,
                       shotId: input.shotId,
                       sequenceTitle: input.sequenceTitle ?? 'sequence',
@@ -1537,8 +1541,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const { shotId } = input;
     const storageResult = shotId
       ? await step.do('upload-to-storage', async () => {
-          if (!input.teamId || !input.sequenceId) {
-            throw new Error('Missing teamId or sequenceId for storage upload');
+          if (!input.organizationId || !input.sequenceId) {
+            throw new Error(
+              'Missing organizationId or sequenceId for storage upload'
+            );
           }
 
           const googleKey =
@@ -1547,7 +1553,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               : undefined;
           const result = await uploadVideoToStorage({
             videoUrl,
-            teamId: input.teamId,
+            organizationId: input.organizationId,
             sequenceId: input.sequenceId,
             shotId,
             sequenceTitle: input.sequenceTitle ?? 'sequence',
@@ -1564,13 +1570,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       : undefined;
     if (storageResult) videoUrl = storageResult.url;
 
-    // Charge only for a clip the team can see: a failed upload fails the run
+    // Charge only for a clip the organization can see: a failed upload fails the run
     // and onFailure zeroes the reservation (#1845).
     //
     // Settle the spawn-time reservation against fal's billed cost. If this
     // run never reserved (BYOK / unpriced), deductWorkflowCredits falls back
     // to an atomic try-deduct.
-    if (actualCost > 0 && input.teamId && !gatedUsedOwnKey) {
+    if (actualCost > 0 && input.organizationId && !gatedUsedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
@@ -1651,12 +1657,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       // to be buffered whole to compute one; contentSha256 is unpopulated
       // until we hash the small kinds. The storage key and fal request id
       // carry the trace.
-      if (videoVersionId && input.teamId) {
+      if (videoVersionId && input.organizationId) {
         const provenanceVersionId = videoVersionId;
-        const provenanceTeamId = input.teamId;
+        const provenanceOrganizationId = input.organizationId;
         await step.do('record-provenance', async () => {
           await recordProvenance(scopedDb.provenance, {
-            teamId: provenanceTeamId,
+            organizationId: provenanceOrganizationId,
             userId: input.userId,
             assetKind: 'video_variant',
             assetId: provenanceVersionId,

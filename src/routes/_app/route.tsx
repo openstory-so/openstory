@@ -24,11 +24,11 @@ export const Route = createFileRoute('/_app')({
       });
     }
 
-    // Seed the team's reachable media vias (and the reference-only model list
+    // Seed the organization's reachable media vias (and the reference-only model list
     // that follows from them) the same way the session is seeded above, so the
     // model pickers paint the right list rather than filtering a placeholder
     // and re-filtering a beat later. Signed-out visitors skip it — the fn needs
-    // a team, and the hook's conservative fallback is the right answer for
+    // an organization, and the hook's conservative fallback is the right answer for
     // them. Never fatal: a failure here must not take down the app shell over
     // an advisory capability hint.
     // The balance seed lets the credit pill paint its balance on first

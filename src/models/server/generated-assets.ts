@@ -105,7 +105,7 @@ export async function createGeneratedAsset(
   // Enforcement gate beside the credit gate (#1180).
   await requireGenerationAllowed({
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
   });
 
   await requireCredits(scopedDb, ASSET_COST_ESTIMATES[data.activity], {
@@ -123,7 +123,7 @@ export async function createGeneratedAsset(
 
   const workflowInput: AssetGenerationWorkflowInput = {
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
     assetId: row.id,
     endpointId: data.endpointId,
     activity: data.activity,

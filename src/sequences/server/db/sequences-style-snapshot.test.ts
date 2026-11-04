@@ -13,7 +13,7 @@ import {
   sequenceLocationLinks,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import { createCharactersMethods } from '@/cast/server/db/characters';
@@ -42,7 +42,7 @@ const V1_B = {
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 beforeAll(async () => {
@@ -62,20 +62,22 @@ beforeEach(async () => {
   await db.delete(locationsTable);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: 'u@example.com' });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
 });
 
 async function insertStyle(name: string, config: typeof V1_A) {
   const [row] = await db
     .insert(styles)
-    .values({ teamId, name, config })
+    .values({ organizationId, name, config })
     .returning();
   if (!row) throw new Error('style insert returned nothing');
   return row;
@@ -84,7 +86,7 @@ async function insertStyle(name: string, config: typeof V1_A) {
 describe('createSequencesMethods style snapshot', () => {
   it('copies a parsed v2 recipe onto the sequence at create', async () => {
     const style = await insertStyle('Noir', V1_A);
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
@@ -99,7 +101,7 @@ describe('createSequencesMethods style snapshot', () => {
 
   it('keeps the snapshot when the catalog row is later edited', async () => {
     const style = await insertStyle('Noir', V1_A);
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
@@ -119,7 +121,7 @@ describe('createSequencesMethods style snapshot', () => {
   it('replaces the snapshot when the sequence changes style', async () => {
     const styleA = await insertStyle('Noir', V1_A);
     const styleB = await insertStyle('Product', V1_B);
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
@@ -137,7 +139,7 @@ describe('createSequencesMethods style snapshot', () => {
   it('keeps every snapshot as a version and points at the live one (#1600)', async () => {
     const styleA = await insertStyle('Noir', V1_A);
     const styleB = await insertStyle('Product', V1_B);
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
@@ -161,7 +163,7 @@ describe('createSequencesMethods style snapshot', () => {
   // A sheet reads no style (#2017 characters, #1695 locations): its
   // `rendering` is on the bible. So no style write revokes a sheet claim.
   async function claimedLocation(styleId: string, deferStyleSnapshot = false) {
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
@@ -169,7 +171,7 @@ describe('createSequencesMethods style snapshot', () => {
       deferStyleSnapshot,
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
-    const locations = createLocationsMethods(db, teamId);
+    const locations = createLocationsMethods(db, organizationId);
     const location = await locations.create(
       {
         sequenceId: sequence.id,
@@ -184,7 +186,7 @@ describe('createSequencesMethods style snapshot', () => {
       activity: null,
     });
     // A character's sheet claim is on its cast look (#2017).
-    const characters = createCharactersMethods(db, teamId);
+    const characters = createCharactersMethods(db, organizationId);
     const character = await characters.create(
       {
         sequenceId: sequence.id,
@@ -194,7 +196,10 @@ describe('createSequencesMethods style snapshot', () => {
       },
       { source: 'analysis', createdBy: null }
     );
-    const sheet = await createCharacterLooksMethods(db, teamId).claimSheet(
+    const sheet = await createCharacterLooksMethods(
+      db,
+      organizationId
+    ).claimSheet(
       character.lookId,
       {
         lookVersionId: character.looks[0]?.lookVersionId ?? '',
@@ -279,7 +284,7 @@ describe('createSequencesMethods style snapshot', () => {
 
   it('a deferred snapshot has no version until the automatic style lands', async () => {
     const style = await insertStyle('Auto', V1_A);
-    const methods = createSequencesMethods(db, teamId, userId);
+    const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',

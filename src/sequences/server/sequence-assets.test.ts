@@ -10,7 +10,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
   user,
   videoVariants,
 } from '@/platform/server/db/schema';
@@ -45,31 +45,37 @@ afterAll(async () => {
   await closeDb();
 });
 
-function reads(teamId: string): SequenceAssetDb {
+function reads(organizationId: string): SequenceAssetDb {
   return {
-    sequences: createSequencesMethods(db, teamId, 'user-1'),
+    sequences: createSequencesMethods(db, organizationId, 'user-1'),
     scenes: createScenesMethods(db),
     shots: createShotsMethods(db),
     frames: createFramesMethods(db),
     frameVariants: createFrameVariantsMethods(db),
     renderSegments: createRenderSegmentsMethods(db),
     videoVariants: createVideoVariantsMethods(db),
-    characters: createCharactersMethods(db, teamId),
-    characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
-    locations: createLocationsMethods(db, teamId),
-    locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
+    characters: createCharactersMethods(db, organizationId),
+    characterSheetVariants: createCharacterSheetVariantsMethods(
+      db,
+      organizationId
+    ),
+    locations: createLocationsMethods(db, organizationId),
+    locationSheetVariants: createLocationSheetVariantsMethods(
+      db,
+      organizationId
+    ),
     sequenceElements: createSequenceElementsMethods(db),
     shotDialogue: createShotDialogueMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     shotPromptVersions: createShotPromptVersionsMethods(db),
-    styles: createStylesMethods(db, teamId, 'user-1'),
+    styles: createStylesMethods(db, organizationId, 'user-1'),
     sequenceExports: createSequenceExportsMethods(db),
   };
 }
 
 describe('listSequenceAssets', () => {
   it('lists the script, a stored clip and an element, and skips a provider-only url', async () => {
-    const teamId = generateId();
+    const organizationId = generateId();
     const sequenceId = generateId();
     const sceneId = generateId();
     const shotId = generateId();
@@ -77,12 +83,14 @@ describe('listSequenceAssets', () => {
     const videoId = generateId();
     await db
       .insert(user)
-      .values({ id: 'user-1', name: 'U', email: `${teamId}@e.com` });
-    await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
+      .values({ id: 'user-1', name: 'U', email: `${organizationId}@e.com` });
+    await db
+      .insert(organization)
+      .values({ id: organizationId, name: 'T', slug: organizationId });
     const [style] = await db
       .insert(styles)
       .values({
-        teamId,
+        organizationId,
         name: 'default',
         config: {
           mood: 'neutral',
@@ -99,7 +107,7 @@ describe('listSequenceAssets', () => {
     if (!style) throw new Error('style');
     await db.insert(sequences).values({
       id: sequenceId,
-      teamId,
+      organizationId,
       title: 'Pilot',
       styleId: style.id,
       script: 'INT. ROOM',
@@ -142,14 +150,14 @@ describe('listSequenceAssets', () => {
       ],
       status: 'completed',
       url: 'https://r2/v.mp4',
-      storagePath: `team/${sequenceId}/v.mp4`,
+      storagePath: `organization/${sequenceId}/v.mp4`,
     });
     await db.insert(sequenceElements).values({
       sequenceId,
       uploadedFilename: 'logo.png',
       token: 'LOGO',
-      imageUrl: '/r2/team/logo.png',
-      imagePath: 'team/logo.png',
+      imageUrl: '/r2/organization/logo.png',
+      imagePath: 'organization/logo.png',
     });
     await db.insert(videoVariants).values({
       renderSegmentId: segmentId,
@@ -173,17 +181,21 @@ describe('listSequenceAssets', () => {
       storagePath: null,
     });
 
-    const selected = await listSequenceAssets(reads(teamId), sequenceId, {
-      scope: 'selected',
-      includeExports: false,
-    });
+    const selected = await listSequenceAssets(
+      reads(organizationId),
+      sequenceId,
+      {
+        scope: 'selected',
+        includeExports: false,
+      }
+    );
     expect(selected.assets.map((asset) => asset.relativePath).sort()).toEqual([
       'elements/LOGO.png',
       'script.txt',
       `segments/${videoId}.mp4`,
     ]);
     expect(selected.assets.find((asset) => asset.kind === 'video')?.url).toBe(
-      `/r2/team/${sequenceId}/v.mp4?download`
+      `/r2/organization/${sequenceId}/v.mp4?download`
     );
     expect(selected.assets.some((asset) => asset.kind === 'style')).toBe(false);
 
@@ -191,17 +203,25 @@ describe('listSequenceAssets', () => {
       .update(videoVariants)
       .set({ discardedAt: new Date() })
       .where(eq(videoVariants.id, videoId));
-    const history = await listSequenceAssets(reads(teamId), sequenceId, {
-      scope: 'history',
-      includeExports: false,
-    });
+    const history = await listSequenceAssets(
+      reads(organizationId),
+      sequenceId,
+      {
+        scope: 'history',
+        includeExports: false,
+      }
+    );
     expect(history.assets.some((asset) => asset.versionId === videoId)).toBe(
       true
     );
-    const current = await listSequenceAssets(reads(teamId), sequenceId, {
-      scope: 'selected',
-      includeExports: false,
-    });
+    const current = await listSequenceAssets(
+      reads(organizationId),
+      sequenceId,
+      {
+        scope: 'selected',
+        includeExports: false,
+      }
+    );
     expect(current.assets.some((asset) => asset.kind === 'video')).toBe(false);
   });
 });

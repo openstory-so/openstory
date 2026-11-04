@@ -1,5 +1,5 @@
-import type { TeamLocation } from '@/cast/server/db/locations';
-import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import type { OrganizationLocation } from '@/cast/server/db/locations';
+import { useOrganizationLocationList } from '@/cast/ui/use-organization-locations';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,9 @@ import { useState } from 'react';
 import { AppImage } from '@/ui/shadcn/app-image';
 
 /** Which sequences use a location, in a line. */
-export function locationUseLine(sequences: TeamLocation['sequences']): string {
+export function locationUseLine(
+  sequences: OrganizationLocation['sequences']
+): string {
   const [latest] = sequences;
   if (!latest) return 'In no sequence';
   if (sequences.length === 1) return `In ${latest.title}`;
@@ -23,18 +25,18 @@ export function locationUseLine(sequences: TeamLocation['sequences']): string {
 }
 
 /**
- * Pick the team location that replaces this one in the sequence (#1695).
+ * Pick the organization location that replaces this one in the sequence (#1695).
  * Only locations with a sheet are offered: the shots set here re-render
  * from it, and Replace draws none.
  */
 export const LocationPickerDialog: React.FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (location: TeamLocation) => void;
+  onSelect: (location: OrganizationLocation) => void;
   /** Locations the sequence already uses, this one included: not offered. */
   excludeLocationIds: ReadonlySet<string>;
 }> = ({ open, onOpenChange, onSelect, excludeLocationIds }) => {
-  const { data: locations } = useTeamLocationList(open);
+  const { data: locations } = useOrganizationLocationList(open);
   const [query, setQuery] = useState('');
 
   const q = query.trim().toLowerCase();

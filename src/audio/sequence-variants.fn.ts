@@ -14,7 +14,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
-  authWithTeamMiddleware,
+  authWithOrganizationMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { NotFoundError } from '@/platform/errors';
@@ -42,16 +42,16 @@ export const getDivergentSequenceMusicVariantsFn = createServerFn({
   });
 
 /**
- * Aggregate read for the team's sequences-list dashboard. Returns one row per
+ * Aggregate read for the organization's sequences-list dashboard. Returns one row per
  * sequence that has at least one live divergent music alternate.
  */
-export const getTeamDivergentSequenceVariantsFn = createServerFn({
+export const getOrganizationDivergentSequenceVariantsFn = createServerFn({
   method: 'GET',
 })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async ({ context }) => {
-    return context.scopedDb.sequenceVariants.listDivergentByTeam(
-      context.teamId
+    return context.scopedDb.sequenceVariants.listDivergentByOrganization(
+      context.organizationId
     );
   });
 

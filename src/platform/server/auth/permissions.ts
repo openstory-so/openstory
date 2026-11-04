@@ -1,33 +1,24 @@
 /**
- * Authorization and Permission Utilities for RBAC
- * Provides role-based access control functions for team resources
+ * Organization role lookup. The permission check itself is
+ * `roleHasPermission` in `@/platform/auth/organization-access`.
  */
 
-import { getUserTeamMembership } from '@/platform/server/db/scoped';
+import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
+import type { OrganizationRole } from './constants';
 
-// Role hierarchy (higher number = more permissions)
-const ROLE_HIERARCHY = {
-  viewer: 1,
-  member: 2,
-  admin: 3,
-  owner: 4,
-} as const;
-
-export type TeamRole = keyof typeof ROLE_HIERARCHY;
+export type { OrganizationRole };
 
 /**
- * Get user's role for a specific team
- * Returns null if user is not a member of the team
+ * Role for one organization, or null when the user is not a member.
  */
 export async function getUserRole(
   userId: string,
-  teamId: string
-): Promise<TeamRole | null> {
-  const membership = await getUserTeamMembership(userId, teamId);
-
-  if (!membership) {
-    return null;
-  }
-
+  organizationId: string
+): Promise<OrganizationRole | null> {
+  const membership = await getUserOrganizationMembership(
+    userId,
+    organizationId
+  );
+  if (!membership) return null;
   return membership.role;
 }

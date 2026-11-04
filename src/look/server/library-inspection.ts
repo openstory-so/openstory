@@ -72,7 +72,7 @@ const LIST_FIELDS = {
   vfx: ['id', 'name', 'previewUrl'],
 } satisfies Record<LibraryReadKind, string[]>;
 
-/** The team's library through the reads the app uses: own + public styles, own audio / VFX. */
+/** The organization's library through the reads the app uses: own + public styles, own audio / VFX. */
 async function libraryRows(
   scopedDb: ScopedDb,
   kind: LibraryReadKind
@@ -89,7 +89,7 @@ export async function listLibraryResources(
 ) {
   const page = await readPage(
     input,
-    [scopedDb.teamId, kind, ''],
+    [scopedDb.organizationId, kind, ''],
     pageRows(await libraryRows(scopedDb, kind))
   );
   return {
@@ -115,7 +115,7 @@ export async function readLibraryResource(
 export async function listGalleryStyles(scopedDb: ScopedDb, input: PageInput) {
   return readPage(
     input,
-    [scopedDb.teamId, 'gallery'],
+    [scopedDb.organizationId, 'gallery'],
     pageRows(await scopedDb.styles.list())
   );
 }
@@ -131,7 +131,7 @@ export async function readGalleryStyle(
   if (
     !row ||
     row.sequenceId ||
-    !(row.isPublic || row.teamId === scopedDb.teamId)
+    !(row.isPublic || row.organizationId === scopedDb.organizationId)
   )
     throw new NotFoundError('Library resource not found.');
   return {

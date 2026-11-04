@@ -8,13 +8,13 @@
  * catalog of next actions — notably `create-sequence` pre-filled with the
  * enhanced script).
  *
- * Authenticated via `authWithTeamRequestMiddleware` (API key or dashboard
+ * Authenticated via `authWithOrganizationRequestMiddleware` (API key or dashboard
  * session), billed per request like the dashboard enhance. Pre-stream failures
  * (bad body, unresolvable style, billing) return the standard JSON error
  * envelope; failures after streaming has begun arrive as an `event: error` shot.
  */
 
-import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
+import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import {
   buildEnhanceGenerator,
   enhanceSseResponse,
@@ -26,7 +26,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/scripts/enhance')({
   server: {
-    middleware: [authWithTeamRequestMiddleware],
+    middleware: [authWithOrganizationRequestMiddleware],
     handlers: {
       POST: async ({ request, context }) =>
         runApiV1Handler(async () => {
@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
           const gen = await buildEnhanceGenerator(input, {
             scopedDb: context.scopedDb,
             user: context.user,
-            teamId: context.teamId,
+            organizationId: context.organizationId,
           });
 
           // Pull the first chunk here (inside runApiV1Handler) so setup failures

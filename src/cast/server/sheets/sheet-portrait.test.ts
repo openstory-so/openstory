@@ -1,6 +1,6 @@
 /**
  * The portrait is a paid call the sheet run's reservation does not cover:
- * it is drawn only when the team can pay, recorded, then charged.
+ * it is drawn only when the organization can pay, recorded, then charged.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,7 +37,7 @@ const { chargeSheetPortrait, drawSheetPortrait } =
   await import('./sheet-portrait');
 
 const scopedDb = asStub<WorkflowScopedDb>({
-  teamId: 'team-1',
+  organizationId: 'organization-1',
   provenance: {},
   credentials: { userId: 'user-1' },
   billing: {
@@ -50,8 +50,8 @@ const draw = () =>
   drawSheetPortrait({
     scopedDb,
     kind: 'character',
-    sheetUrl: '/r2/characters/team-1/seq-1/char-1/sheet.png',
-    storageDir: 'team-1/seq-1/char-1',
+    sheetUrl: '/r2/characters/organization-1/seq-1/char-1/sheet.png',
+    storageDir: 'organization-1/seq-1/char-1',
     subjectId: 'char-1',
     chargeKey: 'run-1',
     userId: 'user-1',
@@ -90,13 +90,13 @@ beforeEach(() => {
     via: 'google',
   });
   mockStore.mockResolvedValue({
-    url: '/r2/characters/team-1/seq-1/char-1/p-portrait.png',
-    path: 'team-1/seq-1/char-1/p-portrait.png',
+    url: '/r2/characters/organization-1/seq-1/char-1/p-portrait.png',
+    path: 'organization-1/seq-1/char-1/p-portrait.png',
   });
 });
 
 describe('drawSheetPortrait', () => {
-  it('makes no paid call when the team cannot pay', async () => {
+  it('makes no paid call when the organization cannot pay', async () => {
     mockCreateReservation.mockResolvedValue({ ok: false });
 
     expect(await draw()).toBeNull();
@@ -106,21 +106,21 @@ describe('drawSheetPortrait', () => {
 
   it('draws from the sheet, records it, then charges once per run', async () => {
     expect((await drawAndCharge()).portraitUrl).toBe(
-      '/r2/characters/team-1/seq-1/char-1/p-portrait.png'
+      '/r2/characters/organization-1/seq-1/char-1/p-portrait.png'
     );
     // The image call is handed the credentials surface, not the whole db.
     expect(mockGenerate.mock.calls[0]?.[1]).toEqual({
       credentials: { userId: 'user-1' },
     });
     expect(mockGenerate.mock.calls[0]?.[0].referenceImageUrls).toEqual([
-      '/r2/characters/team-1/seq-1/char-1/sheet.png',
+      '/r2/characters/organization-1/seq-1/char-1/sheet.png',
     ]);
     expect(mockRecordProvenance).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         assetKind: 'character_sheet',
         assetId: 'char-1',
-        storageKey: 'team-1/seq-1/char-1/p-portrait.png',
+        storageKey: 'organization-1/seq-1/char-1/p-portrait.png',
         workflowRunId: 'run-1',
       })
     );

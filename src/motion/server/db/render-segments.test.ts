@@ -18,7 +18,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import { createRenderSegmentsMethods } from './render-segments';
@@ -37,18 +37,20 @@ async function seed() {
   await db.delete(scenes);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
 
-  const teamId = generateId();
+  const organizationId = generateId();
   sequenceId = generateId();
   sceneId = generateId();
   shotId = generateId();
 
-  await db.insert(teams).values([{ id: teamId, name: 'T', slug: 't' }]);
+  await db
+    .insert(organization)
+    .values([{ id: organizationId, name: 'T', slug: 't' }]);
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -64,7 +66,9 @@ async function seed() {
   if (!style) throw new Error('seed: style insert returned nothing');
   await db
     .insert(sequences)
-    .values([{ id: sequenceId, teamId, title: 'S', styleId: style.id }]);
+    .values([
+      { id: sequenceId, organizationId, title: 'S', styleId: style.id },
+    ]);
   await db
     .insert(scenes)
     .values([{ id: dbSceneId(sceneId), sequenceId, orderIndex: 0 }]);

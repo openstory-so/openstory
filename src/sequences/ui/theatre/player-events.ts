@@ -39,6 +39,7 @@ export type VideoWatchedProperties = {
 export type SequenceReadySeenProperties = {
   sequence_id: string;
   first_sequence_for_team: boolean;
+  first_sequence_for_organization: boolean;
   seconds_since_generate: number;
 };
 

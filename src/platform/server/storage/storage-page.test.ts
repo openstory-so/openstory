@@ -8,7 +8,7 @@ describe('storage continuation pages', () => {
     list.mockResolvedValue({
       objects: [
         {
-          key: 'talent/team-a/temp/a.mp3',
+          key: 'talent/organization-a/temp/a.mp3',
           size: 42,
           uploaded: new Date('2026-01-01'),
           httpMetadata: { contentType: 'audio/mpeg' },
@@ -17,12 +17,12 @@ describe('storage continuation pages', () => {
       truncated: true,
       cursor: 'next',
     });
-    const page = await listFilesPage('talent', 'team-a/temp', {
+    const page = await listFilesPage('talent', 'organization-a/temp', {
       limit: 1,
       cursor: 'previous',
     });
     expect(list).toHaveBeenCalledWith({
-      prefix: 'talent/team-a/temp/',
+      prefix: 'talent/organization-a/temp/',
       limit: 1,
       cursor: 'previous',
       include: ['httpMetadata'],
@@ -31,7 +31,7 @@ describe('storage continuation pages', () => {
       files: [
         {
           name: 'a.mp3',
-          url: '/r2/talent/team-a/temp/a.mp3',
+          url: '/r2/talent/organization-a/temp/a.mp3',
           size: 42,
           contentType: 'audio/mpeg',
           uploadedAt: '2026-01-01T00:00:00.000Z',
@@ -42,7 +42,7 @@ describe('storage continuation pages', () => {
     list.mockResolvedValue({ objects: [], truncated: false });
     expect(
       (
-        await listFilesPage('talent', 'team-a/temp', {
+        await listFilesPage('talent', 'organization-a/temp', {
           limit: 1,
           cursor: 'next',
         })

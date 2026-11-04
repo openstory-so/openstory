@@ -43,7 +43,7 @@ export async function listAssets(
   { limit, cursor, ...filters }: PageInput & AssetFilters
 ) {
   const scope = [
-    scopedDb.teamId,
+    scopedDb.organizationId,
     'generated-assets',
     filters.source ?? '',
     filters.activity ?? '',

@@ -26,15 +26,18 @@ function asSerialized(value: SerializedError | string): SerializedError {
 describe('serializeError', () => {
   it('walks the .cause chain', () => {
     const root = new Error('D1_ERROR: storage overloaded');
-    const wrapper = new Error('Failed query: select … from team_api_keys', {
-      cause: root,
-    });
+    const wrapper = new Error(
+      'Failed query: select … from organization_api_keys',
+      {
+        cause: root,
+      }
+    );
 
     const result = serializeError(wrapper);
 
     expect(result).toMatchObject({
       name: 'Error',
-      message: 'Failed query: select … from team_api_keys',
+      message: 'Failed query: select … from organization_api_keys',
       cause: { name: 'Error', message: 'D1_ERROR: storage overloaded' },
     });
   });

@@ -1,7 +1,7 @@
 /**
  * `create_stitch` (#2127): a shared cut made from files the agent hands over
  * as URLs or inline bytes, no CLI. Each distinct source is stored once under
- * `stitches/<team>/<id>/` through `storeUpload` (the same fetch guard, size
+ * `stitches/<organizationId>/<id>/` through `storeUpload` (the same fetch guard, size
  * caps and real-person check `upload_media` runs), then the cut is written
  * with the stored URLs. The id is minted first so the stored paths carry it.
  */

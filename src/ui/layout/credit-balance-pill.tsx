@@ -12,7 +12,7 @@
  * Collapsed (icon rail): wallet icon only + tooltip with amount — never the
  * dollar string, so it cannot overlap the avatar.
  *
- * Subscribes to team billing SSE only while visible and signed in.
+ * Subscribes to organization billing SSE only while visible and signed in.
  */
 
 import { cn } from '@/ui/utils';
@@ -33,7 +33,8 @@ import { Wallet } from 'lucide-react';
 
 export const CreditBalancePill: React.FC = () => {
   const { data: user, isLoading: userLoading } = useUser();
-  const { balance, reserved, teamId, isLowBalance } = useBillingBalance();
+  const { balance, reserved, organizationId, isLowBalance } =
+    useBillingBalance();
   const { data: gateStatus } = useBillingGateQuery();
   const { showCosts } = useShowCosts();
   const { isFlashing } = useBalanceFlash();
@@ -49,7 +50,7 @@ export const CreditBalancePill: React.FC = () => {
   const isSignedInVisible = isLowBalanceVisible || showCosts || isFlashing;
 
   // SSE while signed in and the pill is showing a live balance.
-  useBillingBalanceRealtime(teamId, !isSignedOut && isSignedInVisible);
+  useBillingBalanceRealtime(organizationId, !isSignedOut && isSignedInVisible);
 
   if (isSignedOut || !isSignedInVisible) return null;
 

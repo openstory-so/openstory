@@ -7,7 +7,12 @@ import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import { sequences, styles, teams, user } from '@/platform/server/db/schema';
+import {
+  sequences,
+  styles,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 import { createStylesMethods } from '@/look/server/db/styles';
 import {
@@ -20,7 +25,7 @@ import { resolveStyleSource } from './create-sequences';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let userId = '';
 
 beforeAll(async () => {
@@ -35,20 +40,22 @@ beforeEach(async () => {
   await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
-  teamId = generateId();
+  organizationId = generateId();
   userId = generateId();
   await db
     .insert(user)
     .values({ id: userId, name: 'U', email: 'u@example.com' });
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
 });
 
-function scoped(team = teamId) {
+function scoped(id = organizationId) {
   return {
-    styles: createStylesMethods(db, team, userId),
-    sequences: createSequencesMethods(db, team, userId),
+    styles: createStylesMethods(db, id, userId),
+    sequences: createSequencesMethods(db, id, userId),
   };
 }
 
@@ -92,7 +99,7 @@ describe('resolveStyleSource', () => {
     const [row] = await db
       .insert(styles)
       .values({
-        teamId,
+        organizationId,
         name: 'Noir',
         config: placeholderAutoStyleDraft().config,
       })
@@ -117,7 +124,7 @@ describe('resolveStyleSource', () => {
     );
   });
 
-  it("another team's automatic style is not found", async () => {
+  it("another organization's automatic style is not found", async () => {
     const style = await createAutoSequence(true);
     await expect(
       resolveStyleSource(scoped(generateId()), style.id)

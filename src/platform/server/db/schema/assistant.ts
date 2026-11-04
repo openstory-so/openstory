@@ -1,7 +1,7 @@
 /**
  * In-app assistant (#2155): the chat threads a user holds with the MCP tool
  * set, and the three TanStack AI persistence stores behind them (messages,
- * runs, interrupts). A thread belongs to one user in one team; the stores
+ * runs, interrupts). A thread belongs to one user in one organization; the stores
  * key on TanStack's own ids (`threadId`, `runId`, `interruptId`) through a
  * unique column, while every row's primary key is still an app ULID.
  */
@@ -18,7 +18,7 @@ import type { ModelMessage, TokenUsage } from '@tanstack/ai';
 import type { InterruptRecord, RunStatus } from '@tanstack/ai-persistence';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 export const assistantThreads = snakeCase.table(
   'assistant_threads',
@@ -28,9 +28,9 @@ export const assistantThreads = snakeCase.table(
       .primaryKey()
       .notNull(),
     // No cascade (AGENTS.md, D1 table-rebuild trap): cleanup is app code.
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'restrict' }),
@@ -44,8 +44,8 @@ export const assistantThreads = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_assistant_threads_team_user').on(
-      table.teamId,
+    index('idx_assistant_threads_organization_user').on(
+      table.organizationId,
       table.userId,
       table.updatedAt
     ),

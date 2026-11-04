@@ -35,7 +35,7 @@ import {
   sequenceMusicPromptVersions,
   sequences,
   styles,
-  teams,
+  organization,
   user,
 } from '@/platform/server/db/schema';
 import type { ShotPromptVersion } from '@/platform/server/db/schema';
@@ -46,7 +46,7 @@ import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequ
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let sequenceId = '';
 let shotId = '';
 
@@ -56,17 +56,19 @@ async function seed() {
   await db.delete(shots);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
 
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -82,7 +84,7 @@ async function seed() {
   if (!style) throw new Error('test setup: style insert returned nothing');
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title: 'S',
     styleId: style.id,
   });
@@ -1343,7 +1345,7 @@ describe('sequence_music_prompt_variants helper', () => {
     const otherSequenceId = generateId();
     await db.insert(sequences).values({
       id: otherSequenceId,
-      teamId,
+      organizationId,
       title: 'Other',
       styleId: seededSequence.styleId,
     });

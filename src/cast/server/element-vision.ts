@@ -36,7 +36,7 @@ type ElementDescription = z.infer<typeof elementVisionResponseSchema>;
 export type DescribeElementInput = {
   imageUrl: string;
   filename: string;
-  /** Resolved LLM key (team OpenRouter, team fal, or platform) */
+  /** Resolved LLM key (organization OpenRouter, organization fal, or platform) */
   llmKey?: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
@@ -154,6 +154,6 @@ export async function describeElementImage(
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
     model,
     costMicros: llmCostFromUsage(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'team',
+    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

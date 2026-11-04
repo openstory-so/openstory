@@ -1,8 +1,8 @@
 /**
- * Scoped `stitches` rows (#2127). A team creates and publishes; anyone with
+ * Scoped `stitches` rows (#2127). An organization creates and publishes; anyone with
  * the id reads a published row, through the unscoped `createPublicStitchReads`
  * the composition root exposes as `getPublicStitch` — the page at
- * /stitch/<id> has no team.
+ * /stitch/<id> has no organization.
  */
 
 import type { Database } from '@/platform/server/db/client';
@@ -12,7 +12,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 export function createStitchesMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
@@ -30,7 +30,7 @@ export function createStitchesMethods(
         .insert(stitches)
         .values({
           id: input.id,
-          teamId,
+          organizationId,
           userId,
           cut: input.cut,
           publishedAt: input.publishedAt,
@@ -45,12 +45,14 @@ export function createStitchesMethods(
       const rows = await db
         .select()
         .from(stitches)
-        .where(and(eq(stitches.id, id), eq(stitches.teamId, teamId)))
+        .where(
+          and(eq(stitches.id, id), eq(stitches.organizationId, organizationId))
+        )
         .limit(1);
       return rows[0] ?? null;
     },
 
-    /** Mark the row published; null when it is not this team's or already is. */
+    /** Mark the row published; null when it is not this organization's or already is. */
     publish: async (id: string): Promise<Stitch | null> => {
       const rows = await db
         .update(stitches)
@@ -58,7 +60,7 @@ export function createStitchesMethods(
         .where(
           and(
             eq(stitches.id, id),
-            eq(stitches.teamId, teamId),
+            eq(stitches.organizationId, organizationId),
             isNull(stitches.publishedAt)
           )
         )

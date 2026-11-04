@@ -16,7 +16,10 @@ import type { ImageGenerationParams } from '@/stills/server/image-generation';
 import { buildLocationSheetPrompt } from '@/cast/location-prompt';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getGenerationChannel } from '@/platform/realtime';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  castStorageDir,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
@@ -110,12 +113,17 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Destination is resolved BEFORE generating, because the image is stored
     // inside the generating step (#1645). A run from no sequence (#1695)
-    // stores under the team and reports on the location's own channel.
+    // stores under the organization and reports on the location's own channel.
     const locationDbId = input.locationDbId;
-    const teamId = input.teamId;
+    const organizationId = input.organizationId;
     const sequenceId = input.sequenceId;
     const channelId = locationChannelId(sequenceId, locationDbId);
-    const storageDir = `${teamId}/${sequenceId ?? 'team'}/${locationDbId}`;
+    const storageDir = castStorageDir(
+      organizationId,
+      sequenceId,
+      'locations',
+      locationDbId
+    );
 
     // Step 2: Generate the location reference image — reseeds on a content
     // flag, then one softened prompt (#1293). The upload rides the same step:
@@ -159,7 +167,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
 
-    // Deduct credits for image generation (skip if team used own fal key)
+    // Deduct credits for image generation (skip if organization used own fal key)
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
         scopedDb,
@@ -184,7 +192,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
-        teamId,
+        organizationId,
         userId: input.userId,
         assetKind: 'location_sheet',
         assetId: locationDbId,
@@ -256,7 +264,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       await triggerSheetPortrait(
         {
           userId: input.userId,
-          teamId,
+          organizationId,
           sequenceId: sequenceId ?? undefined,
           subject: { kind: 'location', locationId: locationDbId },
           versionId: reconcileOutcome.versionId,
@@ -265,7 +273,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         },
         await scopedDb.liveRead.compliance.listEnforcementFor(
           input.userId,
-          teamId
+          organizationId
         )
       );
     });
@@ -331,7 +339,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const input = event.payload;
 
     // Mark location reference as failed — through the claim (#1113).
-    if (input.locationDbId && input.teamId) {
+    if (input.locationDbId && input.organizationId) {
       await scopedDb.locations.failReferenceClaim(
         input.locationDbId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim

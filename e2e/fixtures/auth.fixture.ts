@@ -20,14 +20,14 @@ const TestUserResponseSchema = z.object({
   id: z.string(),
   email: z.string(),
   name: z.string(),
-  teamId: z.string(),
+  organizationId: z.string(),
 });
 
 type TestUser = {
   id: string;
   email: string;
   name: string;
-  teamId: string;
+  organizationId: string;
 };
 
 const userInfoFile = path.join(import.meta.dirname, '../.auth/user-info.json');
@@ -46,7 +46,7 @@ function getStoredUserInfo(): TestUser {
 }
 
 /**
- * Create a test user with team directly in the database
+ * Create a test user with organization directly in the database
  */
 export async function createTestUser(
   options: { name?: string } = {}
@@ -72,12 +72,15 @@ export async function createTestUser(
 /**
  * Clean up test user and related data
  */
-async function cleanupTestUser(userId: string, teamId: string): Promise<void> {
+export async function cleanupTestUser(
+  userId: string,
+  organizationId: string
+): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
   await fetch('http://localhost:3020/api/test/user', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, teamId }),
+    body: JSON.stringify({ userId, organizationId }),
   });
 }
 
@@ -146,7 +149,7 @@ export const test = base.extend<{
     const freshUser = await createTestUser();
     await authenticateUser(page, freshUser.email);
     await use(page);
-    await cleanupTestUser(freshUser.id, freshUser.teamId);
+    await cleanupTestUser(freshUser.id, freshUser.organizationId);
   },
 });
 

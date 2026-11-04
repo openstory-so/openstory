@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asStub } from '@/test/as-stub';
 
 const mocks = vi.hoisted(() => ({
-  createTeamCharacter: vi.fn(),
-  createTeamLocation: vi.fn(),
+  createOrganizationCharacter: vi.fn(),
+  createOrganizationLocation: vi.fn(),
   createSequences: vi.fn(),
-  triggerTeamLocationSheet: vi.fn(),
+  triggerOrganizationLocationSheet: vi.fn(),
   enhanceScriptToString: vi.fn(),
   uploadFile: vi.fn(async () => undefined),
   classifyUpload: vi.fn<
@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
     (options: { usingOwnFalKey: boolean }) => 'byteplus' | 'fal'
   >(() => 'fal'),
   resolveOptionalKey: vi.fn<
-    () => Promise<{ source: 'team' | 'platform' } | null>
+    () => Promise<{ source: 'organization' | 'platform' } | null>
   >(async () => null),
 }));
 
@@ -46,12 +46,12 @@ vi.mock('@/sequences/server/create-sequences', () => ({
 }));
 
 vi.mock('@/cast/server/cast-edit', () => ({
-  createTeamCharacter: mocks.createTeamCharacter,
+  createOrganizationCharacter: mocks.createOrganizationCharacter,
 }));
 
-vi.mock('@/cast/server/locations/team-locations', () => ({
-  createTeamLocation: mocks.createTeamLocation,
-  triggerTeamLocationSheet: mocks.triggerTeamLocationSheet,
+vi.mock('@/cast/server/locations/organization-locations', () => ({
+  createOrganizationLocation: mocks.createOrganizationLocation,
+  triggerOrganizationLocationSheet: mocks.triggerOrganizationLocationSheet,
 }));
 
 const { runOneShotCreate } = await import('./create');
@@ -59,7 +59,7 @@ const { runOneShotCreate } = await import('./create');
 function makeStyle(): Style {
   return {
     id: 'style-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
@@ -115,20 +115,25 @@ function pngResponse(): Response {
 describe('runOneShotCreate', () => {
   const characterDelete = vi.fn(async () => true);
   const locationDelete = vi.fn(async () => true);
-  const teamLocations = vi.fn(async () => [] as { id: string; name: string }[]);
+  const organizationLocations = vi.fn(
+    async () => [] as { id: string; name: string }[]
+  );
   const callLog: string[] = [];
 
   const ctx = {
     user: { id: 'user-1' },
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
     scopedDb: asStub<ScopedDb>({
       styles: { list: async () => [makeStyle()] },
       characters: {
-        listTeam: async () => [],
-        softDeleteForTeam: characterDelete,
+        listOrganization: async () => [],
+        softDeleteForOrganization: characterDelete,
       },
-      locations: { listTeam: teamLocations, softDeleteForTeam: locationDelete },
+      locations: {
+        listOrganization: organizationLocations,
+        softDeleteForOrganization: locationDelete,
+      },
       apiKeys: { resolveOptionalKey: mocks.resolveOptionalKey },
     }),
   };
@@ -144,15 +149,15 @@ describe('runOneShotCreate', () => {
       vi.fn(async () => pngResponse())
     );
 
-    mocks.createTeamCharacter.mockImplementation(
+    mocks.createOrganizationCharacter.mockImplementation(
       async (_scopedDb: unknown, _actor: unknown, input: { name: string }) => {
         callLog.push(`createCharacter:${input.name}`);
         return { id: `char-${input.name}`, name: input.name };
       }
     );
 
-    teamLocations.mockResolvedValue([]);
-    mocks.createTeamLocation.mockImplementation(
+    organizationLocations.mockResolvedValue([]);
+    mocks.createOrganizationLocation.mockImplementation(
       async (
         _scopedDb: unknown,
         input: { name: string },
@@ -177,7 +182,7 @@ describe('runOneShotCreate', () => {
       };
     });
 
-    mocks.triggerTeamLocationSheet.mockImplementation(async () => {
+    mocks.triggerOrganizationLocationSheet.mockImplementation(async () => {
       callLog.push('triggerLocationSheet');
       return 'location-sheet-run';
     });
@@ -200,7 +205,7 @@ describe('runOneShotCreate', () => {
   describe('video defaults', () => {
     const created = () => mocks.createSequences.mock.calls[0]?.[0];
 
-    it('starts on Seedance 2.5, drafted first, where the team reaches BytePlus', async () => {
+    it('starts on Seedance 2.5, drafted first, where the organization reaches BytePlus', async () => {
       mocks.claimBytePlusVia.mockReturnValue('byteplus');
       await runOneShotCreate(baseInput, ctx);
       expect(created().videoModels).toEqual(['seedance_v2_5']);
@@ -214,8 +219,8 @@ describe('runOneShotCreate', () => {
       expect(created().draftMotion).toBe(false);
     });
 
-    it('asks the route with the team\u2019s own fal key in view', async () => {
-      mocks.resolveOptionalKey.mockResolvedValue({ source: 'team' });
+    it('asks the route with the organization\u2019s own fal key in view', async () => {
+      mocks.resolveOptionalKey.mockResolvedValue({ source: 'organization' });
       await runOneShotCreate(baseInput, ctx);
       expect(mocks.claimBytePlusVia).toHaveBeenCalledWith({
         native: true,
@@ -258,7 +263,7 @@ describe('runOneShotCreate', () => {
     );
   });
 
-  it('makes inline characters team characters and casts them, fetching nothing', async () => {
+  it('makes inline characters organization characters and casts them, fetching nothing', async () => {
     const result = await runOneShotCreate(
       {
         ...baseInput,
@@ -272,8 +277,8 @@ describe('runOneShotCreate', () => {
 
     expect(result.sequences[0]?.id).toBe('seq-1');
     expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(2);
-    expect(mocks.createTeamCharacter.mock.calls[0]?.[2]).toEqual({
+    expect(mocks.createOrganizationCharacter).toHaveBeenCalledTimes(2);
+    expect(mocks.createOrganizationCharacter.mock.calls[0]?.[2]).toEqual({
       name: 'Ada',
       physicalDescription: undefined,
       isPerson: true,
@@ -341,7 +346,7 @@ describe('runOneShotCreate', () => {
       return true;
     });
 
-    expect(mocks.createTeamLocation).not.toHaveBeenCalled();
+    expect(mocks.createOrganizationLocation).not.toHaveBeenCalled();
     expect(mocks.createSequences).not.toHaveBeenCalled();
     expect(locationDelete).not.toHaveBeenCalled();
   });
@@ -365,7 +370,7 @@ describe('runOneShotCreate', () => {
     ).rejects.toThrow(/Location "Pier" shows a real person/);
 
     expect(mocks.attestUploads).not.toHaveBeenCalled();
-    expect(mocks.createTeamLocation).not.toHaveBeenCalled();
+    expect(mocks.createOrganizationLocation).not.toHaveBeenCalled();
     expect(mocks.createSequences).not.toHaveBeenCalled();
   });
 
@@ -390,17 +395,17 @@ describe('runOneShotCreate', () => {
       expect.anything(),
       [
         expect.objectContaining({
-          url: expect.stringContaining('/r2/locations/team-1/uploads/'),
+          url: expect.stringContaining('/r2/locations/organization-1/uploads/'),
           statementVersion: 'portrait-rights-v1',
           authorizationBasis: 'self',
         }),
       ],
       ctx.request
     );
-    expect(mocks.createTeamLocation).toHaveBeenCalledTimes(1);
+    expect(mocks.createOrganizationLocation).toHaveBeenCalledTimes(1);
   });
 
-  it('makes an inline location a team location and starts its sheet only after the sequence exists (#1695)', async () => {
+  it('makes an inline location an organization location and starts its sheet only after the sequence exists (#1695)', async () => {
     await runOneShotCreate(
       {
         ...baseInput,
@@ -413,17 +418,23 @@ describe('runOneShotCreate', () => {
       ctx
     );
 
-    expect(mocks.createTeamLocation.mock.calls[0]?.slice(1)).toEqual([
+    expect(mocks.createOrganizationLocation.mock.calls[0]?.slice(1)).toEqual([
       {
         name: 'Pier',
         description: null,
         // The style names no medium: photoreal.
         rendering: 'Photoreal live action',
-        photoUrls: [expect.stringContaining('/r2/locations/team-1/uploads/')],
+        photoUrls: [
+          expect.stringContaining('/r2/locations/organization-1/uploads/'),
+        ],
       },
-      { userId: 'user-1', teamId: 'team-1', triggerSheet: false },
+      {
+        userId: 'user-1',
+        organizationId: 'organization-1',
+        triggerSheet: false,
+      },
     ]);
-    expect(mocks.createTeamLocation.mock.calls[1]?.[1]).toEqual(
+    expect(mocks.createOrganizationLocation.mock.calls[1]?.[1]).toEqual(
       expect.objectContaining({ rendering: '3D animated, Pixar-like' })
     );
     expect(mocks.createSequences).toHaveBeenCalledWith(
@@ -438,32 +449,38 @@ describe('runOneShotCreate', () => {
     expect(callLog.indexOf('triggerLocationSheet')).toBeGreaterThan(
       callLog.indexOf('createSequences')
     );
-    expect(mocks.triggerTeamLocationSheet).toHaveBeenCalledTimes(2);
-    expect(mocks.triggerTeamLocationSheet).toHaveBeenCalledWith(
+    expect(mocks.triggerOrganizationLocationSheet).toHaveBeenCalledTimes(2);
+    expect(mocks.triggerOrganizationLocationSheet).toHaveBeenCalledWith(
       expect.anything(),
-      { userId: 'user-1', teamId: 'team-1', locationId: 'loc-Pier' }
+      {
+        userId: 'user-1',
+        organizationId: 'organization-1',
+        locationId: 'loc-Pier',
+      }
     );
     expect(locationDelete).not.toHaveBeenCalled();
   });
 
-  it('names a team location by a string and makes nothing (#1695)', async () => {
-    teamLocations.mockResolvedValue([{ id: 'loc-team', name: 'Rooftop Bar' }]);
+  it('names an organization location by a string and makes nothing (#1695)', async () => {
+    organizationLocations.mockResolvedValue([
+      { id: 'loc-organization', name: 'Rooftop Bar' },
+    ]);
     await runOneShotCreate({ ...baseInput, locations: ['rooftop bar'] }, ctx);
-    expect(mocks.createTeamLocation).not.toHaveBeenCalled();
-    expect(mocks.triggerTeamLocationSheet).not.toHaveBeenCalled();
+    expect(mocks.createOrganizationLocation).not.toHaveBeenCalled();
+    expect(mocks.triggerOrganizationLocationSheet).not.toHaveBeenCalled();
     expect(mocks.createSequences).toHaveBeenCalledWith(
-      expect.objectContaining({ suggestedLocationIds: ['loc-team'] }),
+      expect.objectContaining({ suggestedLocationIds: ['loc-organization'] }),
       expect.anything()
     );
   });
 
-  it('deletes the team locations it made, with no sheet, when sequence create fails (#1695)', async () => {
+  it('deletes the organization locations it made, with no sheet, when sequence create fails (#1695)', async () => {
     mocks.createSequences.mockRejectedValue(new ValidationError('No credits'));
     await expect(
       runOneShotCreate({ ...baseInput, locations: [{ name: 'Pier' }] }, ctx)
     ).rejects.toThrow(/No credits/);
     expect(locationDelete).toHaveBeenCalledWith('loc-Pier');
-    expect(mocks.triggerTeamLocationSheet).not.toHaveBeenCalled();
+    expect(mocks.triggerOrganizationLocationSheet).not.toHaveBeenCalled();
   });
 
   it('rolls back inline characters when sequence create fails', async () => {
@@ -484,7 +501,7 @@ describe('runOneShotCreate', () => {
       )
     ).rejects.toThrow(/Already generating this script/);
 
-    expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(1);
+    expect(mocks.createOrganizationCharacter).toHaveBeenCalledTimes(1);
     expect(characterDelete).toHaveBeenCalledWith('char-Ada');
   });
 });

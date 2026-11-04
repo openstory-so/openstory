@@ -32,7 +32,7 @@ import {
   saveApiKeyFn,
 } from '@/platform/api-keys.fn';
 import { initiateOpenRouterOAuthFn } from '@/platform/openrouter-oauth.fn';
-import { getCurrentUserProfileFn } from '@/platform/user.fn';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -61,40 +61,43 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
-  const { data: profile } = useQuery({
-    queryKey: ['currentUserProfile'],
-    queryFn: () => getCurrentUserProfileFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: session, isPending } = useAuthSession();
 
-  if (!profile?.teamId) {
-    return <ApiKeySettingsLoading />;
+  if (isPending) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-10 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
   }
 
-  return <ApiKeySettingsContent teamId={profile.teamId} {...props} />;
-}
+  const organizationId = session?.session.activeOrganizationId;
+  if (!organizationId) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>
+          No active organization on this session.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
-function ApiKeySettingsLoading() {
-  return (
-    <Card>
-      <CardHeader>
-        <Skeleton className="h-10 w-48" />
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-      </CardContent>
-    </Card>
-  );
+  return <ApiKeySettingsContent organizationId={organizationId} {...props} />;
 }
 
 const RETURN_KEY = 'openstory:billing-return';
 
 function ApiKeySettingsContent({
-  teamId,
+  organizationId,
   success,
   error: urlError,
-}: ApiKeySettingsProps & { teamId: string }) {
+}: ApiKeySettingsProps & { organizationId: string }) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
   const [error, setError] = useState<string | null>(null);
@@ -102,14 +105,14 @@ function ApiKeySettingsContent({
   const hasShownToastRef = useRef(false);
 
   const { data: apiKeys, isLoading: keysLoading } = useQuery({
-    queryKey: ['apiKeys', teamId],
-    queryFn: () => listApiKeysFn({ data: { teamId } }),
+    queryKey: ['apiKeys', organizationId],
+    queryFn: () => listApiKeysFn({ data: { organizationId } }),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: keyStatus, isLoading: statusLoading } = useQuery({
-    queryKey: ['apiKeyStatus', teamId],
-    queryFn: () => checkApiKeyStatusFn({ data: { teamId } }),
+    queryKey: ['apiKeyStatus', organizationId],
+    queryFn: () => checkApiKeyStatusFn({ data: { organizationId } }),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -117,7 +120,7 @@ function ApiKeySettingsContent({
   // key alone is enough — LLM calls route through fal's OpenRouter endpoint.
   useEffect(() => {
     if (hasShownToastRef.current) return;
-    if (keyStatus?.fal !== 'team') return;
+    if (keyStatus?.fal !== 'organization') return;
     const returnTo = localStorage.getItem(RETURN_KEY);
     if (!returnTo) return;
 
@@ -125,7 +128,7 @@ function ApiKeySettingsContent({
     localStorage.removeItem(RETURN_KEY);
     toast.success('API keys configured', {
       description:
-        keyStatus.openrouter === 'team'
+        keyStatus.openrouter === 'organization'
           ? 'Both fal.ai and OpenRouter are connected.'
           : 'fal.ai is connected — that covers everything.',
       action: {
@@ -137,12 +140,16 @@ function ApiKeySettingsContent({
   }, [keyStatus, navigate]);
 
   const invalidateKeys = () => {
-    void queryClient.invalidateQueries({ queryKey: ['apiKeys', teamId] });
-    void queryClient.invalidateQueries({ queryKey: ['apiKeyStatus', teamId] });
+    void queryClient.invalidateQueries({
+      queryKey: ['apiKeys', organizationId],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ['apiKeyStatus', organizationId],
+    });
     void queryClient.invalidateQueries({ queryKey: [...BILLING_GATE_KEY] });
     // The Download menu's "Publish to social…" follows the Upload-Post key.
     void queryClient.invalidateQueries({
-      queryKey: ['social-publishing', teamId],
+      queryKey: ['social-publishing', organizationId],
     });
   };
 
@@ -153,7 +160,7 @@ function ApiKeySettingsContent({
     }: {
       provider: ManualProvider;
       apiKey: string;
-    }) => saveApiKeyFn({ data: { teamId, provider, apiKey } }),
+    }) => saveApiKeyFn({ data: { organizationId, provider, apiKey } }),
     onSuccess: (_, { provider }) => {
       invalidateKeys();
       setError(null);
@@ -166,7 +173,7 @@ function ApiKeySettingsContent({
 
   const deleteMutation = useMutation({
     mutationFn: (provider: ApiKeyProviderId) =>
-      deleteApiKeyFn({ data: { teamId, provider } }),
+      deleteApiKeyFn({ data: { organizationId, provider } }),
     onSuccess: (_, provider) => {
       invalidateKeys();
       setError(null);
@@ -178,7 +185,7 @@ function ApiKeySettingsContent({
   });
 
   const oauthMutation = useMutation({
-    mutationFn: () => initiateOpenRouterOAuthFn({ data: { teamId } }),
+    mutationFn: () => initiateOpenRouterOAuthFn({ data: { organizationId } }),
     onSuccess: (data) => {
       posthog.capture('openrouter_oauth_started');
       window.location.href = data.authUrl;
@@ -190,7 +197,7 @@ function ApiKeySettingsContent({
 
   const revalidateMutation = useMutation({
     mutationFn: (provider: ApiKeyProviderId) =>
-      revalidateApiKeyFn({ data: { teamId, provider } }),
+      revalidateApiKeyFn({ data: { organizationId, provider } }),
     onSuccess: (result, provider) => {
       // Only announce recovery — a key that was already valid (e.g. just
       // connected via OAuth) shouldn't toast "valid again" on page mount.
@@ -217,7 +224,7 @@ function ApiKeySettingsContent({
   const llmtrKey = apiKeys?.find((k) => k.provider === 'llmtr');
   const uploadPostKey = apiKeys?.find((k) => k.provider === 'upload_post');
 
-  // Re-validate stored team keys on mount so opening the settings page
+  // Re-validate stored organization keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
   const revalidatedRef = useRef(false);
   useEffect(() => {
@@ -236,11 +243,9 @@ function ApiKeySettingsContent({
   const errorMessage =
     urlError === 'openrouter_oauth_missing_code'
       ? 'OAuth failed: missing authorization code.'
-      : urlError === 'openrouter_oauth_no_team'
-        ? 'OAuth failed: no team found.'
-        : urlError === 'openrouter_oauth_failed'
-          ? 'OAuth failed: could not connect to OpenRouter.'
-          : null;
+      : urlError === 'openrouter_oauth_failed'
+        ? 'OAuth failed: could not connect to OpenRouter.'
+        : null;
 
   return (
     <div className="space-y-6">
@@ -488,7 +493,7 @@ type ManualKeyRowProps = {
   placeholder: string;
   keyUrl: string;
   existingKey?: { keyHint: string };
-  status?: 'team' | 'platform' | 'none';
+  status?: 'organization' | 'platform' | 'none';
   isLoading: boolean;
   onSave: (apiKey: string) => void;
   onDelete: () => void;
@@ -595,8 +600,12 @@ function ManualKeyRow({
   );
 }
 
-function StatusBadge({ source }: { source?: 'team' | 'platform' | 'none' }) {
-  if (source === 'team') {
+function StatusBadge({
+  source,
+}: {
+  source?: 'organization' | 'platform' | 'none';
+}) {
+  if (source === 'organization') {
     return (
       <Badge variant="default" className="text-xs">
         Your key

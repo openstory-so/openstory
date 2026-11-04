@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { NewCharacterForm } from '@/cast/ui/new-character-form';
-import { useCreateTeamCharacter } from '@/cast/ui/use-team-characters';
+import { useCreateOrganizationCharacter } from '@/cast/ui/use-organization-characters';
 import { errorMessage } from '@/platform/errors';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -23,7 +23,7 @@ import { useHydrated } from '@/ui/use-hydrated';
  */
 export const NewCharacterDialog: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const createCharacter = useCreateTeamCharacter();
+  const createCharacter = useCreateOrganizationCharacter();
   const navigate = useNavigate();
   const hydrated = useHydrated();
 

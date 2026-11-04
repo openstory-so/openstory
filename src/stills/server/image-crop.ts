@@ -13,6 +13,7 @@ import { getEnv } from '#env';
 import { readStorageObject, uploadFile } from '#storage';
 import { generateId } from '@/platform/id';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   isLocalStorageServing,
   r2KeyFromUrl,
@@ -26,7 +27,7 @@ type CropTileOptions = {
   col: number; // 1-based (1 = left column)
   gridCols?: number; // total columns in grid (default 3)
   gridRows?: number; // total rows in grid (default 3)
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
 };
@@ -308,7 +309,7 @@ async function cropTileInProcess(options: {
   col: number;
   gridCols: number;
   gridRows: number;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
 }): Promise<CropTileResult> {
@@ -318,7 +319,7 @@ async function cropTileInProcess(options: {
     col,
     gridCols,
     gridRows,
-    teamId,
+    organizationId,
     sequenceId,
     shotId,
   } = options;
@@ -337,7 +338,7 @@ async function cropTileInProcess(options: {
     const cropped = crop(input, rect.x1, rect.y1, rect.x2, rect.y2);
     try {
       const png = cropped.get_bytes();
-      const path = `teams/${teamId}/sequences/${sequenceId}/frames/${shotId}/variant-tile-${generateId()}.png`;
+      const path = `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/variant-tile-${generateId()}.png`;
       const uploaded = await uploadFile(STORAGE_BUCKETS.THUMBNAILS, path, png, {
         contentType: 'image/png',
       });
@@ -379,7 +380,7 @@ export async function cropTileFromGrid(
     col,
     gridCols = 3,
     gridRows = 3,
-    teamId,
+    organizationId,
     sequenceId,
     shotId,
   } = options;
@@ -391,7 +392,7 @@ export async function cropTileFromGrid(
       col,
       gridCols,
       gridRows,
-      teamId,
+      organizationId,
       sequenceId,
       shotId,
     });

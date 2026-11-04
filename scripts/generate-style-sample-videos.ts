@@ -39,7 +39,7 @@
  *
  * Env: OPENSTORY_API_URL (default https://openstory.so — the live site; set
  * http://localhost:3000 + `bun dev` to test against local) and
- * OPENSTORY_API_KEY (Settings → Developer; the key's team must have the
+ * OPENSTORY_API_KEY (Settings → Developer; the key's organization must have the
  * template styles seeded and enough credits — generation bills the platform).
  */
 import {
@@ -419,7 +419,7 @@ async function renderJob(job: RenderJob, submitOnly: boolean): Promise<void> {
 
 /**
  * Rough motion-cost indicator (raw model price × planned scenes). Generation
- * bills the API key's team in platform credits — images, motion, and music —
+ * bills the API key's organization in platform credits — images, motion, and music —
  * so the real bill is higher; this is only a relative size of the run.
  *
  * Models we can't price yet return null. They are counted separately rather
@@ -488,7 +488,7 @@ function printDryRun(jobs: RenderJob[]) {
     `\nTotals: ${byStyle.size} styles, ${jobs.length} videos, ~${clips} clips ` +
       `(+~${clips} image gens + music per sequence), all via the OpenStory pipeline ` +
       `at ${OPENSTORY_API_URL}. Motion-cost indicator ${formatCostIndicator(jobs)} ` +
-      `(bills the API key's team in credits).`
+      `(bills the API key's organization in credits).`
   );
   if (!OPENSTORY_API_KEY) {
     console.log('\n(OPENSTORY_API_KEY not set — set it to actually render.)');
@@ -542,9 +542,9 @@ async function main() {
     flags.submitOnly
       ? `🚀 Submitting ${jobs.length} sequence(s) to the OpenStory pipeline (${OPENSTORY_API_URL}) — ` +
           `no polling; ids land in sample-videos/{slug}/{kind}.sequence.json. ` +
-          `Motion-cost indicator ${formatCostIndicator(jobs)} (bills the API key's team)\n`
+          `Motion-cost indicator ${formatCostIndicator(jobs)} (bills the API key's organization)\n`
       : `🎬 Rendering ${jobs.length} videos via the OpenStory pipeline (${OPENSTORY_API_URL}). ` +
-          `Motion-cost indicator ${formatCostIndicator(jobs)} (bills the API key's team)\n`
+          `Motion-cost indicator ${formatCostIndicator(jobs)} (bills the API key's organization)\n`
   );
   await mkdir(OUTPUT_DIR, { recursive: true });
   const failures = await runPool(jobs, flags.submitOnly);

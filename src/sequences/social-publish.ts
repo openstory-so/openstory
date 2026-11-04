@@ -4,8 +4,8 @@
  * return. The HTTP client lives in `server/social/upload-post.ts`; the server
  * fns in `social-publish.fn.ts`.
  *
- * Publishing is opt-in per team: the menu item and the server fns are inert
- * until the team has saved an Upload-Post key in Settings → API Keys.
+ * Publishing is opt-in per organization: the menu item and the server fns are inert
+ * until the organization has saved an Upload-Post key in Settings → API Keys.
  */
 
 import { z } from 'zod';
@@ -101,7 +101,7 @@ export const PUBLISH_REQUEST_ID_RE = /^openstory-[0-9a-f]{32}$/;
 
 /**
  * Stable id for one publish, derived from every value the user reviewed:
- * team, export, profile, platforms, caption, description and the visibility
+ * organization, export, profile, platforms, caption, description and the visibility
  * of the platforms that use one. The same post always yields the same id, so
  * a double click, a retry or a re-opened dialog finds the earlier request
  * instead of posting again; anything changed yields a new, separately
@@ -109,11 +109,11 @@ export const PUBLISH_REQUEST_ID_RE = /^openstory-[0-9a-f]{32}$/;
  * (which tracks it when the server's reply is lost).
  */
 export async function derivePublishRequestId(
-  input: PublishInput & { teamId: string }
+  input: PublishInput & { organizationId: string }
 ): Promise<string> {
   const hex = await sha256Hex({
     v: 1,
-    teamId: input.teamId,
+    organizationId: input.organizationId,
     exportId: input.exportId,
     profile: input.profile,
     platforms: [...input.platforms].sort(),

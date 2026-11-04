@@ -78,7 +78,7 @@ function emitSequenceContentReady(
 ): void {
   captureSequenceContentReady({
     distinctId: opts.userId,
-    teamId: opts.scopedDb.teamId,
+    organizationId: opts.scopedDb.organizationId,
     sequenceId: opts.sequenceId,
     title,
     watchUrl: opts.sequenceUrl,

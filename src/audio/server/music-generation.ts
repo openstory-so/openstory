@@ -61,7 +61,7 @@ export type GenerateMusicOptions = {
    * before the workflow step returns — Cloudflare Workflows cap `step.do`
    * payloads at 1 MiB, and a 60s MP3 as base64 exceeds that.
    */
-  teamId?: string;
+  organizationId?: string;
   sequenceId?: string;
 };
 
@@ -311,11 +311,11 @@ async function parkNativeMusic(
 
 function nativeMusicStoragePath(options: GenerateMusicOptions): string {
   const id = generateId();
-  if (options.teamId && options.sequenceId) {
-    return `${options.teamId}/${options.sequenceId}/music/${id}.mp3`;
+  if (options.organizationId && options.sequenceId) {
+    return `${options.organizationId}/${options.sequenceId}/music/${id}.mp3`;
   }
-  if (options.teamId) {
-    return `${options.teamId}/music/${id}.mp3`;
+  if (options.organizationId) {
+    return `${options.organizationId}/music/${id}.mp3`;
   }
   return `music/${id}.mp3`;
 }
@@ -386,7 +386,7 @@ async function callFalAudio(
       duration: billedDuration,
       cost,
       generatedAt: new Date().toISOString(),
-      usedOwnKey: falApiKeyInfo.source === 'team',
+      usedOwnKey: falApiKeyInfo.source === 'organization',
     },
   };
 }

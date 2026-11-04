@@ -17,7 +17,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { createFrameVariantsMethods } from '@/stills/server/db/frame-variants';
 import { createVideoVariantsMethods } from '@/motion/server/db/video-variants';
@@ -28,24 +28,24 @@ import { videoPosterUrl } from '@/look/cloudflare-video';
 let closeDb: () => Promise<void>;
 let db: Database;
 let sequenceId: string;
-let teamId: string;
+let organizationId: string;
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
 });
 afterAll(() => closeDb());
 beforeEach(async () => {
-  // Separate teams keep FK fixtures isolated without depending on deletion order.
-  const [team] = await db
-    .insert(teams)
+  // Separate organizations keep FK fixtures isolated without depending on deletion order.
+  const [seedOrganization] = await db
+    .insert(organization)
     .values({ name: 'Test', slug: crypto.randomUUID() })
     .returning();
-  if (!team) throw new Error('Missing team');
-  teamId = team.id;
+  if (!seedOrganization) throw new Error('Missing organization');
+  organizationId = seedOrganization.id;
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'Test',
       config: {
         mood: 'neutral',
@@ -62,7 +62,7 @@ beforeEach(async () => {
   const [seq] = await db
     .insert(sequences)
     .values({
-      teamId,
+      organizationId,
       title: 'Film',
       styleId: style.id,
       posterUrl: '/r2/provisional.png',
@@ -101,7 +101,11 @@ async function makeShot(sceneOrder = 0, shotNumber = 1) {
   return { shot, frame, segment };
 }
 async function poster() {
-  const rows = await createSequencesMethods(db, teamId, 'unused').list();
+  const rows = await createSequencesMethods(
+    db,
+    organizationId,
+    'unused'
+  ).list();
   return rows.find((row) => row.id === sequenceId)?.posterUrl;
 }
 async function preview(frameId: string, url = '/r2/storyboard.png') {
@@ -238,7 +242,7 @@ describe('sequence posters follow the first shot', () => {
     await still(first.frame.id, '/r2/new-selection.png');
     expect(await poster()).toBe('/r2/new-selection.png');
   });
-  it('resolves existing media for support and team lists without writing a poster', async () => {
+  it('resolves existing media for support and organization lists without writing a poster', async () => {
     const { frame } = await makeShot();
     await still(frame.id);
     expect(await poster()).toBe('/r2/start.png');

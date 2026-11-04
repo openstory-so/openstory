@@ -20,7 +20,7 @@
  *
  *  - **Append-only.** Nothing here is updated in place except a report's triage
  *    columns. Evidence you can rewrite is not evidence.
- *  - **`onDelete: 'restrict'` on every FK, never CASCADE.** `user` and `teams`
+ *  - **`onDelete: 'restrict'` on every FK, never CASCADE.** `user` and `organization`
  *    are long-lived parent tables, and a D1 table rebuild fires inbound
  *    CASCADEs even with `PRAGMA foreign_keys = OFF` (the #612 incident — see
  *    the table-rebuild trap in AGENTS.md). Compliance evidence is the last
@@ -32,7 +32,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
-import { teams } from './teams';
+import { organization } from './organization';
 
 // ============================================================================
 // Content Provenance
@@ -63,7 +63,7 @@ export type ProvenanceAssetKind = (typeof PROVENANCE_ASSET_KINDS)[number];
  * One generated artifact, recorded at the moment it lands in R2.
  *
  * This is the table an abuse report resolves against: given a URL, an R2 key,
- * or the bytes of a file someone sent us, find the team, the user, the model,
+ * or the bytes of a file someone sent us, find the organization, the user, the model,
  * the prompt, and the time. The row's own `id` doubles as the public trace id
  * quoted in takedown correspondence — it is a ULID, so it leaks nothing beyond
  * a timestamp, and it can be handed to a complainant without exposing internal
@@ -85,9 +85,9 @@ export const contentProvenance = snakeCase.table(
       .primaryKey()
       .notNull(),
 
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
     /**
      * The user who triggered the generation. Nullable ONLY for platform-owned
      * artifacts with no requesting user (system style previews seeded by a
@@ -163,7 +163,10 @@ export const contentProvenance = snakeCase.table(
     index('idx_provenance_storage_key').on(table.storageKey),
     index('idx_provenance_content_sha').on(table.contentSha256),
     // "Show me everything this account generated" — enforcement + audits.
-    index('idx_provenance_team_created').on(table.teamId, table.createdAt),
+    index('idx_provenance_organization_created').on(
+      table.organizationId,
+      table.createdAt
+    ),
     index('idx_provenance_user_created').on(table.userId, table.createdAt),
     // Provider-side inquiry by their request id.
     index('idx_provenance_provider_request').on(table.providerRequestId),
@@ -219,9 +222,9 @@ export const uploadAttestations = snakeCase.table(
     userId: text()
       .notNull()
       .references(() => user.id, { onDelete: 'restrict' }),
-    teamId: text()
+    organizationId: text()
       .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
+      .references(() => organization.id, { onDelete: 'restrict' }),
 
     subjectType: text({ length: 40 }).$type<AttestationSubjectType>().notNull(),
     /**
@@ -263,7 +266,10 @@ export const uploadAttestations = snakeCase.table(
     ),
     // "Everything this account attested to" — enforcement + audit.
     index('idx_upload_attestations_user').on(table.userId, table.attestedAt),
-    index('idx_upload_attestations_team').on(table.teamId, table.attestedAt),
+    index('idx_upload_attestations_organization').on(
+      table.organizationId,
+      table.attestedAt
+    ),
   ]
 );
 
@@ -319,7 +325,9 @@ export const contentReports = snakeCase.table(
      * queue can group by account without re-walking the graph, and so the row
      * still names the subject after the content itself is deleted.
      */
-    subjectTeamId: text().references(() => teams.id, { onDelete: 'restrict' }),
+    subjectOrganizationId: text().references(() => organization.id, {
+      onDelete: 'restrict',
+    }),
     subjectUserId: text().references(() => user.id, { onDelete: 'restrict' }),
 
     reason: text({ length: 40 }).$type<ContentReportReason>().notNull(),
@@ -361,7 +369,9 @@ export const contentReports = snakeCase.table(
       table.createdAt
     ),
     // "What else has been reported about this account?"
-    index('idx_content_reports_subject_team').on(table.subjectTeamId),
+    index('idx_content_reports_subject_organization').on(
+      table.subjectOrganizationId
+    ),
     index('idx_content_reports_subject_user').on(table.subjectUserId),
     // Duplicate detection on re-reports of the same asset.
     index('idx_content_reports_target').on(table.targetType, table.targetId),
@@ -394,13 +404,13 @@ export const ENFORCEMENT_ACTIONS = [
 export type EnforcementActionType = (typeof ENFORCEMENT_ACTIONS)[number];
 
 /**
- * One enforcement decision against a user or team. Append-only except for
+ * One enforcement decision against a user or organization. Append-only except for
  * revocation, so an account's disciplinary history survives an appeal being
  * granted — `revokedAt` lifts the action's effect without erasing that it
  * happened.
  *
  * Effective state is always DERIVED from this table
- * (`resolveEnforcementState`), never denormalized onto `user` or `teams`. A
+ * (`resolveEnforcementState`), never denormalized onto `user` or `organization`. A
  * cached `suspended` flag drifts, and the direction it drifts is "we thought we
  * had banned them and had not".
  */
@@ -413,12 +423,14 @@ export const enforcementActions = snakeCase.table(
       .notNull(),
 
     /**
-     * Subject of the action. At least one of user/team is always set; a user
-     * action follows the person across teams, a team action covers every
-     * member's shared workspace.
+     * Subject of the action. At least one of user or organization is always set.
+     * A user action follows the person across organizations. An organization
+     * action covers every member's shared workspace.
      */
     subjectUserId: text().references(() => user.id, { onDelete: 'restrict' }),
-    subjectTeamId: text().references(() => teams.id, { onDelete: 'restrict' }),
+    subjectOrganizationId: text().references(() => organization.id, {
+      onDelete: 'restrict',
+    }),
 
     action: text({ length: 40 }).$type<EnforcementActionType>().notNull(),
     /** Category that justified it — mirrors `CONTENT_REPORT_REASONS`. */
@@ -470,8 +482,8 @@ export const enforcementActions = snakeCase.table(
       table.subjectUserId,
       table.revokedAt
     ),
-    index('idx_enforcement_subject_team').on(
-      table.subjectTeamId,
+    index('idx_enforcement_subject_organization').on(
+      table.subjectOrganizationId,
       table.revokedAt
     ),
     // Admin history views.

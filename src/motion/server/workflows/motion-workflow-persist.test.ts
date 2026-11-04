@@ -32,7 +32,7 @@ import {
 
 const upload = {
   url: 'https://r2/seq/shot-veo.mp4',
-  path: 'team/seq/shot.mp4',
+  path: 'org/seq/shot.mp4',
 };
 const NOW = new Date('2026-06-02T00:00:00Z');
 

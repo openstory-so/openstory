@@ -86,7 +86,7 @@ function makeShot(
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
     id: 'seq-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     title: 'Test Sequence',
     script: 'A test script',
     status: 'completed',

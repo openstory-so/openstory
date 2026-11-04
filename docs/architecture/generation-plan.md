@@ -265,7 +265,7 @@ prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   dialog and the continue footer, which persists it through
   `continueGenerationFn`) and a checkbox on the batch footer; it is offered
   only while a chosen model `supportsDraftMode` and
-  `useViaAvailability().byteplus` says this team reaches Ark (a team on its
+  `useViaAvailability().byteplus` says this organization reaches Ark (an organization on its
   own fal key does not, and a draft submit there refuses — so every surface
   sends a boolean, never `undefined`, or a hidden switch would inherit the
   saved setting). Draft first pins the resolution picker in the Generate
@@ -368,8 +368,8 @@ the first still therefore does not invalidate it or add a still prerequisite.
 Scene and style changes still invalidate it. A current motion digest does not include the still URL, so rendering the first still does not stale the motion prompt. Restore copies the source and spec of the row being restored. An element rename writes `renamed` on the prompt and `rename` on a new spec version. A content-checker rescue writes `softened` or `shortened`. A user edit uses the ordinary current-input provenance and Update all does not overwrite it.
 
 Planning and prompt staleness load every active character/location bible, even
-before its first sheet exists. A location is the team's (#1695,
-`team-locations.md`): a `sheet:location` unit's id is the location's, its sheet
+before its first sheet exists. A location is the organization's (#1695,
+`organization-locations.md`): a `sheet:location` unit's id is the location's, its sheet
 is shared by every sequence that uses it, and a sequence style change does not
 stale it. The selected sheet fields on these rows remain
 optional. Filtering these inputs to completed sheets changes a derived prompt's

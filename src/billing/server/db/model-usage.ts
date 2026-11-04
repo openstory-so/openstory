@@ -5,9 +5,9 @@
  * to the observed median that pre-flight estimation prefers. Written for every
  * fal generation that reports `unitsBilled` — billed, BYOK, unpriced, or
  * over-drawn — so the median reflects how models behave rather than which
- * teams happen to be billable. See `recordFalUsage` for the write path.
+ * organizations happen to be billable. See `recordFalUsage` for the write path.
  *
- * Platform-global telemetry, not team data: no `teamId`, no scoping.
+ * Platform-global telemetry, not organization data: no `organizationId`, no scoping.
  */
 
 import type { Database } from '@/platform/server/db/client';

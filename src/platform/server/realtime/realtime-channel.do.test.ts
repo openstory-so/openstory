@@ -24,7 +24,7 @@ import { asStub } from '@/test/as-stub';
 
 const channelLogger = getLogger(['openstory', 'realtime', 'channel']);
 
-const CHANNEL = 'billing:team-1';
+const CHANNEL = 'billing:organization-1';
 const THIRTY_DAYS_MS = 60 * 60 * 24 * 30 * 1000;
 
 type SqlRow = Record<string, unknown>;

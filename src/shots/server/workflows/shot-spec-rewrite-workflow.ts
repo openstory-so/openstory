@@ -120,7 +120,7 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
       ) {
         await redrawShotPreviewInRun(scopedDb, {
           userId: input.userId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId: input.sequenceId,
           shotId: input.shotId,
           frameId: input.frameId,

@@ -130,7 +130,7 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
           scopedDb,
           workflowRunId,
           userId: input.userId,
-          teamId: input.teamId,
+          organizationId: input.organizationId,
           sequenceId,
           lines: job.voiced,
           adoptShotIds: plan.adoptShotIds,

@@ -27,7 +27,7 @@ function truncatePrompt(prompt: string): string {
 
 export type StudioGenerationCompletedArgs = {
   distinctId: string;
-  teamId: string;
+  organizationId: string;
   assetId: string;
   activity: 'image' | 'video';
   model: string;
@@ -47,7 +47,8 @@ export function captureStudioGenerationCompleted(
     distinctId: args.distinctId,
     event: 'studio_generation_completed',
     properties: {
-      team_id: args.teamId,
+      team_id: args.organizationId,
+      organization_id: args.organizationId,
       activity: args.activity,
       asset_id: args.assetId,
       model: args.model,
@@ -64,7 +65,7 @@ export function captureStudioGenerationCompleted(
 
 export type SequenceContentReadyArgs = {
   distinctId: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   title: string;
   watchUrl: string;
@@ -80,7 +81,8 @@ export function captureSequenceContentReady(
     distinctId: args.distinctId,
     event: 'sequence_content_ready',
     properties: {
-      team_id: args.teamId,
+      team_id: args.organizationId,
+      organization_id: args.organizationId,
       sequence_id: args.sequenceId,
       title: args.title,
       watch_url: args.watchUrl,

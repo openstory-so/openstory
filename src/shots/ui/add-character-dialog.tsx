@@ -15,7 +15,7 @@ import { useCreateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
-} from '@/cast/ui/use-team-characters';
+} from '@/cast/ui/use-organization-characters';
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { errorMessage } from '@/platform/errors';
 import { useNavigate } from '@tanstack/react-router';
@@ -23,7 +23,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 /**
- * The cast panel's one way in. It opens on the team's characters (#2050):
+ * The cast panel's one way in. It opens on the organization's characters (#2050):
  * picking one is the same attach the `@` picker makes, one link, every look,
  * nothing copied. New character swaps the list for the manual create (#1108
  * Phase 2): a name, then the character's page beside the inspector.

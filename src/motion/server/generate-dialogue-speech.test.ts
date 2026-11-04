@@ -171,7 +171,7 @@ function args(
     scopedDb,
     workflowRunId: 'run-1',
     userId: 'user-1',
-    teamId: 'team-1',
+    organizationId: 'org-1',
     sequenceId: 'seq-1',
     lines: LINES,
     adoptShotIds: ['shot-a'],

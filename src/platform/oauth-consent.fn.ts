@@ -17,7 +17,8 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from './middleware.fn';
+import { authWithOrganizationMiddleware } from './middleware.fn';
+import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 export type {
   AuthorizedApp,
@@ -33,16 +34,16 @@ const consentContextSchema = z.object({
 });
 
 /**
- * What the consent page renders: who is asking, for what, and which team the
- * grant will bill to. Unknown client ids read as `client: null`.
+ * What the consent page renders: who is asking, for what, and the
+ * organizations the grant can bill to. Unknown client ids read as `client: null`.
  */
 export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(consentContextSchema))
   .handler(async ({ data, context }): Promise<OAuthConsentContext> =>
     loadOAuthConsentContext({
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: context.organizationId,
       clientId: data.clientId,
       scope: data.scope,
       redirectUri: data.redirectUri,
@@ -52,6 +53,7 @@ export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
 
 const decideSchema = z.object({
   accept: z.boolean(),
+  organizationId: ulidSchema,
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: z.string().min(1).max(8192),
 });
@@ -61,12 +63,12 @@ const decideSchema = z.object({
  * client's `redirect_uri` with a code, or with `error=access_denied`.
  */
 export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(decideSchema))
   .handler(async ({ data, context }): Promise<{ url: string }> =>
     decideOAuthConsent({
       userId: context.user.id,
-      teamId: context.teamId,
+      organizationId: data.organizationId,
       accept: data.accept,
       oauthQuery: data.oauthQuery,
       headers: getRequestHeaders(),
@@ -75,7 +77,7 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
 
 /** Apps the user has granted access to, newest first. */
 export const listAuthorizedAppsFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .handler(async (): Promise<AuthorizedApp[]> =>
     listAuthorizedApps(getRequestHeaders())
   );
@@ -87,7 +89,7 @@ const revokeSchema = z.object({
 
 /** Revoke an app: its consent and the refresh tokens issued under it. */
 export const revokeAuthorizedAppFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
+  .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(revokeSchema))
   .handler(async ({ data, context }): Promise<{ success: true }> => {
     await performAuthorizedAppRevoke({

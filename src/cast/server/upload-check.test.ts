@@ -23,7 +23,7 @@ const suspended: EnforcementRow = {
 const upload = (contentType: string) => ({
   bucket: STORAGE_BUCKETS.TALENT,
   contentType,
-  teamId: generateId(),
+  organizationId: generateId(),
   userId: generateId(),
 });
 

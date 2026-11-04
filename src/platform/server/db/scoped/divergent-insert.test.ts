@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { teams } from '@/platform/server/db/schema';
+import { organization } from '@/platform/server/db/schema';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   insertDivergentRaceTolerant,
@@ -16,9 +16,9 @@ describe('isUniqueConstraintError', () => {
   it('matches a real collision, wrapped by drizzle', async () => {
     const { db, close } = await createTestDb();
     try {
-      await db.insert(teams).values({ id: 'a', name: 'T', slug: 's1' });
+      await db.insert(organization).values({ id: 'a', name: 'T', slug: 's1' });
       const err: unknown = await db
-        .insert(teams)
+        .insert(organization)
         .values({ id: 'a', name: 'T', slug: 's2' })
         .catch((e: unknown) => e);
       expect(err).toBeInstanceOf(Error);

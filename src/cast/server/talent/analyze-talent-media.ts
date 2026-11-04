@@ -37,7 +37,7 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cast', 'talent-vision']);
 
-export type AnalyzeTalentMediaForTeamInput = {
+export type AnalyzeTalentMediaForOrganizationInput = {
   scopedDb: VisionBillingDb;
   userId: string;
   imageUrls: string[];
@@ -45,8 +45,8 @@ export type AnalyzeTalentMediaForTeamInput = {
   idempotencyKey: string;
 };
 
-export async function analyzeTalentMediaForTeam(
-  input: AnalyzeTalentMediaForTeamInput
+export async function analyzeTalentMediaForOrganization(
+  input: AnalyzeTalentMediaForOrganizationInput
 ): Promise<TalentVisionResult> {
   const llmKeyInfo =
     await input.scopedDb.apiKeys.resolveLlmKey(TALENT_VISION_MODEL);
@@ -69,10 +69,10 @@ export async function analyzeTalentMediaForTeam(
 
 /**
  * The same check on a stored clip (#1930): Gemini watches the whole clip
- * through its Files API. Needs a native Google key (the team's or the
+ * through its Files API. Needs a native Google key (the organization's or the
  * platform's); with none the clip is refused, never judged by another model.
  */
-export async function analyzeTalentClipForTeam(input: {
+export async function analyzeTalentClipForOrganization(input: {
   scopedDb: VisionBillingDb;
   userId: string;
   /** Storage key of the clip (`<bucket>/<path>`). */
@@ -125,7 +125,7 @@ async function requireVisionCredits(
   scopedDb: VisionBillingDb,
   llmKey: ResolvedLlmKey
 ): Promise<void> {
-  if (llmKey.source === 'team') return;
+  if (llmKey.source === 'organization') return;
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));
   if (!canAfford) {
     throw new InsufficientCreditsError(

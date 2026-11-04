@@ -11,7 +11,6 @@ import {
   loadComplianceState,
   summarizeCompliance,
 } from '@/platform/server/compliance/generation-gate';
-import { resolveUserTeam } from '@/platform/server/db/scoped';
 import { createServerFn } from '@tanstack/react-start';
 
 /**
@@ -22,7 +21,9 @@ import { createServerFn } from '@tanstack/react-start';
 export const getComplianceStatusFn = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const team = await resolveUserTeam(context.user.id);
-    const state = await loadComplianceState(context.user.id, team?.teamId);
+    const state = await loadComplianceState(
+      context.user.id,
+      context.session.session.activeOrganizationId ?? undefined
+    );
     return summarizeCompliance(state);
   });

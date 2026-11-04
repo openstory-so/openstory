@@ -15,7 +15,7 @@ interface FeedbackEmailProps {
   appName: string;
   userName: string;
   userEmail: string;
-  teamId: string;
+  organizationId: string;
   message: string;
 }
 
@@ -40,7 +40,7 @@ export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
   appName,
   userName,
   userEmail,
-  teamId,
+  organizationId,
   message,
 }) => (
   <EmailLayout appName={appName} preview={`Feedback from ${userEmail}`}>
@@ -60,7 +60,7 @@ export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
           <strong>Email:</strong> {userEmail}
         </Text>
         <Text style={detailRowStyle}>
-          <strong>Team:</strong> {teamId}
+          <strong>Organization:</strong> {organizationId}
         </Text>
       </Section>
 

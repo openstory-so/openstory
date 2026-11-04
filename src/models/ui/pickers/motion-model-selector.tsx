@@ -60,7 +60,7 @@ function useMotionModels({
   referenceOnly,
   keepId,
 }: MotionModelFilterProps) {
-  // Resolved server-side per team and seeded by the `_app` route loader, so the
+  // Resolved server-side per organization and seeded by the `_app` route loader, so the
   // list is right on first paint. Grok Imagine appears here only where an xAI
   // key resolves — on fal its id is an image-to-video endpoint.
   const vias = useViaAvailability();

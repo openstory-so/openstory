@@ -59,7 +59,7 @@ type BulkEntry = { locationId: string; name: string; boundTo: string | null };
 
 /**
  * `createBulk` answers with the row each entry landed on: its own for one
- * analysis makes here, the team's (attached, with its sheet) for a bound one.
+ * analysis makes here, the organization's (attached, with its sheet) for a bound one.
  */
 const createBulk =
   vi.fn<(rows: BulkEntry[], opts: object) => Promise<object[]>>();
@@ -77,15 +77,15 @@ function makeScopedDb(selectedBibleVersionId: string | null): WorkflowScopedDb {
         : {
             ...row,
             id: row.boundTo,
-            name: 'Team Diner',
-            description: 'the team diner',
+            name: 'Organization Diner',
+            description: 'the organization diner',
             consistencyTag: 'team_diner',
             attached: true,
-            selectedBibleVersionId: 'team-bible',
-            referenceImageUrl: '/r2/team/diner.png',
+            selectedBibleVersionId: 'organization-bible',
+            referenceImageUrl: '/r2/organization/diner.png',
             referenceStatus: 'completed',
-            referenceInputHash: 'team-hash',
-            selectedReferenceVersionId: 'team-sheet',
+            referenceInputHash: 'organization-hash',
+            selectedReferenceVersionId: 'organization-sheet',
           }
     )
   );
@@ -124,7 +124,7 @@ const eventOf = (
 ): Readonly<WorkflowEvent<LocationBibleWorkflowInput>> => ({
   payload: {
     userId: 'u1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: 'seq-1',
     locationBible: [diner],
     libraryLocationMatches: [],
@@ -253,25 +253,25 @@ describe('LocationBibleWorkflow sheet claim', () => {
   });
 });
 
-describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
+describe('LocationBibleWorkflow with a matched organization location (#1695)', () => {
   const matched = eventOf({
     locationBible: [diner, garage],
     libraryLocationMatches: [
       {
         locationId: 'loc_001',
-        libraryLocationId: 'team-loc-9',
-        libraryLocationName: 'Team Diner',
-        referenceImageUrl: '/r2/team/diner.png',
+        libraryLocationId: 'organization-loc-9',
+        libraryLocationName: 'Organization Diner',
+        referenceImageUrl: '/r2/organization/diner.png',
       },
     ],
   });
 
-  it('links the matched entry to the team location and creates the other', async () => {
+  it('links the matched entry to the organization location and creates the other', async () => {
     await makeWorkflow().runBody(matched, step, makeScopedDb('bible-v1'));
 
     const [entries, opts] = createBulk.mock.calls[0] ?? [];
     expect(entries).toMatchObject([
-      { locationId: 'loc_001', boundTo: 'team-loc-9' },
+      { locationId: 'loc_001', boundTo: 'organization-loc-9' },
       { locationId: 'loc_002', boundTo: null },
     ]);
     expect(opts).toEqual({ source: 'analysis', createdBy: null });
@@ -296,7 +296,7 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
     });
   });
 
-  it("answers with the team location's sheet as it is, under the script id", async () => {
+  it("answers with the organization location's sheet as it is, under the script id", async () => {
     const result = await makeWorkflow().runBody(
       matched,
       step,
@@ -304,15 +304,15 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
     );
 
     expect(result[0]).toEqual({
-      id: 'team-loc-9',
+      id: 'organization-loc-9',
       locationId: 'loc_001',
-      name: 'Team Diner',
-      description: 'the team diner',
+      name: 'Organization Diner',
+      description: 'the organization diner',
       consistencyTag: 'team_diner',
-      referenceImageUrl: '/r2/team/diner.png',
+      referenceImageUrl: '/r2/organization/diner.png',
       referenceStatus: 'completed',
-      referenceInputHash: 'team-hash',
-      selectedReferenceVersionId: 'team-sheet',
+      referenceInputHash: 'organization-hash',
+      selectedReferenceVersionId: 'organization-sheet',
     });
     expect(result[1]).toMatchObject({
       id: 'loc-db-2',
@@ -329,14 +329,14 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
         id: 'shared-loc',
         attached: false,
         held: true,
-        selectedBibleVersionId: 'team-bible',
+        selectedBibleVersionId: 'organization-bible',
         name: 'Diner',
         description: 'as the other sequence left it',
         consistencyTag: 'diner',
-        referenceImageUrl: '/r2/team/diner.png',
+        referenceImageUrl: '/r2/organization/diner.png',
         referenceStatus: 'completed',
-        referenceInputHash: 'team-hash',
-        selectedReferenceVersionId: 'team-sheet',
+        referenceInputHash: 'organization-hash',
+        selectedReferenceVersionId: 'organization-sheet',
       }))
     );
     const result = await makeWorkflow().runBody(
@@ -349,9 +349,9 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
     expect(mockSpawnAndAwaitChild).not.toHaveBeenCalled();
     expect(result[0]).toMatchObject({
       id: 'shared-loc',
-      referenceImageUrl: '/r2/team/diner.png',
+      referenceImageUrl: '/r2/organization/diner.png',
       referenceStatus: 'completed',
-      selectedReferenceVersionId: 'team-sheet',
+      selectedReferenceVersionId: 'organization-sheet',
     });
   });
 
@@ -361,7 +361,7 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
         ...row,
         id: 'attached-loc',
         attached: true,
-        selectedBibleVersionId: 'team-bible',
+        selectedBibleVersionId: 'organization-bible',
         referenceStatus: 'pending',
       }))
     );
@@ -371,7 +371,7 @@ describe('LocationBibleWorkflow with a matched team location (#1695)', () => {
         ...row,
         id: 'attached-loc',
         attached: true,
-        selectedBibleVersionId: 'team-bible',
+        selectedBibleVersionId: 'organization-bible',
         referenceStatus: 'pending',
       }))
     );

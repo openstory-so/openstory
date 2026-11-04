@@ -37,7 +37,7 @@ const SEEDANCE_EDIT_CONSTRAINT_MESSAGE = `Seedance read this as a video edit and
 
 const SEEDANCE_INTERNAL_MESSAGE = `Seedance couldn't process this video because of a temporary error. Try again. ${NOT_CHARGED}`;
 
-/** Account-wide ACR pool, not the team's plan. Raw Ark text stays in the log. */
+/** Account-wide ACR pool, not the organization's plan. Raw Ark text stays in the log. */
 const PROVIDER_BUSY_MESSAGE =
   "Our video provider is busy right now. You weren't charged. Try again in a few minutes.";
 

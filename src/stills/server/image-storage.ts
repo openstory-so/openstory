@@ -5,6 +5,7 @@
 
 import { base64ToBytes } from '@/platform/base64';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -19,14 +20,14 @@ import { generateId } from '@/platform/id';
 
 interface UploadImageOptions {
   imageUrl: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
   shotId: string;
 }
 
 interface UploadPosterOptions {
   imageUrl: string;
-  teamId: string;
+  organizationId: string;
   sequenceId: string;
 }
 
@@ -151,12 +152,12 @@ export async function uploadImageFromUrl(
 export async function uploadImageToStorage(
   options: UploadImageOptions
 ): Promise<StorageResult> {
-  const { imageUrl, teamId, sequenceId, shotId } = options;
+  const { imageUrl, organizationId, sequenceId, shotId } = options;
 
   return uploadImageFromUrl(
     imageUrl,
     (extension) =>
-      `teams/${teamId}/sequences/${sequenceId}/frames/${shotId}/${generateId()}.${extension}`
+      `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${generateId()}.${extension}`
   );
 }
 
@@ -171,11 +172,11 @@ export async function uploadImageToStorage(
 export async function uploadPosterToStorage(
   options: UploadPosterOptions
 ): Promise<StorageResult> {
-  const { imageUrl, teamId, sequenceId } = options;
+  const { imageUrl, organizationId, sequenceId } = options;
 
   return uploadImageFromUrl(
     imageUrl,
     (extension) =>
-      `teams/${teamId}/sequences/${sequenceId}/poster/${generateId()}.${extension}`
+      `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/poster/${generateId()}.${extension}`
   );
 }

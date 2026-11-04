@@ -6,8 +6,8 @@ import {
   type PublishInput,
 } from './social-publish';
 
-const base: PublishInput & { teamId: string } = {
-  teamId: '01TEAM',
+const base: PublishInput & { organizationId: string } = {
+  organizationId: '01TEAM',
   sequenceId: '01SEQUENCE',
   exportId: '01EXPORT',
   profile: 'creator',
@@ -31,8 +31,8 @@ describe('derivePublishRequestId', () => {
 
   it('changes when anything the user reviewed changes', async () => {
     const original = await derivePublishRequestId(base);
-    const changes: Partial<PublishInput & { teamId: string }>[] = [
-      { teamId: '01OTHERTEAM' },
+    const changes: Partial<PublishInput & { organizationId: string }>[] = [
+      { organizationId: '01OTHERTEAM' },
       { exportId: '01OTHER' },
       { profile: 'other' },
       { platforms: ['tiktok'] },
@@ -57,7 +57,7 @@ describe('derivePublishRequestId', () => {
 });
 
 describe('publishInputSchema', () => {
-  const { teamId: _, ...input } = base;
+  const { organizationId: _, ...input } = base;
 
   it('accepts a complete publish', () => {
     expect(publishInputSchema.safeParse(input).success).toBe(true);

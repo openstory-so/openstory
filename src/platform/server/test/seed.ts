@@ -33,8 +33,8 @@ import {
   sequences,
   session,
   styles,
-  teamMembers,
-  teams,
+  member,
+  organization,
   user,
   verification,
   videoVariants,
@@ -59,17 +59,17 @@ export type CreatedTestUser = {
   id: string;
   email: string;
   name: string;
-  teamId: string;
+  organizationId: string;
 };
 
 export type CreatedTestStyle = {
   id: string;
-  teamId: string;
+  organizationId: string;
 };
 
 export type CreatedTestSequence = {
   id: string;
-  teamId: string;
+  organizationId: string;
   styleId: string;
   title: string;
 };
@@ -81,7 +81,7 @@ export type CreatedTestShot = {
 };
 
 /**
- * Create a test user + team + membership + credits.
+ * Create a test user + organization + membership + credits.
  * Mirrors the previous direct logic from e2e/fixtures/auth.fixture.ts
  */
 export async function createTestUser(
@@ -91,11 +91,11 @@ export async function createTestUser(
   const now = new Date();
 
   const userId = generateId();
-  const teamId = generateId();
+  const organizationId = generateId();
   const name = opts.name ?? 'E2E Test User';
 
   const email = `test-${userId.slice(-8).toLowerCase()}@e2e.test`;
-  const teamSlug = `test-team-${teamId.slice(-8).toLowerCase()}`;
+  const organizationSlug = `test-organization-${organizationId.slice(-8).toLowerCase()}`;
 
   await db.insert(user).values({
     id: userId,
@@ -107,28 +107,29 @@ export async function createTestUser(
     updatedAt: now,
   });
 
-  await db.insert(teams).values({
-    id: teamId,
-    name: 'E2E Test Team',
-    slug: teamSlug,
+  await db.insert(organization).values({
+    id: organizationId,
+    name: 'E2E Test Organization',
+    slug: organizationSlug,
     createdAt: now,
     updatedAt: now,
   });
 
-  await db.insert(teamMembers).values({
-    teamId,
+  await db.insert(member).values({
+    id: userId,
+    organizationId,
     userId,
     role: 'owner',
-    joinedAt: now,
+    createdAt: now,
   });
 
   await db.insert(credits).values({
-    teamId,
+    organizationId,
     balance: 100_000_000, // generous for tests
     updatedAt: now,
   });
 
-  return { id: userId, email, name, teamId };
+  return { id: userId, email, name, organizationId };
 }
 
 /**
@@ -171,7 +172,7 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
   // The sequences' characters (#2017), read before their cast links go — only
-  // the ones no other sequence still casts (a team character attached to
+  // the ones no other sequence still casts (an organization character attached to
   // a second sequence stays, as `charactersOnlyIn` keeps it: its remaining
   // link would refuse the delete). One bound parameter however many there are.
   const cast = await db
@@ -187,7 +188,7 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
     cast.map((row) => row.id)
   )}))`;
   // The sequences' locations (#1695), as `locationsOnlyIn` picks them: one
-  // the writer attached is the team's and stays.
+  // the writer attached is the organization's and stays.
   const used = await db
     .select({ id: sequenceLocationLinks.locationId })
     .from(sequenceLocationLinks)
@@ -263,7 +264,7 @@ function deleteLocationRows(where: SQL | undefined) {
   ] as const;
 }
 
-/** Delete the team locations `where` matches, links included. */
+/** Delete the organization locations `where` matches, links included. */
 async function deleteTestLocations(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: locations.id }).from(locations).where(where);
@@ -277,25 +278,25 @@ async function deleteTestLocations(where: SQL | undefined) {
 
 export async function cleanupTestUser(
   userId: string,
-  teamId: string
+  organizationId: string
 ): Promise<void> {
   const db = getDb();
 
   await db.delete(session).where(eq(session.userId, userId));
-  await db.delete(teamMembers).where(eq(teamMembers.userId, userId));
-  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
-  // A team delete is refused while it has locations (#1695).
-  await deleteTestLocations(eq(locations.teamId, teamId));
-  await db.delete(teams).where(eq(teams.id, teamId));
+  await db.delete(member).where(eq(member.userId, userId));
+  await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
+  // An organization delete is refused while it has locations (#1695).
+  await deleteTestLocations(eq(locations.organizationId, organizationId));
+  await db.delete(organization).where(eq(organization.id, organizationId));
   await db.delete(user).where(eq(user.id, userId));
-  // Credits will cascade or be cleaned via team if we add FKs later
+  // Credits will cascade or be cleaned via organization if we add FKs later
 }
 
 /**
- * Create a minimal test style for a team.
+ * Create a minimal test style for an organization.
  */
 export async function createTestStyle(
-  teamId: string
+  organizationId: string
 ): Promise<CreatedTestStyle> {
   const db = getDb();
   const now = new Date();
@@ -313,32 +314,32 @@ export async function createTestStyle(
 
   await db.insert(styles).values({
     id: styleId,
-    teamId,
+    organizationId,
     name: 'E2E Test Style',
     config: styleConfig,
     createdAt: now,
     updatedAt: now,
   });
 
-  return { id: styleId, teamId };
+  return { id: styleId, organizationId };
 }
 
 /**
  * Create a basic completed test sequence (no shots).
  */
 export async function createTestSequence(
-  teamId: string,
+  organizationId: string,
   userId: string,
   title = 'E2E Test Sequence'
 ): Promise<CreatedTestSequence> {
   const db = getDb();
   const now = new Date();
   const sequenceId = generateId();
-  const style = await createTestStyle(teamId);
+  const style = await createTestStyle(organizationId);
 
   await db.insert(sequences).values({
     id: sequenceId,
-    teamId,
+    organizationId,
     title,
     status: 'completed',
     styleId: style.id,
@@ -348,7 +349,7 @@ export async function createTestSequence(
     updatedAt: now,
   });
 
-  return { id: sequenceId, teamId, styleId: style.id, title };
+  return { id: sequenceId, organizationId, styleId: style.id, title };
 }
 
 /**
@@ -439,16 +440,16 @@ export async function createTestShot(
 }
 
 /**
- * Create a test location for a team, with a completed sheet. It is in no
+ * Create a test location for an organization, with a completed sheet. It is in no
  * sequence: a test picks it, and analysis links it.
  */
 export async function createTestLocation(
-  teamId: string,
+  organizationId: string,
   name: string,
   options: { description?: string; sheetImageUrl?: string } = {}
 ): Promise<{
   id: string;
-  teamId: string;
+  organizationId: string;
   name: string;
   referenceImageUrl: string;
 }> {
@@ -464,7 +465,7 @@ export async function createTestLocation(
   // row (#1419), both keyed to the location's own id like the backfill.
   await db.insert(locations).values({
     id,
-    teamId,
+    organizationId,
     legacyName: name,
     selectedBibleVersionId: id,
     referenceStatus: 'completed',
@@ -491,11 +492,11 @@ export async function createTestLocation(
     updatedAt: now,
   });
 
-  return { id, teamId, name, referenceImageUrl: sheetImageUrl };
+  return { id, organizationId, name, referenceImageUrl: sheetImageUrl };
 }
 
 /**
- * The team location the full-sequence e2e picks. Its name and description
+ * The organization location the full-sequence e2e picks. Its name and description
  * are what the recorded location-match fixture was recorded with (the public
  * template of that name, removed in #1695), so they must not change. The
  * sheet is the real one on the public assets domain.
@@ -506,25 +507,25 @@ const SUNLIT_LOFT_LOCATION = {
     'Airy industrial loft with exposed brick, massive arched windows flooding warm natural light, a velvet couch, scattered art supplies, and hanging plants. Creative, intimate, and effortlessly photogenic.',
 };
 
-export async function createSunlitLoftTestLocation(teamId: string) {
-  return await createTestLocation(teamId, SUNLIT_LOFT_LOCATION.name, {
+export async function createSunlitLoftTestLocation(organizationId: string) {
+  return await createTestLocation(organizationId, SUNLIT_LOFT_LOCATION.name, {
     description: SUNLIT_LOFT_LOCATION.description,
     sheetImageUrl: `https://${getPublicAssetsDomain()}/locations/sunlit-loft-studio/sheet.webp`,
   });
 }
 
 /**
- * The team character the full-sequence e2e casts as the script's SCARLETT
+ * The organization character the full-sequence e2e casts as the script's SCARLETT
  * (#2135). No sequence and no sheet: the run casts her and draws the sheet.
  */
-export async function createScarlettTestCharacter(teamId: string) {
+export async function createScarlettTestCharacter(organizationId: string) {
   const db = getDb();
   const now = new Date();
   const id = generateId();
   const name = 'Scarlett';
   await db.insert(characters).values({
     id,
-    teamId,
+    organizationId,
     legacyName: name,
     selectedBibleVersionId: id,
     createdAt: now,
@@ -594,7 +595,7 @@ export async function createTestCharacter(
   } = options;
 
   const [sequence] = await db
-    .select({ teamId: sequences.teamId })
+    .select({ organizationId: sequences.organizationId })
     .from(sequences)
     .where(eq(sequences.id, sequenceId));
   if (!sequence) throw new Error(`Sequence ${sequenceId} not found`);
@@ -603,7 +604,7 @@ export async function createTestCharacter(
   // own id like the backfill.
   await db.insert(characters).values({
     id,
-    teamId: sequence.teamId,
+    organizationId: sequence.organizationId,
     legacyName: name,
     selectedBibleVersionId: id,
     createdAt: now,
@@ -673,13 +674,17 @@ export async function createTestCharacter(
 }
 
 /**
- * Clean up all sequences and styles for a team.
+ * Clean up all sequences and styles for an organization.
  */
-export async function cleanupTestSequences(teamId: string): Promise<void> {
+export async function cleanupTestSequences(
+  organizationId: string
+): Promise<void> {
   const db = getDb();
-  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
-  await db.delete(sequences).where(eq(sequences.teamId, teamId));
-  await db.delete(styles).where(eq(styles.teamId, teamId));
+  await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
+  await db
+    .delete(sequences)
+    .where(eq(sequences.organizationId, organizationId));
+  await db.delete(styles).where(eq(styles.organizationId, organizationId));
 }
 
 /**
@@ -696,10 +701,12 @@ export async function cleanupSequenceById(
 }
 
 /**
- * Clean up a team's locations.
+ * Clean up an organization's locations.
  */
-export async function cleanupTestLocations(teamId: string): Promise<void> {
-  await deleteTestLocations(eq(locations.teamId, teamId));
+export async function cleanupTestLocations(
+  organizationId: string
+): Promise<void> {
+  await deleteTestLocations(eq(locations.organizationId, organizationId));
 }
 
 /**
@@ -710,10 +717,10 @@ export async function cleanupLocationById(locationId: string): Promise<void> {
 }
 
 /**
- * Find and clean up a location by team + name (for UI-created test entities).
+ * Find and clean up a location by organization + name (for UI-created test entities).
  */
 export async function cleanupLocationByName(
-  teamId: string,
+  organizationId: string,
   name: string
 ): Promise<void> {
   const db = getDb();
@@ -722,7 +729,10 @@ export async function cleanupLocationByName(
     .from(locationBibleVersions)
     .where(eq(locationBibleVersions.name, name));
   await deleteTestLocations(
-    and(eq(locations.teamId, teamId), inArray(locations.id, named))
+    and(
+      eq(locations.organizationId, organizationId),
+      inArray(locations.id, named)
+    )
   );
 }
 

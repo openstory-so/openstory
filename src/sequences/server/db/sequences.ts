@@ -1,6 +1,6 @@
 /**
  * Scoped Sequences Sub-module
- * Team-scoped sequence CRUD and per-sequence update methods.
+ * Organization-scoped sequence CRUD and per-sequence update methods.
  */
 
 import { withSequencePosters } from './sequence-poster';
@@ -227,20 +227,20 @@ const insertStyleVersion = (
 ) => db.insert(sequenceStyleVersions).values(row);
 
 // D1 caps a single query at 100 bound parameters. `listShotsByIds` binds one
-// param per sequence id plus the teamId filter, so each query must stay under
+// param per sequence id plus the organizationId filter, so each query must stay under
 // that ceiling. We chunk the ids well below 100 and union the results; without
-// this a team with enough sequences overflows the limit (and previously tripped
+// this an organization with enough sequences overflows the limit (and previously tripped
 // the 500-item request cap on `getShotsForSequencesFn` — see #957).
 const SHOTS_BY_IDS_BATCH = 90;
 
-function createSequencesReadMethods(db: Database, teamId: string) {
+function createSequencesReadMethods(db: Database, organizationId: string) {
   const selectSequences = () => selectSequencesFrom(db);
   return {
     list: async (): Promise<Sequence[]> => {
       const rows = await selectSequences()
         .where(
           and(
-            eq(sequences.teamId, teamId),
+            eq(sequences.organizationId, organizationId),
             not(eq(sequences.status, 'archived'))
           )
         )
@@ -248,17 +248,20 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       return withSequencePosters(db, rows);
     },
 
-    /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */
+    /** The organization's archived sequences — the unarchive picker (#1108 Phase 4). */
     listArchived: async (): Promise<Sequence[]> => {
       return await selectSequences()
         .where(
-          and(eq(sequences.teamId, teamId), eq(sequences.status, 'archived'))
+          and(
+            eq(sequences.organizationId, organizationId),
+            eq(sequences.status, 'archived')
+          )
         )
         .orderBy(desc(sequences.updatedAt));
     },
 
     /**
-     * Keyset-paginated, most-recent-first page of the team's non-archived
+     * Keyset-paginated, most-recent-first page of the organization's non-archived
      * sequences — backs the public `GET /api/v1/sequences` list. Ordered by
      * `(updatedAt, id)` descending so the `id` tiebreaker keeps the order total
      * even when several rows share an `updatedAt` second. Pass the last row's
@@ -274,7 +277,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       return await selectSequences()
         .where(
           and(
-            eq(sequences.teamId, teamId),
+            eq(sequences.organizationId, organizationId),
             not(eq(sequences.status, 'archived')),
             cursor
               ? or(
@@ -292,7 +295,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Every style snapshot of a team sequence, oldest first (#1600).
+     * Every style snapshot of an organization sequence, oldest first (#1600).
      * Staleness causes diff the one live when an artifact was made against
      * the live one.
      */
@@ -307,7 +310,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(sequenceStyleVersions.sequenceId, sequenceId),
-            eq(sequences.teamId, teamId)
+            eq(sequences.organizationId, organizationId)
           )
         )
         .orderBy(
@@ -317,14 +320,20 @@ function createSequencesReadMethods(db: Database, teamId: string) {
 
     getById: async (sequenceId: string): Promise<Sequence | null> => {
       const result = await selectSequences().where(
-        and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId))
+        and(
+          eq(sequences.id, sequenceId),
+          eq(sequences.organizationId, organizationId)
+        )
       );
       return result[0] ?? null;
     },
 
     getForUser: async (params: { sequenceId: string }): Promise<Sequence> => {
       const [sequence] = await selectSequences().where(
-        and(eq(sequences.id, params.sequenceId), eq(sequences.teamId, teamId))
+        and(
+          eq(sequences.id, params.sequenceId),
+          eq(sequences.organizationId, organizationId)
+        )
       );
       if (!sequence) {
         throw new ValidationError('Sequence not found');
@@ -336,8 +345,8 @@ function createSequencesReadMethods(db: Database, teamId: string) {
      * Batched shot fetch for a list of sequences. Replaces N parallel
      * `shots.listBySequence` round-trips from the sequences list page — the
      * fan-out saturated iOS Chrome's connection pool and crashed the
-     * WebProcess once teams accumulated >~50 sequences. teamId filter is
-     * applied via the join so caller-supplied ids from another team simply
+     * WebProcess once organization accumulated >~50 sequences. organizationId filter is
+     * applied via the join so caller-supplied ids from another organization simply
      * return nothing rather than leak.
      */
     listShotsByIds: async (
@@ -347,7 +356,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       // Chunk the ids to stay under D1's bound-parameter ceiling. Each chunk
       // holds all of a sequence's shots (we split on sequence boundaries), so
       // per-sequence order is preserved; callers regroup by sequence id.
-      // Batches run one at a time so a team-wide list does not hold every
+      // Batches run one at a time so an organization-wide list does not hold every
       // raw page at once (#1897).
       const shotsOut: SequenceListShot[] = [];
       for (let i = 0; i < sequenceIds.length; i += SHOTS_BY_IDS_BATCH) {
@@ -415,7 +424,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
           .where(
             and(
               inArray(shots.sequenceId, batch),
-              eq(sequences.teamId, teamId),
+              eq(sequences.organizationId, organizationId),
               isNull(shots.deletedAt)
             )
           )
@@ -496,8 +505,8 @@ function createSequencesReadMethods(db: Database, teamId: string) {
               selectedVideoUrl: videoVariants.url,
             })
             .from(shots)
-            // teamId is filtered through the join, so caller-supplied ids from
-            // another team return nothing rather than leak.
+            // organizationId is filtered through the join, so caller-supplied ids from
+            // another organization return nothing rather than leak.
             .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
             // Same anchor-frame and selection joins as `selectShotViewRows`:
             // all left, with `discardedAt` in the JOIN condition, so a shot
@@ -527,7 +536,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId),
+                eq(sequences.organizationId, organizationId),
                 // Soft-deleted shots stay out of list counts (#1108). Twin of
                 // `listShotsByIds` — public `GET /api/v1/sequences` uses this
                 // path for `counts`.
@@ -602,11 +611,11 @@ async function snapshotConfigForStyleId(
 
 export function createSequencesMethods(
   db: Database,
-  teamId: string,
+  organizationId: string,
   userId: string
 ) {
   return {
-    ...createSequencesReadMethods(db, teamId),
+    ...createSequencesReadMethods(db, organizationId),
 
     /**
      * A new sequence; its style snapshot (#1600) lands as its first
@@ -650,7 +659,7 @@ export function createSequencesMethods(
       const styleVersionId = styleConfig ? generateId() : null;
       const sequenceData: NewSequence = {
         id,
-        teamId,
+        organizationId,
         createdBy: userId,
         updatedBy: userId,
         title: params.title,
@@ -717,7 +726,7 @@ export function createSequencesMethods(
     }): Promise<boolean> => {
       const where = and(
         eq(sequences.id, params.id),
-        eq(sequences.teamId, teamId),
+        eq(sequences.organizationId, organizationId),
         params.expectedRunId === null
           ? isNull(sequences.workflowRunId)
           : eq(sequences.workflowRunId, params.expectedRunId)
@@ -765,7 +774,7 @@ export function createSequencesMethods(
         .where(
           and(
             eq(sequences.id, sequenceId),
-            eq(sequences.teamId, teamId),
+            eq(sequences.organizationId, organizationId),
             isNull(sequences.readyEmailSentAt)
           )
         )
@@ -781,7 +790,12 @@ export function createSequencesMethods(
       await db
         .update(sequences)
         .set({ readyEmailSentAt: null, updatedAt: new Date() })
-        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.organizationId, organizationId)
+          )
+        );
     },
 
     update: async (params: {
@@ -811,15 +825,18 @@ export function createSequencesMethods(
       draftMotion?: boolean;
       targetDurationSeconds?: number | null;
     }): Promise<Sequence> => {
-      // Scoped by teamId like every other write here — `workflowRunId` in
-      // particular is the generation-mutex column (#839), so a cross-team id
+      // Scoped by organizationId like every other write here — `workflowRunId` in
+      // particular is the generation-mutex column (#839), so a cross-organization id
       // must never be able to stomp it.
       const { id, ...values } = params;
       const styleConfig =
         params.styleId !== undefined
           ? await snapshotConfigForStyleId(db, params.styleId)
           : undefined;
-      const scoped = and(eq(sequences.id, id), eq(sequences.teamId, teamId));
+      const scoped = and(
+        eq(sequences.id, id),
+        eq(sequences.organizationId, organizationId)
+      );
       const [before] = await db
         .select({
           styleId: sequences.styleId,
@@ -918,7 +935,7 @@ export function createSequencesMethods(
       const styleConfig = await snapshotConfigForStyleId(db, params.styleId);
       const still = and(
         eq(sequences.id, params.id),
-        eq(sequences.teamId, teamId),
+        eq(sequences.organizationId, organizationId),
         eq(sequences.styleId, params.styleId)
       );
       const [current] = await db
@@ -962,12 +979,12 @@ export function createSequencesMethods(
     ): Promise<string[]> =>
       await voiceIdsHeldOnlyBy(
         db,
-        await charactersOnlyIn(db, teamId, sequenceId)
+        await charactersOnlyIn(db, organizationId, sequenceId)
       ),
 
     /**
-     * Hard-delete one of the team's sequences. Every statement names the
-     * team's sequence, so another team's id deletes nothing. Refused while a
+     * Hard-delete one of the organization's sequences. Every statement names the
+     * organization's sequence, so another organization's id deletes nothing. Refused while a
      * saved voice would be stranded: `releasedVoiceIds` are the ids from
      * `getVoiceIdsToReleaseOnDelete` the caller has run through
      * `releaseVoiceIfUnreferenced`.
@@ -979,18 +996,23 @@ export function createSequencesMethods(
       const mine = db
         .select({ id: sequences.id })
         .from(sequences)
-        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
-      // A character belongs to the team (#2017): the sequence's cast links
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.organizationId, organizationId)
+          )
+        );
+      // A character belongs to the organization (#2017): the sequence's cast links
       // go, and with them only the characters nothing else holds. Nothing
       // cascades from the sequence to a character, or from a character to
       // its rows, so all of it is deleted here, children first, in one batch.
       const [own] = await mine;
       const theirs = own
-        ? await charactersOnlyIn(db, teamId, sequenceId)
+        ? await charactersOnlyIn(db, organizationId, sequenceId)
         : sql`0`;
-      // A location is the team's too (#1695), by the same rule.
+      // A location is the organization's too (#1695), by the same rule.
       const theirLocations = own
-        ? await locationsOnlyIn(db, teamId, sequenceId)
+        ? await locationsOnlyIn(db, organizationId, sequenceId)
         : sql`0`;
       await assertVoicesReleased(db, theirs, opts.releasedVoiceIds);
       await db.batch([
@@ -1010,7 +1032,10 @@ export function createSequencesMethods(
       await db
         .delete(styles)
         .where(
-          and(eq(styles.sequenceId, sequenceId), eq(styles.teamId, teamId))
+          and(
+            eq(styles.sequenceId, sequenceId),
+            eq(styles.organizationId, organizationId)
+          )
         );
     },
 

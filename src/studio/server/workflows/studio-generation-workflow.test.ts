@@ -160,7 +160,7 @@ function makeEvent(
   return {
     payload: {
       userId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'organization-1',
       assetId: 'asset-1',
       reservationId: 'res-studio-1',
       ownsReservation: true,
@@ -232,7 +232,7 @@ describe('StudioGenerationWorkflow image', () => {
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'organization-1',
       assetId: 'asset-1',
       activity: 'image',
       model: 'gpt_image_2',
@@ -243,7 +243,7 @@ describe('StudioGenerationWorkflow image', () => {
     });
   });
 
-  it('skips deduction on the team key but still records the cost', async () => {
+  it('skips deduction on the organization key but still records the cost', async () => {
     mockGenerateImageWithProvider.mockResolvedValue({
       imageUrls: ['https://fal.media/a.png'],
       via: 'fal',
@@ -309,7 +309,7 @@ describe('StudioGenerationWorkflow video', () => {
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
-      teamId: 'team-1',
+      organizationId: 'organization-1',
       assetId: 'asset-1',
       activity: 'video',
       model: 'seedance_v2',

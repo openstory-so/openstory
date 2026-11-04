@@ -15,7 +15,7 @@ export const TOOL_VIEWS: Readonly<Record<string, string>> = {
 /**
  * The tools a view may call through the in-app host (`tools/call`): the
  * reads the pages above actually make, nothing more. Not "any read": a view
- * must not reach the web tools or walk the team's data on its own.
+ * must not reach the web tools or walk the organization's data on its own.
  */
 export const VIEW_CALLABLE_TOOLS: ReadonlySet<string> = new Set([
   'openstory.get_sequence_status',

@@ -67,7 +67,7 @@ function UsageContent() {
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.email.toLowerCase().includes(q) ||
-        r.teamName.toLowerCase().includes(q)
+        r.organizationName.toLowerCase().includes(q)
     );
   }, [rows, search]);
 
@@ -149,7 +149,7 @@ function UsageContent() {
         <div className="relative max-w-sm flex-1">
           <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by name, email, or team..."
+            placeholder="Search by name, email, or organization..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -191,7 +191,7 @@ function UsageContent() {
                 Status
               </th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                Team
+                Organization
               </th>
               <SortableHeader
                 label="Sequences"
@@ -266,7 +266,10 @@ function UsageContent() {
               </tr>
             ) : (
               sorted.map((row) => (
-                <UserRow key={`${row.userId}-${row.teamId}`} row={row} />
+                <UserRow
+                  key={`${row.userId}-${row.organizationId}`}
+                  row={row}
+                />
               ))
             )}
           </tbody>
@@ -357,7 +360,9 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
       <td className="px-4 py-3">
         <Badge variant={statusVariant}>{row.status ?? 'unknown'}</Badge>
       </td>
-      <td className="px-4 py-3 text-muted-foreground">{row.teamName}</td>
+      <td className="px-4 py-3 text-muted-foreground">
+        {row.organizationName}
+      </td>
       <td className="px-4 py-3 text-right tabular-nums">{row.sequenceCount}</td>
       <td className="px-4 py-3 text-right tabular-nums">
         <span className={row.failedCount > 0 ? 'text-destructive' : undefined}>
@@ -418,8 +423,8 @@ const CSV_COLUMNS = [
   'email',
   'createdAt',
   'status',
-  'teamId',
-  'teamName',
+  'organizationId',
+  'organizationName',
   'sequenceCount',
   'failedCount',
   'avgAnalysisDurationSec',
@@ -458,8 +463,8 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
       row.email,
       new Date(row.createdAt).toISOString(),
       row.status,
-      row.teamId,
-      row.teamName,
+      row.organizationId,
+      row.organizationName,
       row.sequenceCount,
       row.failedCount,
       avgSec,

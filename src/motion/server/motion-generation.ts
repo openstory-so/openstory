@@ -201,10 +201,10 @@ async function resolveOptionalXaiKey(
 }
 
 /**
- * Can this model render a reference-only shot FOR THIS TEAM?
+ * Can this model render a reference-only shot FOR THIS ORGANIZATION?
  *
  * `supportsReferenceOnlyMotion` is the model-only floor for isomorphic code,
- * keyed on the model alone because a pure schema cannot see a team's keys.
+ * keyed on the model alone because a pure schema cannot see an organization's keys.
  * Here the via IS knowable, so the answer can be the honest one — which
  * matters for Grok Imagine: it accepts references with no start frame on the
  * native xAI route (`resolveMotionEndpoint` already returns `inline` for it),
@@ -212,7 +212,7 @@ async function resolveOptionalXaiKey(
  * requires `image_url`. So Grok can serve a reference-only shot exactly when
  * an xAI key resolves.
  *
- * Use this wherever a team's keys are reachable: creation, the per-shot
+ * Use this wherever an organization's keys are reachable: creation, the per-shot
  * toggle, regenerate, add-model, and the content-flag rescue. A key can still
  * be revoked between creation and submit, so `MotionWorkflow`'s entry guard
  * re-asks.
@@ -261,7 +261,7 @@ async function resolveMotionRoute(
     return {
       via: claimBytePlusVia({
         native: true,
-        usingOwnFalKey: falKey?.source === 'team',
+        usingOwnFalKey: falKey?.source === 'organization',
       }),
     };
   }
@@ -269,8 +269,8 @@ async function resolveMotionRoute(
 }
 
 /**
- * Whether Seedance 2.5 submits to Ark for this team right now: the `onArk`
- * every edit decision takes (#2036). A team on its own fal key lands on fal,
+ * Whether Seedance 2.5 submits to Ark for this organization right now: the `onArk`
+ * every edit decision takes (#2036). An organization on its own fal key lands on fal,
  * which never sends an edit.
  */
 export async function seedanceRunsOnArk(
@@ -402,7 +402,7 @@ async function submitFalMotionJob(
   });
   return {
     jobId: job.jobId,
-    usedOwnKey: key.source === 'team',
+    usedOwnKey: key.source === 'organization',
     endpointId: endpoint.endpointId,
   };
 }
@@ -509,7 +509,7 @@ async function submitMotionJobOnce(
   // Same order as Grok (#1167): native key first, fal is the fallback.
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
   // Google-only) deploy must not reach it. BytePlus is platform-only (no
-  // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
+  // resolveOptionalKey('byteplus')) and yields to a BYOK fal organization.
   const route = await resolveMotionRoute(modelKey, options.credentials);
   const { via } = route;
   const xaiKey = route.via === 'xai' ? route.xaiKey : undefined;
@@ -615,7 +615,7 @@ async function submitMotionJobOnce(
   }
 
   // Draft mode is an Ark feature (#1756): a draft-capable model that lands
-  // on fal (a BYOK fal team) cannot honour it, and saying so beats a full
+  // on fal (a BYOK fal organization) cannot honour it, and saying so beats a full
   // render the user thought was a cheap preview. A model without draft mode
   // ignores the flag, like `generateAudio` on a silent model. A final is
   // never a draft, whatever its payload says: its task id must not be stamped.
@@ -625,7 +625,7 @@ async function submitMotionJobOnce(
     supportsDraftMode(modelKey);
   if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
     throw new Error(
-      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this team`
+      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this organization`
     );
   }
 
@@ -669,7 +669,7 @@ async function submitMotionJobOnce(
         debug: false,
       });
       jobId = job.jobId;
-      usedOwnKey = xaiKey.source === 'team';
+      usedOwnKey = xaiKey.source === 'organization';
       break;
     }
     case 'google': {
@@ -707,7 +707,7 @@ async function submitMotionJobOnce(
         debug: false,
       });
       jobId = job.jobId;
-      usedOwnKey = googleKey.source === 'team';
+      usedOwnKey = googleKey.source === 'organization';
       break;
     }
     case 'fal': {

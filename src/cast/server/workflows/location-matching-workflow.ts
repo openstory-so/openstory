@@ -43,12 +43,12 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
 
     const locationBible = input.locationBible;
 
-    // The team locations the writer picked. A match is a link and draws no
+    // The organization locations the writer picked. A match is a link and draws no
     // sheet (#1695), so a pick whose sheet is still drawing (or failed) is
     // matched like any other: nothing waits for it. A location deleted from
-    // the team is left out of the read.
+    // the organization is left out of the read.
     const referenceRows =
-      suggestedLocationIds?.length && input.teamId
+      suggestedLocationIds?.length && input.organizationId
         ? await step.do('read-picked-locations', async () =>
             scopedDb.liveRead.locations.getCurrentByIds(suggestedLocationIds)
           )

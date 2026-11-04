@@ -5,7 +5,7 @@
  * Video modes:
  *   - Text      — prompt only
  *   - Reference — stills attached as `@Image1`…`@ImageN`; typing `@` lists
- *                 what's attached plus the team library (picking a library
+ *                 what's attached plus the organization library (picking a library
  *                 still attaches it)
  *   - Frames    — a start frame, plus an end frame where the model takes one
  */

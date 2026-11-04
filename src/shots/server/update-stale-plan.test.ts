@@ -189,7 +189,7 @@ function buildScopedDb(
       getById: () =>
         Promise.resolve({
           id: 'seq-1',
-          teamId: 'team-1',
+          organizationId: 'org-1',
           title: 'Sequence 1',
           aspectRatio: '16:9',
           styleId: 'st-1',

@@ -20,7 +20,7 @@ import {
   sequences,
   shots,
   styles,
-  teams,
+  organization,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import type { Database } from '@/platform/server/db/client';
@@ -28,7 +28,7 @@ import { createShotsMethods } from './shots';
 
 let closeDb: () => Promise<void>;
 let db: Database;
-let teamId = '';
+let organizationId = '';
 let sequenceId = '';
 // Shot identity is (sceneId, shotNumber) now (#1067), so every fixture shot
 // hangs off a real scene.
@@ -41,15 +41,17 @@ async function seed() {
   await db.delete(scenes);
   await db.delete(sequences);
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
 
-  teamId = generateId();
+  organizationId = generateId();
   sequenceId = generateId();
-  await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
+  await db
+    .insert(organization)
+    .values({ id: organizationId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
     .values({
-      teamId,
+      organizationId,
       name: 'default',
       config: {
         mood: 'neutral',
@@ -65,7 +67,7 @@ async function seed() {
   if (!style) throw new Error('test setup: style insert returned nothing');
   await db
     .insert(sequences)
-    .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
+    .values({ id: sequenceId, organizationId, title: 'S', styleId: style.id });
   sceneId = dbSceneId(generateId());
   await db.insert(scenes).values({ id: sceneId, sequenceId, orderIndex: 0 });
 }

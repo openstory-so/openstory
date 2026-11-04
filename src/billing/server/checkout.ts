@@ -19,7 +19,7 @@ export const SAVE_CARD_METADATA_TYPE = 'save_card';
 
 type CreateCheckoutParams = {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   amountUsd: number;
   userId: string;
   userEmail: string;
@@ -32,7 +32,7 @@ type CreateCheckoutParams = {
 async function ensureStripeCustomer(opts: {
   stripe: Stripe;
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   userEmail: string;
 }): Promise<string> {
@@ -51,7 +51,7 @@ async function ensureStripeCustomer(opts: {
   if (!customerId) {
     const customer = await opts.stripe.customers.create({
       email: opts.userEmail,
-      metadata: { teamId: opts.teamId, userId: opts.userId },
+      metadata: { organizationId: opts.organizationId, userId: opts.userId },
     });
     customerId = customer.id;
     await opts.scopedDb.billing.saveStripeCustomerId(customerId);
@@ -64,7 +64,7 @@ export async function createCheckoutSession(
 ): Promise<{ url: string }> {
   const {
     scopedDb,
-    teamId,
+    organizationId,
     amountUsd,
     userId,
     userEmail,
@@ -83,7 +83,7 @@ export async function createCheckoutSession(
   const customerId = await ensureStripeCustomer({
     stripe,
     scopedDb,
-    teamId,
+    organizationId,
     userId,
     userEmail,
   });
@@ -94,9 +94,9 @@ export async function createCheckoutSession(
   const feeLabel = formatPlatformFeePercent();
 
   // Copied onto the PaymentIntent so `payment_intent.*` webhooks pass
-  // stripeWebhookMiddleware (it requires teamId + userId on the object).
+  // stripeWebhookMiddleware (it requires organizationId + userId on the object).
   const metadata: Record<string, string> = {
-    teamId,
+    organizationId,
     userId,
     amountUsd: String(amountUsd),
     type: 'credit_top_up',
@@ -125,7 +125,7 @@ export async function createCheckoutSession(
           unit_amount: creditCents,
           product_data: {
             name: `Credits — $${creditUsd.toFixed(2)}`,
-            description: `Add $${creditUsd.toFixed(2)} to your team wallet`,
+            description: `Add $${creditUsd.toFixed(2)} to your organization wallet`,
           },
         },
         quantity: 1,
@@ -164,7 +164,7 @@ export async function createCheckoutSession(
 
   captureCheckoutOpened({
     distinctId: userId,
-    teamId,
+    organizationId,
     amountUsd,
     method: 'checkout',
     stripeCheckoutSessionId: session.id,
@@ -181,7 +181,7 @@ export async function createCheckoutSession(
 
 type CreateSetupCheckoutParams = {
   scopedDb: ScopedDb;
-  teamId: string;
+  organizationId: string;
   userId: string;
   userEmail: string;
   successUrl: string;
@@ -190,25 +190,26 @@ type CreateSetupCheckoutParams = {
 
 /**
  * Checkout in `mode: 'setup'` — Stripe's UI says save a card, not pay.
- * Webhook middleware requires teamId + userId on the object metadata, so
+ * Webhook middleware requires organizationId + userId on the object metadata, so
  * both the session and the SetupIntent carry them.
  */
 export async function createSetupCheckoutSession(
   params: CreateSetupCheckoutParams
 ): Promise<{ url: string }> {
-  const { scopedDb, teamId, userId, userEmail, successUrl, cancelUrl } = params;
+  const { scopedDb, organizationId, userId, userEmail, successUrl, cancelUrl } =
+    params;
 
   const stripe = getStripeOrThrow();
   const customerId = await ensureStripeCustomer({
     stripe,
     scopedDb,
-    teamId,
+    organizationId,
     userId,
     userEmail,
   });
 
   const metadata: Record<string, string> = {
-    teamId,
+    organizationId,
     userId,
     type: SAVE_CARD_METADATA_TYPE,
   };
@@ -263,7 +264,9 @@ function objectId(
   return typeof value === 'string' ? value : value.id;
 }
 
-export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {
+export async function organizationHasSavedCard(
+  scopedDb: ScopedDb
+): Promise<boolean> {
   const settings = await scopedDb.billing.getBillingSettings();
   if (!settings.stripeCustomerId) return false;
   const stripe = getStripeOrThrow();

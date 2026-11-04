@@ -197,7 +197,7 @@ async function zeroUnusedReservations(
 }
 
 /**
- * An edit's source must be this team's finished studio clip, and the URL the
+ * An edit's source must be this organization's finished studio clip, and the URL the
  * clip's own output — so the history chain (`sourceAssetId`) never points at
  * a row the video did not come from.
  */
@@ -276,7 +276,7 @@ function clipLinksFromStored(input: GeneratedAssetInput): ClipLink[] {
 
 /**
  * The address the model fetches for one reference clip. An id loads this
- * team's finished Studio video and uses the output stored on it. An address
+ * organization's finished Studio video and uses the output stored on it. An address
  * is an upload, whatever path it has.
  */
 async function resolveReferenceClip(
@@ -364,12 +364,12 @@ export async function createStudioAssets(
   const referenceClips = resolvedClips.map((clip) => clip.clip);
   if (input.activity === 'video') {
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
-    // to the BytePlus via is refused where this team would land on fal.
+    // to the BytePlus via is refused where this organization would land on fal.
     const falKey = await scopedDb.apiKeys.resolveOptionalKey('fal');
     const byteplus =
       claimBytePlusVia({
         native: true,
-        usingOwnFalKey: falKey?.source === 'team',
+        usingOwnFalKey: falKey?.source === 'organization',
       }) === 'byteplus';
     if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
       throw new ValidationError('Unknown video model');
@@ -444,7 +444,7 @@ export async function createStudioAssets(
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
+    organizationId: scopedDb.organizationId,
   });
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
   // (#1581); library stills passed the same gate when they were saved. One
@@ -528,7 +528,7 @@ export async function createStudioAssets(
 
           const workflowInput: StudioGenerationWorkflowInput = {
             userId: scopedDb.userId,
-            teamId: scopedDb.teamId,
+            organizationId: scopedDb.organizationId,
             assetId: row.id,
             reservationId,
             ownsReservation: true,
@@ -582,7 +582,8 @@ export async function createStudioAssets(
     distinctId: scopedDb.userId,
     event: 'studio_generation_started',
     properties: {
-      team_id: scopedDb.teamId,
+      team_id: scopedDb.organizationId,
+      organization_id: scopedDb.organizationId,
       activity: input.activity,
       model: input.activity === 'image' ? input.imageModel : input.videoModel,
       model_name: modelName,

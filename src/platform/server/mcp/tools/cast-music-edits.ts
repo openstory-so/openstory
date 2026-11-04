@@ -163,7 +163,7 @@ const createCharacterTool = openstoryTool({
 const addCharacterToSequenceTool = openstoryTool({
   name: 'add_character_to_sequence',
   description:
-    'Cast a team character (list_library_characters) into a sequence (#2050): one cast link, every look, nothing copied, no generation. The sequence reads the character as it is now and after every later edit. The script names the character in capitals; analysis then links to it rather than making a new character. Refused while a live cast member of the sequence already has that name (CONFLICT). A deleted character is NOT_FOUND. Idempotent for a character the sequence already casts.',
+    'Cast an organization character (list_library_characters) into a sequence (#2050): one cast link, every look, nothing copied, no generation. The sequence reads the character as it is now and after every later edit. The script names the character in capitals; analysis then links to it rather than making a new character. Refused while a live cast member of the sequence already has that name (CONFLICT). A deleted character is NOT_FOUND. Idempotent for a character the sequence already casts.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: characterInput,
@@ -593,7 +593,7 @@ const undiscardCharacterSheetVersionTool = openstoryTool({
 const createLocationTool = openstoryTool({
   name: 'create_location',
   description:
-    'Make a new location by hand and use it in a sequence, with its bible (type, description, architecture, key features, ambiance, rendering). The location is the team’s (list_library_locations) and other sequences can use it with add_location_to_sequence. It starts without a reference sheet; no generation starts. Its script token (loc_*) is derived from the name. To use a location the team already has, call add_location_to_sequence instead.',
+    'Make a new location by hand and use it in a sequence, with its bible (type, description, architecture, key features, ambiance, rendering). The location is the organization’s (list_library_locations) and other sequences can use it with add_location_to_sequence. It starts without a reference sheet; no generation starts. Its script token (loc_*) is derived from the name. To use a location the organization already has, call add_location_to_sequence instead.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: locationBibleFieldsSchema.extend({ sequenceId, name }).strict(),
@@ -624,7 +624,7 @@ const createLocationTool = openstoryTool({
 const addLocationToSequenceTool = openstoryTool({
   name: 'add_location_to_sequence',
   description:
-    'Use one of the team’s locations (list_library_locations) in a sequence (#1695): one link, nothing copied, no generation. The sequence reads the location’s bible and sheet as they are now and after every later edit. Refused while a live location of the sequence already has that name (CONFLICT). A deleted location is NOT_FOUND. Idempotent for a location the sequence already uses; one removed with delete_location is put back.',
+    'Use one of the organization’s locations (list_library_locations) in a sequence (#1695): one link, nothing copied, no generation. The sequence reads the location’s bible and sheet as they are now and after every later edit. Refused while a live location of the sequence already has that name (CONFLICT). A deleted location is NOT_FOUND. Idempotent for a location the sequence already uses; one removed with delete_location is put back.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: locationInput,
@@ -660,7 +660,7 @@ const LOCATION_FIELDS = [
 const updateLocationTool = openstoryTool({
   name: 'update_location',
   description:
-    'Edit a location’s bible (read it with get_location). The location is the team’s: the edit changes it in every sequence that uses it (get_library_location lists them). An unsent field keeps its value; an empty string clears a text field; type (an enum) cannot be cleared, only set, and rendering cannot be cleared. Its reference sheet and the prompts that use it become stale in each of those sequences; no generation starts.',
+    'Edit a location’s bible (read it with get_location). The location is the organization’s: the edit changes it in every sequence that uses it (get_library_location lists them). An unsent field keeps its value; an empty string clears a text field; type (an enum) cannot be cleared, only set, and rendering cannot be cleared. Its reference sheet and the prompts that use it become stale in each of those sequences; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: locationBibleFieldsSchema
@@ -692,7 +692,7 @@ const updateLocationTool = openstoryTool({
 const deleteLocationTool = openstoryTool({
   name: 'delete_location',
   description:
-    'Remove a location from a sequence. Only this sequence’s link is removed: the location stays the team’s, with its bible and sheet, and other sequences that use it are not touched. Scene tags are kept; restore_location undoes it. Prompts that used it become stale.',
+    'Remove a location from a sequence. Only this sequence’s link is removed: the location stays the organization’s, with its bible and sheet, and other sequences that use it are not touched. Scene tags are kept; restore_location undoes it. Prompts that used it become stale.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: locationInput,
@@ -742,7 +742,7 @@ const restoreLocationTool = openstoryTool({
 const selectLocationSheetVersionTool = openstoryTool({
   name: 'select_location_sheet_version',
   description:
-    'Use an earlier reference sheet for a location (list_versions kind location_sheet). Must be completed and not discarded. The sheet is the team’s: every sequence that uses the location reads the selected one, and stills of shots at the location become stale in each.',
+    'Use an earlier reference sheet for a location (list_versions kind location_sheet). Must be completed and not discarded. The sheet is the organization’s: every sequence that uses the location reads the selected one, and stills of shots at the location become stale in each.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: locationInput.extend({ versionId: ulidSchema }),

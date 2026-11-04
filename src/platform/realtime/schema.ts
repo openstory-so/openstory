@@ -12,14 +12,14 @@ export type SheetProgressActivity = z.infer<typeof sheetProgressActivitySchema>;
  * - generation.* - Events for the overall generation process
  */
 export const realtimeSchema = {
-  // Team billing ledger updates (#1090). Channel `billing:${teamId}`; the
+  // Organization billing ledger updates (#1090). Channel `billing:${organizationId}`; the
   // credit-balance pill subscribes only while visible so idle sessions pay no
   // SSE cost. Payload is enough to patch the balance query; clients refetch it
   // only when the payload cannot settle it (#1881), and always invalidate
   // transactions.
   billing: {
     'balance:updated': z.object({
-      teamId: z.string(),
+      organizationId: z.string(),
       /** Posted ledger balance in USD. */
       balanceUsd: z.number(),
       /** Spendable funds (posted minus unexpired holds, #1310). */

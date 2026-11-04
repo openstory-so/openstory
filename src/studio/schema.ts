@@ -47,7 +47,7 @@ const imageModelKeySchema = z
   );
 
 // `requiresVia` models pass here — the schema is static and cannot see a
-// team's vias, so `createStudioAssets` refuses them where the via is claimed.
+// organization's vias, so `createStudioAssets` refuses them where the via is claimed.
 const visibleVideoModelKeys = Object.entries(IMAGE_TO_VIDEO_MODELS)
   .filter(([, model]) => !('hidden' in model))
   .map(([key]) => key);
@@ -77,7 +77,7 @@ export type StudioSort = z.infer<typeof studioSortSchema>;
 export type StudioReferenceKind = z.infer<typeof studioReferenceKindSchema>;
 
 /**
- * A reference clip (#2203). A Studio clip this team made is its id. An
+ * A reference clip (#2203). A Studio clip this organization made is its id. An
  * upload is an address. One of the two, never both: an optional id beside
  * the URL is how a caller used to make the server parse the address.
  */
@@ -270,7 +270,7 @@ export type StudioRunInput =
       referenceVideos: string[];
     });
 
-/** Draft a prompt from the attached references (`draftStudioPromptForTeam`). */
+/** Draft a prompt from the attached references (`draftStudioPromptForOrganization`). */
 export const studioPromptDraftInputSchema = z.object({
   activity: studioActivitySchema,
   references: z

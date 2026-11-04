@@ -13,7 +13,7 @@ import type {
 /**
  * `references` = stills, clips, and audio attached to a studio composer
  * (pill `@ImageN` / `@VideoN` / `@AudioN`);
- * `images` = the team's generated stills, offered so picking one attaches it.
+ * `images` = the organization's generated stills, offered so picking one attaches it.
  */
 export type MentionSection =
   | 'references'
@@ -74,14 +74,14 @@ export type MentionItem = {
   haystack: string;
   thumbnailUrl?: string | null;
   /**
-   * Offered by the `@` dropdown only (#2050, #1695): a team character or
+   * Offered by the `@` dropdown only (#2050, #1695): an organization character or
    * location the sequence does not use yet. Picking it attaches it; until
    * then its name in the text is plain prose and must not pill.
    */
   pickOnly?: true;
 };
 
-/** What the `@` picker needs of a team character (#2050). */
+/** What the `@` picker needs of an organization character (#2050). */
 export type LibraryCharacterMentionInput = {
   id: string;
   name: string;
@@ -89,7 +89,7 @@ export type LibraryCharacterMentionInput = {
 };
 
 /**
- * The team's team characters the sequence does not cast yet, as `@` rows
+ * The organization's characters the sequence does not cast yet, as `@` rows
  * that attach on pick (#2050). Same tag shape as a cast row (the ALL-CAPS
  * name), so the inserted text is what the cast row will pill once she is
  * attached. In the library's order: most recently used first.
@@ -112,7 +112,7 @@ export function libraryMentionItems(
     }));
 }
 
-/** The team character a picked row names, or null for any other row. */
+/** The organization character a picked row names, or null for any other row. */
 export function libraryCharacterIdOf(item: MentionItem): string | null {
   const prefix = 'library-character:';
   return item.pickOnly && item.id.startsWith(prefix)
@@ -120,7 +120,7 @@ export function libraryCharacterIdOf(item: MentionItem): string | null {
     : null;
 }
 
-/** What the `@` picker needs of a team location (#1695). */
+/** What the `@` picker needs of an organization location (#1695). */
 export type LibraryLocationMentionInput = {
   id: string;
   name: string;
@@ -128,9 +128,9 @@ export type LibraryLocationMentionInput = {
 };
 
 /**
- * The team's locations the sequence does not use yet, as `@` rows that
+ * The organization's locations the sequence does not use yet, as `@` rows that
  * attach on pick (#1695). The inserted text is the name in capitals, as a
- * scene heading reads. In the team list's order: most recently used first.
+ * scene heading reads. In the organization list's order: most recently used first.
  */
 export function libraryLocationMentionItems(
   library: readonly LibraryLocationMentionInput[],
@@ -150,7 +150,7 @@ export function libraryLocationMentionItems(
     }));
 }
 
-/** The team location a picked row names, or null for any other row. */
+/** The organization location a picked row names, or null for any other row. */
 export function libraryLocationIdOf(item: MentionItem): string | null {
   const prefix = 'library-location:';
   return item.pickOnly && item.id.startsWith(prefix)

@@ -4,7 +4,7 @@ import { filterStyles } from './style-filters';
 
 const baseStyle: Style = {
   id: 'fixture-base',
-  teamId: 'team-test',
+  organizationId: 'organization-test',
   sequenceId: null,
   name: 'Fixture Base',
   description: 'A base style for fixtures.',

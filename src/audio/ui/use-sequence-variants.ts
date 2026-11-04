@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   discardSequenceMusicVariantFn,
   getDivergentSequenceMusicVariantsFn,
-  getTeamDivergentSequenceVariantsFn,
+  getOrganizationDivergentSequenceVariantsFn,
   promoteSequenceMusicVariantFn,
   setMusicFromVariantFn,
   undiscardSequenceMusicVariantFn,
@@ -20,8 +20,8 @@ export const sequenceVariantKeys = {
   all: ['sequence-variants'] as const,
   divergentMusic: (sequenceId: string) =>
     ['sequence-divergent-music', sequenceId] as const,
-  divergentByTeam: (teamId?: string) =>
-    ['sequence-divergent-by-team', teamId ?? null] as const,
+  divergentByOrganization: (organizationId?: string) =>
+    ['sequence-divergent-by-organization', organizationId ?? null] as const,
 };
 
 // ── Read hooks ─────────────────────────────────────────────────────────────
@@ -43,15 +43,15 @@ export function useSequenceDivergentMusicVariants(
 }
 
 /**
- * Aggregate read for the team's sequences-list dashboard. Returns one row per
+ * Aggregate read for the organization's sequences-list dashboard. Returns one row per
  * sequence that has at least one live divergent music alternate. The `enabled`
- * arg should be true once the team dashboard has loaded; the server function
- * uses the user's default team.
+ * arg should be true once the organization dashboard has loaded; the server function
+ * uses the session's active organization.
  */
-export function useTeamDivergentSequenceVariants(enabled = true) {
+export function useOrganizationDivergentSequenceVariants(enabled = true) {
   return useQuery<Array<{ sequenceId: string; hasMusic: boolean }>>({
-    queryKey: sequenceVariantKeys.divergentByTeam(),
-    queryFn: () => getTeamDivergentSequenceVariantsFn(),
+    queryKey: sequenceVariantKeys.divergentByOrganization(),
+    queryFn: () => getOrganizationDivergentSequenceVariantsFn(),
     enabled,
     staleTime: 30_000,
   });
@@ -79,7 +79,7 @@ export function usePromoteSequenceMusicVariant() {
           queryKey: sequenceKeys.detail(sequenceId),
         }),
         queryClient.invalidateQueries({
-          queryKey: sequenceVariantKeys.divergentByTeam(),
+          queryKey: sequenceVariantKeys.divergentByOrganization(),
         }),
       ]);
     },
@@ -129,7 +129,7 @@ export function useDiscardSequenceMusicVariant() {
           queryKey: sequenceVariantKeys.divergentMusic(sequenceId),
         }),
         queryClient.invalidateQueries({
-          queryKey: sequenceVariantKeys.divergentByTeam(),
+          queryKey: sequenceVariantKeys.divergentByOrganization(),
         }),
       ]);
     },
@@ -147,7 +147,7 @@ export function useUndiscardSequenceMusicVariant() {
           queryKey: sequenceVariantKeys.divergentMusic(sequenceId),
         }),
         queryClient.invalidateQueries({
-          queryKey: sequenceVariantKeys.divergentByTeam(),
+          queryKey: sequenceVariantKeys.divergentByOrganization(),
         }),
       ]);
     },

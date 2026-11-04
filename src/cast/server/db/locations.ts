@@ -1,7 +1,7 @@
 /**
  * Scoped Locations Sub-module (#1695)
  *
- * A location belongs to the team. A sequence uses one through a
+ * A location belongs to the organization. A sequence uses one through a
  * `sequence_location_links` row that holds only what is the sequence's: the
  * script id, the first mention, the soft remove and whether the writer
  * attached it. Every sequence reads the location's current bible and sheet;
@@ -11,7 +11,7 @@
  * A method takes a `sequenceId` only when the answer or the write is the
  * link's, or when it records a sequence event; `null` there is a write made
  * from no sequence, which records none. Every statement is scoped to the
- * team.
+ * organization.
  */
 
 import {
@@ -43,7 +43,7 @@ import type {
   LocationReferencePhoto,
   LocationWithReference,
   NewSequenceLocation,
-  NewTeamLocation,
+  NewOrganizationLocation,
   ReferenceStatus,
   SequenceLocationWithReference,
   Shot,
@@ -144,22 +144,22 @@ type FirstMention = {
 };
 
 /**
- * One entry of an analysis pass. `boundTo` is the team location matching
+ * One entry of an analysis pass. `boundTo` is the organization location matching
  * bound this script location to (one the writer picked): the sequence links
  * to it and no location is made. Null when analysis makes the place here.
  */
 export type AnalysedLocation = NewSequenceLocation & { boundTo: string | null };
 
 /** What `json_group_array` returns for one location's sequences. */
-const teamUseSchema = z.array(
+const organizationUseSchema = z.array(
   z.object({ id: z.string(), title: z.string(), updatedAt: z.number() })
 );
 
 /**
- * One of the team's locations as the team sees it: its current bible, its
+ * One of the organization's locations as the organization sees it: its current bible, its
  * sheet and the sequences that use it.
  */
-export type TeamLocation = {
+export type OrganizationLocation = {
   id: string;
   name: string;
   description: string | null;
@@ -198,7 +198,7 @@ const {
 
 /**
  * A location read from no sequence: the row, its current bible and its live
- * reference. `deletedAt` is the row's own (deleted from the team).
+ * reference. `deletedAt` is the row's own (deleted from the organization).
  */
 const ownColumns = {
   ...locationRowColumns,
@@ -259,13 +259,13 @@ export const deleteLocationLinksStatements = (db: Database, where: SQL) =>
   [db.delete(sequenceLocationLinks).where(where)] as const;
 
 /**
- * The team's locations that go when a sequence is hard-deleted: the ones only
+ * The organization's locations that go when a sequence is hard-deleted: the ones only
  * it ever used and the writer did not attach. Read before the delete, because
  * the links that say so are deleted first. A condition on `locations`.
  */
 export const locationsOnlyIn = async (
   db: Database,
-  teamId: string,
+  organizationId: string,
   sequenceId: string
 ): Promise<SQL> => {
   const rows = await db
@@ -275,7 +275,7 @@ export const locationsOnlyIn = async (
     .where(
       and(
         eq(sequenceLocationLinks.sequenceId, sequenceId),
-        eq(locations.teamId, teamId),
+        eq(locations.organizationId, organizationId),
         eq(sequenceLocationLinks.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${sequenceLocationLinks.locationId} AND o.sequence_id != ${sequenceId})`
       )
@@ -285,8 +285,8 @@ export const locationsOnlyIn = async (
   return inArray(locations.id, sql`(SELECT value FROM json_each(${ids}))`);
 };
 
-export function createLocationsMethods(db: Database, teamId: string) {
-  const inTeam = eq(locations.teamId, teamId);
+export function createLocationsMethods(db: Database, organizationId: string) {
+  const inOrganization = eq(locations.organizationId, organizationId);
 
   /** A location from no sequence: `select(ownColumns)` + its joins. */
   const selectOwn = () =>
@@ -318,7 +318,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
       );
 
   const inSequence = (sequenceId: string) =>
-    and(inTeam, eq(sequenceLocationLinks.sequenceId, sequenceId));
+    and(inOrganization, eq(sequenceLocationLinks.sequenceId, sequenceId));
 
   /** The location as `sequenceId` uses it, live or removed. */
   const linkedOf = async (
@@ -331,12 +331,12 @@ export function createLocationsMethods(db: Database, teamId: string) {
     return row ?? null;
   };
 
-  /** One of the team's locations, not deleted, from no sequence. */
+  /** One of the organization's locations, not deleted, from no sequence. */
   const currentOf = async (
     id: string
   ): Promise<LocationWithReference | null> => {
     const [row] = await selectOwn().where(
-      and(eq(locations.id, id), inTeam, isNull(locations.deletedAt))
+      and(eq(locations.id, id), inOrganization, isNull(locations.deletedAt))
     );
     return row ?? null;
   };
@@ -361,17 +361,24 @@ export function createLocationsMethods(db: Database, teamId: string) {
    * diffs against. A read through a link answers with the script's tag.
    */
   const ownOf = async (id: string): Promise<LocationWithReference> => {
-    const [row] = await selectOwn().where(and(eq(locations.id, id), inTeam));
+    const [row] = await selectOwn().where(
+      and(eq(locations.id, id), inOrganization)
+    );
     if (!row) throw new NotFoundError('Location not found');
     return row;
   };
 
-  /** The sequence must be this team's: the db method refuses, not only its callers. */
+  /** The sequence must be this organization's: the db method refuses, not only its callers. */
   const requireSequence = async (sequenceId: string): Promise<void> => {
     const [sequence] = await db
       .select({ id: sequences.id })
       .from(sequences)
-      .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+      .where(
+        and(
+          eq(sequences.id, sequenceId),
+          eq(sequences.organizationId, organizationId)
+        )
+      );
     if (!sequence) throw new NotFoundError('Sequence not found');
   };
 
@@ -425,7 +432,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         shared: sql<number>`EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${id} AND (o.sequence_id != ${sequenceId} OR o.attached))`,
       })
       .from(locations)
-      .where(and(eq(locations.id, id), inTeam));
+      .where(and(eq(locations.id, id), inOrganization));
     if (!row) throw new NotFoundError(`Location ${id} not found`);
     return Boolean(row.shared);
   };
@@ -467,7 +474,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
               : {}),
             updatedAt: new Date(),
           })
-          .where(and(eq(locations.id, existing.id), inTeam)),
+          .where(and(eq(locations.id, existing.id), inOrganization)),
       ],
     };
   };
@@ -486,7 +493,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
     return [
       db.insert(locations).values({
         id,
-        teamId,
+        organizationId,
         selectedBibleVersionId: versionId,
         legacyName: bible.name,
         referenceStatus: opts.referenceStatus,
@@ -502,12 +509,12 @@ export function createLocationsMethods(db: Database, teamId: string) {
   };
 
   /**
-   * Bind a script location to one of the team's locations: one link, nothing
+   * Bind a script location to one of the organization's locations: one link, nothing
    * copied. What matching does when it pairs a script location with one the
    * writer picked. The link is `attached`, so analysis never rewrites it.
    *
    * The script id can only name one location in a sequence, so a link that
-   * held it for another location lets it go (that location stays the team's).
+   * held it for another location lets it go (that location stays the organization's).
    */
   const bind = async (
     sequenceId: string,
@@ -565,7 +572,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
       await db.insert(sequenceLocationLinks).values({ sequenceId, ...bound });
     }
     // The place analysis made here for this script id has lost its only
-    // link to the writer's pick. Nothing uses it, so it leaves the team's
+    // link to the writer's pick. Nothing uses it, so it leaves the organization's
     // list (soft: its rows stay). One the writer attached is kept.
     if (holder && holder.locationId !== id && !holder.attached) {
       await db
@@ -574,7 +581,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(locations.id, holder.locationId),
-            inTeam,
+            inOrganization,
             isNull(locations.deletedAt),
             sql`NOT EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${holder.locationId})`
           )
@@ -651,7 +658,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(locations.id, existing.id),
-            inTeam,
+            inOrganization,
             isNotNull(locations.deletedAt)
           )
         ),
@@ -681,7 +688,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
             db
               .update(locations)
               .set({ referenceStatus: data.referenceStatus })
-              .where(and(eq(locations.id, existing.id), inTeam)),
+              .where(and(eq(locations.id, existing.id), inOrganization)),
           ]),
     ]);
     return {
@@ -691,15 +698,15 @@ export function createLocationsMethods(db: Database, teamId: string) {
   };
 
   /**
-   * The team's locations for the Locations page and the pickers: one grouped
+   * The organization's locations for the Locations page and the pickers: one grouped
    * read over the links, with no stored column.
    *
    * Order: the most recently changed sequence using it, then how many
    * sequences use it. A location nothing uses is listed last.
    */
-  const selectTeam = async (
+  const selectOrganization = async (
     where: SQL | undefined
-  ): Promise<TeamLocation[]> => {
+  ): Promise<OrganizationLocation[]> => {
     const lastUsedAt = sql`max(${sequences.updatedAt})`;
     const useCount = sql`count(${sequences.id})`;
     const rows = await db
@@ -738,7 +745,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         locationSheetVariants,
         eq(locationSheetVariants.id, liveReferenceVersionId)
       )
-      .where(and(inTeam, isNull(locations.deletedAt), where))
+      .where(and(inOrganization, isNull(locations.deletedAt), where))
       .groupBy(locations.id)
       .orderBy(
         sql`${lastUsedAt} DESC NULLS LAST`,
@@ -748,7 +755,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
       );
     return rows.map(({ uses, ...row }) => ({
       ...row,
-      sequences: teamUseSchema
+      sequences: organizationUseSchema
         .parse(JSON.parse(uses))
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map(({ updatedAt: _updatedAt, ...sequence }) => sequence),
@@ -886,17 +893,20 @@ export function createLocationsMethods(db: Database, teamId: string) {
 
     // ----- Reads from no sequence -----
 
-    /** Every location of the team, the most recently used first. */
-    listTeam: async (): Promise<TeamLocation[]> => await selectTeam(undefined),
+    /** Every location of the organization, the most recently used first. */
+    listOrganization: async (): Promise<OrganizationLocation[]> =>
+      await selectOrganization(undefined),
 
-    /** One of the team's locations, with the sequences that use it. */
-    getTeamLocation: async (id: string): Promise<TeamLocation | null> =>
-      (await selectTeam(eq(locations.id, id)))[0] ?? null,
+    /** One of the organization's locations, with the sequences that use it. */
+    getOrganizationLocation: async (
+      id: string
+    ): Promise<OrganizationLocation | null> =>
+      (await selectOrganization(eq(locations.id, id)))[0] ?? null,
 
-    /** One of the team's locations at its current version; null when gone. */
+    /** One of the organization's locations at its current version; null when gone. */
     getCurrent: currentOf,
 
-    /** The team's locations among `ids`, deleted ones left out. */
+    /** The organization's locations among `ids`, deleted ones left out. */
     getCurrentByIds: async (
       ids: readonly string[]
     ): Promise<LocationWithReference[]> => {
@@ -904,7 +914,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
       return await selectOwn().where(
         and(
           inArray(locations.id, [...ids]),
-          inTeam,
+          inOrganization,
           isNull(locations.deletedAt)
         )
       );
@@ -931,7 +941,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
           locations,
           eq(locations.id, locationBibleVersions.locationId)
         )
-        .where(and(eq(locations.id, id), inTeam))
+        .where(and(eq(locations.id, id), inOrganization))
         .orderBy(
           asc(locationBibleVersions.createdAt),
           asc(locationBibleVersions.id)
@@ -949,7 +959,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(locations.id, id),
-            inTeam,
+            inOrganization,
             isNull(sequenceLocationLinks.removedAt)
           )
         )
@@ -968,7 +978,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
           locations,
           eq(locations.id, locationReferencePhotos.locationId)
         )
-        .where(and(eq(locations.id, id), inTeam))
+        .where(and(eq(locations.id, id), inOrganization))
         .orderBy(
           asc(locationReferencePhotos.createdAt),
           asc(locationReferencePhotos.id)
@@ -987,7 +997,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
               locations,
               eq(locations.id, locationReferencePhotos.locationId)
             )
-            .where(and(inArray(locations.id, ids), inTeam))
+            .where(and(inArray(locations.id, ids), inOrganization))
             .orderBy(
               asc(locationReferencePhotos.createdAt),
               asc(locationReferencePhotos.id)
@@ -1013,7 +1023,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
             pendingPromoteReferenceVersionId: null,
             updatedAt: new Date(),
           })
-          .where(and(eq(locations.id, id), inTeam)),
+          .where(and(eq(locations.id, id), inOrganization)),
       ]);
     },
 
@@ -1045,7 +1055,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
             pendingPromoteReferenceVersionId: null,
             updatedAt: new Date(),
           })
-          .where(and(eq(locations.id, id), inTeam)),
+          .where(and(eq(locations.id, id), inOrganization)),
       ]);
     },
 
@@ -1066,7 +1076,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
     /**
      * One analysis pass. Upserts on the sequence's script ids, so a
      * workflow-step retry after a partial commit converges. An entry
-     * matching bound to a team location is linked to it instead
+     * matching bound to an organization location is linked to it instead
      * ({@link AnalysedLocation}). One location per batch: each is its own
      * version append.
      */
@@ -1101,8 +1111,8 @@ export function createLocationsMethods(db: Database, teamId: string) {
     },
 
     /** A location made on the Locations page: no link, no event. */
-    createForTeam: async (
-      data: NewTeamLocation,
+    createForOrganization: async (
+      data: NewOrganizationLocation,
       opts: { createdBy: string }
     ): Promise<LocationWithReference> => {
       const id = data.id ?? generateId();
@@ -1117,7 +1127,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Use one of the team's locations in `sequenceId`: one link. Nothing is
+     * Use one of the organization's locations in `sequenceId`: one link. Nothing is
      * copied: the sequence reads its bible and sheet as they are.
      *
      * Refused while a live location of the sequence already has its name.
@@ -1168,7 +1178,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Replace the location a sequence uses with another of the team's: the
+     * Replace the location a sequence uses with another of the organization's: the
      * link is re-pointed and keeps its script id, so every scene set there
      * now reads the other place. Nothing is drawn and nothing is copied; the
      * sequence's shots read stale by derivation.
@@ -1246,7 +1256,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
             : {}),
           updatedAt: new Date(),
         })
-        .where(and(eq(locations.id, id), inTeam));
+        .where(and(eq(locations.id, id), inOrganization));
       if (!opts.activity) {
         const [row] = await claim.returning({ id: locations.id });
         if (!row) throw new NotFoundError('Location not found');
@@ -1302,7 +1312,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(locations.id, id),
-            inTeam,
+            inOrganization,
             eq(locations.selectedBibleVersionId, snapshot.bibleVersionId)
           )
         );
@@ -1350,7 +1360,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(locations.id, id),
-            inTeam,
+            inOrganization,
             versionId === null
               ? isNull(locations.pendingPromoteReferenceVersionId)
               : or(
@@ -1413,7 +1423,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
 
     /**
      * Remove from the sequence (undoable): the link's `removedAt`. The
-     * location stays the team's; scene continuity tags are NOT touched.
+     * location stays the organization's; scene continuity tags are NOT touched.
      * Returns the timestamp for the toast Undo; idempotent.
      */
     softDelete: async (
@@ -1458,7 +1468,7 @@ export function createLocationsMethods(db: Database, teamId: string) {
         db
           .update(locations)
           .set({ deletedAt: null, updatedAt: new Date() })
-          .where(and(eq(locations.id, id), inTeam)),
+          .where(and(eq(locations.id, id), inOrganization)),
         buildEventInsert(db, {
           sequenceId,
           actorId: opts.actorId,
@@ -1473,19 +1483,19 @@ export function createLocationsMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Delete from the team (soft, undoable). Refused while any sequence,
+     * Delete from the organization (soft, undoable). Refused while any sequence,
      * archived ones included, still uses it: one UPDATE with that condition,
      * so a sequence that attaches it between a check and this write still
      * stops it. Returns whether it was deleted.
      */
-    softDeleteForTeam: async (id: string): Promise<boolean> => {
+    softDeleteForOrganization: async (id: string): Promise<boolean> => {
       const result = await db
         .update(locations)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(
           and(
             eq(locations.id, id),
-            inTeam,
+            inOrganization,
             isNull(locations.deletedAt),
             sql`NOT EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${id} AND o.removed_at IS NULL)`
           )
@@ -1495,12 +1505,12 @@ export function createLocationsMethods(db: Database, teamId: string) {
       return result.length > 0;
     },
 
-    /** Undo a team delete. */
-    restoreForTeam: async (id: string): Promise<void> => {
+    /** Undo an organization delete. */
+    restoreForOrganization: async (id: string): Promise<void> => {
       await db
         .update(locations)
         .set({ deletedAt: null, updatedAt: new Date() })
-        .where(and(eq(locations.id, id), inTeam));
+        .where(and(eq(locations.id, id), inOrganization));
     },
   };
 }

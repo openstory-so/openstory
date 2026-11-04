@@ -15,7 +15,7 @@ The deploy button clones the repo into your GitHub/GitLab account, provisions th
 
 The created repo is an independent clone, not a fork — there's no upstream link for GitHub's "Sync fork" button. To pull future OpenStory updates into a button-deployed copy, add the upstream remote manually (`git remote add upstream https://github.com/openstory-so/openstory && git pull upstream main`). If you'd rather start from a real fork, fork on GitHub first, then connect the fork to [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) in the Cloudflare dashboard (or deploy from a local clone with `bun setup --prod`).
 
-AI keys (`FAL_KEY`, `OPENROUTER_KEY`) are deliberately not part of the deploy prompts — every field in that dialog is mandatory, and a placeholder value would be worse than none. Add them after deploy, either per team in the app (Settings → API Keys) or server-wide with `wrangler secret put`.
+AI keys (`FAL_KEY`, `OPENROUTER_KEY`) are deliberately not part of the deploy prompts — every field in that dialog is mandatory, and a placeholder value would be worse than none. Add them after deploy, either per organization in the app (Settings → API Keys) or server-wide with `wrangler secret put`.
 
 ## Guided Setup
 

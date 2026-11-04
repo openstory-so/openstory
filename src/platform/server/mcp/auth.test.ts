@@ -4,9 +4,9 @@ import { z } from 'zod';
 
 const verifyOAuthAccessToken = vi.fn();
 const getSession = vi.fn();
-const findUserById = vi.fn();
-const resolveUserTeam = vi.fn();
-const getUserTeamMembership = vi.fn();
+const getUserById = vi.fn();
+const getApiKeyOrganizationId = vi.fn();
+const getUserOrganizationMembership = vi.fn();
 const loadComplianceState = vi.fn();
 
 vi.doMock('#env', () => ({
@@ -21,12 +21,12 @@ vi.doMock('@/platform/server/auth/oauth-bearer', async () => {
 vi.doMock('@/platform/server/auth/config', () => ({
   getAuth: () => ({
     api: { getSession },
-    $context: Promise.resolve({ internalAdapter: { findUserById } }),
   }),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({
-  resolveUserTeam,
-  getUserTeamMembership,
+  getApiKeyOrganizationId,
+  getUserById,
+  getUserOrganizationMembership,
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   loadComplianceState,
@@ -39,10 +39,14 @@ const { authenticateMcpRequest } = await import('./auth');
 
 const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };
-const team = { teamId: 'team_1', teamName: 'Ada', role: 'owner' };
+const membership = {
+  organizationId: 'organization_1',
+  organizationName: 'Ada',
+  role: 'owner',
+};
 const oauth = {
   userId: 'user_1',
-  teamId: 'team_1',
+  organizationId: 'organization_1',
   clientId: 'c1',
   scopes: ['sequences:read'],
   audience: ['https://openstory.test/mcp'],
@@ -61,8 +65,8 @@ beforeEach(() => {
   loadComplianceState.mockResolvedValue({
     enforcement: { canAccess: true, canWrite: true },
   });
-  resolveUserTeam.mockResolvedValue(team);
-  getUserTeamMembership.mockResolvedValue(team);
+  getApiKeyOrganizationId.mockResolvedValue('organization_1');
+  getUserOrganizationMembership.mockResolvedValue(membership);
 });
 
 describe('authenticateMcpRequest', () => {
@@ -82,8 +86,8 @@ describe('authenticateMcpRequest', () => {
     expect(body.id).toBeNull();
   });
 
-  it('resolves an osk_ key through getSession and the default team', async () => {
-    getSession.mockResolvedValueOnce({ user });
+  it('resolves an osk_ key through getSession and the key organization', async () => {
+    getSession.mockResolvedValueOnce({ user, session: { id: 'key_1' } });
     const ctx = await authenticateMcpRequest(
       new Request('https://openstory.test/mcp', {
         headers: { authorization: 'Bearer osk_secretvalueXXXX' },
@@ -93,14 +97,15 @@ describe('authenticateMcpRequest', () => {
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('api_key');
     expect(ctx.user.id).toBe('user_1');
-    expect(ctx.teamId).toBe('team_1');
+    expect(ctx.organizationId).toBe('organization_1');
     expect(ctx.keyHint).toBe('osk_…XXXX');
+    expect(getApiKeyOrganizationId).toHaveBeenCalledWith('key_1');
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
   });
 
-  it('verifies a JWT against the MCP audience and uses team_id', async () => {
+  it('verifies a JWT against the MCP audience and uses organization_id', async () => {
     verifyOAuthAccessToken.mockResolvedValueOnce(oauth);
-    findUserById.mockResolvedValueOnce(user);
+    getUserById.mockResolvedValueOnce(user);
     const ctx = await authenticateMcpRequest(
       new Request('https://openstory.test/mcp', {
         headers: { authorization: `Bearer ${jwt}` },
@@ -109,14 +114,17 @@ describe('authenticateMcpRequest', () => {
     expect(ctx).not.toBeInstanceOf(Response);
     if (ctx instanceof Response) return;
     expect(ctx.kind).toBe('oauth');
-    expect(ctx.teamId).toBe('team_1');
+    expect(ctx.organizationId).toBe('organization_1');
     expect(ctx.keyHint).toBe('jwt:jti_1');
     expect(verifyOAuthAccessToken).toHaveBeenCalledWith(
       jwt,
       ['https://openstory.test/mcp'],
       ['https://openstory.test']
     );
-    expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
+    expect(getUserOrganizationMembership).toHaveBeenCalledWith(
+      'user_1',
+      'organization_1'
+    );
     expect(getSession).not.toHaveBeenCalled();
   });
 
@@ -163,7 +171,7 @@ describe('authenticateMcpRequest', () => {
   });
 
   it('403s when the account cannot access the service', async () => {
-    getSession.mockResolvedValueOnce({ user });
+    getSession.mockResolvedValueOnce({ user, session: { id: 'key_1' } });
     loadComplianceState.mockResolvedValueOnce({
       enforcement: { canAccess: false, canWrite: false },
     });

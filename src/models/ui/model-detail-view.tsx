@@ -1,6 +1,6 @@
 /**
  * Model detail page body (#458): header, schema-driven parameter form, run →
- * poll → result loop, and the team's recent runs of this endpoint.
+ * poll → result loop, and the organization's recent runs of this endpoint.
  *
  * The page itself is anonymous-browsable (schema + form render for everyone);
  * pressing Run goes through `useAuthGate().requireAuth`, the same login-dialog

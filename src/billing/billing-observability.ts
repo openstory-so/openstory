@@ -37,7 +37,7 @@ export type MissingBillingCostContext = {
   modelId?: string;
   workflowName?: string;
   description?: string;
-  teamId?: string;
+  organizationId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -71,7 +71,7 @@ export function reportFlooredEstimate(ctx: FlooredEstimateContext): void {
 }
 
 export type BillingDriftContext = {
-  teamId: string;
+  organizationId: string;
   transactionId: string;
   requestId: string;
   endpointId: string;
@@ -89,7 +89,7 @@ export function reportBillingDrift(ctx: BillingDriftContext): void {
   logger.error('charge disagrees with fal billed cost', ctx);
 
   captureBillingEvent({
-    distinctId: ctx.teamId,
+    distinctId: ctx.organizationId,
     event: 'billing_drift',
     properties: {
       transaction_id: ctx.transactionId,
@@ -104,7 +104,7 @@ export function reportBillingDrift(ctx: BillingDriftContext): void {
 }
 
 export type SkippedDeductionContext = {
-  teamId?: string;
+  organizationId?: string;
   workflowName?: string;
   description?: string;
   costMicros: number;
@@ -113,7 +113,7 @@ export type SkippedDeductionContext = {
 };
 
 export type ReservationShortContext = {
-  teamId?: string;
+  organizationId?: string;
   sequenceId?: string;
   neededMicros: number;
   remainingMicros: number;
@@ -131,7 +131,7 @@ export function reportReservationShort(ctx: ReservationShortContext): void {
   );
 
   captureBillingEvent({
-    distinctId: ctx.teamId ?? 'system',
+    distinctId: ctx.organizationId ?? 'system',
     event: 'billing_reservation_short',
     properties: {
       sequence_id: ctx.sequenceId,
@@ -151,7 +151,7 @@ export function reportSkippedDeduction(ctx: SkippedDeductionContext): void {
   logger.warn('Completed AI generation skipped deduction', ctx);
 
   captureBillingEvent({
-    distinctId: ctx.teamId ?? 'system',
+    distinctId: ctx.organizationId ?? 'system',
     event: 'billing_skipped_deduction',
     properties: {
       workflow_name: ctx.workflowName,
@@ -168,7 +168,7 @@ export function reportMissingBillingCost(ctx: MissingBillingCostContext): void {
   logger.warn('Completed AI generation with no billable cost reported', ctx);
 
   captureBillingEvent({
-    distinctId: ctx.teamId ?? 'system',
+    distinctId: ctx.organizationId ?? 'system',
     event: 'billing_missing_cost',
     properties: {
       source: ctx.source,

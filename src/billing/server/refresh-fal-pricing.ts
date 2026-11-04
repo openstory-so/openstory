@@ -670,7 +670,7 @@ export async function refreshFalPricing(
     await db.insert(modelPricingHistory).values(rows);
   }
 
-  // A price move changes what teams are charged for endpoints we expose —
+  // A price move changes what organizations are charged for endpoints we expose —
   // say so loudly rather than only appending a history row nobody reads.
   for (const row of historyRows) {
     const previous = existingPriceByKey.get(pricingKey(row));

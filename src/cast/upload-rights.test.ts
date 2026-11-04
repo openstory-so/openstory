@@ -6,19 +6,33 @@ describe('needsLikenessCheck', () => {
   it('gates raw URLs and unsaved uploads', () => {
     expect(needsLikenessCheck('https://example.com/anyone.jpg')).toBe(true);
     expect(needsLikenessCheck('http://example.com/anyone.jpg')).toBe(true);
-    expect(needsLikenessCheck('/r2/talent/team1/temp/01A.png')).toBe(true);
-    expect(needsLikenessCheck('/r2/locations/team1/temp/01A.png')).toBe(true);
-    expect(needsLikenessCheck('/r2/talent/team1/uploads/01A.png')).toBe(true);
-    expect(needsLikenessCheck('/r2/locations/team1/uploads/01A.png')).toBe(
+    expect(needsLikenessCheck('/r2/talent/organization1/temp/01A.png')).toBe(
       true
     );
-    expect(needsLikenessCheck('/r2/elements/team1/uploads/01A.png')).toBe(true);
+    expect(needsLikenessCheck('/r2/locations/organization1/temp/01A.png')).toBe(
+      true
+    );
+    expect(needsLikenessCheck('/r2/talent/organization1/uploads/01A.png')).toBe(
+      true
+    );
+    expect(
+      needsLikenessCheck('/r2/locations/organization1/uploads/01A.png')
+    ).toBe(true);
+    expect(
+      needsLikenessCheck('/r2/elements/organization1/uploads/01A.png')
+    ).toBe(true);
   });
 
   it('exempts library rows, generated stills, and our assets domain', () => {
-    expect(needsLikenessCheck('/r2/talent/team1/tal1/a.png')).toBe(false);
-    expect(needsLikenessCheck('/r2/locations/team1/library/a.png')).toBe(false);
-    expect(needsLikenessCheck('/r2/elements/team1/seq1/a.png')).toBe(false);
+    expect(needsLikenessCheck('/r2/talent/organization1/tal1/a.png')).toBe(
+      false
+    );
+    expect(
+      needsLikenessCheck('/r2/locations/organization1/library/a.png')
+    ).toBe(false);
+    expect(needsLikenessCheck('/r2/elements/organization1/seq1/a.png')).toBe(
+      false
+    );
     expect(
       needsLikenessCheck('/r2/teams/t/studio/a/video.mp4/../../x.mp4')
     ).toBe(true);

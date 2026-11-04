@@ -44,7 +44,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
       );
     }
 
-    const { sequenceId, teamId } = input;
+    const { sequenceId, organizationId } = input;
     const model = input.model || DEFAULT_MUSIC_MODEL;
     // Only the primary model's track may take the sequence's pointer (#546).
     // In a multi-model fan-out secondary models open their own row and emit
@@ -107,7 +107,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         duration,
         instrumental: true,
         model,
-        teamId,
+        organizationId,
         sequenceId,
         credentials: scopedDb.credentials,
         observability: {
@@ -133,7 +133,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         : // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           (input.duration ?? 60);
 
-    // Deduct credits (skip if team used own fal key)
+    // Deduct credits (skip if organization used own fal key)
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     const musicCostMicros = audioResult.metadata?.cost ?? ZERO_MICROS;
     // Before the deduction guard — see recordFalUsageStep (#1069). Guarded
@@ -179,7 +179,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         const storageResult = await step.do('upload-to-storage', async () => {
           const result = await uploadAudioToStorage({
             audioUrl,
-            teamId,
+            organizationId,
             sequenceId,
             sequenceTitle: 'sequence',
             sceneTitle: 'music',
@@ -226,7 +226,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
 
       await step.do('record-provenance', async () => {
         await recordProvenance(scopedDb.provenance, {
-          teamId,
+          organizationId,
           userId: input.userId,
           assetKind: 'music_variant',
           assetId: openedId,

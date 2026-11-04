@@ -2,7 +2,7 @@
  * Scoped styles tests:
  *   - incrementUsage atomically bumps usageCount.
  *   - list({ orderBy: 'popular' }) sorts by usageCount desc.
- *   - createPublicStylesReadMethods().list() never leaks private team styles
+ *   - createPublicStylesReadMethods().list() never leaks private organization styles
  *     (guards the unauthenticated public-catalogue endpoint).
  */
 
@@ -11,7 +11,7 @@ import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import {
   styles,
-  teams,
+  organization,
   user,
   type NewStyle,
   type Style,
@@ -34,10 +34,14 @@ import {
 // via vi.doMock(). vi.doMock is per-file, so it shouldn't bleed across the
 // suite, but we mirror the production methods inline against an in-memory
 // libSQL DB anyway to exercise real SQL behavior without depending on the
-// other file's mock setup. Keep these in lockstep with the *team-scoped*
+// other file's mock setup. Keep these in lockstep with the *organization-scoped*
 // methods in @/lib/db/scoped/styles only — the public read path is exercised
 // via the real createPublicStylesReadMethods factory below, not mirrored.
-function makeStylesMethods(database: Database, teamId: string, userId: string) {
+function makeStylesMethods(
+  database: Database,
+  organizationId: string,
+  userId: string
+) {
   return {
     list: async (
       options: { orderBy?: 'popular' | 'sortOrder' } = {}
@@ -50,7 +54,12 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
       return await database
         .select()
         .from(styles)
-        .where(or(eq(styles.teamId, teamId), eq(styles.isPublic, true)))
+        .where(
+          or(
+            eq(styles.organizationId, organizationId),
+            eq(styles.isPublic, true)
+          )
+        )
         .orderBy(...order);
     },
     getById: async (styleId: string): Promise<Style | null> => {
@@ -66,7 +75,7 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
     ): Promise<Style> => {
       const result = await database
         .insert(styles)
-        .values({ ...data, teamId, createdBy: userId })
+        .values({ ...data, organizationId, createdBy: userId })
         .returning();
       const style = result[0];
       if (!style) throw new Error('insert returned nothing');
@@ -88,7 +97,7 @@ function makeStylesMethods(database: Database, teamId: string, userId: string) {
 let closeDb: () => Promise<void>;
 let db: Database;
 
-const team = { id: '', name: 'T', slug: 't' };
+const organizationA = { id: '', name: 'T', slug: 't' };
 const userRow = { id: '', name: 'U', email: 'u@example.com' };
 
 const baseConfig = {
@@ -109,14 +118,14 @@ async function markPublic(styleId: string) {
 
 async function seed() {
   await db.delete(styles);
-  await db.delete(teams);
+  await db.delete(organization);
   await db.delete(user);
 
-  team.id = generateId();
+  organizationA.id = generateId();
   userRow.id = generateId();
 
   await db.insert(user).values([userRow]);
-  await db.insert(teams).values([team]);
+  await db.insert(organization).values([organizationA]);
 }
 
 beforeAll(async () => {
@@ -133,7 +142,7 @@ beforeEach(async () => {
 
 describe('createStylesMethods.incrementUsage', () => {
   it('bumps usageCount by 1 on each call', async () => {
-    const methods = makeStylesMethods(db, team.id, userRow.id);
+    const methods = makeStylesMethods(db, organizationA.id, userRow.id);
 
     const style = await methods.create({
       name: 'Bumped',
@@ -149,7 +158,7 @@ describe('createStylesMethods.incrementUsage', () => {
   });
 
   it('logs a warning when the styleId matches zero rows', async () => {
-    const methods = makeStylesMethods(db, team.id, userRow.id);
+    const methods = makeStylesMethods(db, organizationA.id, userRow.id);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await methods.incrementUsage('does_not_exist');
@@ -165,7 +174,7 @@ describe('createStylesMethods.incrementUsage', () => {
 
 describe("createStylesMethods.list({ orderBy: 'popular' })", () => {
   it('orders by usageCount desc when popular requested', async () => {
-    const methods = makeStylesMethods(db, team.id, userRow.id);
+    const methods = makeStylesMethods(db, organizationA.id, userRow.id);
 
     // All three share the default sortOrder, so the sortOrder listing falls
     // back to name asc (A, B, C).
@@ -194,14 +203,14 @@ describe("createStylesMethods.list({ orderBy: 'popular' })", () => {
     expect(sorted.map((s) => s.id)).toEqual([a.id, b.id, c.id]);
   });
 
-  it('includes public styles owned by other teams', async () => {
-    const otherTeamId = generateId();
+  it('includes public styles owned by other organizations', async () => {
+    const otherOrganizationId = generateId();
     await db
-      .insert(teams)
-      .values([{ id: otherTeamId, name: 'Other', slug: 'o' }]);
+      .insert(organization)
+      .values([{ id: otherOrganizationId, name: 'Other', slug: 'o' }]);
 
-    const ownMethods = makeStylesMethods(db, team.id, userRow.id);
-    const otherMethods = makeStylesMethods(db, otherTeamId, userRow.id);
+    const ownMethods = makeStylesMethods(db, organizationA.id, userRow.id);
+    const otherMethods = makeStylesMethods(db, otherOrganizationId, userRow.id);
 
     const mine = await ownMethods.create({
       name: 'Mine',
@@ -227,7 +236,7 @@ describe("createStylesMethods.list({ orderBy: 'popular' })", () => {
 
 describe('createStylesMethods.listByIds', () => {
   it('resolves a set of ids in one call, skipping unknown ids and de-duping', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     const a = await methods.create({ name: 'A', config: baseConfig });
     const b = await methods.create({ name: 'B', config: baseConfig });
 
@@ -237,7 +246,7 @@ describe('createStylesMethods.listByIds', () => {
   });
 
   it('returns an empty array for no ids without hitting the DB', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     expect(await methods.listByIds([])).toEqual([]);
   });
 
@@ -249,7 +258,7 @@ describe('createStylesMethods.listByIds', () => {
     const ids = Array.from({ length: 95 }, () => generateId());
     const rows: NewStyle[] = ids.map((id, i) => ({
       id,
-      teamId: team.id,
+      organizationId: organizationA.id,
       name: `Batch Style ${i}`,
       config: baseConfig,
     }));
@@ -258,7 +267,7 @@ describe('createStylesMethods.listByIds', () => {
 
     const fetched = await createStylesMethods(
       db,
-      team.id,
+      organizationA.id,
       userRow.id
     ).listByIds(ids);
     expect(new Set(fetched.map((s) => s.id))).toEqual(new Set(ids));
@@ -269,8 +278,8 @@ describe('createPublicStylesReadMethods', () => {
   // Uses the REAL production read methods (not the inline mirror above):
   // this factory backs getPublicStylesFn, an endpoint with no auth
   // middleware, so its isPublic filter is the entire data-leak barrier.
-  it('returns only public styles, never private team styles', async () => {
-    const methods = makeStylesMethods(db, team.id, userRow.id);
+  it('returns only public styles, never private organization styles', async () => {
+    const methods = makeStylesMethods(db, organizationA.id, userRow.id);
 
     const pub = await methods.create({
       name: 'Public',
@@ -296,7 +305,7 @@ describe('createPublicStylesReadMethods', () => {
 // runtime scrub in the write methods is the barrier these tests pin.
 describe('createStylesMethods server-managed column scrubbing (runtime)', () => {
   it('drops a smuggled isPublic on create', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
 
     const smuggled: {
       name: string;
@@ -313,7 +322,7 @@ describe('createStylesMethods server-managed column scrubbing (runtime)', () => 
   });
 
   it('drops a smuggled isPublic on update while applying the rest', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     const style = await methods.create({ name: 'Target', config: baseConfig });
 
     const smuggled: { name: string; isPublic: boolean } = {
@@ -329,7 +338,7 @@ describe('createStylesMethods server-managed column scrubbing (runtime)', () => 
 
 describe('createStylesMethods.create — new schema fields round-trip', () => {
   it('persists sampleVideos, useCases, recommended* and defaultAspectRatio', async () => {
-    const methods = makeStylesMethods(db, team.id, userRow.id);
+    const methods = makeStylesMethods(db, organizationA.id, userRow.id);
 
     const created = await methods.create({
       name: 'Loaded',
@@ -371,7 +380,7 @@ describe('createStylesMethods.create — new schema fields round-trip', () => {
 // case/punctuation/whitespace-insensitive.
 describe('createStylesMethods slug uniqueness (#956)', () => {
   it('rejects a new style whose slug collides with a public style', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     const noir = await methods.create({
       name: 'Cinematic Noir',
       config: baseConfig,
@@ -382,8 +391,8 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
     ).rejects.toBeInstanceOf(OpenStoryError);
   });
 
-  it('rejects a new style whose slug collides with another style in the same team', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+  it('rejects a new style whose slug collides with another style in the same organization', async () => {
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     await methods.create({ name: 'My Style', config: baseConfig });
     await expect(
       methods.create({ name: 'MY  style', config: baseConfig })
@@ -391,23 +400,23 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
   });
 
   it('allows a distinct slug', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     await methods.create({ name: 'Alpha', config: baseConfig });
     await expect(
       methods.create({ name: 'Beta', config: baseConfig })
     ).resolves.toBeDefined();
   });
 
-  it("does not collide with another team's PRIVATE style (slug is unique within team ∪ public only)", async () => {
-    const teamB = { id: generateId(), name: 'T2', slug: 't2' };
-    await db.insert(teams).values([teamB]);
+  it("does not collide with another organization's PRIVATE style (slug is unique within organization ∪ public only)", async () => {
+    const organizationB = { id: generateId(), name: 'T2', slug: 't2' };
+    await db.insert(organization).values([organizationB]);
 
-    await createStylesMethods(db, team.id, userRow.id).create({
+    await createStylesMethods(db, organizationA.id, userRow.id).create({
       name: 'Shared',
-      config: baseConfig, // private to team A
+      config: baseConfig, // private to organization A
     });
     await expect(
-      createStylesMethods(db, teamB.id, userRow.id).create({
+      createStylesMethods(db, organizationB.id, userRow.id).create({
         name: 'Shared',
         config: baseConfig,
       })
@@ -415,7 +424,7 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
   });
 
   it('rename rejects a colliding name but allows renaming a style against its own slug', async () => {
-    const methods = createStylesMethods(db, team.id, userRow.id);
+    const methods = createStylesMethods(db, organizationA.id, userRow.id);
     const first = await methods.create({ name: 'First', config: baseConfig });
     const second = await methods.create({ name: 'Second', config: baseConfig });
 

@@ -230,7 +230,9 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
             onCheckedChange={(value) => onSupportModeChange?.(value)}
           />
           {supportMode && (
-            <span className="text-xs text-muted-foreground">All teams</span>
+            <span className="text-xs text-muted-foreground">
+              All organizations
+            </span>
           )}
           {supportMode && hideInternalAvailable && (
             <div className="ml-auto flex items-center gap-2">

@@ -61,7 +61,7 @@ const logger = getLogger(['openstory', 'mcp']);
 const whoami = toolDefinition({
   name: 'whoami',
   description:
-    "Return the authenticated caller's user and team. Use this as a connectivity check before calling other OpenStory tools.",
+    "Return the authenticated caller's user and organization. Use this as a connectivity check before calling other OpenStory tools.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     user: z.object({
@@ -69,7 +69,7 @@ const whoami = toolDefinition({
       email: z.string(),
       name: z.string(),
     }),
-    team: z.object({
+    organization: z.object({
       id: z.string(),
       name: z.string(),
     }),
@@ -83,7 +83,7 @@ const whoami = toolDefinition({
       email: caller.user.email,
       name: caller.user.name,
     },
-    team: { id: caller.teamId, name: caller.teamName },
+    organization: { id: caller.organizationId, name: caller.organizationName },
   };
 });
 
@@ -162,14 +162,18 @@ function mcpToolContext(
 ): OpenStoryMcpContext {
   const origin = new URL(request.url).origin;
   return {
-    caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
+    caller: {
+      user: auth.user,
+      organizationId: auth.organizationId,
+      organizationName: auth.organizationName,
+    },
     origin,
     scoped: (scope) => {
       if (auth.kind === 'oauth' && !auth.scopes.includes(scope)) {
         throw new InsufficientScopeError(scope);
       }
       return {
-        scopedDb: createScopedDb(auth.teamId, auth.user.id),
+        scopedDb: createScopedDb(auth.organizationId, auth.user.id),
         origin,
         userId: auth.user.id,
         request: {

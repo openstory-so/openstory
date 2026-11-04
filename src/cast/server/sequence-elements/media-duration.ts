@@ -25,7 +25,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'cast', 'media-duration']);
 
 /**
- * Seconds of media in the stored object at `key` (`elements/<team>/…`, which
+ * Seconds of media in the stored object at `key` (`elements/<organization>/…`, which
  * is also the element row's `imagePath`), or null when the container does not
  * say or cannot be read.
  */

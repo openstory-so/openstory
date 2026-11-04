@@ -44,7 +44,7 @@ const TEST_ORIGIN = 'https://api.example.com';
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
     id: 'seq-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     title: 'Test Sequence',
     script: 'A test script',
     status: 'processing',
@@ -151,7 +151,7 @@ function makeShot(
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style-1',
-    teamId: 'team-1',
+    organizationId: 'organization-1',
     sequenceId: null,
     name: 'Cinematic Noir',
     description: null,

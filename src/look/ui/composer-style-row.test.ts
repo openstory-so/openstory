@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style_1',
-    teamId: 'team_1',
+    organizationId: 'team_1',
     sequenceId: null,
     name: 'Product Ad',
     description: 'A polished product spot.',

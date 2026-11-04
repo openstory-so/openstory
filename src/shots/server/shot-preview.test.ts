@@ -29,7 +29,7 @@ const contextFor = (useStartFrame: boolean) =>
       aspectRatio: '16:9',
     },
     user: { id: 'user-1' },
-    teamId: 'team-1',
+    organizationId: 'org-1',
     scene: null,
     scopedDb: {
       characters: { list: vi.fn(async () => []) },

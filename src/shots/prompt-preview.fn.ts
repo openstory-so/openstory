@@ -148,8 +148,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       characters,
       elements,
       locations,
-      // Where this team's Seedance lands, not whether the platform has
-      // Ark: a team on its own fal key is never sent an edit (#2036).
+      // Where this organization's Seedance lands, not whether the platform has
+      // Ark: an organization on its own fal key is never sent an edit (#2036).
       byteplusEnabled: await seedanceRunsOnArk(
         toWorkflowScopedDb(scopedDb).credentials
       ),

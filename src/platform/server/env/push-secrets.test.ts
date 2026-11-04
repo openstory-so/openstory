@@ -162,7 +162,7 @@ describe('SECRETS catalog (#1502)', () => {
     expect(TOOLING_OR_LEGACY.has('FAL_PRICING_KEY')).toBe(true);
   });
 
-  it('keeps LLMTR_API_KEY in tooling/legacy — team BYOK, never a Worker secret', () => {
+  it('keeps LLMTR_API_KEY in tooling/legacy — organization BYOK, never a Worker secret', () => {
     expect('LLMTR_API_KEY' in SECRETS).toBe(false);
     expect(TOOLING_OR_LEGACY.has('LLMTR_API_KEY')).toBe(true);
   });

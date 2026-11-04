@@ -25,8 +25,8 @@ const logger = getLogger(['openstory', 'auth', 'oauth-bearer']);
 /** Verified, normalised access-token claims. */
 export type OAuthAccessToken = {
   userId: string;
-  /** The team stamped at consent; null when consent had no `referenceId`. */
-  teamId: string | null;
+  /** The organization stamped at consent; null when consent had no `referenceId`. */
+  organizationId: string | null;
   clientId: string | null;
   scopes: readonly string[];
   audience: readonly string[];
@@ -39,7 +39,7 @@ const claimsSchema = z.object({
   aud: z.union([z.string(), z.array(z.string())]),
   scope: z.string().optional(),
   client_id: z.string().optional(),
-  team_id: z.string().optional(),
+  organization_id: z.string().optional(),
   jti: z.string().optional(),
 });
 
@@ -164,10 +164,10 @@ export async function verifyOAuthAccessToken(
     });
     return null;
   }
-  const { sub, aud, scope, client_id, team_id, jti } = claims.data;
+  const { sub, aud, scope, client_id, organization_id, jti } = claims.data;
   return {
     userId: sub,
-    teamId: team_id ?? null,
+    organizationId: organization_id ?? null,
     clientId: client_id ?? null,
     scopes: scope ? scope.split(' ').filter(Boolean) : [],
     audience: Array.isArray(aud) ? aud : [aud],
