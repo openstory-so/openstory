@@ -482,6 +482,7 @@ export const createSequences = createServerOnlyFn(
       event: 'sequence_generated',
       properties: {
         team_id: organizationId,
+        organization_id: organizationId,
         style_id: styleId,
         automatic_style: styleSource.kind !== 'library',
         aspect_ratio: aspectRatio,

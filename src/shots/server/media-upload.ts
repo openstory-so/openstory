@@ -56,6 +56,7 @@ import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/medi
 import { base64ToBytes } from '@/platform/base64';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -661,7 +662,7 @@ export async function setCharacterSheetFromUpload(
       },
       versionId: variant.id,
       sheetUrl: data.publicUrl,
-      storageDir: `${context.organizationId}/${sequenceId ?? 'team'}/${character.id}`,
+      storageDir: `${context.organizationId}/${sequenceId ?? 'organization'}/${character.id}`,
     });
   }
   return updated;
@@ -741,7 +742,7 @@ export async function setLocationSheetFromUpload(
     subject: { kind: 'location', locationId: location.id },
     versionId: variant.id,
     sheetUrl: data.publicUrl,
-    storageDir: `${context.organizationId}/${sequenceId ?? 'team'}/${location.id}`,
+    storageDir: `${context.organizationId}/${sequenceId ?? 'organization'}/${location.id}`,
   });
   return updated;
 }
@@ -854,12 +855,12 @@ function uploadTarget(
     if (use === 'location_sheet') {
       return {
         bucket: STORAGE_BUCKETS.LOCATIONS,
-        path: `teams/${organizationId}/locations/uploads/${id}.${ext}`,
+        path: `${organizationKeyPrefix(organizationId)}/locations/uploads/${id}.${ext}`,
       };
     }
     throw new ValidationError(`A ${use} upload needs sequenceId.`);
   }
-  const inSequence = `teams/${organizationId}/sequences/${sequenceId}`;
+  const inSequence = `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}`;
   switch (use) {
     case 'shot_image':
       return {

@@ -48,6 +48,7 @@ export function captureStudioGenerationCompleted(
     event: 'studio_generation_completed',
     properties: {
       team_id: args.organizationId,
+      organization_id: args.organizationId,
       activity: args.activity,
       asset_id: args.assetId,
       model: args.model,
@@ -81,6 +82,7 @@ export function captureSequenceContentReady(
     event: 'sequence_content_ready',
     properties: {
       team_id: args.organizationId,
+      organization_id: args.organizationId,
       sequence_id: args.sequenceId,
       title: args.title,
       watch_url: args.watchUrl,

@@ -73,7 +73,7 @@ Authentication:
     /api/v1/device/code, show the user the returned user_code and
     verification_url (or open verification_url_complete), then GET the 'poll'
     link — /api/v1/device/token?device_code=…&wait=60s — until it returns 200
-    { api_key, team }. While the user decides you get 428 authorization_pending
+    { api_key, organization }. While the user decides you get 428 authorization_pending
     (keep polling; ?wait blocks server-side so you needn't sleep), 429 slow_down
     if you poll faster than 'interval' without ?wait, 403 access_denied, or 410
     expired_token (codes last 10 minutes; start again). The key is a normal

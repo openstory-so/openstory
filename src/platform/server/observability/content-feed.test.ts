@@ -36,6 +36,7 @@ describe('captureStudioGenerationCompleted', () => {
       event: 'studio_generation_completed',
       properties: {
         team_id: 'organization-1',
+        organization_id: 'organization-1',
         activity: 'image',
         asset_id: 'asset-1',
         model: 'gpt_image_2',
@@ -69,6 +70,7 @@ describe('captureStudioGenerationCompleted', () => {
       event: 'studio_generation_completed',
       properties: {
         team_id: 'organization-1',
+        organization_id: 'organization-1',
         activity: 'video',
         asset_id: 'asset-1',
         model: 'seedance_v2',
@@ -124,6 +126,7 @@ describe('captureSequenceContentReady', () => {
       event: 'sequence_content_ready',
       properties: {
         team_id: 'organization-1',
+        organization_id: 'organization-1',
         sequence_id: 'seq_1',
         title: 'The Long Walk',
         watch_url: 'https://openstory.so/sequences/seq_1/scenes',
@@ -148,6 +151,7 @@ describe('captureSequenceContentReady', () => {
       event: 'sequence_content_ready',
       properties: {
         team_id: 'organization-1',
+        organization_id: 'organization-1',
         sequence_id: 'seq_1',
         title: 'Untitled Sequence',
         watch_url: 'https://openstory.so/sequences/seq_1/scenes',

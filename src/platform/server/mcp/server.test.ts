@@ -68,7 +68,7 @@ const whoamiResult = z.object({
       email: z.string(),
       name: z.string(),
     }),
-    team: z.object({ id: z.string(), name: z.string() }),
+    organization: z.object({ id: z.string(), name: z.string() }),
   }),
 });
 
@@ -459,7 +459,7 @@ describe('tools/list and whoami', () => {
     expect(status).toBe(200);
     expect(whoamiResult.parse(body.result).structuredContent).toEqual({
       user: { id: 'user_1', email: 'ada@example.com', name: 'Ada' },
-      team: { id: 'organization_1', name: "Ada's Organization" },
+      organization: { id: 'organization_1', name: "Ada's Organization" },
     });
   });
 
@@ -568,9 +568,9 @@ describe('tools/list and whoami', () => {
       );
       expect(res.status).toBe(200);
       const body = await readRpc(res);
-      expect(whoamiResult.parse(body.result).structuredContent.team.id).toBe(
-        'organization_1'
-      );
+      expect(
+        whoamiResult.parse(body.result).structuredContent.organization.id
+      ).toBe('organization_1');
     });
 
     it('lists tools with their views linked', async () => {

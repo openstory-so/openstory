@@ -8,6 +8,7 @@
  * prefix. Keeping this in one place avoids the check drifting between routes.
  */
 
+import { keyOwner } from './buckets';
 import { fileExists } from '#storage';
 import { isSystemAdmin } from '@/platform/server/auth/system-admin';
 import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
@@ -66,14 +67,13 @@ export async function resolveUploadTarget(
   // is bypassable: an attacker could put their own organization id in the filename and
   // still write into another organization's prefix (e.g.
   // `teams/<victim>/…/<myOrganizationId>.mp4`). Instead read the organization id from the
-  // *leading owner segment* — segment 0, or segment 1 when the path is under a
-  // `teams/` prefix (exports use `teams/<id>/…`; talent/location/element use
-  // `<id>/…`) — reject traversal / empty segments, and require membership.
+  // *leading owner segment* (`keyOwner`), reject traversal / empty segments,
+  // and require membership.
   if (path.startsWith('/') || path.includes('//') || path.includes('..')) {
     return fail('Invalid upload path', 400);
   }
   const segments = path.split('/');
-  const ownerSegment = segments[0] === 'teams' ? segments[1] : segments[0];
+  const ownerSegment = keyOwner(segments);
   // Authorize against the organization the PATH names, not "the caller's organization": the
   // reservation that minted this path was scoped to the resource's organization (e.g.
   // `sequenceAccessMiddleware` uses the sequence's), so resolving one organization per

@@ -6,6 +6,7 @@
  * {@link uploadImageFromUrl} / {@link uploadVideoFromUrl}.
  */
 
+import { organizationKeyPrefix } from '@/platform/server/storage/buckets';
 import { uploadImageFromUrl } from '@/stills/server/image-storage';
 import {
   uploadVideoFromUrl,
@@ -20,7 +21,7 @@ export function uploadStudioImage(params: {
   return uploadImageFromUrl(
     params.imageUrl,
     (extension) =>
-      `teams/${params.organizationId}/studio/${params.assetId}/image.${extension}`
+      `${organizationKeyPrefix(params.organizationId)}/studio/${params.assetId}/image.${extension}`
   );
 }
 
@@ -33,7 +34,7 @@ export function uploadStudioVideo(params: {
   return uploadVideoFromUrl(
     params.videoUrl,
     (extension) =>
-      `teams/${params.organizationId}/studio/${params.assetId}/video.${extension}`,
+      `${organizationKeyPrefix(params.organizationId)}/studio/${params.assetId}/video.${extension}`,
     { googleApiKey: params.googleApiKey }
   );
 }

@@ -42,6 +42,7 @@ import {
   recordProvenance,
 } from '@/platform/server/compliance/provenance';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -328,7 +329,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         const extension = outputExtension(ref.url, knownContentType);
         const contentType =
           knownContentType ?? getMimeTypeFromExtension(extension);
-        const path = `teams/${organizationId}/assets/${assetId}/output-${index}.${extension}`;
+        const path = `${organizationKeyPrefix(organizationId)}/assets/${assetId}/output-${index}.${extension}`;
         const result = await uploadResponse(
           response,
           ACTIVITY_BUCKETS[activity],

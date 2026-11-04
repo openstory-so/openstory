@@ -35,7 +35,11 @@ export type DeviceTokenResult =
         | 'expired_token'
         | 'access_denied';
     }
-  | { status: 'approved'; apiKey: string; team: { id: string; name: string } };
+  | {
+      status: 'approved';
+      apiKey: string;
+      organization: { id: string; name: string };
+    };
 
 const PLUGIN_ERRORS = [
   'authorization_pending',
@@ -141,6 +145,9 @@ export async function exchangeDeviceCode(
   return {
     status: 'approved',
     apiKey: created.key,
-    team: { id: membership.organizationId, name: membership.organizationName },
+    organization: {
+      id: membership.organizationId,
+      name: membership.organizationName,
+    },
   };
 }

@@ -69,7 +69,7 @@ const whoami = toolDefinition({
       email: z.string(),
       name: z.string(),
     }),
-    team: z.object({
+    organization: z.object({
       id: z.string(),
       name: z.string(),
     }),
@@ -83,7 +83,7 @@ const whoami = toolDefinition({
       email: caller.user.email,
       name: caller.user.name,
     },
-    team: { id: caller.organizationId, name: caller.organizationName },
+    organization: { id: caller.organizationId, name: caller.organizationName },
   };
 });
 

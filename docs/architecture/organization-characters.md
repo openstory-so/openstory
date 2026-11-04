@@ -152,7 +152,7 @@ What follows from one character in two sequences:
     (`resolveSheetImageModel` with no sequence model); the sheet reads no
     style anyway (`rendering`). A digest stamped before `rendering` reads
     stale there, since there is no style to verify it with.
-  - The run stores under `<organization>/team/<character>/` and reports on the
+  - The run stores under `<organization>/organization/<character>/` and reports on the
     character's own channel, `castChannelId(null, id)` =
     `character:<id>`; the page listens on the same id. Through a sequence
     the channel is the sequence's, as before. `CharacterSheetWorkflowInput`

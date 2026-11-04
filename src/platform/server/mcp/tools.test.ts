@@ -4062,7 +4062,7 @@ describe('generation and uploads (#1979)', () => {
     expect(stored.rights).toBe('cleared');
     expect(stored.upload).toMatch(
       new RegExp(
-        `^/r2/thumbnails/teams/${organizationId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
+        `^/r2/thumbnails/org/${organizationId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
       )
     );
     const set = z

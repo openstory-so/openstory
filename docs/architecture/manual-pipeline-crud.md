@@ -91,7 +91,7 @@ and the history query so the new version appears without a page reload.
 
 All uploads: presign (`getSignedUploadUrl` → client PUT to
 `/api/storage/upload`) → finalize. Finalize validates the `publicUrl` against
-the caller's organization namespace (`<bucket>/teams/<organizationId>/…`, no traversal) and the
+the caller's organization namespace (`<bucket>/org/<organizationId>/…`, or the pre-#813 `teams/`; no traversal) and the
 presign enforces a per-surface extension allow-list (an `.svg` under `/r2/`
 would be stored XSS). `USER_UPLOAD_MODEL = 'user-upload'` is never a valid
 generation model id — every model-resolution tier skips it by design.

@@ -379,6 +379,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
                 email: user.email,
                 name: user.name,
                 team_id: created.id,
+                organization_id: created.id,
               },
               personProperties: {
                 email: user.email,

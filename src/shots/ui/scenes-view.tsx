@@ -453,13 +453,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         staleTime: 5 * 60 * 1000,
       })
       .then((list) => {
+        const first = list.every(
+          (s) =>
+            s.id === sequenceId || new Date(s.createdAt).getTime() >= createdAt
+        );
         captureSequenceReadySeen(posthog, {
           sequence_id: sequenceId,
-          first_sequence_for_team: list.every(
-            (s) =>
-              s.id === sequenceId ||
-              new Date(s.createdAt).getTime() >= createdAt
-          ),
+          first_sequence_for_team: first,
+          first_sequence_for_organization: first,
           seconds_since_generate: Math.round((Date.now() - createdAt) / 1000),
         });
       })

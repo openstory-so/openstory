@@ -22,6 +22,17 @@ export const STORAGE_BUCKETS = {
 export type StorageBucket =
   (typeof STORAGE_BUCKETS)[keyof typeof STORAGE_BUCKETS];
 
+/** Key prefix for an organization's objects. Keys written before #813 start `teams/<id>/`. */
+export const organizationKeyPrefix = (organizationId: string) =>
+  `org/${organizationId}`;
+
+/** The organization a bucket-relative key belongs to: `org/<id>/…`, `teams/<id>/…` or `<id>/…`. */
+export function keyOwner(segments: readonly string[]): string | undefined {
+  return segments[0] === 'org' || segments[0] === 'teams'
+    ? segments[1]
+    : segments[0];
+}
+
 /**
  * Buckets whose user uploads get the likeness check (#2192). A verdict is
  * keyed by URL, so an object here is written once: an overwrite would keep

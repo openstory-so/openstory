@@ -149,7 +149,7 @@ describe('cropTileFromGrid', () => {
     expect(uploadFile).toHaveBeenCalledWith(
       'thumbnails',
       expect.stringMatching(
-        /^teams\/org_1\/sequences\/seq_1\/frames\/shot_1\/variant-tile-.*\.png$/
+        /^org\/org_1\/sequences\/seq_1\/frames\/shot_1\/variant-tile-.*\.png$/
       ),
       expect.any(Uint8Array),
       { contentType: 'image/png' }

@@ -583,6 +583,7 @@ export async function createStudioAssets(
     event: 'studio_generation_started',
     properties: {
       team_id: scopedDb.organizationId,
+      organization_id: scopedDb.organizationId,
       activity: input.activity,
       model: input.activity === 'image' ? input.imageModel : input.videoModel,
       model_name: modelName,

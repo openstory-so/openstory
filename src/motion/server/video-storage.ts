@@ -6,6 +6,7 @@
 import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   r2KeyFromUrl,
 } from '@/platform/server/storage/buckets';
@@ -156,7 +157,7 @@ export async function uploadVideoToStorage(
     const uploaded = await uploadVideoFromUrl(
       videoUrl,
       (extension) =>
-        `teams/${organizationId}/sequences/${sequenceId}/frames/${shotId}/${sequenceSlug}_${sceneSlug}_${shortHash}_openstory.${extension}`,
+        `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${sequenceSlug}_${sceneSlug}_${shortHash}_openstory.${extension}`,
       { googleApiKey }
     );
     return { success: true, url: uploaded.url, path: uploaded.path };

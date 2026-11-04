@@ -69,7 +69,7 @@ describe('uploadPosterToStorage', () => {
     });
 
     expect(result.path).toMatch(
-      /^teams\/org_1\/sequences\/seq_1\/poster\/[0-9A-Z]+\.png$/
+      /^org\/org_1\/sequences\/seq_1\/poster\/[0-9A-Z]+\.png$/
     );
     expect(result.url).toBe(`/r2/thumbnails/${result.path}`);
 
@@ -123,7 +123,7 @@ describe('uploadImageToStorage', () => {
     });
 
     expect(result.path).toMatch(
-      /^teams\/org_1\/sequences\/seq_1\/frames\/shot_1\/[0-9A-Z]+\.png$/
+      /^org\/org_1\/sequences\/seq_1\/frames\/shot_1\/[0-9A-Z]+\.png$/
     );
   });
 });

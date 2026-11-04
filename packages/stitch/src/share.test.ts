@@ -117,7 +117,7 @@ describe('stitch share', () => {
         }
         return json({
           api_key: 'osk_1',
-          team: { id: 't', name: 'T' },
+          organization: { id: 't', name: 'T' },
         });
       }
       if (headers.get('authorization') !== 'Bearer osk_1' || options.reject) {

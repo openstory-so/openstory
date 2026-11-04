@@ -20,6 +20,7 @@
  * off the client.
  */
 
+import { keyOwner } from '@/platform/server/storage/buckets';
 import type { Likeness } from '@/cast/likeness';
 import {
   analyzeTalentClipForOrganization,
@@ -218,14 +219,14 @@ function analyzeUpload(opts: {
 /**
  * A raw URL, or one of this organization's own stored objects. Ownership is the
  * key's owner segment, read the way the upload route reads it
- * (`<bucket>/<organization>/…` or `<bucket>/teams/<organization>/…`), never a substring.
+ * (`keyOwner`), never a substring.
  */
 export function isCheckable(url: string, organizationId: string): boolean {
   const key = r2KeyFromUrl(url);
   if (key === null) return needsLikenessCheck(url);
   if (mediaUrlHasTraversal(url)) return false;
   const path = key.split('/').slice(1);
-  return (path[0] === 'teams' ? path[1] : path[0]) === organizationId;
+  return keyOwner(path) === organizationId;
 }
 
 /** Refuse a URL {@link isCheckable} rejects: another organization's file. */

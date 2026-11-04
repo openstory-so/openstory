@@ -13,6 +13,7 @@ import { getEnv } from '#env';
 import { readStorageObject, uploadFile } from '#storage';
 import { generateId } from '@/platform/id';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   isLocalStorageServing,
   r2KeyFromUrl,
@@ -337,7 +338,7 @@ async function cropTileInProcess(options: {
     const cropped = crop(input, rect.x1, rect.y1, rect.x2, rect.y2);
     try {
       const png = cropped.get_bytes();
-      const path = `teams/${organizationId}/sequences/${sequenceId}/frames/${shotId}/variant-tile-${generateId()}.png`;
+      const path = `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/variant-tile-${generateId()}.png`;
       const uploaded = await uploadFile(STORAGE_BUCKETS.THUMBNAILS, path, png, {
         contentType: 'image/png',
       });

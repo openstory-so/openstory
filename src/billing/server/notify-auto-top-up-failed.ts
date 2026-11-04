@@ -39,6 +39,9 @@ export async function notifyAutoTopUpFailed(opts: {
   captureProductEvent({
     distinctId: opts.userId,
     event: 'auto_top_up_failed_email_sent',
-    properties: { team_id: opts.organizationId },
+    properties: {
+      team_id: opts.organizationId,
+      organization_id: opts.organizationId,
+    },
   });
 }

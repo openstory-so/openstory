@@ -329,6 +329,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
           error: sanitized,
           sequence_id: extractSequenceId(event.payload) ?? null,
           team_id: event.payload.organizationId,
+          organization_id: event.payload.organizationId,
           run_id: event.instanceId,
         },
       });

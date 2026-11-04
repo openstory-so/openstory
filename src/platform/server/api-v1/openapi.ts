@@ -282,10 +282,10 @@ export function buildOpenApiDocument(): JsonObject {
                 'application/json': {
                   schema: {
                     type: 'object',
-                    required: ['api_key', 'team'],
+                    required: ['api_key', 'organization'],
                     properties: {
                       api_key: { type: 'string' },
-                      team: {
+                      organization: {
                         type: 'object',
                         required: ['id', 'name'],
                         properties: {

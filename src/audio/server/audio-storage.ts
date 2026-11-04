@@ -3,7 +3,10 @@
  * Handles uploading and managing audio files in R2 Storage
  */
 
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  organizationKeyPrefix,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
 import {
   getExtensionFromUrl,
@@ -95,8 +98,8 @@ export async function uploadAudioToStorage(
 
     // Store under shot path if per-scene, otherwise under sequence
     const storagePath = shotId
-      ? `teams/${organizationId}/sequences/${sequenceId}/frames/${shotId}/${filename}`
-      : `teams/${organizationId}/sequences/${sequenceId}/music/${filename}`;
+      ? `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${filename}`
+      : `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/music/${filename}`;
 
     logger.info(`Generated filename: ${filename}`, {
       ulid,

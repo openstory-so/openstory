@@ -63,7 +63,7 @@ describe('exchangeDeviceCode', () => {
     await expect(exchangeDeviceCode('dc')).resolves.toEqual({
       status: 'approved',
       apiKey: 'osk_secret',
-      team: { id: 't1', name: 'Organization One' },
+      organization: { id: 't1', name: 'Organization One' },
     });
     expect(deleteSession).toHaveBeenCalledWith('sess-token');
     expect(createApiKey).toHaveBeenCalledWith({

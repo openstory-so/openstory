@@ -100,7 +100,7 @@ describe('checked uploads are written once (#2192)', () => {
 describe('resolveUploadTarget', () => {
   it('authorizes the organization named in the path, not the caller’s “first” organization', async () => {
     const resolved = await resolveUploadTarget(
-      request(`teams/${ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`),
+      request(`org/${ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`),
       USER
     );
 
@@ -114,7 +114,7 @@ describe('resolveUploadTarget', () => {
   it('403s when the caller is not a member of the path’s organization', async () => {
     const resolved = await resolveUploadTarget(
       request(
-        `teams/${OTHER_ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`
+        `org/${OTHER_ORGANIZATION}/sequences/s1/exports/abc_openstory.mp4`
       ),
       USER
     );

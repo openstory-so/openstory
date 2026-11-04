@@ -5,6 +5,7 @@
 
 import { base64ToBytes } from '@/platform/base64';
 import {
+  organizationKeyPrefix,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -156,7 +157,7 @@ export async function uploadImageToStorage(
   return uploadImageFromUrl(
     imageUrl,
     (extension) =>
-      `teams/${organizationId}/sequences/${sequenceId}/frames/${shotId}/${generateId()}.${extension}`
+      `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/frames/${shotId}/${generateId()}.${extension}`
   );
 }
 
@@ -176,6 +177,6 @@ export async function uploadPosterToStorage(
   return uploadImageFromUrl(
     imageUrl,
     (extension) =>
-      `teams/${organizationId}/sequences/${sequenceId}/poster/${generateId()}.${extension}`
+      `${organizationKeyPrefix(organizationId)}/sequences/${sequenceId}/poster/${generateId()}.${extension}`
   );
 }
