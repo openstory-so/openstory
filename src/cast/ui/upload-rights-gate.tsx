@@ -3,11 +3,13 @@
  * through. An upload hook calls `ensureUploadRights(refs)` after the bytes
  * land and before finalize: each image is checked, and if any shows a real
  * person the sign-off dialog opens and the promise waits for Confirm. Cancel
- * rejects with {@link UploadRightsDeclinedError}, so the upload fails
- * instead of finalizing unsigned.
+ * rejects, so the upload fails instead of finalizing unsigned.
  *
  * Mounted once in the app shell next to <AuthGateProvider>; outside it
  * (Storybook, tests) wrap with <UploadRightsGateStub>.
+ *
+ * Concurrent calls share one dialog (#2239). A second request is queued;
+ * Confirm attests every queued upload once and resolves them all.
  */
 
 import { PortraitAttestationFields } from '@/cast/ui/portrait-attestation-fields';
@@ -26,20 +28,14 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
-  useCallback,
   useContext,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { createUploadRightsQueue } from './upload-rights-queue';
 import { uploadRightsKeys, uploadRightsQuery } from './use-upload-rights';
-
-class UploadRightsDeclinedError extends Error {
-  constructor() {
-    super('Rights to this person’s likeness were not confirmed');
-    this.name = 'UploadRightsDeclinedError';
-  }
-}
 
 type UploadRightsGateValue = {
   /** Resolves once every image is cleared or signed; rejects if declined. */
@@ -73,66 +69,61 @@ export function UploadRightsGateStub({ children }: { children: ReactNode }) {
   );
 }
 
-type Pending = {
-  refs: UploadRef[];
-  resolve: () => void;
-  reject: (error: Error) => void;
-};
-
 export function UploadRightsGateProvider({
   children,
 }: {
   children: ReactNode;
 }) {
   const queryClient = useQueryClient();
-  const [pending, setPending] = useState<Pending | null>(null);
   const [attested, setAttested] = useState(false);
   const [authorizationBasis, setAuthorizationBasis] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const ensureUploadRights = useCallback(
-    async (refs: UploadRef[]) => {
-      const results = await Promise.all(
-        refs.map((ref) => queryClient.fetchQuery(uploadRightsQuery(ref)))
-      );
-      const owed = refs.filter(
-        (_, i) => results[i]?.status === 'needs_portrait'
-      );
-      if (owed.length === 0) return;
-      await new Promise<void>((resolve, reject) => {
+  const [queue] = useState(() =>
+    createUploadRightsQueue({
+      classify: (refs) =>
+        Promise.all(
+          refs.map((ref) => queryClient.fetchQuery(uploadRightsQuery(ref)))
+        ),
+      onShow: () => {
         setAttested(false);
         setAuthorizationBasis('');
         setError(null);
-        setPending({ refs: owed, resolve, reject });
-      });
-    },
-    [queryClient]
+      },
+    })
+  );
+  const snapshot = useSyncExternalStore(
+    queue.subscribe,
+    queue.getSnapshot,
+    queue.getSnapshot
   );
 
-  const close = (outcome: 'confirmed' | 'declined') => {
-    if (!pending) return;
-    if (outcome === 'confirmed') pending.resolve();
-    else pending.reject(new UploadRightsDeclinedError());
-    setPending(null);
-  };
+  const ensureUploadRights = queue.ensureUploadRights;
 
   const confirm = async () => {
-    if (!pending || !attested || authorizationBasis.trim().length === 0) return;
+    if (!snapshot.open || !attested || authorizationBasis.trim().length === 0) {
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      await attestUploadsFn({
-        data: {
-          attestations: pending.refs.map((ref) => ({
-            url: ref.url,
-            statementVersion: PORTRAIT_RIGHTS_V1.version,
-            authorizationBasis: authorizationBasis.trim(),
-          })),
-        },
+      await queue.confirm(async (refs) => {
+        await attestUploadsFn({
+          data: {
+            attestations: refs.map((ref) => ({
+              url: ref.url,
+              statementVersion: PORTRAIT_RIGHTS_V1.version,
+              authorizationBasis: authorizationBasis.trim(),
+            })),
+          },
+        });
+        await queryClient.invalidateQueries({ queryKey: uploadRightsKeys.all });
       });
-      await queryClient.invalidateQueries({ queryKey: uploadRightsKeys.all });
-      close('confirmed');
+      if (!queue.getSnapshot().open) {
+        setAttested(false);
+        setAuthorizationBasis('');
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save');
     } finally {
@@ -145,15 +136,15 @@ export function UploadRightsGateProvider({
     [ensureUploadRights]
   );
   const canConfirm = attested && authorizationBasis.trim().length > 0;
-  const names = pending?.refs.map((ref) => ref.filename ?? ref.url) ?? [];
+  const names = snapshot.names;
 
   return (
     <UploadRightsGateContext.Provider value={value}>
       {children}
       <Dialog
-        open={pending !== null}
+        open={snapshot.open}
         onOpenChange={(open) => {
-          if (!open) close('declined');
+          if (!open) queue.decline();
         }}
       >
         <DialogContent
@@ -189,7 +180,7 @@ export function UploadRightsGateProvider({
             <Button
               type="button"
               variant="outline"
-              onClick={() => close('declined')}
+              onClick={() => queue.decline()}
             >
               Cancel
             </Button>

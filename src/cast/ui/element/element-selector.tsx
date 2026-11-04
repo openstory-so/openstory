@@ -146,6 +146,35 @@ export function selectFilesToAccept(
   return accepted;
 }
 
+/**
+ * Failed local upload (#2239). Retry and Remove stay on the tile: a hover-only
+ * control left the entry stuck, and a stuck `uploading` entry keeps Generate
+ * disabled. A thrown upload and a sign-off that rejects both land here.
+ */
+export function LocalUploadError({
+  message,
+  onRetry,
+  onRemove,
+}: {
+  message: string;
+  onRetry: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-destructive/70 px-1 text-center">
+      <span className="text-[10px] font-medium text-white">{message}</span>
+      <div className="flex gap-1">
+        <Button type="button" size="xs" variant="secondary" onClick={onRetry}>
+          Retry
+        </Button>
+        <Button type="button" size="xs" variant="secondary" onClick={onRemove}>
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 type DisplayItem = {
   key: string;
   /** What the file IS (#1559) — a clip or audio tile shows an icon, not a still. */
@@ -266,6 +295,107 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
     });
   }, []);
 
+  const failLocalEntry = useCallback(
+    (key: string, file: File, err: unknown) => {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      logger.error('Upload failed', { filename: file.name, error: err });
+      toast.error(`Couldn't upload ${file.name}`, { description: message });
+      setEntries((prev) => {
+        const current = prev.get(key);
+        if (!current || current.status === 'error') return prev;
+        const next = new Map(prev);
+        next.set(key, { ...current, status: 'error', errorMessage: message });
+        return next;
+      });
+    },
+    []
+  );
+
+  const uploadLocalEntry = useCallback(
+    async (key: string, file: File) => {
+      try {
+        if (isPersisted) {
+          await sequenceUpload.mutateAsync({ file, sequenceId });
+          // Success — local entry kept until query refetches, then cleared.
+          // Skip when the tile is already an error (the user is retrying or
+          // removing) so a late resolution cannot cover the failure.
+          setEntries((prev) => {
+            const current = prev.get(key);
+            if (!current || current.status === 'error') return prev;
+            const next = new Map(prev);
+            next.set(key, { ...current, status: 'done' });
+            return next;
+          });
+          return;
+        }
+        const result = await draftUpload.mutateAsync({
+          file,
+          onAnalyzingChange: (analyzing) => {
+            setEntries((prev) => {
+              const current = prev.get(key);
+              if (!current) return prev;
+              // Don't downgrade out of error/done if a slow analyze
+              // callback fires after the mutation already settled.
+              if (
+                current.status !== 'uploading' &&
+                current.status !== 'analyzing'
+              ) {
+                return prev;
+              }
+              const next = new Map(prev);
+              next.set(key, {
+                ...current,
+                status: analyzing ? 'analyzing' : current.status,
+              });
+              return next;
+            });
+          },
+        });
+        // Promote into the parent's canonical draft list and drop the
+        // transient local entry — unless the user removed it mid-upload,
+        // in which case the result is discarded.
+        if (!entriesRef.current.has(key)) return;
+        if (entriesRef.current.get(key)?.status === 'error') return;
+        removeLocalEntry(key);
+        onDraftElementsChange?.((prev) => [...prev, result]);
+      } catch (err) {
+        failLocalEntry(key, file, err);
+      }
+    },
+    [
+      isPersisted,
+      sequenceUpload,
+      sequenceId,
+      draftUpload,
+      removeLocalEntry,
+      onDraftElementsChange,
+      failLocalEntry,
+    ]
+  );
+
+  const retryLocalEntry = useCallback(
+    (key: string) => {
+      const entry = entriesRef.current.get(key);
+      if (!entry || entry.status !== 'error') return;
+      const restarted: LocalEntry = {
+        file: entry.file,
+        previewUrl: entry.previewUrl,
+        status: 'uploading',
+      };
+      const seeded = new Map(entriesRef.current);
+      seeded.set(key, restarted);
+      entriesRef.current = seeded;
+      setEntries((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Map(prev);
+        next.set(key, restarted);
+        return next;
+      });
+      void uploadLocalEntry(key, entry.file);
+    },
+    [uploadLocalEntry]
+  );
+
   const processFiles = useCallback(
     async (newFiles: File[]) => {
       if (disabled) return;
@@ -324,73 +454,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
       });
 
       await Promise.all(
-        accepted.map(async ({ key, file }) => {
-          try {
-            if (isPersisted) {
-              await sequenceUpload.mutateAsync({ file, sequenceId });
-              // Success — local entry kept until query refetches, then cleared
-              setEntries((prev) => {
-                const current = prev.get(key);
-                if (!current) return prev;
-                const next = new Map(prev);
-                next.set(key, { ...current, status: 'done' });
-                return next;
-              });
-            } else {
-              const result = await draftUpload.mutateAsync({
-                file,
-                onAnalyzingChange: (analyzing) => {
-                  setEntries((prev) => {
-                    const current = prev.get(key);
-                    if (!current) return prev;
-                    // Don't downgrade out of error/done if a slow analyze
-                    // callback fires after the mutation already settled.
-                    if (
-                      current.status !== 'uploading' &&
-                      current.status !== 'analyzing'
-                    ) {
-                      return prev;
-                    }
-                    const next = new Map(prev);
-                    next.set(key, {
-                      ...current,
-                      status: analyzing ? 'analyzing' : current.status,
-                    });
-                    return next;
-                  });
-                },
-              });
-              // Promote into the parent's canonical draft list and drop the
-              // transient local entry — unless the user removed it mid-upload,
-              // in which case the result is discarded.
-              if (entriesRef.current.has(key)) {
-                removeLocalEntry(key);
-                onDraftElementsChange?.((prev) => [...prev, result]);
-              }
-            }
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : 'Upload failed';
-            logger.error('Upload failed', {
-              filename: file.name,
-              error: err,
-            });
-            toast.error(`Couldn't upload ${file.name}`, {
-              description: message,
-            });
-            setEntries((prev) => {
-              const current = prev.get(key);
-              if (!current) return prev;
-              const next = new Map(prev);
-              next.set(key, {
-                ...current,
-                status: 'error',
-                errorMessage: message,
-              });
-              return next;
-            });
-          }
-        })
+        accepted.map(({ key, file }) => uploadLocalEntry(key, file))
       );
     },
     [
@@ -399,11 +463,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
       isPersisted,
       persistedElements.length,
       draftElements?.length,
-      sequenceId,
-      draftUpload,
-      sequenceUpload,
-      removeLocalEntry,
-      onDraftElementsChange,
+      uploadLocalEntry,
     ]
   );
 
@@ -744,7 +804,14 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                           )}
                         </div>
                       )}
-                      {item.status === 'error' && (
+                      {item.status === 'error' && entry.kind === 'local' && (
+                        <LocalUploadError
+                          message={item.errorMessage ?? 'Failed'}
+                          onRetry={() => retryLocalEntry(entry.key)}
+                          onRemove={() => removeLocalEntry(entry.key)}
+                        />
+                      )}
+                      {item.status === 'error' && entry.kind !== 'local' && (
                         <div className="absolute inset-0 flex items-center justify-center bg-destructive/70 px-1 text-center text-[10px] font-medium text-white">
                           {item.errorMessage ?? 'Failed'}
                         </div>
@@ -770,23 +837,26 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                             }
                           />
                         )}
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => {
-                          if (entry.kind === 'persisted') {
-                            removePersistedElement(entry.source);
-                          } else if (entry.kind === 'draft') {
-                            removeDraftElement(entry.source.tempPath);
-                          } else {
-                            removeLocalEntry(entry.key);
-                          }
-                        }}
-                        className="absolute top-1 right-1 size-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="size-3" />
-                      </Button>
+                      {!(item.status === 'error' && entry.kind === 'local') && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          aria-label="Remove"
+                          onClick={() => {
+                            if (entry.kind === 'persisted') {
+                              removePersistedElement(entry.source);
+                            } else if (entry.kind === 'draft') {
+                              removeDraftElement(entry.source.tempPath);
+                            } else {
+                              removeLocalEntry(entry.key);
+                            }
+                          }}
+                          className="absolute top-1 right-1 size-5 opacity-0 transition-opacity group-hover:opacity-100"
+                        >
+                          <X className="size-3" />
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
