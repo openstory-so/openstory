@@ -67,6 +67,13 @@ export class AuthenticationError extends OpenStoryError {
   }
 }
 
+/** Signed in, but not allowed to act here. */
+export class AuthorizationError extends OpenStoryError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'AUTHORIZATION_ERROR', 403, details);
+  }
+}
+
 export class NotFoundError extends OpenStoryError {
   constructor(
     message: string = 'Not found',

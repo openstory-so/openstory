@@ -37,6 +37,7 @@ import { resolveOrganizationAndCompliance } from '@/platform/server/auth/organiz
 import {
   AccountRestrictedError,
   AuthenticationError,
+  AuthorizationError,
   NotFoundError,
 } from './errors';
 import { errorHeadline, getLogger, toErrorPayload } from './logger';
@@ -91,6 +92,8 @@ const VERY_SLOW_THRESHOLD_MS = 2000;
 export const EXPECTED_REJECTION_CODES = new Set([
   // Signed-out or expired sessions are expected on the anonymous app shell.
   'AUTHENTICATION_ERROR',
+  // A write from a member who was removed mid-session (#813).
+  'AUTHORIZATION_ERROR',
   'INSUFFICIENT_CREDITS',
   'VALIDATION_ERROR',
   'NOT_FOUND',
@@ -362,8 +365,15 @@ export const authWithOrganizationMiddleware = createMiddleware({
         )
       : { organization: null, compliance: null };
 
-    // Leaving clears the active organization and removal leaves it dangling: move to the first one.
+    // Leaving clears the active organization and removal leaves it dangling.
+    // A read moves to the first one so the app can paint; a write is refused,
+    // or it would land in an organization the user never chose.
     if (!organization || !compliance) {
+      if (request.method !== 'GET') {
+        throw new AuthorizationError(
+          'You are no longer a member of this organization. Switch organization and try again.'
+        );
+      }
       const firstId = await getFirstOrganizationId(context.user.id);
       if (!firstId) throw new Error('This account belongs to no organization');
       await getAuth().api.setActiveOrganization({

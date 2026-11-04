@@ -5,6 +5,7 @@
 import { authClient } from '@/platform/ui/auth/client';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
 import { Button } from '@/ui/shadcn/button';
+import { useHydrated } from '@/ui/use-hydrated';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
@@ -24,6 +25,8 @@ export const Route = createFileRoute('/_app/organization/accept-invitation')({
 
 function AcceptInvitationPage() {
   const { id } = Route.useSearch();
+  // A pre-hydration submit is a native GET that drops the id.
+  const hydrated = useHydrated();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
@@ -72,7 +75,11 @@ function AcceptInvitationPage() {
         </Link>
       ) : (
         <form onSubmit={(event) => void onSubmit(event)}>
-          <Button type="submit" disabled={pending} className="min-h-11">
+          <Button
+            type="submit"
+            disabled={!hydrated || pending}
+            className="min-h-11"
+          >
             {pending ? 'Joining…' : 'Join organization'}
           </Button>
         </form>

@@ -72,7 +72,7 @@ export async function createTestUser(
 /**
  * Clean up test user and related data
  */
-async function cleanupTestUser(
+export async function cleanupTestUser(
   userId: string,
   organizationId: string
 ): Promise<void> {
