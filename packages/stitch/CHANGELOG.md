@@ -1,5 +1,11 @@
 # @openstory/stitch
 
+## 0.4.0
+
+### Minor Changes
+
+- d6f713e: Add `stitch pull` to download a sequence's files into a folder. Run it with `npx @openstory/stitch pull <sequenceId>` or `bunx @openstory/stitch pull <sequenceId>`.
+
 ## 0.3.1
 
 ### Patch Changes
