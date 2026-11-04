@@ -50,6 +50,7 @@ import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import { packedPromptFitsLimit } from '@/motion/server/build-motion-render';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import { cutSpanningSection } from '@/motion/server/cut-audio-section';
+import { markPersonReferences } from '@/motion/server/mark-person-references';
 import {
   arkStillsForMotion,
   calculateMotionMetadata,
@@ -678,6 +679,21 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return compressed.url;
       }
     );
+
+    // An uploaded element or location still the ledger saw a real person in
+    // must reach Ark as `asset://` (#2238). Before the Kling rewrite below,
+    // which would move the URL the ledger is keyed by.
+    if (
+      (referenceImages ?? []).some(
+        (ref) =>
+          (ref.kind ?? 'image') === 'image' &&
+          (ref.role === 'element' || ref.role === 'location')
+      )
+    ) {
+      referenceImages = await step.do('mark-person-references', () =>
+        markPersonReferences(scopedDb.liveRead, referenceImages ?? [])
+      );
+    }
 
     // Kling enforces its 10MB-per-image limit on every URL in the reference
     // list, not just the start frame — and sheets only started riding that

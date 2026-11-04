@@ -344,7 +344,14 @@ export async function likenessFromLedger(
  * must not be the way to make a character not a person.
  */
 export async function realPersonUrls(
-  scopedDb: Pick<ScopedDb, 'compliance'>,
+  scopedDb: {
+    compliance: {
+      attestations: Pick<
+        ScopedDb['compliance']['attestations'],
+        'listForSubjects'
+      >;
+    };
+  },
   urls: readonly string[]
 ): Promise<Set<string>> {
   const urlByHash = new Map<string, string>();

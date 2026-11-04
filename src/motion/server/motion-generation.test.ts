@@ -164,6 +164,39 @@ describe('arkStillsForMotion', () => {
     ]);
   });
 
+  it('registers an element or location still the ledger saw a person in (#2238)', () => {
+    expect(
+      arkStillsForMotion({
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/portrait.png',
+            description: 'the photo',
+            role: 'element',
+            token: 'PHOTO',
+            isPerson: true,
+          },
+          {
+            referenceImageUrl: 'https://cdn/logo.png',
+            description: 'logo',
+            role: 'element',
+            token: 'LOGO',
+            isPerson: false,
+          },
+          {
+            referenceImageUrl: 'https://cdn/host.png',
+            description: 'the host',
+            role: 'location',
+            token: 'HOST',
+            isPerson: true,
+          },
+        ],
+      })
+    ).toEqual([
+      { storedUrl: 'https://cdn/portrait.png', slot: 'library' },
+      { storedUrl: 'https://cdn/host.png', slot: 'library' },
+    ]);
+  });
+
   it('treats a missing isPerson as a face, including in-flight payloads', () => {
     expect(
       arkStillsForMotion({
@@ -546,6 +579,54 @@ describe('Motion Service', () => {
               }),
             }),
             // An element sheet carries no face; it is not ingested.
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'https://example.com/logo.png',
+              }),
+            }),
+          ],
+        })
+      );
+    });
+
+    it('sends an element the ledger saw a person in as asset://, a cleared one as a URL (#2238)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-person-element' });
+
+      await submitMotionJob({
+        heldSeedanceEditSeconds: null,
+        arkAssets: registeredAssets,
+        prompt: 'PHOTO beside LOGO',
+        model: 'seedance_v2_5',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/portrait.png',
+            description: 'the photo',
+            role: 'element',
+            token: 'PHOTO',
+            isPerson: true,
+          },
+          {
+            referenceImageUrl: 'https://example.com/logo.png',
+            description: 'a logo',
+            role: 'element',
+            token: 'LOGO',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [
+            expect.objectContaining({ type: 'text' }),
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'asset://https://example.com/portrait.png',
+              }),
+            }),
             expect.objectContaining({
               type: 'image',
               source: expect.objectContaining({
