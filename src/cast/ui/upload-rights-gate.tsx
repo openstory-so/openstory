@@ -33,6 +33,7 @@ import {
   type ReactNode,
 } from 'react';
 import { uploadRightsKeys, uploadRightsQuery } from './use-upload-rights';
+import { createUploadRightsQueue } from './upload-rights-queue';
 
 class UploadRightsDeclinedError extends Error {
   constructor() {
@@ -85,6 +86,7 @@ export function UploadRightsGateProvider({
   children: ReactNode;
 }) {
   const queryClient = useQueryClient();
+  const [queueDialog] = useState(createUploadRightsQueue);
   const [pending, setPending] = useState<Pending | null>(null);
   const [attested, setAttested] = useState(false);
   const [authorizationBasis, setAuthorizationBasis] = useState('');
@@ -100,14 +102,17 @@ export function UploadRightsGateProvider({
         (_, i) => results[i]?.status === 'needs_portrait'
       );
       if (owed.length === 0) return;
-      await new Promise<void>((resolve, reject) => {
-        setAttested(false);
-        setAuthorizationBasis('');
-        setError(null);
-        setPending({ refs: owed, resolve, reject });
-      });
+      await queueDialog(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            setAttested(false);
+            setAuthorizationBasis('');
+            setError(null);
+            setPending({ refs: owed, resolve, reject });
+          })
+      );
     },
-    [queryClient]
+    [queryClient, queueDialog]
   );
 
   const close = (outcome: 'confirmed' | 'declined') => {
@@ -153,7 +158,7 @@ export function UploadRightsGateProvider({
       <Dialog
         open={pending !== null}
         onOpenChange={(open) => {
-          if (!open) close('declined');
+          if (!open && !saving) close('declined');
         }}
       >
         <DialogContent
@@ -189,6 +194,7 @@ export function UploadRightsGateProvider({
             <Button
               type="button"
               variant="outline"
+              disabled={saving}
               onClick={() => close('declined')}
             >
               Cancel
