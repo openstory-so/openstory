@@ -40,6 +40,7 @@ const officeLocation: SequenceLocationMinimal = {
   description: 'A modern corporate office with glass walls',
   consistencyTag: 'office_modern_glass',
   referenceInputHash: null,
+  referencePersonInImage: false,
   selectedReferenceVersionId: null,
 };
 
@@ -52,6 +53,7 @@ const streetLocation: SequenceLocationMinimal = {
   description: 'A busy city street at night',
   consistencyTag: 'city_street_night',
   referenceInputHash: null,
+  referencePersonInImage: false,
   selectedReferenceVersionId: null,
 };
 
@@ -64,6 +66,7 @@ const apartmentLocation: SequenceLocationMinimal = {
   description: 'A cozy apartment',
   consistencyTag: 'apartment_cozy',
   referenceInputHash: null,
+  referencePersonInImage: false,
   selectedReferenceVersionId: null,
 };
 

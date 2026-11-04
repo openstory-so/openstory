@@ -432,10 +432,9 @@ type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
  * registered, as a Video asset (#1930): Ark refuses a lifelike face in a clip
  * sent as a URL. The run has already refused a clip the ledger has not
  * cleared or signed (`check-reference-clip-rights`). A location/element
- * still is ingested only when the ledger saw a person in it
- * (`markPersonReferences`, #2238); otherwise it and audio are never
- * ingested. Submit uses the same helper so `arkUrlFor` is not asked for a
- * URL the map does not hold.
+ * still is ingested only when its upload showed a person (`personInImage`,
+ * #2238); otherwise it and audio are never ingested. Submit uses the same
+ * helper so `arkUrlFor` is not asked for a URL the map does not hold.
  */
 function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
   // ponytail: every clip spends a CreateAsset turn; snapshot the ledger
@@ -445,7 +444,7 @@ function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
   }
   if (ref.kind === 'audio') return null;
   if (ref.role === 'location' || ref.role === 'element') {
-    return ref.isPerson === true
+    return ref.personInImage
       ? { storedUrl: ref.referenceImageUrl, slot: 'library' }
       : null;
   }
@@ -458,8 +457,8 @@ function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
 
 /**
  * The stills a BytePlus submit needs registered: the start frame, every
- * character sheet that may show a person, and every uploaded location/element
- * still the ledger saw one in (#2238). CreateAsset is paced by
+ * character sheet that may show a person, and every location/element still
+ * whose upload showed one (`personInImage`, #2238). CreateAsset is paced by
  * `BYTEPLUS_ASSET_WRITE_QPM`, so the other location and element sheets are
  * not spent on, and neither are non-person character sheets (#1682).
  * Those still go through ingest as `plain` so submit looks them up in the
@@ -485,9 +484,6 @@ export function arkStillsForMotion(
  * sheets that may show a person; `plain` stills (location, element, known
  * non-person) ride as URLs and take no slot. Budgeting every reference URL
  * instead asked for 8 slots where 4 would be created, and stalled the batch.
- * ponytail: the batch counts before `markPersonReferences` runs in each child,
- * so a person element is not budgeted; the create's eviction (#2207) absorbs
- * it. Mark at the batch too if that ever stalls a fan-out.
  */
 export function arkStillsToRegister(
   shots: readonly Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>[]

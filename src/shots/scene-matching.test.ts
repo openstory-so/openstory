@@ -82,6 +82,7 @@ const elements: SequenceElementMinimal[] = [
     consistencyTag: 'red-hex-logo',
     kind: 'image',
     durationSeconds: null,
+    personInImage: false,
   },
   {
     id: '2',
@@ -91,6 +92,7 @@ const elements: SequenceElementMinimal[] = [
     consistencyTag: 'silver-bottle',
     kind: 'image',
     durationSeconds: null,
+    personInImage: false,
   },
 ];
 
@@ -457,6 +459,7 @@ describe('matchElementsToShot', () => {
     consistencyTag: null,
     kind: 'audio',
     durationSeconds: 3.75,
+    personInImage: false,
   };
   const all = [...elements, voice];
 

@@ -208,6 +208,11 @@ const ownColumns = {
   referencePortraitUrl: locationSheetVariants.portraitUrl,
   referenceGeneratedAt: locationSheetVariants.generatedAt,
   referenceInputHash: locationSheetVariants.inputHash,
+  // No variant row (a location with no sheet) reads false, like the column.
+  referencePersonInImage:
+    sql<number>`COALESCE(${locationSheetVariants.personInImage}, 0)`.mapWith(
+      Boolean
+    ),
 };
 
 /**

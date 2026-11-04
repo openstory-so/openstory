@@ -44,6 +44,13 @@ export type ReferenceImageDescription = {
    */
   isPerson?: boolean;
   /**
+   * An element or location still whose upload the likeness ledger saw a
+   * real person in (#2238): `sequence_elements.personInImage` /
+   * `location_sheet_variants.personInImage`. Ark refuses such a face in a
+   * plain URL, so it is registered like a person's sheet. Absent means no.
+   */
+  personInImage?: boolean;
+  /**
    * Which entity this reference is, and the identity of what was sent
    * (`referenceProvenanceKey`, #1657). Stamped on the clip manifest as
    * `referenceKeys` so a re-selected sheet or replaced element media

@@ -58,6 +58,7 @@ export const buildLocationReferenceImages = (
       // The bible id prompts name the set by (`metropolitan_sidewalk_corner`),
       // so it gets swapped for its `@ImageN` tag like a character's name.
       token: l.locationId,
+      personInImage: l.referencePersonInImage,
       provenanceKey: referenceProvenanceKey(
         'location',
         l.id,

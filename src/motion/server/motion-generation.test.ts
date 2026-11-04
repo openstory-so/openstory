@@ -164,7 +164,7 @@ describe('arkStillsForMotion', () => {
     ]);
   });
 
-  it('registers an element or location still the ledger saw a person in (#2238)', () => {
+  it('registers an element or location still whose upload showed a person (#2238)', () => {
     expect(
       arkStillsForMotion({
         referenceImages: [
@@ -173,21 +173,21 @@ describe('arkStillsForMotion', () => {
             description: 'the photo',
             role: 'element',
             token: 'PHOTO',
-            isPerson: true,
+            personInImage: true,
           },
           {
             referenceImageUrl: 'https://cdn/logo.png',
             description: 'logo',
             role: 'element',
             token: 'LOGO',
-            isPerson: false,
+            personInImage: false,
           },
           {
             referenceImageUrl: 'https://cdn/host.png',
             description: 'the host',
             role: 'location',
             token: 'HOST',
-            isPerson: true,
+            personInImage: true,
           },
         ],
       })
@@ -590,7 +590,7 @@ describe('Motion Service', () => {
       );
     });
 
-    it('sends an element the ledger saw a person in as asset://, a cleared one as a URL (#2238)', async () => {
+    it('sends an element whose upload showed a person as asset://, a cleared one as a URL (#2238)', async () => {
       testEnv.ARK_API_KEY = 'ark-test';
       mockGenerateVideo.mockResolvedValue({ jobId: 'ark-person-element' });
 
@@ -606,7 +606,7 @@ describe('Motion Service', () => {
             description: 'the photo',
             role: 'element',
             token: 'PHOTO',
-            isPerson: true,
+            personInImage: true,
           },
           {
             referenceImageUrl: 'https://example.com/logo.png',

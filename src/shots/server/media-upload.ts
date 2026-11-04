@@ -693,7 +693,7 @@ export async function setLocationSheetFromUpload(
     STORAGE_BUCKETS.LOCATIONS,
     context.organizationId
   );
-  await requireUploadRights(scopedDb, [data.publicUrl]);
+  const rights = await requireUploadRights(scopedDb, [data.publicUrl]);
   const location = await requireLocation(
     scopedDb,
     sequenceId,
@@ -715,6 +715,7 @@ export async function setLocationSheetFromUpload(
       storagePath,
       inputHash,
       model: USER_UPLOAD_MODEL,
+      personInImage: rights.get(data.publicUrl)?.depictsRealPerson ?? false,
     });
   const updated = await requireLocation(scopedDb, sequenceId, location.id);
   // A write from no sequence writes no event.

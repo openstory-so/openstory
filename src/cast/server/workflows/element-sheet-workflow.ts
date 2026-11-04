@@ -59,6 +59,7 @@ function toMinimalElement(row: SequenceElementMinimal): SequenceElementMinimal {
     consistencyTag: row.consistencyTag,
     kind: row.kind,
     durationSeconds: row.durationSeconds,
+    personInImage: row.personInImage,
   };
 }
 

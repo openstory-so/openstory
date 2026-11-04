@@ -77,6 +77,7 @@ export async function copySequenceElements(params: {
       consistencyTag: carryVision ? source.consistencyTag : null,
       imageUrl: publicUrl,
       imagePath: targetPath,
+      personInImage: source.personInImage,
       visionStatus: carryVision ? 'completed' : 'pending',
       visionGeneratedAt: carryVision ? source.visionGeneratedAt : null,
     });

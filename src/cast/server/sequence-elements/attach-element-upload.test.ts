@@ -72,6 +72,10 @@ beforeEach(() => {
   mockCreate.mockImplementation(async (values: Record<string, unknown>) => ({
     ...values,
   }));
+  mockRequireRights.mockImplementation(
+    async (_db: unknown, urls: string[]) =>
+      new Map(urls.map((url) => [url, { depictsRealPerson: false }]))
+  );
 });
 
 describe('attachElementUpload', () => {
@@ -257,6 +261,28 @@ describe('assertDraftElementUploadsAttachable', () => {
       ],
     });
     expect(mockRequireRights).not.toHaveBeenCalled();
+  });
+
+  it('writes the ledger verdict onto the row as personInImage (#2238)', async () => {
+    mockRequireRights.mockImplementation(
+      async (_db: unknown, urls: string[]) =>
+        new Map(urls.map((url) => [url, { depictsRealPerson: true }]))
+    );
+    await attachDrafts([makeUpload()]);
+    expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
+      personInImage: true,
+    });
+
+    mockCreate.mockClear();
+    await attachDrafts([
+      makeUpload({
+        tempPath: 'elements/organization-1/uploads/line.mp3',
+        filename: 'line.mp3',
+      }),
+    ]);
+    expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
+      personInImage: false,
+    });
   });
 
   it('refuses a video filename on a non-video stored path (#2153)', async () => {

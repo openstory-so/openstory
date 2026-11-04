@@ -1044,6 +1044,7 @@ const linked = (
   referenceGeneratedAt: null,
   referenceError: null,
   referenceInputHash: null,
+  referencePersonInImage: false,
   legacyLibraryReferenceHash: null,
   selectedReferenceVersionId: null,
   selectedBibleVersionId: null,
