@@ -22,6 +22,7 @@ import {
 } from '@/platform/middleware.fn';
 import { getLogger } from '@/platform/logger';
 import { requireOrganizationMemberAccess } from '@/platform/server/auth/action-utils';
+import { getUserRole } from '@/platform/server/auth/permissions';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { getProductionDeploymentAppUrl } from '@/platform/server/env/environment';
@@ -57,10 +58,13 @@ async function requireUploadPostKey(
 }
 
 export const getSocialPublishingFn = createServerFn({ method: 'GET' })
-  .middleware([organizationMemberAccessMiddleware])
-  .validator(zodValidator(z.object({ organizationId: ulidSchema })))
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => ({
-    enabled: await context.scopedDb.apiKeys.hasUsableKey('upload_post'),
+    // A system admin viewing another organization's sequence cannot publish for it.
+    enabled:
+      (await getUserRole(context.user.id, context.sequence.organizationId)) !==
+        null && (await context.scopedDb.apiKeys.hasUsableKey('upload_post')),
   }));
 
 export const listSocialProfilesFn = createServerFn({ method: 'GET' })

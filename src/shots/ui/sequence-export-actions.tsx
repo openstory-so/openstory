@@ -96,7 +96,7 @@ export const SequenceDownloadMenu: React.FC<{
     queryFn: publish
       ? () =>
           getSocialPublishingFn({
-            data: { organizationId: publish.organizationId },
+            data: { sequenceId: publish.sequenceId },
           })
       : skipToken,
     staleTime: 5 * 60 * 1000,
