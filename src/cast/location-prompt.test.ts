@@ -53,7 +53,7 @@ const streetLocation: SequenceLocationMinimal = {
   description: 'A busy city street at night',
   consistencyTag: 'city_street_night',
   referenceInputHash: null,
-  referencePersonInImage: false,
+  referencePersonInImage: true,
   selectedReferenceVersionId: null,
 };
 
@@ -102,7 +102,9 @@ describe('location-prompt', () => {
       const [first, second] = refs;
       if (!first || !second) throw new Error('test setup: refs missing');
       expect(first.referenceImageUrl).toBe('https://example.com/office.png');
+      expect(first.personInImage).toBe(false);
       expect(second.referenceImageUrl).toBe('https://example.com/street.png');
+      expect(second.personInImage).toBe(true);
     });
 
     it('should return empty array for locations without images', () => {

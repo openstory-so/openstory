@@ -118,12 +118,14 @@ describe('arkStillsForMotion', () => {
             description: 'cafe',
             role: 'location',
             token: 'CAFE',
+            personInImage: false,
           },
           {
             referenceImageUrl: 'https://cdn/logo.png',
             description: 'logo',
             role: 'element',
             token: 'LOGO',
+            personInImage: false,
           },
         ],
       })
@@ -189,11 +191,18 @@ describe('arkStillsForMotion', () => {
             token: 'HOST',
             personInImage: true,
           },
+          {
+            referenceImageUrl: 'https://cdn/inflight.png',
+            description: 'from a payload made before #2238',
+            role: 'element',
+            token: 'OLD',
+          },
         ],
       })
     ).toEqual([
       { storedUrl: 'https://cdn/portrait.png', slot: 'library' },
       { storedUrl: 'https://cdn/host.png', slot: 'library' },
+      { storedUrl: 'https://cdn/inflight.png', slot: 'library' },
     ]);
   });
 
@@ -226,12 +235,14 @@ describe('arkStillsToRegister', () => {
       description: 'The pub',
       role: 'location' as const,
       token: 'Pub',
+      personInImage: false,
     };
     const element = {
       referenceImageUrl: 'https://cdn/ute.png',
       description: 'The ute',
       role: 'element' as const,
       token: 'Ute',
+      personInImage: false,
     };
     // Reference-only shots: no start frame, the same sheets on every shot.
     const shot = {
@@ -558,6 +569,7 @@ describe('Motion Service', () => {
             description: 'a logo',
             role: 'element',
             token: 'LOGO',
+            personInImage: false,
           },
         ],
       });
@@ -613,6 +625,7 @@ describe('Motion Service', () => {
             description: 'a logo',
             role: 'element',
             token: 'LOGO',
+            personInImage: false,
           },
         ],
       });

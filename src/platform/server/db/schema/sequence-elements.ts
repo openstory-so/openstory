@@ -61,8 +61,7 @@ export const sequenceElements = snakeCase.table(
     // media-less elements.
     imageUrl: text(),
     imagePath: text(), // R2 key
-    // The upload showed a real person on the likeness ledger (#2238); Ark
-    // needs such a still registered. A generated or pre-#2238 row reads false.
+    // The upload showed a real person on the likeness ledger (#2238).
     personInImage: integer({ mode: 'boolean' }).default(false).notNull(),
     // Vision analysis status
     visionStatus: text()

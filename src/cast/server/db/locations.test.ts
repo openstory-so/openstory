@@ -973,7 +973,13 @@ describe('the organization list', () => {
       url: '/r2/diner.png',
       storagePath: 'diner.png',
       portraitUrl: '/r2/diner-portrait.png',
+      personInImage: true,
       status: 'completed',
+    });
+    // No sheet yet: the flag reads false, not null (#2238).
+    expect(await locs().getById(sequenceId, diner.id)).toMatchObject({
+      referenceImageUrl: null,
+      referencePersonInImage: false,
     });
     await db
       .update(locations)
@@ -986,6 +992,10 @@ describe('the organization list', () => {
         referencePortraitUrl: '/r2/diner-portrait.png',
       },
     ]);
+    expect(await locs().getById(sequenceId, diner.id)).toMatchObject({
+      referenceImageUrl: '/r2/diner.png',
+      referencePersonInImage: true,
+    });
   });
 });
 

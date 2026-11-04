@@ -43,12 +43,7 @@ export type ReferenceImageDescription = {
    * unless this is false. Absent (in-flight payloads) means register.
    */
   isPerson?: boolean;
-  /**
-   * An element or location still whose upload the likeness ledger saw a
-   * real person in (#2238): `sequence_elements.personInImage` /
-   * `location_sheet_variants.personInImage`. Ark refuses such a face in a
-   * plain URL, so it is registered like a person's sheet. Absent means no.
-   */
+  /** Element/location upload the ledger saw a person in (#2238); like `isPerson`, absent means register. */
   personInImage?: boolean;
   /**
    * Which entity this reference is, and the identity of what was sent

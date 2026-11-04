@@ -4,7 +4,7 @@ import {
   elementKindFromFilename,
   type SequenceElementKind,
 } from '@/cast/element-kind';
-import { requireUploadRights } from '@/cast/server/upload-rights';
+import { requireUploadRightsFor } from '@/cast/server/upload-rights';
 import { measureStoredMediaDuration } from './media-duration';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 import type { SequenceElement } from '@/platform/server/db/schema';
@@ -77,9 +77,11 @@ async function assertElementUploadAttachable(params: {
   // #1559 and was an image.
   const kind = elementKindAgreed(path, filename);
   if (kind === 'audio') return { personInImage: false };
-  const url = elementImageUrlFromPath(path);
-  const rights = await requireUploadRights(scopedDb, [url]);
-  return { personInImage: rights.get(url)?.depictsRealPerson ?? false };
+  const rights = await requireUploadRightsFor(
+    scopedDb,
+    elementImageUrlFromPath(path)
+  );
+  return { personInImage: rights.depictsRealPerson };
 }
 
 /**
