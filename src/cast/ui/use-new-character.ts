@@ -1,4 +1,8 @@
-import type { NewCharacterFields } from '@/cast/ui/new-character-form';
+import type {
+  CharacterImage,
+  NewCharacterFields,
+} from '@/cast/ui/new-character-form';
+import { updateOrganizationCharacterFn } from '@/cast/organization-characters.fn';
 import {
   organizationCharacterKeys,
   useCreateOrganizationCharacter,
@@ -19,15 +23,54 @@ type NewCharacterTarget =
   | { sequenceId: null; rendering: () => string };
 
 /**
- * Create the character, then use its checked upload (#2254): a sheet is
- * attached as the default look's sheet; a photo becomes the reference photo
- * that sheet is drawn from, and a sheet run starts. A failure there keeps
- * the character and says so; the caller shows a failed create.
+ * Create the character at once; its image finishes after (#2254). Once the
+ * upload is checked and described, a blank description takes the image's,
+ * then a sheet is attached as the default look's sheet or a photo becomes
+ * the reference photo that sheet is drawn from. A failure there keeps the
+ * character and says so; the caller shows a failed create.
  */
 export function useNewCharacter(target: NewCharacterTarget) {
   const queryClient = useQueryClient();
   const createInSequence = useCreateSequenceCharacter();
   const createInOrganization = useCreateOrganizationCharacter();
+
+  const finishImage = async (
+    character: { id: string; name: string },
+    pending: Promise<CharacterImage>,
+    hasDescription: boolean
+  ) => {
+    try {
+      const image = await pending;
+      // Before the attach: a bible edit revokes the sheet run it starts.
+      if (!hasDescription) {
+        await updateOrganizationCharacterFn({
+          data: {
+            characterId: character.id,
+            physicalDescription: image.description,
+            voiceOnly: false,
+          },
+        });
+      }
+      const data = {
+        sequenceId: target.sequenceId,
+        characterId: character.id,
+        publicUrl: image.url,
+      };
+      await (image.isCharacterSheet
+        ? setCharacterSheetFromUploadFn({ data })
+        : setCharacterReferencePhotoFromUploadFn({ data }));
+    } catch (error) {
+      toast.error(`${character.name} created, image not added`, {
+        description: errorMessage(error),
+      });
+    } finally {
+      await invalidateCharacterSheets(queryClient);
+      await queryClient.invalidateQueries({
+        queryKey: organizationCharacterKeys.all,
+      });
+    }
+  };
+
   return useMutation({
     mutationFn: async ({ image, ...bible }: NewCharacterFields) => {
       const character =
@@ -40,35 +83,14 @@ export function useNewCharacter(target: NewCharacterTarget) {
               ...bible,
               sequenceId: target.sequenceId,
             });
-      let sheetError: unknown = null;
       if (image) {
-        const data = {
-          sequenceId: target.sequenceId,
-          characterId: character.id,
-          publicUrl: image.url,
-        };
-        await (
-          image.isCharacterSheet
-            ? setCharacterSheetFromUploadFn({ data })
-            : setCharacterReferencePhotoFromUploadFn({ data })
-        )
-          .then(() => invalidateCharacterSheets(queryClient))
-          .catch((error: unknown) => {
-            sheetError = error;
-          });
+        void finishImage(character, image, Boolean(bible.physicalDescription));
       }
-      // The Cast picker selects it next: it must be in the list, with its sheet.
+      // The Cast picker selects it next: it must be in the list.
       await queryClient.invalidateQueries({
         queryKey: organizationCharacterKeys.all,
       });
-      return { character, sheetError };
-    },
-    onSuccess: ({ character, sheetError }) => {
-      if (sheetError !== null) {
-        toast.error(`${character.name} created, image not added`, {
-          description: errorMessage(sheetError),
-        });
-      }
+      return { character };
     },
   });
 }

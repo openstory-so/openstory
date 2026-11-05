@@ -186,20 +186,23 @@ What follows from one character in two sequences:
   - The image is uploaded on drop, before the character exists
     (`presignCharacterDraftUploadFn`, `org/<id>/characters/drafts/`), and
     goes through the likeness check and sign-off there, as an element does.
-  - A cleared or signed image then fills a blank description
+  - Create never waits for the image: the character is made at once and
+    `useNewCharacter` finishes the image after, as a promise the form hands
+    over. The image is described once cleared or signed
     (`describeUploadFn` → `describeUpload`, billed per call; it refuses an
-    upload with no verdict before calling the model). It runs in the
-    background: the user keeps typing, and only Create waits for it. A
-    description the user typed is kept.
-  - The same vision call says whether the image is already a sheet. Create
-    attaches a sheet as the default look's sheet
+    upload with no verdict before calling the model). While the form is open
+    the description fills a blank one; after Create, a character made with
+    no description takes it (`updateOrganizationCharacterFn`), before the
+    attach so the sheet run it starts is not revoked.
+  - The same vision call says whether the image is already a sheet. A sheet
+    is attached as the default look's sheet
     (`setCharacterSheetFromUploadFn`). A photo becomes the character's
     reference photo (`setCharacterReferencePhotoFromUploadFn`,
     `characters.referencePhotoUrl`) and a sheet run starts, drawn from it;
     every later default-look sheet is drawn from it too, until it is removed
     on the character's page. `isPerson` follows the ledger either way. A
-    failure there keeps the character and says so. An image the vision call
-    could not describe is refused in the form: remove it or drop it again. The Cast picker selects the new
+    failed upload, check, description or attach keeps the character and
+    says so in a toast. The Cast picker selects the new
     character and the draft keeps its script.
   - Closing the dialog after any edit asks first (`useDiscardGuard`), as
     New location does.

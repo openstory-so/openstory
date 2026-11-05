@@ -32,23 +32,28 @@ const newCharacterSchema = z.object({
     .transform((v) => v || undefined),
 });
 
-type CharacterImage = { url: string; isCharacterSheet: boolean };
+/** What the dropped image turned out to be, once uploaded, checked and described. */
+export type CharacterImage = {
+  url: string;
+  isCharacterSheet: boolean;
+  description: string;
+};
 
 export type NewCharacterFields = z.output<typeof newCharacterSchema> & {
   /**
-   * Uploaded, cleared or signed, and described. A sheet is attached as it
-   * is; a photo becomes the reference the sheet is drawn from.
+   * Still running when Create is pressed: the character is made at once and
+   * `useNewCharacter` finishes the image after. Rejects when the upload, the
+   * check or the description fails.
    */
-  image?: CharacterImage;
+  image?: Promise<CharacterImage>;
 };
 
 /**
  * A new character (#2254): a name, and optionally a description and a photo
- * or sheet. The image is checked for a real person on drop, then described
- * in the background, as an element is: the description fills a blank one
- * and says whether the image is a sheet. Create waits only for what it
- * needs. One form for the cast panel, the Cast picker and the Characters
- * page; `useNewCharacter` makes it.
+ * or sheet. The image is uploaded, checked for a real person and described
+ * in the background; Create never waits for it. The description fills a
+ * blank one while the form is open. One form for the cast panel, the Cast
+ * picker and the Characters page; `useNewCharacter` makes it.
  */
 export const NewCharacterForm: React.FC<{
   isPending: boolean;
@@ -57,84 +62,54 @@ export const NewCharacterForm: React.FC<{
   onEdit: () => void;
 }> = ({ isPending, onSubmit, onEdit }) => {
   const [files, setFiles] = useState<File[]>([]);
-  // Bytes going up, then the real-person check (and any sign-off).
-  const [uploading, setUploading] = useState<'bytes' | 'check' | null>(null);
-  // The file being handled; a removed one's late results are dropped.
-  const current = useRef<File | null>(null);
-  const [describing, setDescribing] = useState(false);
-  const [waiting, setWaiting] = useState(false);
-  // The image's description, running or done; null with no usable image.
-  const described = useRef<Promise<CharacterImage | null> | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  // The dropped image's pipeline; null with no image.
+  const image = useRef<Promise<CharacterImage> | null>(null);
   const description = useRef<HTMLTextAreaElement>(null);
   const uploadSheet = useUploadDraftCharacterSheet();
 
-  const onUpload: NonNullable<FileUploadProps['onUpload']> = async (
+  const onUpload: NonNullable<FileUploadProps['onUpload']> = (
     [file],
     { onProgress, onSuccess, onError }
   ) => {
     if (!file) return;
-    current.current = file;
-    setUploading('bytes');
-    let url: string;
-    try {
-      url = await uploadSheet.mutateAsync({
+    const run = (async (): Promise<CharacterImage> => {
+      const url = await uploadSheet.mutateAsync({
         file,
-        onProgress: (percent) => {
-          onProgress(file, percent);
-          if (percent >= 100 && current.current === file) setUploading('check');
-        },
+        onProgress: (percent) => onProgress(file, percent),
       });
-    } catch (error) {
-      if (current.current !== file) return;
-      setUploading(null);
-      onError(
-        file,
-        error instanceof Error ? error : new Error('Upload failed')
-      );
-      return;
-    }
-    if (current.current !== file) return;
-    setUploading(null);
-    onSuccess(file);
-    setDescribing(true);
-    const run = describeUploadFn({
-      data: { url, filename: file.name, subject: 'character' },
-    })
-      .then((result): CharacterImage => {
-        // A description the user typed is theirs; a removed image's is not used.
-        if (
-          described.current === run &&
-          description.current &&
-          !description.current.value.trim()
-        ) {
-          description.current.value = result.description;
-        }
-        return { url, isCharacterSheet: result.isCharacterSheet === true };
-      })
+      if (image.current === run) onSuccess(file);
+      const result = await describeUploadFn({
+        data: { url, filename: file.name, subject: 'character' },
+      });
+      // A description the user typed is theirs; a removed image's is not used.
+      if (
+        image.current === run &&
+        description.current &&
+        !description.current.value.trim()
+      ) {
+        description.current.value = result.description;
+      }
+      return {
+        url,
+        isCharacterSheet: result.isCharacterSheet === true,
+        description: result.description,
+      };
+    })();
+    image.current = run;
+    setImageBusy(true);
+    run
       .catch((error: unknown) => {
-        // Not knowing photo from sheet, Create cannot use it: remove or retry.
-        onError(file, new Error(`Not described: ${errorMessage(error)}`));
-        return null;
+        if (image.current === run) {
+          onError(file, new Error(errorMessage(error)));
+        }
       })
       .finally(() => {
-        if (described.current === run) setDescribing(false);
+        if (image.current === run) setImageBusy(false);
       });
-    described.current = run;
   };
 
-  const submit = async (form: HTMLFormElement) => {
-    let image: CharacterImage | undefined;
-    if (described.current) {
-      setWaiting(true);
-      const result = await described.current;
-      setWaiting(false);
-      if (!result) {
-        toast.error('Remove the image or drop it again');
-        return;
-      }
-      image = result;
-    }
-    // Read after the wait: the description may have just been filled.
+  const submit = (form: HTMLFormElement) => {
     const result = newCharacterSchema.safeParse(
       Object.fromEntries(new FormData(form))
     );
@@ -144,10 +119,9 @@ export const NewCharacterForm: React.FC<{
       });
       return;
     }
-    onSubmit({ ...result.data, image });
+    onSubmit({ ...result.data, image: image.current ?? undefined });
   };
 
-  const busy = isPending || uploading !== null || waiting;
   return (
     <form
       onInput={onEdit}
@@ -155,7 +129,7 @@ export const NewCharacterForm: React.FC<{
         event.preventDefault();
         // The Cast picker sits inside the new-sequence form.
         event.stopPropagation();
-        void submit(event.currentTarget);
+        submit(event.currentTarget);
       }}
 
       className="flex flex-col gap-4"
@@ -178,7 +152,7 @@ export const NewCharacterForm: React.FC<{
           rows={3}
           maxLength={2000}
           placeholder={
-            describing ? 'Describing the image…' : 'Age, build, face, hair'
+            imageBusy ? 'Describing the image…' : 'Age, build, face, hair'
           }
           onKeyDown={(event) => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -193,16 +167,14 @@ export const NewCharacterForm: React.FC<{
         <FileUpload
           accept="image/*"
           maxFiles={1}
-          disabled={busy}
+          disabled={isPending}
           value={files}
           onValueChange={(next) => {
             setFiles(next);
             if (next.length > 0) onEdit();
             else {
-              current.current = null;
-              described.current = null;
-              setUploading(null);
-              setDescribing(false);
+              image.current = null;
+              setImageBusy(false);
             }
           }}
           onUpload={onUpload}
@@ -242,14 +214,8 @@ export const NewCharacterForm: React.FC<{
         </FileUpload>
       </div>
       <div className="flex justify-end">
-        <Button type="submit" disabled={busy}>
-          {isPending || waiting
-            ? 'Creating…'
-            : uploading === 'bytes'
-              ? 'Uploading…'
-              : uploading === 'check'
-                ? 'Checking…'
-                : 'Create'}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Creating…' : 'Create'}
         </Button>
       </div>
     </form>
