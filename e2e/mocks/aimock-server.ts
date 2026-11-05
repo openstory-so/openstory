@@ -403,6 +403,25 @@ function tolerateMediaDigests(fixtures: Fixture[]): Fixture[] {
  *   `{ match: { endpoint: 'image' }, response: { image } }` shape the
  *   recorder uses for generations.
  */
+/**
+ * ElevenLabs Voice Library browse (`GET /v1/shared-voices`), which aimock does
+ * not route: one real page, trimmed, for any query. Refresh it by saving a
+ * live response over the fixture.
+ */
+function sharedVoicesMount(): Mountable {
+  const body = readFileSync(
+    resolve(import.meta.dirname, '../fixtures/elevenlabs-shared-voices.json')
+  );
+  return {
+    handleRequest(req, res) {
+      if (req.method !== 'GET') return Promise.resolve(false);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(body);
+      return Promise.resolve(true);
+    },
+  };
+}
+
 function xaiJsonImageEditsMount(): Mountable {
   return {
     async handleRequest(req, res) {
@@ -581,6 +600,7 @@ export async function startAimockServer(): Promise<string> {
     );
   }
 
+  mockServer.mount('/v1/shared-voices', sharedVoicesMount());
   const url = await mockServer.start();
   // Replay only: a STRICT 503 is otherwise retried by workflows, so the
   // spec keeps running. Kill Playwright on the first miss instead.
