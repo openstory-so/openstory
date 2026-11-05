@@ -66,7 +66,7 @@ export const analysisMayNotRewrite = async (
  * Refuse while a live cast member of the sequence, other than
  * `exceptCharacterId`, has this name (trimmed, case-blind). The script names
  * a character in capitals, and two of one name could not be told apart
- * (#2050). Attach, revive and restore all pass through here; analysis does
+ * (#2050). Attach, revive, restore and rename all pass through here; analysis does
  * not, since it may make two characters of one name.
  */
 export const assertNameFree = async (
