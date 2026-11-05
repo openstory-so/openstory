@@ -46,6 +46,26 @@ export function createRangedReader(
   /** Aborts the `fetchAll` in flight; `drop()` fires it. */
   let downloadAbort = new AbortController();
 
+  /**
+   * A bare `TypeError` ("Failed to fetch") names neither the file nor the
+   * cause (#2258). One no-cors probe tells them apart: it loads when the
+   * server answered without CORS headers, and fails too on a network error.
+   */
+  async function explain(error: unknown): Promise<unknown> {
+    if (!(error instanceof TypeError)) return error;
+    const probe = new AbortController();
+    const reachable = await fetchFn(url, {
+      mode: 'no-cors',
+      signal: probe.signal,
+    }).then(
+      () => true,
+      () => false
+    );
+    probe.abort(); // the headers are all the probe needs
+    const cause = reachable ? 'no CORS headers' : 'network error';
+    return new Error(`${error.message}: ${url} (${cause})`, { cause: error });
+  }
+
   async function fetchRange(first: number, last: number): Promise<void> {
     const start = first * BLOCK;
     const end =
@@ -63,7 +83,8 @@ export function createRangedReader(
         break;
       } catch (error) {
         const delay = RETRY_DELAYS_MS[attempt];
-        if (abort.signal.aborted || delay === undefined) throw error;
+        if (abort.signal.aborted) throw error;
+        if (delay === undefined) throw await explain(error);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -170,7 +191,8 @@ export function createRangedReader(
           return;
         } catch (error) {
           const delay = RETRY_DELAYS_MS[attempt];
-          if (signal.aborted || delay === undefined) throw error;
+          if (signal.aborted) throw error;
+          if (delay === undefined) throw await explain(error);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -180,7 +202,7 @@ export function createRangedReader(
     }
   }
 
-  /** The bytes [start, end) from cached blocks, or null if one is missing. */ /** The bytes [start, end) from cached blocks, or null if one is missing. */
+  /** The bytes [start, end) from cached blocks, or null if one is missing. */
   function copyOut(
     start: number,
     end: number,
