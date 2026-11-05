@@ -3,6 +3,7 @@
  * `/api/v1` resources it reads, the device login an agent uses, and revoking.
  */
 import type { APIRequestContext, Page } from 'playwright/test';
+import { z } from 'zod';
 import { expect, test } from '../fixtures/auth.fixture';
 import { createTestSequence } from '../fixtures/sequence.fixture';
 import { HYDRATION_TIMEOUT, waitForHydration } from '../fixtures/test-utils';
@@ -54,11 +55,14 @@ test.describe('Public API', () => {
         ? new Promise((r) => setTimeout(r, 1100))
         : Promise.resolve();
     const api = {
-      get: async (url: string) => (await pace(), keyed.get(url)),
-      post: async (url: string, options: { data: unknown }) => (
-        await pace(),
-        keyed.post(url, options)
-      ),
+      get: async (url: string) => {
+        await pace();
+        return keyed.get(url);
+      },
+      post: async (url: string, options: { data: unknown }) => {
+        await pace();
+        return keyed.post(url, options);
+      },
     };
 
     const root = await api.get('/api/v1');
@@ -149,11 +153,13 @@ test.describe('Public API', () => {
     const start = async () => {
       const res = await agent.post('/api/v1/device/code');
       expect(res.ok()).toBe(true);
-      return (await res.json()) as {
-        device_code: string;
-        user_code: string;
-        verification_url_complete: string;
-      };
+      return z
+        .object({
+          device_code: z.string(),
+          user_code: z.string(),
+          verification_url_complete: z.string(),
+        })
+        .parse(await res.json());
     };
     // `wait` long-polls, so a poll sooner than the interval is not 429.
     const poll = (deviceCode: string, wait = 0) =>
@@ -172,7 +178,9 @@ test.describe('Public API', () => {
     });
     const token = await poll(approved.device_code, 5);
     expect(token.status()).toBe(200);
-    const { api_key } = (await token.json()) as { api_key: string };
+    const { api_key } = z
+      .object({ api_key: z.string() })
+      .parse(await token.json());
     const me = await agent.get('/api/v1/sequences', {
       headers: { authorization: `Bearer ${api_key}` },
     });

@@ -6,14 +6,19 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { APIRequestContext } from 'playwright/test';
+import { z } from 'zod';
 import { expect, test } from '../fixtures/auth.fixture';
 import { createTestSequence } from '../fixtures/sequence.fixture';
 
-type ToolResult = {
-  isError?: boolean;
-  content?: Array<{ type: string; text?: string }>;
-  structuredContent?: Record<string, unknown>;
-};
+const ToolResult = z.object({
+  isError: z.boolean().optional(),
+  content: z.array(z.object({ text: z.string().optional() })).optional(),
+  structuredContent: z.unknown().optional(),
+});
+const RpcReply = z.object({
+  result: z.unknown().optional(),
+  error: z.object({ message: z.string() }).optional(),
+});
 
 let rpcId = 0;
 
@@ -21,33 +26,53 @@ async function rpc(
   request: APIRequestContext,
   method: string,
   params: Record<string, unknown> = {}
-): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+): Promise<z.infer<typeof RpcReply>> {
   const res = await request.post('/mcp', {
     headers: { accept: 'application/json, text/event-stream' },
     data: { jsonrpc: '2.0', id: ++rpcId, method, params },
   });
   const text = await res.text();
   const line = text.split('\n').find((l) => l.startsWith('data: '));
-  return JSON.parse(line ? line.slice(6) : text);
+  return RpcReply.parse(JSON.parse(line ? line.slice(6) : text));
 }
 
-/** Call a tool and return its structured result; a tool error fails the test. */
-async function call<T = Record<string, unknown>>(
+async function callTool(
   request: APIRequestContext,
   name: string,
-  args: Record<string, unknown> = {}
-): Promise<T> {
+  args: Record<string, unknown>
+): Promise<z.infer<typeof ToolResult> & { error?: string }> {
   const { result, error } = await rpc(request, 'tools/call', {
     name: `openstory.${name}`,
     arguments: args,
   });
-  expect(error, `${name}: ${error?.message}`).toBeUndefined();
-  const tool = result as ToolResult;
-  expect(
-    tool.isError ?? false,
-    `${name}: ${tool.content?.map((c) => c.text).join(' ')}`
-  ).toBe(false);
-  return (tool.structuredContent ?? {}) as T;
+  if (error) return { isError: true, error: error.message };
+  return ToolResult.parse(result);
+}
+
+const text = (tool: z.infer<typeof ToolResult> & { error?: string }) =>
+  tool.error ?? tool.content?.map((c) => c.text).join(' ') ?? '';
+
+/** Call a tool; a tool error fails the test. Parses the result with `schema`. */
+async function call(
+  request: APIRequestContext,
+  name: string,
+  args?: Record<string, unknown>
+): Promise<unknown>;
+async function call<S extends z.ZodType>(
+  request: APIRequestContext,
+  name: string,
+  args: Record<string, unknown>,
+  schema: S
+): Promise<z.infer<S>>;
+async function call(
+  request: APIRequestContext,
+  name: string,
+  args: Record<string, unknown> = {},
+  schema?: z.ZodType
+): Promise<unknown> {
+  const tool = await callTool(request, name, args);
+  expect(tool.isError ?? false, `${name}: ${text(tool)}`).toBe(false);
+  return schema ? schema.parse(tool.structuredContent) : tool.structuredContent;
 }
 
 /** Call a tool that must refuse; returns the refusal text. */
@@ -56,14 +81,9 @@ async function refuse(
   name: string,
   args: Record<string, unknown>
 ): Promise<string> {
-  const { result, error } = await rpc(request, 'tools/call', {
-    name: `openstory.${name}`,
-    arguments: args,
-  });
-  if (error) return error.message;
-  const tool = result as ToolResult;
+  const tool = await callTool(request, name, args);
   expect(tool.isError, `${name} should refuse`).toBe(true);
-  return tool.content?.map((c) => c.text).join(' ') ?? '';
+  return text(tool);
 }
 
 const fixture = (name: string) =>
@@ -80,7 +100,7 @@ async function upload(
   mimeType: string,
   attest = false
 ): Promise<string> {
-  const out = await call<{ upload: string; rights: unknown }>(
+  const out = await call(
     request,
     'upload_media',
     {
@@ -95,7 +115,8 @@ async function upload(
           authorizationBasis: 'self',
         },
       }),
-    }
+    },
+    z.object({ upload: z.string(), rights: z.unknown() })
   );
   return out.upload;
 }
@@ -106,7 +127,9 @@ test.describe('MCP tools', () => {
     testUser,
   }) => {
     const { result } = await rpc(request, 'tools/list');
-    const tools = (result as { tools: Array<{ name: string }> }).tools;
+    const { tools } = z
+      .object({ tools: z.array(z.object({ name: z.string() })) })
+      .parse(result);
     expect(tools.length).toBeGreaterThan(100);
     expect(tools.map((t) => t.name)).toContain('openstory.create_scene');
 
@@ -143,16 +166,26 @@ test.describe('MCP tools', () => {
     const s = { sequenceId };
 
     // Structure: two scenes, extra shots, reorder, delete + restore.
-    const first = await call<{
-      sceneId: string;
-      shotId: string;
-      scriptVersionId: string;
-    }>(request, 'create_scene', s);
-    const second = await call<{
-      sceneId: string;
-      shotId: string;
-      scriptVersionId: string;
-    }>(request, 'create_scene', s);
+    const first = await call(
+      request,
+      'create_scene',
+      s,
+      z.object({
+        sceneId: z.string(),
+        shotId: z.string(),
+        scriptVersionId: z.string(),
+      })
+    );
+    const second = await call(
+      request,
+      'create_scene',
+      s,
+      z.object({
+        sceneId: z.string(),
+        shotId: z.string(),
+        scriptVersionId: z.string(),
+      })
+    );
     await call(request, 'update_scene', {
       ...s,
       sceneId: first.sceneId,
@@ -164,10 +197,15 @@ test.describe('MCP tools', () => {
       timeOfDay: 'night',
       storyBeat: 'Jonah comes back',
     });
-    const extraShot = await call<{ shotId: string }>(request, 'create_shot', {
-      ...s,
-      sceneId: first.sceneId,
-    });
+    const extraShot = await call(
+      request,
+      'create_shot',
+      {
+        ...s,
+        sceneId: first.sceneId,
+      },
+      z.object({ shotId: z.string() })
+    );
     await call(request, 'reorder_shots', {
       ...s,
       sceneId: first.sceneId,
@@ -222,10 +260,11 @@ test.describe('MCP tools', () => {
       ...s,
       shotId: first.shotId,
     });
-    const motionVersions = await call<{ versions: Array<{ id: string }> }>(
+    const motionVersions = await call(
       request,
       'list_versions',
-      { ...s, kind: 'motion_prompt', entityId: first.shotId }
+      { ...s, kind: 'motion_prompt', entityId: first.shotId },
+      z.object({ versions: z.array(z.object({ id: z.string() })) })
     );
     const firstMotion = motionVersions.versions[0];
     expect(firstMotion).toBeDefined();
@@ -264,7 +303,7 @@ test.describe('MCP tools', () => {
     }
 
     // Cast: a character with a second look, a location, both edited.
-    const character = await call<{ characterId: string }>(
+    const character = await call(
       request,
       'create_character',
       {
@@ -274,7 +313,8 @@ test.describe('MCP tools', () => {
         physicalDescription: 'Short dark hair, tired eyes',
         standardClothing: 'Diner apron over a grey t-shirt',
         personality: 'Dry, patient',
-      }
+      },
+      z.object({ characterId: z.string() })
     );
     const characterId = character.characterId;
     await call(request, 'update_character', {
@@ -283,7 +323,7 @@ test.describe('MCP tools', () => {
       voiceOnly: false,
       personality: 'Dry, patient, quietly hopeful',
     });
-    const look = await call<{ lookId: string }>(
+    const look = await call(
       request,
       'create_character_look',
       {
@@ -292,7 +332,8 @@ test.describe('MCP tools', () => {
         name: 'Off shift',
         clothing: 'Rain jacket, jeans',
         styling: null,
-      }
+      },
+      z.object({ lookId: z.string() })
     );
     await call(request, 'update_character_look', {
       ...s,
@@ -329,7 +370,7 @@ test.describe('MCP tools', () => {
       ],
     });
 
-    const location = await call<{ locationId: string }>(
+    const location = await call(
       request,
       'create_location',
       {
@@ -337,7 +378,8 @@ test.describe('MCP tools', () => {
         name: 'Corner diner',
         type: 'interior',
         description: 'Chrome counter, red stools, rain on the window',
-      }
+      },
+      z.object({ locationId: z.string() })
     );
     await call(request, 'update_location', {
       ...s,
@@ -374,10 +416,7 @@ test.describe('MCP tools', () => {
     await call(request, 'get_sequence_music', s);
     await call(request, 'get_music_staleness', s);
     await call(request, 'archive_sequence', s);
-    const archived = await call<{ sequences?: Array<{ id: string }> }>(
-      request,
-      'list_archived_sequences'
-    );
+    const archived = await call(request, 'list_archived_sequences');
     expect(JSON.stringify(archived)).toContain(sequenceId);
     await call(request, 'unarchive_sequence', s);
 
@@ -426,10 +465,11 @@ test.describe('MCP tools', () => {
       await call(request, name, args);
     }
 
-    const events = await call<{ events: Array<{ id: string }> }>(
+    const events = await call(
       request,
       'list_sequence_events',
-      s
+      s,
+      z.object({ events: z.array(z.object({ id: z.string() })) })
     );
     expect(events.events.length).toBeGreaterThan(0);
     await call(request, 'get_sequence_event', {
@@ -459,7 +499,7 @@ test.describe('MCP tools', () => {
   });
 
   test('a style is created, edited and deleted', async ({ request }) => {
-    const created = await call<{ id?: string; styleId?: string }>(
+    const created = await call(
       request,
       'create_style',
       {
@@ -478,7 +518,8 @@ test.describe('MCP tools', () => {
           },
           motion: { camera: 'low angles, slow dolly' },
         },
-      }
+      },
+      z.object({ id: z.string().optional(), styleId: z.string().optional() })
     );
     const styleId = created.styleId ?? created.id;
     expect(styleId).toBeTruthy();
@@ -497,10 +538,11 @@ test.describe('MCP tools', () => {
       'MCP refusals'
     );
     const s = { sequenceId: sequence.id };
-    const scene = await call<{ sceneId: string; scriptVersionId: string }>(
+    const scene = await call(
       request,
       'create_scene',
-      s
+      s,
+      z.object({ sceneId: z.string(), scriptVersionId: z.string() })
     );
 
     expect(
@@ -544,10 +586,11 @@ test.describe('MCP tools', () => {
       'MCP uploads'
     );
     const s = { sequenceId: sequence.id };
-    const scene = await call<{ sceneId: string; shotId: string }>(
+    const scene = await call(
       request,
       'create_scene',
-      s
+      s,
+      z.object({ sceneId: z.string(), shotId: z.string() })
     );
 
     // A real person needs the portrait-rights sign-off before it is stored.
@@ -568,10 +611,11 @@ test.describe('MCP tools', () => {
       'image/jpeg',
       true
     );
-    const set = await call<{ versionId: string }>(
+    const set = await call(
       request,
       'set_shot_image_from_upload',
-      { ...s, shotId: scene.shotId, upload: still }
+      { ...s, shotId: scene.shotId, upload: still },
+      z.object({ versionId: z.string() })
     );
     await call(request, 'select_shot_image_version', {
       ...s,
@@ -579,10 +623,11 @@ test.describe('MCP tools', () => {
       versionId: set.versionId,
     });
 
-    const character = await call<{ characterId: string }>(
+    const character = await call(
       request,
       'create_character',
-      { ...s, name: 'Scarlett' }
+      { ...s, name: 'Scarlett' },
+      z.object({ characterId: z.string() })
     );
     const sheet = await upload(
       request,
@@ -605,10 +650,11 @@ test.describe('MCP tools', () => {
       'broadcast-mic.jpg',
       'image/jpeg'
     );
-    const element = await call<{ elementId: string; token: string }>(
+    const element = await call(
       request,
       'add_element',
-      { ...s, upload: prop, name: 'Broadcast mic' }
+      { ...s, upload: prop, name: 'Broadcast mic' },
+      z.object({ elementId: z.string(), token: z.string() })
     );
     const e = { ...s, elementId: element.elementId };
     await call(request, 'get_element', e);
@@ -620,11 +666,12 @@ test.describe('MCP tools', () => {
     await call(request, 'delete_element', e);
     await call(request, 'restore_element', e);
 
-    const images = await call<{ versions?: Array<{ id: string }> }>(
+    const images = await call(
       request,
       'list_versions',
-      { ...s, kind: 'character_sheet', entityId: character.characterId }
+      { ...s, kind: 'character_sheet', entityId: character.characterId },
+      z.object({ versions: z.array(z.object({ id: z.string() })) })
     );
-    expect(JSON.stringify(images)).toContain('character');
+    expect(images.versions).toHaveLength(1);
   });
 });
