@@ -74,6 +74,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           lookVersionId: string;
           lookName: string;
           lookStyling: string | null;
+          referencePhotoUrl: string | null;
           voiceId: string | null;
           voiceDescription: string | null;
           useVoice: boolean | null;
@@ -103,6 +104,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             lookVersionId: look.lookVersionId,
             lookName: look.name,
             lookStyling: look.styling,
+            referencePhotoUrl: created.referencePhotoUrl,
             voiceId: created.voiceId,
             voiceDescription: created.voiceDescription,
             useVoice: created.useVoice,
@@ -189,6 +191,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         // The bible run draws each character's default look, which has no
         // face to be drawn from.
         face: null,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2254
+        referencePhotoUrl: created.referencePhotoUrl ?? null,
         lookStyling: created.lookStyling,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
         bibleVersionId: created.bibleVersionId ?? null,

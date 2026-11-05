@@ -39,6 +39,7 @@ import {
   queuedLegacyStyling,
   assertQueuedWithFace,
   assertQueuedWithRendering,
+  assertQueuedWithReferencePhoto,
   assertQueuedWithLooks,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -115,6 +116,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     assertQueuedWithLooks(input);
     assertQueuedWithFace(input);
     assertQueuedWithRendering(input);
+    assertQueuedWithReferencePhoto(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -167,7 +169,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const { prompt, referenceUrls } = buildCharacterSheetPrompt(
           input.characterMetadata,
           input.lookStyling,
-          input.face === null ? null : input.face.url
+          input.face === null ? null : input.face.url,
+          input.referencePhotoUrl
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 

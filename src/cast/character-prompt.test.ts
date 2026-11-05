@@ -78,7 +78,7 @@ describe('buildCharacterReferenceImages', () => {
 
 describe('buildCharacterSheetPrompt rendering (#2017)', () => {
   test('photoreal keeps the commercial reference photography studio', () => {
-    const { prompt } = buildCharacterSheetPrompt(scriptEntry, null, null);
+    const { prompt } = buildCharacterSheetPrompt(scriptEntry, null, null, null);
     expect(prompt).toContain('cyclorama');
     expect(prompt).toContain('5500K daylight');
     expect(prompt).toContain('Commercial reference photography');
@@ -87,6 +87,7 @@ describe('buildCharacterSheetPrompt rendering (#2017)', () => {
   test('another rendering names it in the environment and optics, on the same neutral studio', () => {
     const { prompt } = buildCharacterSheetPrompt(
       { ...scriptEntry, rendering: '3D animated, Pixar-like' },
+      null,
       null,
       null
     );
@@ -103,6 +104,7 @@ describe('buildCharacterSheetPrompt rendering (#2017)', () => {
     const { prompt } = buildCharacterSheetPrompt(
       { ...scriptEntry, rendering: '2D cel animation' },
       null,
+      null,
       null
     );
     expect(prompt).toContain('[LAYOUT]');
@@ -114,6 +116,7 @@ describe('buildCharacterSheetPrompt rendering (#2017)', () => {
   test('a rendering composes with the character bible', () => {
     const { prompt, referenceUrls } = buildCharacterSheetPrompt(
       { ...scriptEntry, rendering: '3D animated, Pixar-like' },
+      null,
       null,
       null
     );
@@ -129,15 +132,21 @@ describe('buildCharacterSheetPrompt rendering (#2017)', () => {
 
 describe('buildCharacterSheetPrompt', () => {
   test("a look's styling notes join the costume as ONE section; none leaves the prompt as it was (#2015, #2065)", () => {
-    const plain = buildCharacterSheetPrompt(scriptEntry, null, null).prompt;
+    const plain = buildCharacterSheetPrompt(
+      scriptEntry,
+      null,
+      null,
+      null
+    ).prompt;
     expect(plain).not.toContain('for this look');
-    expect(buildCharacterSheetPrompt(scriptEntry, '  ', null).prompt).toBe(
-      plain
-    );
+    expect(
+      buildCharacterSheetPrompt(scriptEntry, '  ', null, null).prompt
+    ).toBe(plain);
 
     const styled = buildCharacterSheetPrompt(
       scriptEntry,
       'hair pinned up, split lip',
+      null,
       null
     ).prompt;
     expect(styled).toContain(
@@ -147,7 +156,8 @@ describe('buildCharacterSheetPrompt', () => {
     const other = buildCharacterSheetPrompt(
       scriptEntry,
       'hair pinned up, split lip',
-      'https://e/default.png'
+      'https://e/default.png',
+      null
     ).prompt;
     expect(other).toContain(
       'Hair, Makeup & Condition for this look:\nhair pinned up, split lip'
@@ -159,7 +169,8 @@ describe('buildCharacterSheetPrompt', () => {
     const { prompt, referenceUrls } = buildCharacterSheetPrompt(
       scriptEntry,
       'hair pinned up',
-      'https://example.com/default-look.png'
+      'https://example.com/default-look.png',
+      null
     );
 
     expect(referenceUrls).toEqual(['https://example.com/default-look.png']);
@@ -169,11 +180,34 @@ describe('buildCharacterSheetPrompt', () => {
     expect(prompt).toContain('Tall, blonde hair, blue eyes');
   });
 
+  test('the default look is drawn from the reference photo when there is one (#2254)', () => {
+    const { prompt, referenceUrls } = buildCharacterSheetPrompt(
+      scriptEntry,
+      null,
+      null,
+      'https://example.com/photo.jpg'
+    );
+    expect(referenceUrls).toEqual(['https://example.com/photo.jpg']);
+    expect(prompt).toContain('a photo of this character');
+    expect(prompt).not.toContain("this character's default look");
+  });
+
+  test('a look drawn from the default sheet ignores the reference photo', () => {
+    const { referenceUrls } = buildCharacterSheetPrompt(
+      scriptEntry,
+      null,
+      'https://example.com/default-look.png',
+      'https://example.com/photo.jpg'
+    );
+    expect(referenceUrls).toEqual(['https://example.com/default-look.png']);
+  });
+
   test('the image wins for the person, the text wins for the outfit', () => {
     const { prompt } = buildCharacterSheetPrompt(
       scriptEntry,
       null,
-      'https://example.com/default-look.png'
+      'https://example.com/default-look.png',
+      null
     );
     expect(prompt).toContain(
       'For face, body, skin and hair, the IMAGE takes priority over any text.'

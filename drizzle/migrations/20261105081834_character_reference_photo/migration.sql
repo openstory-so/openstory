@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `reference_photo_url` text;

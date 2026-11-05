@@ -105,6 +105,8 @@ export async function buildCharacterSheetDraft(
     lookId: look.id,
     lookVersionId: look.lookVersionId,
     lookStyling: look.styling,
+    // Only the default look is drawn from the photo; the rest from its sheet.
+    referencePhotoUrl: look.isDefault ? character.referencePhotoUrl : null,
     characterName: character.name,
     // Dressed: `standardClothing` is this look's clothing.
     characterMetadata: characterToBible(character),

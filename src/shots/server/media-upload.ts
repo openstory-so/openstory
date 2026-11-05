@@ -47,6 +47,7 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { castChannelId, locationChannelId } from '@/cast/cast-channel';
 import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
+import { regenerateCharacterSheet } from '@/cast/server/cast-generation';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
   computeUploadedStillInputHash,
@@ -592,6 +593,7 @@ export async function setCharacterSheetFromUpload(
     },
     styling: character.styling,
     faceSheetVersionId: face === null ? null : face.versionId,
+    referencePhotoUrl: look.isDefault ? character.referencePhotoUrl : null,
     talentSheetHash: null,
     talent: null,
     // The current shape reads no style (#2017).
@@ -673,6 +675,68 @@ export async function setCharacterSheetFromUpload(
     });
   }
   return updated;
+}
+
+/**
+ * Make an uploaded photo the character's reference photo (#2254) and draw
+ * its default look's sheet from it. The photo must be cleared or signed;
+ * whether the character is a person follows the ledger, as a sheet upload's
+ * does.
+ */
+export async function setCharacterReferencePhotoFromUpload(
+  context: CastUploadContext,
+  data: { characterId: string; publicUrl: string }
+) {
+  const { scopedDb, sequence, user } = context;
+  const sequenceId = sequence?.id ?? null;
+  requireUploadedStoragePath(
+    data.publicUrl,
+    STORAGE_BUCKETS.CHARACTERS,
+    context.organizationId
+  );
+  await requireUploadRights(scopedDb, [data.publicUrl]);
+  const character = await requireCharacter(
+    scopedDb,
+    sequenceId,
+    data.characterId
+  );
+  if (character.voiceOnly) {
+    throw new ValidationError(
+      `${character.name} is voice-only: there is no sheet to draw`
+    );
+  }
+  const isPerson = isPersonFromUploadLedger(
+    character.isPerson,
+    await likenessFromLedger(scopedDb, data.publicUrl)
+  );
+  if (isPerson !== character.isPerson) {
+    await scopedDb.characters.updateBible(
+      sequenceId,
+      character.id,
+      { isPerson },
+      { actorId: user.id, source: 'edit' }
+    );
+  }
+  await scopedDb.characters.setReferencePhoto(character.id, data.publicUrl);
+  return await regenerateCharacterSheet(
+    scopedDb,
+    { userId: user.id },
+    sequence,
+    { characterId: character.id, lookId: character.id }
+  );
+}
+
+/** Stop drawing the default look from a photo; its sheet then reads stale. */
+export async function clearCharacterReferencePhoto(
+  context: CastUploadContext,
+  data: { characterId: string }
+) {
+  const character = await requireCharacter(
+    context.scopedDb,
+    context.sequence?.id ?? null,
+    data.characterId
+  );
+  await context.scopedDb.characters.setReferencePhoto(character.id, null);
 }
 
 /**

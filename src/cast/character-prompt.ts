@@ -155,7 +155,7 @@ export const REFERENCE_LIKENESS_INSTRUCTION =
 type CharacterSheetPromptResult = {
   /** The generated prompt text */
   prompt: string;
-  /** Reference image URLs. The default look's sheet, when this look is drawn from it. */
+  /** Reference image URLs: the default look's sheet, or the character's reference photo. */
   referenceUrls: string[];
 };
 
@@ -175,12 +175,15 @@ type CharacterSheetPromptResult = {
  *   none. `entry.standardClothing` is the look's clothing.
  * @param faceSheetUrl - The default look's completed sheet. When set, it is
  *   the only reference: this look keeps that person and changes the costume.
+ * @param referencePhotoUrl - The character's reference photo (#2254), on the
+ *   default look only: the sheet draws the person in it.
  * @returns Prompt and reference URLs for image generation
  */
 export const buildCharacterSheetPrompt = (
   entry: CharacterBibleEntry,
   styling: string | null,
-  faceSheetUrl: string | null
+  faceSheetUrl: string | null,
+  referencePhotoUrl: string | null
 ): CharacterSheetPromptResult => {
   // A look other than the default is this person in another outfit.
   const fromDefaultLook = Boolean(faceSheetUrl);
@@ -188,6 +191,8 @@ export const buildCharacterSheetPrompt = (
   const referenceUrls: string[] = [];
   if (fromDefaultLook && faceSheetUrl) {
     referenceUrls.push(faceSheetUrl);
+  } else if (referencePhotoUrl) {
+    referenceUrls.push(referencePhotoUrl);
   }
 
   const age = entry.age;
@@ -214,7 +219,12 @@ export const buildCharacterSheetPrompt = (
   const ethnicityLine = ethnicity ? `Ethnicity: ${ethnicity}` : '';
 
   let referenceInstruction = '';
-  if (fromDefaultLook) {
+  if (!fromDefaultLook && referencePhotoUrl) {
+    referenceInstruction = `
+CRITICAL - Drawn from the reference photo:
+The reference image is a photo of this character. Every panel must show that same person: face, body, skin, and hair match the photo. For face, body, skin and hair, the IMAGE takes priority over any text. Dress them in the clothing described above, not the clothing in the photo. Ignore the photo's background, lighting and pose.
+`;
+  } else if (fromDefaultLook) {
     referenceInstruction = `
 CRITICAL - Same person, new outfit:
 The reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. For face, body, skin and hair, the IMAGE takes priority over any text. For the clothing, the TEXT takes priority over the image: the reference wears another outfit.

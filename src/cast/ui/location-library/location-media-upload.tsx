@@ -21,6 +21,8 @@ type LocationMediaUploadProps = {
   /** The stored URLs of the files uploaded so far, cleared or signed. */
   onUploadedUrlsChange: (urls: string[]) => void;
   onUploadingChange: (uploading: boolean) => void;
+  /** Each photo once it is uploaded and cleared or signed. */
+  onPhotoReady: (photo: { url: string; filename: string }) => void;
   disabled: boolean;
 };
 
@@ -33,6 +35,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
   onFilesChange,
   onUploadedUrlsChange,
   onUploadingChange,
+  onPhotoReady,
   disabled,
 }) => {
   // Stored URL per file. Reported from the handlers that change it, so the
@@ -69,6 +72,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
               onUploadedUrlsChange(Array.from(urlsByFile.current.values()));
               onProgress(file, 100);
               onSuccess(file);
+              onPhotoReady({ url, filename: file.name });
             } catch (error) {
               onError(
                 file,
@@ -81,7 +85,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
         onUploadingChange(false);
       }
     },
-    [uploadPhoto, onUploadedUrlsChange, onUploadingChange]
+    [uploadPhoto, onUploadedUrlsChange, onUploadingChange, onPhotoReady]
   );
 
   return (

@@ -17,7 +17,10 @@ import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { useUploadCharacterSheet } from '@/shots/ui/use-media-upload';
+import {
+  useClearCharacterReferencePhoto,
+  useUploadCharacterSheet,
+} from '@/shots/ui/use-media-upload';
 import {
   characterSheetVariantKeys,
   useCharacterOwnDivergentVariants,
@@ -130,6 +133,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const navigate = useNavigate();
   const softDelete = useSoftDeleteSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
+  const clearPhoto = useClearCharacterReferencePhoto();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
@@ -680,6 +684,41 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   </Button>
                 )}
               </div>
+
+              {activeLook?.isDefault && character.referencePhotoUrl && (
+                <div className="flex items-center gap-3">
+                  <AppImage
+                    src={character.referencePhotoUrl}
+                    alt="Reference photo"
+                    width={64}
+                    height={64}
+                    className="size-16 rounded-md object-cover"
+                  />
+                  <div className="flex flex-col items-start gap-1">
+                    <p className="text-sm text-muted-foreground">
+                      This sheet is drawn from this photo.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={clearPhoto.isPending}
+                      onClick={() =>
+                        clearPhoto.mutate(
+                          { sequenceId, characterId },
+                          {
+                            onError: (error) =>
+                              toast.error('Photo not removed', {
+                                description: errorMessage(error),
+                              }),
+                          }
+                        )
+                      }
+                    >
+                      {clearPhoto.isPending ? 'Removing…' : 'Remove photo'}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <CharacterVoiceSection
                 sequenceId={sequenceId}

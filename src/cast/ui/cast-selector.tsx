@@ -1,11 +1,15 @@
 /**
  * Who a new sequence is cast with (#2017): one button, one picker.
  * A character is added directly: every pick is cast, whether or not the
- * script names it yet.
+ * script names it yet. New character makes one and picks it (#2254).
  */
 
 import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import type { OrganizationCharacter } from '@/cast/server/db/characters';
+import { NewCharacterForm } from '@/cast/ui/new-character-form';
+import { useNewCharacter } from '@/cast/ui/use-new-character';
+import { errorMessage } from '@/platform/errors';
+import { useDiscardGuard } from '@/ui/use-discard-guard';
 import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
@@ -23,6 +27,7 @@ import { cn } from '@/ui/utils';
 import { Link } from '@tanstack/react-router';
 import { Check, User, X } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 type CastSelectorProps = {
   /** The organization's characters; undefined while they load. */
@@ -33,6 +38,10 @@ type CastSelectorProps = {
   selectedIds: readonly string[];
   onSelectionChange: (ids: string[]) => void;
   disabled: boolean;
+  /** What a character made here is rendered as: the picked style's medium. */
+  rendering: () => string;
+  /** A new character's image is still finishing: Generate waits for it. */
+  onImagesPendingChange: (pending: boolean) => void;
 };
 
 const Picture: React.FC<{
@@ -64,8 +73,21 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   selectedIds,
   onSelectionChange,
   disabled,
+  rendering,
+  onImagesPendingChange,
 }) => {
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const createCharacter = useNewCharacter(
+    { sequenceId: null, rendering },
+    onImagesPendingChange
+  );
+  const guard = useDiscardGuard('character');
+  const closePicker = () => {
+    setOpen(false);
+    setSearch('');
+    setCreating(false);
+  };
   // Server-rendered before its handler exists: a click then does nothing.
   // Disabled until hydrated, like the library filters.
   const hydrated = useHydrated();
@@ -143,116 +165,169 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
 
       <Dialog
         open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) setSearch('');
-        }}
+        onOpenChange={(next) =>
+          next
+            ? setOpen(true)
+            : creating
+              ? // Closing New character goes back to the list, not out.
+                guard.confirmDiscard(() => setCreating(false))
+              : closePicker()
+        }
       >
         <DialogContent className="max-w-2xl">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setOpen(false);
-            }}
-            className="flex flex-col gap-4"
-          >
-            <DialogHeader>
-              <DialogTitle>Cast</DialogTitle>
-              <DialogDescription>
-                Add your characters. Characters the script adds are made new.
-              </DialogDescription>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              Each one joins this sequence with its looks, sheets and voice.
-            </p>
-            <Input
-              type="search"
-              aria-label="Search characters"
-              placeholder="Search characters…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              // Enter would submit the form and close the picker mid-search.
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.preventDefault();
-              }}
-            />
-            <ScrollArea className="h-[min(400px,40dvh)]">
-              {failed ? (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  Could not load characters.
-                </p>
-              ) : !shown ? (
-                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="flex flex-col gap-2 p-3">
-                      <Skeleton className="aspect-square w-full rounded-lg" />
-                      <Skeleton className="h-4 w-3/4" />
-                    </div>
-                  ))}
-                </div>
-              ) : shown.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-12 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {search.trim()
-                      ? 'No character matches.'
-                      : signedOut
-                        ? 'Sign in to add your characters.'
-                        : 'No characters yet.'}
-                  </p>
-                  {!search.trim() && !signedOut && (
-                    <Button asChild variant="outline" size="sm">
-                      <Link to="/characters">Open Characters</Link>
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                  {shown.map((character) => {
-                    const isSelected = selectedIds.includes(character.id);
-                    return (
-                      <button
-                        key={character.id}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => toggle(character.id)}
-                        className={cn(
-                          'relative flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          isSelected
-                            ? 'bg-primary/10 ring-2 ring-primary'
-                            : 'hover:bg-muted'
-                        )}
-                      >
-                        <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                          <Picture
-                            character={character}
-                            iconClass="h-12 w-12"
-                          />
-                        </div>
-                        <span className="w-full truncate text-sm font-medium">
-                          {character.name}
-                        </span>
-                        {isSelected && (
-                          <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
-                            <Check className="h-3 w-3 text-primary-foreground" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </ScrollArea>
-            <div className="flex justify-end">
-              <Button type="submit">
-                {selectedIds.length > 0
-                  ? `Cast ${selectedIds.length}`
-                  : 'Continue'}
+          {creating ? (
+            <div className="flex flex-col gap-4">
+              <DialogHeader>
+                <DialogTitle>New character</DialogTitle>
+                <DialogDescription>
+                  Joins this cast. The rest of the bible, looks and voice are on
+                  its page.
+                </DialogDescription>
+              </DialogHeader>
+              <NewCharacterForm
+                isPending={createCharacter.isPending}
+                onEdit={guard.markDirty}
+                onSubmit={(fields) =>
+                  createCharacter.mutate(fields, {
+                    onSuccess: ({ character }) => {
+                      if (!selectedIds.includes(character.id)) {
+                        onSelectionChange([...selectedIds, character.id]);
+                      }
+                      guard.reset();
+                      setCreating(false);
+                    },
+                    onError: (error) =>
+                      toast.error('Character not created', {
+                        description: errorMessage(error),
+                      }),
+                  })
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                onClick={() => guard.confirmDiscard(() => setCreating(false))}
+              >
+                Back to characters
               </Button>
             </div>
-          </form>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <DialogHeader>
+                <DialogTitle>Cast</DialogTitle>
+                <DialogDescription>
+                  Pick characters to cast. The script adds any others.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="search"
+                  aria-label="Search characters"
+                  placeholder="Search characters…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  // Enter would submit the form and close the picker mid-search.
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.preventDefault();
+                  }}
+                />
+                {!signedOut && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCreating(true)}
+                  >
+                    New character
+                  </Button>
+                )}
+              </div>
+              <ScrollArea className="h-[min(400px,40dvh)]">
+                {failed ? (
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    Could not load characters.
+                  </p>
+                ) : !shown ? (
+                  <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="flex flex-col gap-2 p-3">
+                        <Skeleton className="aspect-square w-full rounded-lg" />
+                        <Skeleton className="h-4 w-3/4" />
+                      </div>
+                    ))}
+                  </div>
+                ) : shown.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {search.trim()
+                        ? 'No character matches.'
+                        : signedOut
+                          ? 'Sign in to add your characters.'
+                          : 'No characters yet.'}
+                    </p>
+                    {!search.trim() && !signedOut && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link to="/characters">Open Characters</Link>
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+                    {shown.map((character) => {
+                      const isSelected = selectedIds.includes(character.id);
+                      return (
+                        <button
+                          key={character.id}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => toggle(character.id)}
+                          className={cn(
+                            'relative flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            isSelected
+                              ? 'bg-primary/10 ring-2 ring-primary'
+                              : 'hover:bg-muted'
+                          )}
+                        >
+                          <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
+                            <Picture
+                              character={character}
+                              iconClass="h-12 w-12"
+                            />
+                          </div>
+                          <span className="w-full truncate text-sm font-medium">
+                            {character.name}
+                          </span>
+                          {isSelected && (
+                            <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
+              <div className="flex justify-end">
+                <Button type="submit">
+                  {selectedIds.length > 0
+                    ? `Cast ${selectedIds.length}`
+                    : 'Continue'}
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
+      {guard.dialog}
     </>
   );
 };

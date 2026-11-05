@@ -2316,6 +2316,33 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       return rows.length > 0;
     },
 
+    /**
+     * Set or clear the reference photo the default look is drawn from
+     * (#2254). It is a sheet input, so it revokes every in-flight sheet run.
+     */
+    setReferencePhoto: async (
+      id: string,
+      url: string | null
+    ): Promise<void> => {
+      const [updated] = await db.batch([
+        db
+          .update(characters)
+          .set({ referencePhotoUrl: url, updatedAt: new Date() })
+          .where(
+            and(
+              eq(characters.id, id),
+              inOrganization,
+              isNull(characters.deletedAt)
+            )
+          )
+          .returning({ id: characters.id }),
+        demoteCharacterSheetClaims(db, eq(characters.id, id)),
+      ]);
+      if (updated.length === 0) {
+        throw new NotFoundError(`Character ${id} not found`);
+      }
+    },
+
     /** Undo {@link softDeleteForOrganization}. False when it was not deleted. */
     restoreForOrganization: async (id: string): Promise<boolean> => {
       const rows = await db

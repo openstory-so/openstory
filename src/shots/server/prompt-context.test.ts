@@ -474,6 +474,7 @@ describe('character bible round-trip — stamp matches verify (#867)', () => {
     voiceOnly: b.voiceOnly,
     isPerson: true,
     rendering: 'Photoreal live action',
+    referencePhotoUrl: null,
     voiceId: null,
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,

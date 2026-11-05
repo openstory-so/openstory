@@ -848,6 +848,12 @@ export interface CharacterSheetWorkflowInput extends Omit<
    * row); it joins the sheet hash.
    */
   face: { url: string; versionId: string } | null;
+  /**
+   * The character's reference photo (#2254), which the default look is drawn
+   * from. Null on every other look (they are drawn from `face`) and when the
+   * character has none. Joins the sheet hash.
+   */
+  referencePhotoUrl: string | null;
   /** Character name for logging */
   characterName: string;
   /**
