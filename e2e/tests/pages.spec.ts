@@ -7,9 +7,7 @@ import { test as anonymousTest } from '../fixtures/base';
 import { createTestSequence } from '../fixtures/sequence.fixture';
 import { HYDRATION_TIMEOUT, waitForHydration } from '../fixtures/test-utils';
 
-const signedOut = anonymousTest.extend({
-  storageState: async ({}, use) => use({ cookies: [], origins: [] }),
-});
+const signedOut = anonymousTest;
 
 test.describe('Settings and credits', () => {
   test('settings tabs render and the provider form takes input', async ({
@@ -92,6 +90,8 @@ test.describe('A sequence', () => {
 });
 
 signedOut.describe('Public pages', () => {
+  signedOut.use({ storageState: { cookies: [], origins: [] } });
+
   signedOut('legal pages and the report form', async ({ page }) => {
     await page.goto('/privacy');
     await expect(
