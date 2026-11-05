@@ -112,7 +112,15 @@ export default defineConfig({
             `ARK_BASE_URL=${process.env.ARK_BASE_URL ?? 'https://ark.ap-southeast.bytepluses.com/api/v3'}`,
             `BYTEPLUS_OPENAPI_HOST=${process.env.BYTEPLUS_OPENAPI_HOST ?? 'ark.ap-southeast-1.byteplusapi.com'}`,
           ]
-        : []),
+        : [
+            // Replay: Seedance / Seedream and their assets go to the Ark fake (e2e/mocks/ark-mock.ts).
+            'ARK_BASE_URL=http://localhost:4012/api/v3',
+            'BYTEPLUS_OPENAPI_HOST=http://localhost:4012',
+            'ARK_API_KEY=test-mock-key',
+            'BYTEPLUS_ACCESS_KEY=test-mock-key',
+            'BYTEPLUS_SECRET_KEY=test-mock-secret',
+            'BYTEPLUS_ASSET_SLOTS=3',
+          ]),
       ...(process.env.E2E_COVERAGE === 'true' ? ['E2E_COVERAGE=true'] : []),
       // Beats a laptop's ADMIN_EMAILS in .env.local (createTestUser admin).
       'ADMIN_EMAILS=e2e-admin@e2e.test',

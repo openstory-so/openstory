@@ -99,6 +99,7 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Classify music design for each scene', 'music-design'],
   ['Uploaded filename:', 'element-vision'],
   ['Analyze this talent reference', 'talent-vision'],
+  ['Nothing is attached and nothing has been written.', 'studio-prompt-draft'],
 ];
 
 // Diagnostic dump for unmatched requests — written on shutdown so we can diff

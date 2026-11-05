@@ -34,6 +34,8 @@ import { warnLongPrompt } from '@/models/prompt-length';
  * also Seedream's price-tier boundary — see the rate card in
  * `byteplus-pricing.ts`.
  *
+ * Ark refuses an area under 921,600 px, so the 1K wide rows are 720p.
+ *
  * Pro serves 1K and 2K only (no 4K token, unlike lite), so a 4K ask lands on
  * the 2K row rather than a size Ark rejects.
  */
@@ -43,8 +45,8 @@ const BYTEPLUS_IMAGE_DIMENSIONS: Record<
 > = {
   '1K': {
     square_hd: '1024x1024',
-    portrait_16_9: '576x1024',
-    landscape_16_9: '1024x576',
+    portrait_16_9: '720x1280',
+    landscape_16_9: '1280x720',
   },
   '2K': {
     square_hd: '2048x2048',

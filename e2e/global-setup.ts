@@ -1,5 +1,6 @@
 import { E2E_COVERAGE, cleanClientCoverage } from './coverage';
 import { startAimockServer } from './mocks/aimock-server';
+import { startArkMock } from './mocks/ark-mock';
 
 /**
  * Playwright global setup — aimock only (LLM/fal on :4010).
@@ -10,4 +11,5 @@ import { startAimockServer } from './mocks/aimock-server';
 export default async function globalSetup() {
   if (E2E_COVERAGE) cleanClientCoverage();
   await startAimockServer();
+  if (process.env.E2E_RECORD !== '1') await startArkMock();
 }

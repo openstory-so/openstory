@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Maya (Image 1) wipes down the counter of the Corner diner at closing time.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Corner diner - Chrome counter",
+        "model": "google/nano-banana-lite/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/e2491c4f17ecf6ab5e0570f33573c21dced95c35fc814feccf20b306c5bed91b.png",
+              "content_type": "image/png",
+              "file_name": "IX-3fkbsiBgMrM_0NHawV_NG0DgHs6.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.04272
+      }
+    }
+  ]
+}
