@@ -2,7 +2,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { PHOTOREAL_RENDERING } from '@/cast/rendering';
+
 import { LocationMediaUpload } from '@/cast/ui/location-library/location-media-upload';
 import { useCreateOrganizationLocation } from '@/cast/ui/use-organization-locations';
 import { errorMessage } from '@/platform/errors';
@@ -33,7 +33,9 @@ const newLocationSchema = z.object({
 export const NewLocationDialog: React.FC<{
   trigger?: React.ReactNode;
   onCreated: (location: { id: string; name: string }) => void;
-}> = ({ trigger, onCreated }) => {
+  /** Photoreal from the Locations page; the picked style's medium from the picker. */
+  rendering: () => string;
+}> = ({ trigger, onCreated, rendering }) => {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -61,11 +63,20 @@ export const NewLocationDialog: React.FC<{
       });
       return;
     }
+    let renderingText: string;
+    try {
+      renderingText = rendering();
+    } catch (error) {
+      toast.error('Location not created', {
+        description: errorMessage(error),
+      });
+      return;
+    }
     createLocation.mutate(
       {
         name: result.data.name,
         description: result.data.description || null,
-        rendering: PHOTOREAL_RENDERING,
+        rendering: renderingText,
         photoUrls,
       },
       {

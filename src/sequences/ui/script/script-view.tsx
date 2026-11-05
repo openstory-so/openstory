@@ -1311,6 +1311,11 @@ export const ScriptView: FC<{
     (isEditing ? 0 : castCharacterIds.length) +
     selectedLocationIds.length +
     (isEditing ? 0 : draftElements.length);
+  // What a character or location made in the pickers is rendered as.
+  const newReferenceRendering = () =>
+    renderingOfStyle(
+      selectedStyle ? parseStyleConfig(selectedStyle.config) : null
+    );
   const referenceSelectors = (
     <>
       {/* A sequence that exists is cast on its Cast tab and with `@`. */}
@@ -1324,14 +1329,11 @@ export const ScriptView: FC<{
             setSelections((s) => ({ ...s, castCharacterIds: v }))
           }
           disabled={loading}
-          rendering={() =>
-            renderingOfStyle(
-              selectedStyle ? parseStyleConfig(selectedStyle.config) : null
-            )
-          }
+          rendering={newReferenceRendering}
         />
       )}
       <LocationSuggestionSelector
+        rendering={newReferenceRendering}
         locations={isAuthenticated ? organizationLocations : []}
         signedOut={!isAuthenticated}
         failed={organizationLocationsFailed}

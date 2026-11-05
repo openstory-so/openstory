@@ -216,6 +216,9 @@ sheet hash read no sequence style.
   create and on edit.
 - Analysis fills it from the sequence style's medium, else photoreal
   (`renderingOfStyle`). It is not on the LLM's wire schema.
+- New location from the create screen's Locations picker takes the picked
+  style's medium (`renderingOfStyle`), as New character does in the Cast
+  picker; the Locations page says photoreal.
 - It is in `LOCATION_SHEET_BIBLE_FIELDS`, so an edit to it revokes the sheet
   claim and stales the sheet. The shot prompts do not read it.
 

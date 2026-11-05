@@ -105,9 +105,10 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
           size="sm"
           onClick={() => setOpen(true)}
           disabled={disabled || !hydrated}
-          className="text-muted-foreground"
+          className="gap-2 text-muted-foreground"
         >
-          Cast
+          <User className="h-4 w-4" />
+          <span>Cast</span>
         </Button>
         {selected.length + gone.length > 0 && (
           <div className="flex items-center -space-x-2">
@@ -209,12 +210,9 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
               <DialogHeader>
                 <DialogTitle>Cast</DialogTitle>
                 <DialogDescription>
-                  Add your characters. Characters the script adds are made new.
+                  Pick characters to cast. The script adds any others.
                 </DialogDescription>
               </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                Each one joins this sequence with its looks, sheets and voice.
-              </p>
               <div className="flex items-center gap-2">
                 <Input
                   type="search"
