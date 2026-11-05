@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AttestationRequiredError } from '@/platform/errors';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 
 const callLLMStream = vi.fn();
 vi.doMock('@/models/server/llm-client', () => ({
@@ -13,7 +12,7 @@ const { describeUpload } = await import('./describe-upload');
 const organizationId = '01J00000000000000000000000';
 const url = `/r2/characters/org/${organizationId}/characters/drafts/x.jpg`;
 
-function scopedDbWithLedger(rows: unknown[]) {
+function scopedDbWithLedger(rows: never[]) {
   return {
     organizationId,
     compliance: {
@@ -21,7 +20,7 @@ function scopedDbWithLedger(rows: unknown[]) {
     },
     apiKeys: { resolveLlmKey: vi.fn() },
     billing: { hasEnoughCredits: vi.fn(), deductCredits: vi.fn() },
-  } as unknown as ScopedDb;
+  };
 }
 
 describe('describeUpload', () => {

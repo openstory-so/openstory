@@ -15,6 +15,8 @@ import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { UploadRightsReader } from '@/cast/server/upload-rights';
+import type { VisionBillingDb } from '@/cast/server/talent/analyze-talent-media';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { z } from 'zod';
 
@@ -28,7 +30,9 @@ const SYSTEM_PROMPTS: Record<UploadSubject, string> = {
 };
 
 export async function describeUpload(opts: {
-  scopedDb: ScopedDb;
+  scopedDb: Pick<ScopedDb, 'organizationId'> &
+    UploadRightsReader &
+    VisionBillingDb;
   userId: string;
   url: string;
   filename: string;
