@@ -50,7 +50,7 @@ describe('fetchFalRateCards', () => {
 
     const cards = await fetchFalRateCards([
       'fal-ai/nano-banana-2',
-      'openai/gpt-image-2.5/flare/text-to-image',
+      'openai/gpt-image-2.6/flare/text-to-image',
     ]);
 
     expect(cards.size).toBe(1);
