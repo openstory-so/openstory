@@ -14,6 +14,7 @@ import {
   attachLibraryCharacter,
   createCharacter,
   deleteCharacter,
+  mergeCharacters,
   requireCharacter,
   restoreCharacter,
   selectCharacterVoiceVersion,
@@ -191,6 +192,26 @@ const characterIdInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
 });
+
+/** Merge one cast member into another in this sequence (#2249). */
+export const mergeSequenceCharactersFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        intoCharacterId: ulidSchema,
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return await mergeCharacters(
+      context.scopedDb,
+      { userId: context.user.id },
+      data.sequenceId,
+      data.characterId,
+      data.intoCharacterId
+    );
+  });
 
 /**
  * Soft-remove a character (undoable; toast Undo calls the restore fn). Scene

@@ -30,12 +30,15 @@ import {
   useSelectCharacterSheetVersion,
   useUndiscardCharacterSheetVariant,
 } from '@/cast/ui/use-character-sheet-variants';
+import { MergeIntoPicker, suggestCastMerge } from '@/cast/ui/cast-near-match';
 import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
   useCharacter,
   useCharacterSheetStaleness,
+  useMergeSequenceCharacters,
   useRegenerateCharacterSheet,
+  useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
 import { castChannelId } from '@/cast/cast-channel';
@@ -132,6 +135,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const selectVersion = useSelectCharacterSheetVersion();
   const navigate = useNavigate();
   const softDelete = useSoftDeleteSequenceCharacter();
+  const merge = useMergeSequenceCharacters();
+  const { data: cast } = useSequenceCharacters(sequenceId ?? '');
   const uploadSheet = useUploadCharacterSheet();
   const clearPhoto = useClearCharacterReferencePhoto();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
@@ -648,6 +653,60 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </>
               )}
 
+              {sequenceId !== null && character ? (
+                <MergeIntoPicker
+                  fromName={character.name}
+                  others={(cast ?? []).filter(
+                    (member) => member.id !== characterId
+                  )}
+                  suggestedId={
+                    suggestCastMerge(
+                      character.name,
+                      (cast ?? []).filter((member) => member.id !== characterId)
+                    )?.id ?? null
+                  }
+                  pending={merge.isPending}
+                  onMerge={(intoId) => {
+                    const intoName =
+                      cast?.find((member) => member.id === intoId)?.name ??
+                      'the other character';
+                    merge.mutate(
+                      {
+                        sequenceId,
+                        characterId,
+                        intoCharacterId: intoId,
+                      },
+                      {
+                        onSuccess: () => {
+                          toast(`Merged ${character.name} into ${intoName}`, {
+                            duration: 60_000,
+                            action: {
+                              label: 'Undo',
+                              onClick: () =>
+                                void restoreSequenceCharacter(queryClient, {
+                                  sequenceId,
+                                  characterId,
+                                }).catch((restoreError: Error) =>
+                                  toast.error('Failed to restore character', {
+                                    description: errorMessage(restoreError),
+                                  })
+                                ),
+                            },
+                          });
+                          void navigate({
+                            to: '/sequences/$id/cast/$characterId',
+                            params: { id: sequenceId, characterId: intoId },
+                          });
+                        },
+                        onError: (mergeError) =>
+                          toast.error('Failed to merge character', {
+                            description: errorMessage(mergeError),
+                          }),
+                      }
+                    );
+                  }}
+                />
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {!character.voiceOnly && (
                   <UploadMediaButton

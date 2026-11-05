@@ -66,6 +66,7 @@ import {
   applyAttachedCast,
   castEchoProblem,
   castTags,
+  foldNearCast,
   formatCastBlock,
 } from '@/cast/attached-cast';
 import {
@@ -899,10 +900,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // model's entry only says which looks she wears and which are new. An
     // entry that mislabels the cast fails the run here, before anything is
     // written.
-    const echo = castEchoProblem(biblesResult.characterBible, input.cast);
+    const foldedBible = foldNearCast(biblesResult.characterBible, input.cast);
+    const echo = castEchoProblem(foldedBible, input.cast);
     if (echo) throw new NonRetryableError(echo, 'WorkflowValidationError');
     const wire = bibleFromWire(
-      biblesResult.characterBible,
+      foldedBible,
       sceneIdForLine,
       script.split('\n').length,
       castTags(input.cast),

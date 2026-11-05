@@ -219,6 +219,7 @@ describe('tools/list and whoami', () => {
       'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
+      'openstory.merge_characters',
       'openstory.restore_character',
       'openstory.set_character_voice_enabled',
       'openstory.select_character_voice_version',
@@ -340,6 +341,7 @@ describe('tools/list and whoami', () => {
       'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
+      'openstory.merge_characters',
       'openstory.restore_character',
       'openstory.set_character_voice_enabled',
       'openstory.select_character_voice_version',
@@ -415,6 +417,7 @@ describe('tools/list and whoami', () => {
       'openstory.delete_shot',
       'openstory.discard_shot_dialogue_reading',
       'openstory.delete_character',
+      'openstory.merge_characters',
       'openstory.discard_character_sheet_version',
       'openstory.remove_character_look',
       'openstory.delete_location',
@@ -755,6 +758,14 @@ describe('structure edit authorization', () => {
     [
       'delete_character',
       { sequenceId: ids.sequenceId, characterId: ids.sceneId },
+    ],
+    [
+      'merge_characters',
+      {
+        sequenceId: ids.sequenceId,
+        characterId: ids.sceneId,
+        intoCharacterId: ids.shotId,
+      },
     ],
     [
       'set_character_voice_enabled',

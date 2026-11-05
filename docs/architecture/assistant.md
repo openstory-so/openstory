@@ -17,7 +17,7 @@ only assistant-side work per tool happens in
 - The MCP envelope is unwrapped: `structuredContent` goes to the model and
   the card; an error envelope becomes a thrown error, which TanStack AI
   reports as the tool's error result and the run goes on.
-- A delete (`destructiveHint`) is `needsApproval`: the run pauses on a card
+- A delete or a character merge (`destructiveHint`) is `needsApproval`: the run pauses on a card
   with Allow / Deny. A spend does not ask: the user is inside the app, the
   page shows the generation as it starts, and it can be cancelled there.
   A read never asks. `assistant-tools.test.ts` pins this against the catalog.

@@ -5,6 +5,7 @@ import {
   applyAttachedCast,
   castEchoProblem,
   castTags,
+  foldNearCast,
   formatCastBlock,
 } from './attached-cast';
 
@@ -154,5 +155,77 @@ describe('castEchoProblem and castTags (#2050)', () => {
 
   it('reserves the cast tags for the picks', () => {
     expect([...castTags([ada])]).toEqual([['char_ada', 'ada']]);
+  });
+});
+
+describe('foldNearCast (#2249)', () => {
+  const marlow = {
+    ...ada,
+    entry: entry({
+      characterId: 'char_marlow',
+      name: 'Marlow',
+      consistencyTag: 'marlow',
+    }),
+  };
+  const look = (name: string) => ({
+    name,
+    clothing: '',
+    styling: '',
+    lines: [] as number[],
+  });
+
+  it('rewrites one one-edit entry onto the cast id and spelling', () => {
+    expect(
+      foldNearCast(
+        [{ characterId: 'char_009', name: 'Marloe', looks: [look('Rain')] }],
+        [marlow]
+      )
+    ).toEqual([
+      { characterId: 'char_marlow', name: 'Marlow', looks: [look('Rain')] },
+    ]);
+  });
+
+  it('leaves a short name and an ambiguous pair alone', () => {
+    expect(
+      foldNearCast(
+        [{ characterId: 'char_009', name: 'Aday', looks: [] }],
+        [ada]
+      )
+    ).toEqual([{ characterId: 'char_009', name: 'Aday', looks: [] }]);
+    const twin = {
+      ...marlow,
+      entry: entry({ characterId: 'char_twin', name: 'Marlowe' }),
+    };
+    expect(
+      foldNearCast(
+        [{ characterId: 'char_009', name: 'Marloe', looks: [] }],
+        [marlow, twin]
+      )
+    ).toEqual([{ characterId: 'char_009', name: 'Marloe', looks: [] }]);
+  });
+
+  it('keeps the echoed entry and appends a look the echo does not name', () => {
+    const folded = foldNearCast(
+      [
+        {
+          characterId: 'char_marlow',
+          name: 'Marlow',
+          looks: [look('Default')],
+        },
+        {
+          characterId: 'char_009',
+          name: 'Marloe',
+          looks: [look('default'), look('Rain')],
+        },
+      ],
+      [marlow]
+    );
+    expect(folded).toEqual([
+      {
+        characterId: 'char_marlow',
+        name: 'Marlow',
+        looks: [look('Default'), look('Rain')],
+      },
+    ]);
   });
 });

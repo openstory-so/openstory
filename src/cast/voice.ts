@@ -4,6 +4,7 @@
 
 import type { CharacterBibleEntry, Scene } from '@/shots/scene-analysis.schema';
 import { ConflictError } from '@/platform/errors';
+import { oneEditApart } from '@/cast/near-name';
 
 /** The preview fields these take helpers need; matches `VoicePreview`. */
 type VoicePreviewTake = {
@@ -92,7 +93,9 @@ export function speakingCharacterIds(
     .filter((character) =>
       cues.some(
         (cue) =>
-          sameName(cue, character.name) || sharesToken(cue, character.name)
+          sameName(cue, character.name) ||
+          oneEditApart(cue, character.name) ||
+          sharesToken(cue, character.name)
       )
     )
     .map((character) => character.characterId);
@@ -125,6 +128,15 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
     );
   }
   if (whole[0]) return whole[0];
+  const edits = characters.filter((character) =>
+    oneEditApart(speaker, character.name)
+  );
+  if (edits.length > 1) {
+    throw new ConflictError(
+      `"${speaker.trim()}" is one letter from ${edits.map((c) => c.name).join(' or ')}. Use the full name so dialogue knows who speaks.`
+    );
+  }
+  if (edits[0]) return edits[0];
   const partial = characters.filter((character) =>
     sharesToken(speaker, character.name)
   );

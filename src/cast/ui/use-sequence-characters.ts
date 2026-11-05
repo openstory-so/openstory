@@ -23,6 +23,7 @@ import {
   selectCharacterVoiceVersionFn,
   setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
+  mergeSequenceCharactersFn,
   softDeleteSequenceCharacterFn,
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
@@ -389,6 +390,19 @@ export function useRegenerateCharacterSheet() {
  * membership, and staleness — a removed character drops out of bible reads,
  * so prompts naming it read stale; restore reverses that.
  */
+export function useMergeSequenceCharacters() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      intoCharacterId: string;
+    }) => mergeSequenceCharactersFn({ data }),
+    onSuccess: (_result, { sequenceId }) =>
+      invalidateCastMembership(queryClient, sequenceId),
+  });
+}
+
 export function useSoftDeleteSequenceCharacter() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -139,6 +139,14 @@ describe('matchSpeaker', () => {
   it('an unknown one-character cue matches nobody, narrator or not', () => {
     expect(matchSpeaker('X', cast)).toBeUndefined();
   });
+  it('matches a cue one edit from a name of 5+ letters', () => {
+    expect(matchSpeaker('Marloe', [{ name: 'Marlow' }])?.name).toBe('Marlow');
+  });
+  it('refuses to guess between two names one edit from the cue', () => {
+    expect(() =>
+      matchSpeaker('Marloe', [{ name: 'Marlow' }, { name: 'Marlowe' }])
+    ).toThrow('one letter from Marlow or Marlowe');
+  });
   it('prefers the whole name over a shared token, whatever the order', () => {
     const family = [
       { name: "Sarah's Mother", voiceOnly: false },

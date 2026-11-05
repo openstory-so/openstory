@@ -25,6 +25,7 @@ import {
   updateCharacterLook,
   createLocation,
   deleteCharacter,
+  mergeCharacters,
   deleteElement,
   deleteLocation,
   discardCharacterSheetVersion,
@@ -232,6 +233,36 @@ const updateCharacterTool = openstoryTool({
     return {
       data: { characterId: character.id },
       summary: `Updated character ${character.name}.`,
+    };
+  },
+});
+
+const mergeCharactersTool = openstoryTool({
+  name: 'merge_characters',
+  description:
+    'Merge one cast member into another in this sequence. Scene tags, dialogue and prompts are re-pointed at the winner, which keeps its bible, looks, voice and sheet. The loser leaves this sequence and stays in the organization. restore_character brings the loser back into the cast; it does not undo the rewrites. If the winner has no sheet, the loser sheet is kept.',
+  scope: 'sequences:write',
+  annotations: destructive,
+  inputSchema: characterInput.extend({
+    intoCharacterId: characterId.describe(
+      'The cast member that remains. The other character is merged into this one.'
+    ),
+  }),
+  outputSchema: characterResult,
+  run: async (input, { scopedDb, userId }) => {
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const merged = await mergeCharacters(
+      scopedDb,
+      { userId },
+      sequence.id,
+      input.characterId,
+      input.intoCharacterId
+    );
+    return {
+      data: { characterId: merged.characterId },
+      summary: 'Merged the character into the one that stays.',
     };
   },
 });
@@ -1079,6 +1110,7 @@ export const castMusicTools = [
   addCharacterToSequenceTool,
   updateCharacterTool,
   deleteCharacterTool,
+  mergeCharactersTool,
   restoreCharacterTool,
   setCharacterVoiceEnabledTool,
   selectCharacterVoiceVersionTool,

@@ -390,6 +390,26 @@ export async function deleteCharacter(
   return { characterId, name: existing.name, deletedAt };
 }
 
+/**
+ * Merge one cast member into another in this sequence (#2249). The loser
+ * leaves the sequence and stays in the organization. Restore brings the
+ * link back; the rewritten versions stay.
+ */
+export async function mergeCharacters(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  intoCharacterId: string
+) {
+  return await scopedDb.characters.mergeInto(
+    sequenceId,
+    characterId,
+    intoCharacterId,
+    { actorId: actor.userId }
+  );
+}
+
 export async function restoreCharacter(
   scopedDb: ScopedDb,
   actor: Actor,

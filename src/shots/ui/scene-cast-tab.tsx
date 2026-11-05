@@ -29,8 +29,10 @@ import { dressForScene } from '@/cast/character-looks';
 import type { SceneWithScript } from './use-scenes';
 import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
+import { CastMergeOffer, suggestCastMerge } from '@/cast/ui/cast-near-match';
 import {
   restoreSequenceCharacter,
+  useMergeSequenceCharacters,
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
@@ -59,7 +61,10 @@ type SceneCastTabProps = {
 type CastCardProps = {
   character: CharacterWithSheet;
   sequenceId: string;
+  cast: readonly CharacterWithSheet[];
   onDelete: (character: CharacterWithSheet) => void;
+  onMerge: (from: CharacterWithSheet, into: CharacterWithSheet) => void;
+  mergePending: boolean;
   scene?: SceneWithScript;
 };
 
@@ -130,7 +135,10 @@ const SceneLookPicker: React.FC<{
 const CastCard: React.FC<CastCardProps> = ({
   character: owner,
   sequenceId,
+  cast,
   onDelete,
+  onMerge,
+  mergePending,
   scene,
 }) => {
   // In a scene, the card shows the character as that scene dresses it.
@@ -138,6 +146,14 @@ const CastCard: React.FC<CastCardProps> = ({
     [owner],
     scene?.continuity?.characterLooks
   );
+  const others = cast.filter((member) => member.id !== owner.id);
+  const near = suggestCastMerge(owner.name, others);
+  const winnerHasNoSheet =
+    near !== null &&
+    !near.sheetImageUrl &&
+    near.sheetStatus !== 'generating' &&
+    near.sheetStatus !== 'completed' &&
+    !near.pendingPromoteSheetVersionId;
   return (
     <div className="group relative flex flex-col gap-2">
       <Link
@@ -206,6 +222,15 @@ const CastCard: React.FC<CastCardProps> = ({
           </div>
         )}
       </Link>
+      {near ? (
+        <CastMergeOffer
+          fromName={owner.name}
+          intoName={near.name}
+          keepsLoserSheet={winnerHasNoSheet}
+          pending={mergePending}
+          onMerge={() => onMerge(owner, near)}
+        />
+      ) : null}
       {/* Sibling of the Link (never nested interactive), floated over the
           card corner. Soft delete — the confirm + undo toast live in the tab. */}
       <Button
@@ -251,6 +276,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
   const queryClient = useQueryClient();
   const softDelete = useSoftDeleteSequenceCharacter();
+  const merge = useMergeSequenceCharacters();
   const [pendingDelete, setPendingDelete] = useState<CharacterWithSheet | null>(
     null
   );
@@ -356,7 +382,43 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             key={character.id}
             character={character}
             sequenceId={sequenceId}
+            cast={characters ?? []}
             onDelete={setPendingDelete}
+            mergePending={
+              merge.isPending && merge.variables?.characterId === character.id
+            }
+            onMerge={(from, into) => {
+              merge.mutate(
+                {
+                  sequenceId,
+                  characterId: from.id,
+                  intoCharacterId: into.id,
+                },
+                {
+                  onSuccess: () => {
+                    toast(`Merged ${from.name} into ${into.name}`, {
+                      duration: 60_000,
+                      action: {
+                        label: 'Undo',
+                        onClick: () =>
+                          void restoreSequenceCharacter(queryClient, {
+                            sequenceId,
+                            characterId: from.id,
+                          }).catch((error: Error) =>
+                            toast.error('Failed to restore character', {
+                              description: errorMessage(error),
+                            })
+                          ),
+                      },
+                    });
+                  },
+                  onError: (error) =>
+                    toast.error('Failed to merge character', {
+                      description: errorMessage(error),
+                    }),
+                }
+              );
+            }}
             scene={scene}
           />
         ))}

@@ -101,6 +101,7 @@ import {
 } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
 import { effectiveStyling, pickedLook, wearLook } from '@/cast/character-looks';
+import { mergeCastCharacters } from './character-merge';
 import {
   buildEventInsert,
   buildEventInsertIfPresent,
@@ -2388,6 +2389,37 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         .where(and(eq(characterBibleVersions.id, versionId), inOrganization));
       if (!row) throw new NotFoundError(`Bible version ${versionId} not found`);
       return row;
+    },
+
+    /**
+     * Merge `fromId` into `intoId` inside this sequence (#2249). The winner
+     * keeps its bible, looks, voice and sheet. Mentions move, then the loser
+     * is soft-removed. Restore brings the link back and leaves the rewrites.
+     */
+    mergeInto: async (
+      sequenceId: string,
+      fromId: string,
+      intoId: string,
+      opts: { actorId: string | null }
+    ): Promise<{ characterId: string; sheetCopied: boolean }> => {
+      if (fromId === intoId) {
+        throw new ValidationError('Choose two different cast members.');
+      }
+      const from = await castOf(sequenceId, fromId);
+      const into = await castOf(sequenceId, intoId);
+      if (!from || from.deletedAt) {
+        throw new NotFoundError(`Character ${fromId} is not in this cast`);
+      }
+      if (!into || into.deletedAt) {
+        throw new NotFoundError(`Character ${intoId} is not in this cast`);
+      }
+      return await mergeCastCharacters(
+        db,
+        sequenceId,
+        from,
+        into,
+        opts.actorId
+      );
     },
 
     getShotsForCharacter: async (
