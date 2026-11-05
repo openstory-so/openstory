@@ -25,7 +25,7 @@ import {
   updateCharacterLook,
   createLocation,
   deleteCharacter,
-  mergeCharacters,
+  replaceCharacter,
   deleteElement,
   deleteLocation,
   discardCharacterSheetVersion,
@@ -237,15 +237,15 @@ const updateCharacterTool = openstoryTool({
   },
 });
 
-const mergeCharactersTool = openstoryTool({
-  name: 'merge_characters',
+const replaceCharacterTool = openstoryTool({
+  name: 'replace_character',
   description:
-    'Merge one cast member into another in this sequence. Scene tags, dialogue and prompts are re-pointed at the winner, which keeps its bible, looks, voice and sheet. The loser leaves this sequence and stays in the organization. restore_character brings the loser back into the cast; it does not undo the rewrites. If the winner has no sheet, the loser sheet is kept.',
+    'Re-point this sequence slot at another organization character. That character sheet, looks and voice are what the slot uses. Nothing is copied. When that character is already in this cast, this slot is dropped and its script id, name and tag are remembered on the one that stays. Scenes are not rewritten. Prompts go stale. No generation starts.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: characterInput.extend({
-    intoCharacterId: characterId.describe(
-      'The cast member that remains. The other character is merged into this one.'
+    withCharacterId: characterId.describe(
+      'The organization character the slot uses instead.'
     ),
   }),
   outputSchema: characterResult,
@@ -253,16 +253,16 @@ const mergeCharactersTool = openstoryTool({
     const sequence = await productionAccess(scopedDb).sequence(
       input.sequenceId
     );
-    const merged = await mergeCharacters(
+    const replaced = await replaceCharacter(
       scopedDb,
       { userId },
       sequence.id,
       input.characterId,
-      input.intoCharacterId
+      input.withCharacterId
     );
     return {
-      data: { characterId: merged.characterId },
-      summary: 'Merged the character into the one that stays.',
+      data: { characterId: replaced.id },
+      summary: `Replaced the character with ${replaced.name}.`,
     };
   },
 });
@@ -1110,7 +1110,7 @@ export const castMusicTools = [
   addCharacterToSequenceTool,
   updateCharacterTool,
   deleteCharacterTool,
-  mergeCharactersTool,
+  replaceCharacterTool,
   restoreCharacterTool,
   setCharacterVoiceEnabledTool,
   selectCharacterVoiceVersionTool,

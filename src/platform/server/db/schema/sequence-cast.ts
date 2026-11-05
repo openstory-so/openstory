@@ -5,8 +5,18 @@
  * and never pins a version of one: it holds a cast link, and reads the
  * character's current bible, voice, looks and sheets like every other
  * sequence. The link holds only what is the sequence's: the id the script
- * gave the character, the soft remove, and whether the writer attached it.
+ * gave the character, the name and tag scenes already use when Replace
+ * pointed the slot at someone else, aliases of slots folded into this one,
+ * the soft remove, and whether the writer attached it.
  */
+
+/** A script id this slot also answers as, after Replace folded two cast members into one. */
+export type CastScriptAlias = {
+  /** The script id, e.g. "char_002". */
+  characterId: string;
+  name: string;
+  consistencyTag: string | null;
+};
 
 import type { InferSelectModel } from 'drizzle-orm';
 import {
@@ -39,6 +49,14 @@ export const sequenceCast = snakeCase.table(
     // The id script analysis gave the character in this sequence, e.g.
     // "char_001". Scene character tags resolve through it.
     scriptCharacterId: text().notNull(),
+    // The tag scenes already use, when Replace pointed this slot at another
+    // character. Null when the character's own tag is the script's.
+    scriptConsistencyTag: text(),
+    // The name scenes and prompts already use, when that is not the
+    // character's own. Null until a Replace.
+    scriptName: text(),
+    // Script ids of slots dropped into this one. Null is none.
+    aliases: text({ mode: 'json' }).$type<CastScriptAlias[]>(),
     // Soft-remove from the sequence, undoable. The character itself stays.
     removedAt: integer({ mode: 'timestamp' }),
     // The writer picked this character for the sequence (`characters.attach`,

@@ -391,21 +391,20 @@ export async function deleteCharacter(
 }
 
 /**
- * Merge one cast member into another in this sequence (#2249). The loser
- * leaves the sequence and stays in the organization. Restore brings the
- * link back; the rewritten versions stay.
+ * Point this sequence's slot at another organization character (#2249).
+ * The character that stays is the one the slot reads after the write.
  */
-export async function mergeCharacters(
+export async function replaceCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   sequenceId: string,
   characterId: string,
-  intoCharacterId: string
+  withCharacterId: string
 ) {
-  return await scopedDb.characters.mergeInto(
+  return await scopedDb.characters.replace(
     sequenceId,
     characterId,
-    intoCharacterId,
+    withCharacterId,
     { actorId: actor.userId }
   );
 }

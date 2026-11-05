@@ -12,7 +12,6 @@
 
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { AttachedCastSnapshot } from '@/platform/server/workflow/types';
-import { uniqueOneEdit } from '@/cast/near-name';
 
 const key = (name: string) => name.trim().toLowerCase();
 
@@ -60,72 +59,6 @@ export function castEchoProblem(
     }
   }
   return null;
-}
-
-type FoldableEntry = {
-  characterId: string;
-  name: string;
-  looks: readonly { name: string }[];
-};
-
-const lookKey = (name: string) => name.trim().toLowerCase();
-
-/**
- * Bind a wire entry whose name is one edit from exactly one cast member onto
- * that member's id and spelling (#2249). An entry that already echoes a cast
- * id is left as the model wrote it, so `castEchoProblem` still fails a real
- * mismatch. When the echo and the near duplicate are both present they
- * collapse to the echo, and looks the echo does not already name are kept.
- */
-export function foldNearCast<T extends FoldableEntry>(
-  wire: readonly T[],
-  cast: readonly AttachedCastSnapshot[]
-): T[] {
-  const castIds = new Set(cast.map((member) => member.entry.characterId));
-  const named = cast.map((member) => ({
-    name: member.entry.name,
-    characterId: member.entry.characterId,
-  }));
-  const marked = wire.map((entry) => {
-    if (castIds.has(entry.characterId)) return { entry, echoed: true };
-    const hit = uniqueOneEdit(entry.name, named);
-    if (!hit) return { entry, echoed: false };
-    return {
-      entry: { ...entry, characterId: hit.characterId, name: hit.name },
-      echoed: false,
-    };
-  });
-
-  const order: string[] = [];
-  const groups = new Map<string, typeof marked>();
-  for (const item of marked) {
-    const group = groups.get(item.entry.characterId);
-    if (group) group.push(item);
-    else {
-      groups.set(item.entry.characterId, [item]);
-      order.push(item.entry.characterId);
-    }
-  }
-
-  return order.flatMap((id) => {
-    const group = groups.get(id);
-    const first = group?.[0];
-    if (!group || !first) return [];
-    if (group.length === 1) return [first.entry];
-    const base = group.find((item) => item.echoed) ?? first;
-    const looks = [...base.entry.looks];
-    const seen = new Set(looks.map((look) => lookKey(look.name)));
-    for (const item of group) {
-      if (item === base) continue;
-      for (const look of item.entry.looks) {
-        const key = lookKey(look.name);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        looks.push(look);
-      }
-    }
-    return [{ ...base.entry, looks }];
-  });
 }
 
 /**

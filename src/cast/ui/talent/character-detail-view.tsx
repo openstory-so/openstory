@@ -30,15 +30,18 @@ import {
   useSelectCharacterSheetVersion,
   useUndiscardCharacterSheetVariant,
 } from '@/cast/ui/use-character-sheet-variants';
-import { MergeIntoPicker, suggestCastMerge } from '@/cast/ui/cast-near-match';
+import {
+  CharacterReplaceConfirm,
+  CharacterReplacePicker,
+} from '@/cast/ui/character-replace-dialog';
+import type { OrganizationCharacter } from '@/cast/server/db/characters';
 import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
   useCharacter,
   useCharacterSheetStaleness,
-  useMergeSequenceCharacters,
   useRegenerateCharacterSheet,
-  useSequenceCharacters,
+  useReplaceSequenceCharacter,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
 import { castChannelId } from '@/cast/cast-channel';
@@ -135,11 +138,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const selectVersion = useSelectCharacterSheetVersion();
   const navigate = useNavigate();
   const softDelete = useSoftDeleteSequenceCharacter();
-  const merge = useMergeSequenceCharacters();
-  const { data: cast } = useSequenceCharacters(sequenceId ?? '');
+  const replaceCharacter = useReplaceSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
   const clearPhoto = useClearCharacterReferencePhoto();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isReplaceConfirmOpen, setIsReplaceConfirmOpen] = useState(false);
+  const [replacement, setReplacement] = useState<OrganizationCharacter | null>(
+    null
+  );
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
   // 60s undo toast. The undo closure survives this component's unmount —
@@ -653,61 +660,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </>
               )}
 
-              {sequenceId !== null && character ? (
-                <MergeIntoPicker
-                  fromName={character.name}
-                  others={(cast ?? []).filter(
-                    (member) => member.id !== characterId
-                  )}
-                  suggestedId={
-                    suggestCastMerge(
-                      character.name,
-                      (cast ?? []).filter((member) => member.id !== characterId)
-                    )?.id ?? null
-                  }
-                  pending={merge.isPending}
-                  onMerge={(intoId) => {
-                    const intoName =
-                      cast?.find((member) => member.id === intoId)?.name ??
-                      'the other character';
-                    merge.mutate(
-                      {
-                        sequenceId,
-                        characterId,
-                        intoCharacterId: intoId,
-                      },
-                      {
-                        onSuccess: () => {
-                          toast(`Merged ${character.name} into ${intoName}`, {
-                            description: `Restore brings ${character.name} back. The rewritten lines stay.`,
-                            duration: 60_000,
-                            action: {
-                              label: 'Restore',
-                              onClick: () =>
-                                void restoreSequenceCharacter(queryClient, {
-                                  sequenceId,
-                                  characterId,
-                                }).catch((restoreError: Error) =>
-                                  toast.error('Failed to restore character', {
-                                    description: errorMessage(restoreError),
-                                  })
-                                ),
-                            },
-                          });
-                          void navigate({
-                            to: '/sequences/$id/cast/$characterId',
-                            params: { id: sequenceId, characterId: intoId },
-                          });
-                        },
-                        onError: (mergeError) =>
-                          toast.error('Failed to merge character', {
-                            description: errorMessage(mergeError),
-                          }),
-                      }
-                    );
-                  }}
-                />
-              ) : null}
               <div className="flex flex-wrap gap-2">
                 {!character.voiceOnly && (
                   <UploadMediaButton
@@ -845,6 +797,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsRemoveConfirmOpen(false);
+                setIsPickerOpen(true);
+              }}
+            >
+              Replace
+            </Button>
             <AlertDialogAction
               disabled={softDelete.isPending}
               onClick={() => handleRemove(character.name)}
@@ -854,6 +816,53 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sequenceId !== null && (
+        <CharacterReplacePicker
+          open={isPickerOpen}
+          onOpenChange={setIsPickerOpen}
+          excludeCharacterId={characterId}
+          onSelect={(picked) => {
+            setReplacement(picked);
+            setIsReplaceConfirmOpen(true);
+          }}
+        />
+      )}
+      {sequenceId !== null && replacement && (
+        <CharacterReplaceConfirm
+          open={isReplaceConfirmOpen}
+          onOpenChange={setIsReplaceConfirmOpen}
+          characterName={character.name}
+          withCharacterName={replacement.name}
+          isLoading={replaceCharacter.isPending}
+          onConfirm={() => {
+            const withCharacter = replacement;
+            replaceCharacter.mutate(
+              {
+                sequenceId,
+                characterId,
+                withCharacterId: withCharacter.id,
+              },
+              {
+                onSuccess: (staying) => {
+                  setIsReplaceConfirmOpen(false);
+                  toast(
+                    `Replaced ${character.name} with ${withCharacter.name}`
+                  );
+                  void navigate({
+                    to: '/sequences/$id/cast/$characterId',
+                    params: { id: sequenceId, characterId: staying.id },
+                  });
+                },
+                onError: (replaceError) =>
+                  toast.error('Failed to replace character', {
+                    description: errorMessage(replaceError),
+                  }),
+              }
+            );
+          }}
+        />
+      )}
 
       {compareVariant && (
         <SheetComparisonDialog

@@ -40,6 +40,7 @@ import type {
   LookVersionSource,
   CastCharacter,
   CastCharacterWithSheet,
+  CastScriptAlias,
   Shot,
   NewCharacter,
   SheetStatus,
@@ -62,6 +63,7 @@ import {
   shots,
 } from '@/platform/server/db/schema';
 import { identityToken, nextIdentityToken } from '@/cast/bible-field';
+import { parseCastAliases } from '@/cast/cast-alias';
 import { renderingFor } from '@/cast/rendering';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { markPreviewUnusable } from '@/cast/voice';
@@ -101,7 +103,6 @@ import {
 } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
 import { effectiveStyling, pickedLook, wearLook } from '@/cast/character-looks';
-import { mergeCastCharacters } from './character-merge';
 import {
   buildEventInsert,
   buildEventInsertIfPresent,
@@ -277,6 +278,13 @@ const castColumns = {
   selectedBibleVersionId: characters.selectedBibleVersionId,
   selectedVoiceVersionId: characters.selectedVoiceVersionId,
   deletedAt: sequenceCast.removedAt,
+  // Scenes keep the tag and name they had when Replace pointed the slot
+  // at another character. The character's own, until then.
+  consistencyTag: sql<
+    string | null
+  >`COALESCE(${sequenceCast.scriptConsistencyTag}, ${characterBibleColumns.consistencyTag})`,
+  scriptName: sequenceCast.scriptName,
+  aliases: sequenceCast.aliases,
 };
 
 /**
@@ -601,8 +609,15 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     (await resolveLooks(rows, loaded)).map((character, index) => {
       const row = rows[index];
       if (!row) throw new Error('resolveLooks returned a row it was not given');
-      const { castId, sequenceId, characterId } = row;
-      return { ...character, castId, sequenceId, characterId };
+      const { castId, sequenceId, characterId, scriptName, aliases } = row;
+      return {
+        ...character,
+        castId,
+        sequenceId,
+        characterId,
+        scriptName,
+        aliases: parseCastAliases(aliases),
+      };
     });
 
   /** The organization's resolved characters as one sequence casts them. */
@@ -626,16 +641,24 @@ export function createCharactersMethods(db: Database, organizationId: string) {
   ): Promise<CastCharacterWithSheet | undefined> =>
     (await selectCharacters(sequenceId, eq(characters.id, id)))[0];
 
-  /** Every script id a sequence's links use, removed ones included. */
-  const scriptIdsOf = async (sequenceId: string): Promise<Set<string>> =>
-    new Set(
-      (
-        await db
-          .select({ scriptCharacterId: sequenceCast.scriptCharacterId })
-          .from(sequenceCast)
-          .where(eq(sequenceCast.sequenceId, sequenceId))
-      ).map((row) => row.scriptCharacterId)
-    );
+  /** Every script id a sequence's links use, removed ones and aliases included. */
+  const scriptIdsOf = async (sequenceId: string): Promise<Set<string>> => {
+    const rows = await db
+      .select({
+        scriptCharacterId: sequenceCast.scriptCharacterId,
+        aliases: sequenceCast.aliases,
+      })
+      .from(sequenceCast)
+      .where(eq(sequenceCast.sequenceId, sequenceId));
+    const ids = new Set<string>();
+    for (const row of rows) {
+      ids.add(row.scriptCharacterId);
+      for (const alias of parseCastAliases(row.aliases)) {
+        ids.add(alias.characterId);
+      }
+    }
+    return ids;
+  };
 
   /** A write's row, re-read so it carries the resolved bible, looks and voice. */
   const reread = async (
@@ -1317,7 +1340,28 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         sequenceId,
         eq(sequenceCast.scriptCharacterId, characterId)
       );
-      return result[0] ?? null;
+      const direct = result[0];
+      if (direct) return direct;
+      const links = await db
+        .select({
+          id: sequenceCast.characterId,
+          aliases: sequenceCast.aliases,
+        })
+        .from(sequenceCast)
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .where(
+          and(
+            eq(sequenceCast.sequenceId, sequenceId),
+            isNull(sequenceCast.removedAt),
+            inOrganization
+          )
+        );
+      const hit = links.find((link) =>
+        parseCastAliases(link.aliases).some(
+          (alias) => alias.characterId === characterId
+        )
+      );
+      return hit ? ((await castOf(sequenceId, hit.id)) ?? null) : null;
     },
 
     // Default lists exclude soft-deleted rows (#1108): a deleted character
@@ -2392,34 +2436,84 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     },
 
     /**
-     * Merge `fromId` into `intoId` inside this sequence (#2249). The winner
-     * keeps its bible, looks, voice and sheet. Mentions move, then the loser
-     * is soft-removed. Restore brings the link back and leaves the rewrites.
+     * Point this sequence's slot at another organization character (#2249).
+     * The slot keeps its script id, and the tag and name scenes already use.
+     * The other character's sheet, looks and voice are what those scenes
+     * read. Nothing is copied. When that character is already in this cast,
+     * this slot is dropped and its script id is remembered on the one that
+     * stays. Restore does not undo it.
      */
-    mergeInto: async (
+    replace: async (
       sequenceId: string,
-      fromId: string,
-      intoId: string,
+      id: string,
+      withId: string,
       opts: { actorId: string | null }
-    ): Promise<{ characterId: string; sheetCopied: boolean }> => {
-      if (fromId === intoId) {
-        throw new ValidationError('Choose two different cast members.');
+    ): Promise<CastCharacterWithSheet> => {
+      if (id === withId) {
+        throw new ValidationError('Choose two different characters.');
       }
-      const from = await castOf(sequenceId, fromId);
-      const into = await castOf(sequenceId, intoId);
-      if (!from || from.deletedAt) {
-        throw new NotFoundError(`Character ${fromId} is not in this cast`);
+      const existing = await castOf(sequenceId, id);
+      if (!existing || existing.deletedAt) {
+        throw new NotFoundError(`Character ${id} is not in this cast`);
       }
-      if (!into || into.deletedAt) {
-        throw new NotFoundError(`Character ${intoId} is not in this cast`);
+      const next = await currentOf(withId);
+      if (!next) throw new NotFoundError(`Character ${withId} not found`);
+      const other = await castOf(sequenceId, withId);
+      const eventFor = (targetId: string) =>
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.replaced',
+          targetType: 'character',
+          targetId,
+          summary: `Replaced ${existing.name} with ${next.name}`,
+          data: { name: next.name, prevCharacterId: id },
+        });
+      if (other && !other.deletedAt) {
+        const seen = new Set<string>([other.characterId]);
+        const aliases: CastScriptAlias[] = [];
+        for (const alias of [
+          ...parseCastAliases(other.aliases),
+          {
+            characterId: existing.characterId,
+            name: existing.scriptName || existing.name,
+            consistencyTag: existing.consistencyTag,
+          },
+          ...parseCastAliases(existing.aliases),
+        ]) {
+          if (seen.has(alias.characterId)) continue;
+          seen.add(alias.characterId);
+          aliases.push(alias);
+        }
+        await db.batch([
+          db
+            .update(sequenceCast)
+            .set({ aliases })
+            .where(eq(sequenceCast.id, other.castId)),
+          db.delete(sequenceCast).where(eq(sequenceCast.id, existing.castId)),
+          eventFor(withId),
+        ]);
+        return await reread(sequenceId, withId);
       }
-      return await mergeCastCharacters(
-        db,
-        sequenceId,
-        from,
-        into,
-        opts.actorId
-      );
+      await assertNameFree(db, sequenceId, next.name, existing.id);
+      const repoint = db
+        .update(sequenceCast)
+        .set({
+          characterId: withId,
+          attached: true,
+          scriptConsistencyTag: existing.consistencyTag,
+          scriptName: existing.scriptName ?? existing.name,
+        })
+        .where(eq(sequenceCast.id, existing.castId));
+      const event = eventFor(withId);
+      await (other
+        ? db.batch([
+            db.delete(sequenceCast).where(eq(sequenceCast.id, other.castId)),
+            repoint,
+            event,
+          ])
+        : db.batch([repoint, event]));
+      return await reread(sequenceId, withId);
     },
 
     getShotsForCharacter: async (

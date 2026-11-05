@@ -98,20 +98,6 @@ describe('reconcileSceneTags', () => {
     expect(scenes[1]?.continuity.environmentTag).toBe('ravi_study');
   });
 
-  it('assigns a character tag when the slice is one edit from the bible name', () => {
-    const { scenes } = reconcileSceneTags(
-      [makeScene('MARLOE walks into the office.')],
-      {
-        characterBible: [
-          { ...characterBible[0], name: 'Marlow', consistencyTag: 'marlow' },
-        ],
-        locationBible: [],
-        elementBible: [],
-      }
-    );
-    expect(scenes[0]?.continuity.characterTags).toEqual(['marlow']);
-  });
-
   it('assigns a character tag when the bible name appears in the slice', () => {
     const { scenes, stats } = reconcileSceneTags(
       [makeScene('JACK enters the office.')],

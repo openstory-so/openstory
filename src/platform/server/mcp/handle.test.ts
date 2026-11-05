@@ -219,7 +219,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
-      'openstory.merge_characters',
+      'openstory.replace_character',
       'openstory.restore_character',
       'openstory.set_character_voice_enabled',
       'openstory.select_character_voice_version',

@@ -3929,7 +3929,7 @@ describe('cast and music edits (#1979)', () => {
     for (const [name, args] of [
       ['update_character', { characterId, voiceOnly: false, name: 'X' }],
       ['delete_character', { characterId }],
-      ['merge_characters', { characterId, intoCharacterId: generateId() }],
+      ['replace_character', { characterId, withCharacterId: generateId() }],
       ['restore_character', { characterId }],
       ['list_character_voices', { characterId }],
       ['select_music_track', { versionId: track }],

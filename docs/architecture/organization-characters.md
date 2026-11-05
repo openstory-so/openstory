@@ -317,26 +317,23 @@ the script then names her like any cast member.
   removed, and an entry that reused its script id becomes a new character
   under the next free id (`char_001_2`).
 - **The model must echo the cast.** Before anything is written, scene-split
-  folds a name one edit from exactly one cast member onto that member
-  (`foldNearCast`, #2249), then checks the reply against the block
-  (`castEchoProblem`): an entry that carries a cast id with another name,
-  or a cast character's name under a new id, fails the run with a plain
-  message ("Run it again"). The prompt says a script character with a cast
-  character's name IS that character. The prompt text is unchanged. A
-  shared first name, or two names one edit away, is not folded. The cast
-  page asks "Did you mean …?" for those. Scene tags treat a whole word of
-  5+ letters, one edit from the bible name, as a mention, because the fold
-  spells the name the way the cast does and the extract keeps the script.
-- **Merge** (`merge_characters`, the cast page, the character page) is one
-  sequence. The winner's link, bible, looks and voice stay. Scene tags,
-  dialogue speakers and prompt text in that sequence are appended as new
-  versions, so prompts go stale by derivation. A speaker moves only when
-  it is the loser's name, script id, or tag. The loser's look id is never
-  copied. Its completed sheet is copied onto the winner's default look only
-  when the winner has no sheet and none is generating. The loser is then
-  soft-removed and stays in the organization. Restore brings the link back
-  and does not revert the appended versions. `isPerson` and the likeness
-  ledger are not written. The screenplay on `sequences.script` is not rewritten.
+  checks the reply against the block (`castEchoProblem`): an entry that
+  carries a cast id with another name, or a cast character's name under a
+  new id, fails the run with a plain message ("Run it again"). The prompt
+  says a script character with a cast character's name IS that character.
+  The prompt text is unchanged. A name one letter away is a second
+  character. The writer replaces or removes them.
+- **Replace** (`replace_character`, the remove confirm on the cast tab and
+  the character page) points the slot at another organization character.
+  The slot keeps its script id, and the tag and name scenes already use
+  (`scriptConsistencyTag`, `scriptName`). The other character's sheet,
+  looks and voice are what those scenes read. Nothing is copied and no
+  line is rewritten. Shots go stale by derivation. When that character is
+  already in the sequence, this slot is dropped and its script id, name
+  and tag are remembered on the one that stays (`aliases`). Remove still
+  only soft-removes, and Restore does not undo a Replace. `isPerson` and
+  the likeness ledger are not written. The screenplay on `sequences.script`
+  is not rewritten. No generation starts.
 - **Plain names, where two characters share one.** Analysis may make two
   "Sarah"s, and a hand-made one may sit beside an analysed one. Look picks
   are keyed on the character's tag (a NEW entry whose tag is in use gets a

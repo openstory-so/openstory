@@ -29,10 +29,13 @@ import { dressForScene } from '@/cast/character-looks';
 import type { SceneWithScript } from './use-scenes';
 import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
-import { CastMergeOffer, suggestCastMerge } from '@/cast/ui/cast-near-match';
+import {
+  CharacterReplaceConfirm,
+  CharacterReplacePicker,
+} from '@/cast/ui/character-replace-dialog';
 import {
   restoreSequenceCharacter,
-  useMergeSequenceCharacters,
+  useReplaceSequenceCharacter,
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
@@ -61,10 +64,7 @@ type SceneCastTabProps = {
 type CastCardProps = {
   character: CharacterWithSheet;
   sequenceId: string;
-  cast: readonly CharacterWithSheet[];
   onDelete: (character: CharacterWithSheet) => void;
-  onMerge: (from: CharacterWithSheet, into: CharacterWithSheet) => void;
-  mergePending: boolean;
   scene?: SceneWithScript;
 };
 
@@ -135,10 +135,7 @@ const SceneLookPicker: React.FC<{
 const CastCard: React.FC<CastCardProps> = ({
   character: owner,
   sequenceId,
-  cast,
   onDelete,
-  onMerge,
-  mergePending,
   scene,
 }) => {
   // In a scene, the card shows the character as that scene dresses it.
@@ -146,14 +143,6 @@ const CastCard: React.FC<CastCardProps> = ({
     [owner],
     scene?.continuity?.characterLooks
   );
-  const others = cast.filter((member) => member.id !== owner.id);
-  const near = suggestCastMerge(owner.name, others);
-  const winnerHasNoSheet =
-    near !== null &&
-    !near.sheetImageUrl &&
-    near.sheetStatus !== 'generating' &&
-    near.sheetStatus !== 'completed' &&
-    !near.pendingPromoteSheetVersionId;
   return (
     <div className="group relative flex flex-col gap-2">
       <Link
@@ -222,15 +211,6 @@ const CastCard: React.FC<CastCardProps> = ({
           </div>
         )}
       </Link>
-      {near ? (
-        <CastMergeOffer
-          fromName={owner.name}
-          intoName={near.name}
-          keepsLoserSheet={winnerHasNoSheet}
-          pending={mergePending}
-          onMerge={() => onMerge(owner, near)}
-        />
-      ) : null}
       {/* Sibling of the Link (never nested interactive), floated over the
           card corner. Soft delete — the confirm + undo toast live in the tab. */}
       <Button
@@ -276,10 +256,17 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
   const queryClient = useQueryClient();
   const softDelete = useSoftDeleteSequenceCharacter();
-  const merge = useMergeSequenceCharacters();
+  const replaceCharacter = useReplaceSequenceCharacter();
   const [pendingDelete, setPendingDelete] = useState<CharacterWithSheet | null>(
     null
   );
+  const [replacing, setReplacing] = useState<CharacterWithSheet | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
+  const [replacement, setReplacement] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const handleConfirmDelete = (character: CharacterWithSheet) => {
     softDelete.mutate(
@@ -382,44 +369,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             key={character.id}
             character={character}
             sequenceId={sequenceId}
-            cast={characters ?? []}
             onDelete={setPendingDelete}
-            mergePending={
-              merge.isPending && merge.variables?.characterId === character.id
-            }
-            onMerge={(from, into) => {
-              merge.mutate(
-                {
-                  sequenceId,
-                  characterId: from.id,
-                  intoCharacterId: into.id,
-                },
-                {
-                  onSuccess: () => {
-                    toast(`Merged ${from.name} into ${into.name}`, {
-                      description: `Restore brings ${from.name} back. The rewritten lines stay.`,
-                      duration: 60_000,
-                      action: {
-                        label: 'Restore',
-                        onClick: () =>
-                          void restoreSequenceCharacter(queryClient, {
-                            sequenceId,
-                            characterId: from.id,
-                          }).catch((error: Error) =>
-                            toast.error('Failed to restore character', {
-                              description: errorMessage(error),
-                            })
-                          ),
-                      },
-                    });
-                  },
-                  onError: (error) =>
-                    toast.error('Failed to merge character', {
-                      description: errorMessage(error),
-                    }),
-                }
-              );
-            }}
             scene={scene}
           />
         ))}
@@ -443,6 +393,18 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!pendingDelete) return;
+                setReplacing(pendingDelete);
+                setPendingDelete(null);
+                setPickerOpen(true);
+              }}
+            >
+              Replace
+            </Button>
             <AlertDialogAction
               disabled={softDelete.isPending}
               // Radix's Action closes the dialog on click; hold it open so the
@@ -458,6 +420,49 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {replacing && (
+        <CharacterReplacePicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          excludeCharacterId={replacing.id}
+          onSelect={(picked) => {
+            setReplacement({ id: picked.id, name: picked.name });
+            setReplaceConfirmOpen(true);
+          }}
+        />
+      )}
+      {replacing && replacement && (
+        <CharacterReplaceConfirm
+          open={replaceConfirmOpen}
+          onOpenChange={setReplaceConfirmOpen}
+          characterName={replacing.name}
+          withCharacterName={replacement.name}
+          isLoading={replaceCharacter.isPending}
+          onConfirm={() => {
+            const from = replacing;
+            const withCharacter = replacement;
+            replaceCharacter.mutate(
+              {
+                sequenceId,
+                characterId: from.id,
+                withCharacterId: withCharacter.id,
+              },
+              {
+                onSuccess: () => {
+                  setReplaceConfirmOpen(false);
+                  setReplacing(null);
+                  toast(`Replaced ${from.name} with ${withCharacter.name}`);
+                },
+                onError: (error) =>
+                  toast.error('Failed to replace character', {
+                    description: errorMessage(error),
+                  }),
+              }
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

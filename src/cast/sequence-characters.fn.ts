@@ -14,7 +14,7 @@ import {
   attachLibraryCharacter,
   createCharacter,
   deleteCharacter,
-  mergeCharacters,
+  replaceCharacter,
   requireCharacter,
   restoreCharacter,
   selectCharacterVoiceVersion,
@@ -193,23 +193,23 @@ const characterIdInput = z.object({
   characterId: ulidSchema,
 });
 
-/** Merge one cast member into another in this sequence (#2249). */
-export const mergeSequenceCharactersFn = createServerFn({ method: 'POST' })
+/** Point this sequence's slot at another organization character (#2249). */
+export const replaceSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
     zodValidator(
       characterIdInput.extend({
-        intoCharacterId: ulidSchema,
+        withCharacterId: ulidSchema,
       })
     )
   )
   .handler(async ({ context, data }) => {
-    return await mergeCharacters(
+    return await replaceCharacter(
       context.scopedDb,
       { userId: context.user.id },
       data.sequenceId,
       data.characterId,
-      data.intoCharacterId
+      data.withCharacterId
     );
   });
 

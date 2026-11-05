@@ -9,7 +9,6 @@
 
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { canonicalBibleTag } from '@/cast/bible-field';
-import { oneEditApart } from '@/cast/near-name';
 import type { SceneSplitBiblesResult } from './response-schemas';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 
@@ -31,9 +30,7 @@ function characterMentioned(extract: string, name: string): boolean {
   if (nameUpper.length < 2) return false;
   if (wholeWord(haystack, nameUpper)) return true;
   const first = nameUpper.split(/\s+/)[0];
-  if (first && first.length >= 3 && wholeWord(haystack, first)) return true;
-  const words = extract.match(/[\p{L}\p{N}]{5,}/gu) ?? [];
-  return words.some((word) => oneEditApart(word, name));
+  return Boolean(first && first.length >= 3 && wholeWord(haystack, first));
 }
 
 /**
