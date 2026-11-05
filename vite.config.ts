@@ -246,7 +246,8 @@ function e2eServerCoverage(): Plugin {
         ...inputMap,
         version: String(inputMap.version),
       });
-      return { code: out, map: instrumenter.lastSourceMap() };
+      const map = instrumenter.lastSourceMap();
+      return { code: out, map: { ...map, version: Number(map.version) } };
     },
   };
 }

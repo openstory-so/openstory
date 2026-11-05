@@ -71,7 +71,7 @@ function rekey(map: CoverageMap): CoverageMap {
   for (const file of map.files()) {
     const path = toRepoPath(file);
     if (!isMeasured(path)) continue;
-    const data = map.fileCoverageFor(file).toJSON();
+    const { data } = map.fileCoverageFor(file);
     out.addFileCoverage({ ...data, path: resolve(root, path) });
   }
   return out;
