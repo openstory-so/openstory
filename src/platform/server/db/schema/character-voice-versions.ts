@@ -96,5 +96,10 @@ export const characterVoiceVersions = snakeCase.table(
     uniqueIndex('uq_character_voice_versions_live_claim')
       .on(table.characterId)
       .where(sql`${table.status} IN ('pending', 'generating')`),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_character_voice_versions_status_created').on(
+      table.status,
+      table.createdAt
+    ),
   ]
 );

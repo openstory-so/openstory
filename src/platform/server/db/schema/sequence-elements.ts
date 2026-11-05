@@ -88,6 +88,11 @@ export const sequenceElements = snakeCase.table(
   },
   (table) => [
     index('idx_sequence_elements_sequence_id').on(table.sequenceId),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_sequence_elements_vision_updated').on(
+      table.visionStatus,
+      table.updatedAt
+    ),
     uniqueIndex('sequence_elements_sequence_token_key').on(
       table.sequenceId,
       table.token

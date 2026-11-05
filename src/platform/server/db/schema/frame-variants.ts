@@ -182,6 +182,11 @@ export const frameVariants = snakeCase.table(
       .where(
         sql`${table.pendingInputHash} IS NOT NULL AND ${table.status} IN ('pending', 'generating')`
       ),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_frame_variants_status_updated').on(
+      table.status,
+      table.updatedAt
+    ),
   ]
 );
 

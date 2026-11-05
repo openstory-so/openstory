@@ -93,6 +93,12 @@ export const shotVariants = snakeCase.table(
       table.sequenceId,
       table.variantType
     ),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_shot_variants_status_updated').on(table.status, table.updatedAt),
+    index('idx_shot_variants_shot_variant_status_updated').on(
+      table.shotVariantStatus,
+      table.updatedAt
+    ),
     // Primary slot: at most one non-divergent row per (shot, type, model).
     // image-workflow's speculative upsert and convergent reconcile both write here.
     uniqueIndex('shot_variants_primary_key')

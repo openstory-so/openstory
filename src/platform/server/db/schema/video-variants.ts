@@ -174,6 +174,11 @@ export const videoVariants = snakeCase.table(
     // (renderSegmentId, model), order by id (ULID ≈ creation time).
     index('idx_video_variants_group').on(table.renderSegmentId, table.model),
     index('idx_video_variants_sequence').on(table.sequenceId),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_video_variants_status_updated').on(
+      table.status,
+      table.updatedAt
+    ),
   ]
 );
 
