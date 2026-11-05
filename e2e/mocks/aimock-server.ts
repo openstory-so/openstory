@@ -769,7 +769,7 @@ function fixtureContentHash(userMessage: string): string {
 // can't get a hash-free name because nothing in its body is a stable key.
 function stableBaseName(
   userMessage: string,
-  kind: 'openrouter' | 'fal' | 'elevenlabs'
+  kind: 'openrouter' | 'fal' | 'elevenlabs' | 'byteplus'
 ): string {
   const sceneId = /\bscene_(\d+)\b/.exec(userMessage)?.[0];
 
@@ -779,7 +779,7 @@ function stableBaseName(
     return sceneId ?? '';
   }
 
-  // fal / elevenlabs: lead with the scene id when present, then a slug of the
+  // fal / elevenlabs / byteplus: lead with the scene id when present, then a slug of the
   // first line of the prompt, then a short content hash to disambiguate.
   const firstLine = userMessage.split('\n', 1)[0] ?? '';
   const lead = slugify(firstLine);
