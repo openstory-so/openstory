@@ -2,14 +2,7 @@ import { sql, type Column } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Database } from '@/platform/server/db/client';
 
-/**
- * A list read under D1's 100-bound-parameter ceiling: one query per chunk of
- * ids, all sent as ONE `db.batch()`, so the round trips do not grow with the
- * list (#2234). Rows come back in chunk order.
- *
- * A batch maps rows by column name, so a join must not select two columns of
- * one name: alias the owner's id with {@link ownerId}.
- */
+/** One query per chunk of ids under D1's param cap, sent as one `db.batch()` (#2234); a join must alias its owner id with {@link ownerId}. */
 export async function selectInChunks<
   Q extends BatchItem<'sqlite'> & PromiseLike<unknown[]>,
 >(

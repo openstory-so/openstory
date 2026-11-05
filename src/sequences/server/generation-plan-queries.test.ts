@@ -36,11 +36,8 @@ import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snaps
 import { loadSceneFacets } from '@/shots/server/scene-facets';
 import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
-import { loadShotMediaStates } from '@/shots/server/shot-media-staleness';
-import {
-  loadShotStalenessBatch,
-  loadShotStalenessReads,
-} from '@/shots/server/shot-staleness';
+import { loadShotViews } from '@/shots/server/load-shot-views';
+import { loadStalenessForShots } from '@/shots/server/shot-staleness-batch';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { computeGenerationPlan } from './generation-plan';
@@ -124,20 +121,9 @@ const LOADERS: Record<
     loadSceneFacets(scopedDb, sequence),
   getShotStalenessBatchFn: async (scopedDb, sequence) => {
     const shots = await scopedDb.shots.listBySequence(sequence.id);
-    const loaded = await loadShotStalenessBatch(scopedDb, sequence);
-    const frameIds = [...loaded.anchorsByShot.values()].map((f) => f.id);
-    return Promise.all([
-      loadShotStalenessReads(
-        scopedDb,
-        sequence.id,
-        shots,
-        shots.map((s) => s.id),
-        frameIds,
-        loaded.sceneContext
-      ),
-      loadShotMediaStates(scopedDb, sequence, shots),
-    ]);
+    return loadStalenessForShots(scopedDb, sequence, shots, shots);
   },
+  getShotsFn: (scopedDb, sequence) => loadShotViews(scopedDb, sequence),
 };
 
 /** Round trips per loader: a query, or a `db.batch()` of them (#2234). */

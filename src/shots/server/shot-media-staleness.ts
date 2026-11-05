@@ -58,9 +58,7 @@ export async function loadShotMediaStates(
 ): Promise<
   Map<string, { staleness: ShotMediaStaleness; clipInFlight: boolean }>
 > {
-  // A voice change dates every shot recorded alongside it, not just the
-  // speaker's own (#1802). It needs only the shots, so it runs beside the
-  // segment reads.
+  // A voice change dates every shot recorded alongside it (#1802).
   const [{ assembled, versions, live }, voiceMoved, recording] =
     await Promise.all([
       loadSequenceSegments(scopedDb, sequence, shots, shared),

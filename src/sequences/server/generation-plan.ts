@@ -117,9 +117,7 @@ async function loadPlanInput(
     ]);
   const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
 
-  // The cast and locations are the refs: the same read, once (#2082). The
-  // sheets, the stills, the prompts and the media read nothing from each
-  // other, so they go out together.
+  // None of these reads needs another's answer (#2234).
   const { characters, locations } = refs;
   const [selectedByFrame, reads, media, music, primaryImageByFrame, sheets] =
     await Promise.all([

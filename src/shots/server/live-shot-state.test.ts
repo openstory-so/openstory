@@ -1,6 +1,6 @@
 import type { Shot } from '@/platform/server/db/schema';
 import { describe, expect, it } from 'vitest';
-import { loadLiveShotInputs } from './live-shot-state';
+import { liveShotInputs, loadLiveShotReads } from './live-shot-state';
 import { asStub } from '@/test/as-stub';
 
 const line = (character: string, text: string) => ({
@@ -24,10 +24,13 @@ const shot = (id: string, shotNumber: number, clipIds: string[] = []) =>
     })),
   });
 
-const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
-  loadLiveShotInputs(
-    // stub exposing only the three reads the loader makes
-    asStub<Parameters<typeof loadLiveShotInputs>[0]>({
+const load = async (
+  rows: { shotId: string; lines: ReturnType<typeof line>[] }[]
+) => {
+  const shots = [shot('shot-1', 1, ['section-1']), shot('shot-2', 2)];
+  const reads = await loadLiveShotReads(
+    // stub exposing only the reads the loader makes
+    asStub<Parameters<typeof loadLiveShotReads>[0]>({
       shotDialogue: { getSelectedBySequence: () => Promise.resolve(rows) },
       shotPromptVersions: {
         getSelectedMotionByShots: () => Promise.resolve(new Map()),
@@ -36,7 +39,11 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
       sequenceElements: { list: () => Promise.resolve([]) },
     }),
     'seq-1',
-    [shot('shot-1', 1, ['section-1']), shot('shot-2', 2)],
+    shots
+  );
+  return liveShotInputs(
+    reads,
+    shots,
     [
       {
         id: 'char-1',
@@ -62,8 +69,9 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
     ]),
     { generateStartFrames: true }
   );
+};
 
-describe('loadLiveShotInputs — dialogue (#1657)', () => {
+describe('liveShotInputs — dialogue (#1657)', () => {
   it("keys each shot off its OWN lines, so a neighbour's edit moves nothing", async () => {
     const before = await load([
       { shotId: 'shot-1', lines: [line('Ana', 'Hello.')] },

@@ -1,7 +1,10 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import { assembleSequenceSegments } from '@/shots/scene-segments';
-import { loadLiveShotInputs } from '@/shots/server/live-shot-state';
+import {
+  liveShotInputs,
+  loadLiveShotReads,
+} from '@/shots/server/live-shot-state';
 import {
   loadSceneContextBySequence,
   type SceneContext,
@@ -11,7 +14,7 @@ import {
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
 
-/** Sequence reads a caller already made; each one skips its own query. */
+/** Reads the caller already made, so the loader skips them. */
 export type SequenceSegmentsShared = {
   sceneContext: ReadonlyMap<string, SceneContext>;
   characters: Awaited<ReturnType<ScopedDb['characters']['list']>>;
@@ -34,35 +37,24 @@ export async function loadSequenceSegments(
   shots: readonly Shot[],
   shared?: SequenceSegmentsShared
 ) {
+  const [segments, versions, frames, sceneContext, characters, liveReads] =
+    await Promise.all([
+      scopedDb.renderSegments.listBySequence(sequence.id),
+      scopedDb.videoVariants.listBySequence(sequence.id),
+      scopedDb.frames.listBySequence(sequence.id),
+      shared?.sceneContext ?? loadSceneContextBySequence(scopedDb, sequence.id),
+      shared?.characters ?? scopedDb.characters.list(sequence.id),
+      loadLiveShotReads(scopedDb, sequence.id, shots, shared?.elements),
+    ]);
   // What each shot would render from NOW beyond its two pointers (#1657):
-  // dialogue key and clip ids, reference provenance, duration. Its reads run
-  // beside the segment reads, not after them.
-  const base = shared
-    ? Promise.resolve(shared)
-    : Promise.all([
-        loadSceneContextBySequence(scopedDb, sequence.id),
-        scopedDb.characters.list(sequence.id),
-      ]).then(([sceneContext, characters]) => ({
-        sceneContext,
-        characters,
-        elements: undefined,
-      }));
-  const [segments, versions, frames, live] = await Promise.all([
-    scopedDb.renderSegments.listBySequence(sequence.id),
-    scopedDb.videoVariants.listBySequence(sequence.id),
-    scopedDb.frames.listBySequence(sequence.id),
-    base.then((b) =>
-      loadLiveShotInputs(
-        scopedDb,
-        sequence.id,
-        shots,
-        b.characters,
-        b.sceneContext,
-        sequence,
-        b.elements
-      )
-    ),
-  ]);
+  // dialogue key and clip ids, reference provenance, duration.
+  const live = liveShotInputs(
+    liveReads,
+    shots,
+    characters,
+    sceneContext,
+    sequence
+  );
   // Versions are oldest-first here (listBySequence orders by ULID).
   const assembled = assembleSequenceSegments({
     segments,

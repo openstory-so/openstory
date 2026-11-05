@@ -516,7 +516,7 @@ function clipIsStale(world: World): boolean {
   return segment.stale;
 }
 
-/** What a render of shot-1 would be sent now, as `loadLiveShotInputs` resolves it. */
+/** What a render of shot-1 would be sent now, as `liveShotInputs` resolves it. */
 function wouldBeSent(world: World): ReadonlySet<string> {
   const sent = resolveShotReferences(
     {
