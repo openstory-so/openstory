@@ -33,6 +33,8 @@ import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
 import { StyleSelector } from '@/look/ui/style-selector';
 import { CastSelector } from '@/cast/ui/cast-selector';
+import { renderingOfStyle } from '@/cast/rendering';
+import { parseStyleConfig } from '@/look/style-config';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1322,6 +1324,11 @@ export const ScriptView: FC<{
             setSelections((s) => ({ ...s, castCharacterIds: v }))
           }
           disabled={loading}
+          rendering={() =>
+            renderingOfStyle(
+              selectedStyle ? parseStyleConfig(selectedStyle.config) : null
+            )
+          }
         />
       )}
       <LocationSuggestionSelector

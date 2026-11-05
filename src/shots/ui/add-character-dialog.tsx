@@ -11,7 +11,7 @@ import { Input } from '@/ui/shadcn/input';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { NewCharacterForm } from '@/cast/ui/new-character-form';
-import { useCreateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
+import { useNewCharacter } from '@/cast/ui/use-new-character';
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
@@ -25,8 +25,8 @@ import { toast } from 'sonner';
 /**
  * The cast panel's one way in. It opens on the organization's characters (#2050):
  * picking one is the same attach the `@` picker makes, one link, every look,
- * nothing copied. New character swaps the list for the manual create (#1108
- * Phase 2): a name, then the character's page beside the inspector.
+ * nothing copied. New character swaps the list for the create (#2254): a
+ * name, a description and an image, then the character's page.
  */
 export const AddCharacterDialog: React.FC<{
   sequenceId: string;
@@ -38,7 +38,7 @@ export const AddCharacterDialog: React.FC<{
   const [query, setQuery] = useState('');
   const { data: library } = useLibraryCharacters(open);
   const attach = useAttachLibraryCharacter();
-  const createCharacter = useCreateSequenceCharacter();
+  const createCharacter = useNewCharacter({ sequenceId });
   const navigate = useNavigate();
 
   const q = query.trim().toLowerCase();
@@ -82,31 +82,26 @@ export const AddCharacterDialog: React.FC<{
           <DialogHeader>
             <DialogTitle>New character</DialogTitle>
             <DialogDescription>
-              Name it. The rest is filled in on its page.
+              The rest of the bible, looks and voice are on its page.
             </DialogDescription>
           </DialogHeader>
           <NewCharacterForm
             isPending={createCharacter.isPending}
-            submitLabel="Create"
-            pendingLabel="Creating…"
             onSubmit={(fields) =>
-              createCharacter.mutate(
-                { sequenceId, ...fields },
-                {
-                  onSuccess: (character) => {
-                    close();
-                    void navigate({
-                      to: '/sequences/$id/cast/$characterId',
-                      params: { id: sequenceId, characterId: character.id },
-                      search: true,
-                    });
-                  },
-                  onError: (error) =>
-                    toast.error('Failed to add character', {
-                      description: errorMessage(error),
-                    }),
-                }
-              )
+              createCharacter.mutate(fields, {
+                onSuccess: ({ character }) => {
+                  close();
+                  void navigate({
+                    to: '/sequences/$id/cast/$characterId',
+                    params: { id: sequenceId, characterId: character.id },
+                    search: true,
+                  });
+                },
+                onError: (error) =>
+                  toast.error('Failed to add character', {
+                    description: errorMessage(error),
+                  }),
+              })
             }
           />
           <Button

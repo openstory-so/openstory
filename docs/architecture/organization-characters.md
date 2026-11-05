@@ -175,8 +175,20 @@ What follows from one character in two sequences:
   its default look (the character's own id) and that look's first version.
   No cast link and no event (events are per sequence). The consistency tag
   is `char_<name>: <name>`, the tag a hand-added character of that name gets
-  in a sequence. The dialog and the cast panel's Add Character share one
-  form (`NewCharacterForm`).
+  in a sequence.
+- **One New character form** (#2254, `NewCharacterForm` + `useNewCharacter`)
+  on the Characters tab, the cast panel's Add Character and the create
+  screen's Cast picker: a name, an optional description (the bible's
+  `physicalDescription`) and an optional photo or sheet. From no sequence it
+  creates with `createOrganizationCharacterFn` (the Characters tab says
+  photoreal; the Cast picker says the picked style's medium,
+  `renderingOfStyle`); the cast panel with `createSequenceCharacterFn`. The
+  image needs the character's id, so it is uploaded after the create, as the
+  default look's sheet through the Upload Sheet path
+  (`useUploadCharacterSheet`: likeness check, sign-off, `isPerson` from the
+  ledger). A failed upload keeps the character and says so. Nothing reads
+  the image to fill the bible. The Cast picker selects the new character and
+  the draft keeps its script.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getOrganizationCharacterShotCountsFn`).
