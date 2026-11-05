@@ -41,6 +41,16 @@ describe('resolveOrganizationAndCompliance (#2082)', () => {
     expect(loadComplianceState).toHaveBeenCalledTimes(1);
   });
 
+  it('drops the compliance read of an organization the user is not in (#2234)', async () => {
+    getUserOrganizationMembership.mockResolvedValueOnce(null);
+    loadComplianceState.mockResolvedValueOnce({
+      enforcement: { canAccess: false },
+    });
+    await expect(
+      resolveOrganizationAndCompliance('u-out', 'GET', 'organization-x')
+    ).resolves.toEqual({ organization: null, compliance: null });
+  });
+
   it('reads fresh for a write, and refreshes the memo', async () => {
     await resolveOrganizationAndCompliance('u-post', 'GET', 'organization-1');
     await resolveOrganizationAndCompliance('u-post', 'POST', 'organization-1');

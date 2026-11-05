@@ -43,16 +43,45 @@ export async function loadShotViews(
     missingAnchors.length > 0
       ? await scopedDb.frames.listAnchorsBySequence(sequence.id)
       : existingAnchors;
-  const [gridSheets, motionByShot, linesByShotId, sceneContext, sections] =
-    await Promise.all([
-      scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
-      scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shotRows.map((s) => s.id)
-      ),
-      loadShotDialogueLines(scopedDb, sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-      scopedDb.shotDialogue.getSelectedSectionsBySequence(sequence.id),
-    ]);
+  // One read per table, none waiting on another (#2234).
+  const shotIds = shotRows.map((s) => s.id);
+  const frameIds = anchorRows.map((f) => f.id);
+  const pendingPromoteIds = [
+    ...new Set(
+      anchorRows
+        .map((f) => f.pendingPromoteVersionId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const [
+    gridSheets,
+    motionByShot,
+    linesByShotId,
+    sceneContext,
+    sections,
+    selectedByFrame,
+    previewByFrame,
+    selectedPromptByFrame,
+    selectedVideoByShot,
+    primaryVideoByShot,
+    pendingById,
+    primaryImageByFrame,
+  ] = await Promise.all([
+    scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
+    scopedDb.shotPromptVersions.getSelectedMotionByShots(shotIds),
+    loadShotDialogueLines(scopedDb, sequence.id),
+    loadSceneContextBySequence(scopedDb, sequence.id),
+    scopedDb.shotDialogue.getSelectedSectionsBySequence(sequence.id),
+    scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
+    // The pre-prompt stand-in is a `kind: 'preview'` row too (#1101) —
+    // resolved by frame like the still, not read off a frame column.
+    scopedDb.frameVariants.listLatestPreviewsByFrameIds(frameIds),
+    scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds),
+    scopedDb.videoVariants.getSelectedByShotIds(shotIds),
+    scopedDb.videoVariants.getPrimaryByShotIds(shotIds),
+    scopedDb.frameVariants.getByIds(pendingPromoteIds),
+    scopedDb.frameVariants.getPrimaryByFrameIds(frameIds),
+  ]);
   // When each line is heard (#1853), off the selected reading — never stored.
   const timingByShot = new Map(
     sections.map((section) => [section.shotId, sectionLineTiming(section)])
@@ -65,40 +94,6 @@ export async function loadShotViews(
     legacyDialogueOf: (shotId) => motionByShot.get(shotId)?.dialogue,
     scriptDialogueOf: (sceneId) => sceneContext.get(sceneId)?.script?.dialogue,
   });
-  // The still lives on the selected `frame_variants` row and the video on the
-  // segment's selected `video_variants` row (#1067) — one batch read each, so
-  // assembling the sequence stays O(1) queries.
-  const shotIds = shotRows.map((s) => s.id);
-  const pendingPromoteIds = [
-    ...new Set(
-      anchorRows
-        .map((f) => f.pendingPromoteVersionId)
-        .filter((id): id is string => Boolean(id))
-    ),
-  ];
-  const [
-    selectedByFrame,
-    previewByFrame,
-    selectedPromptByFrame,
-    selectedVideoByShot,
-    primaryVideoByShot,
-    pendingById,
-    primaryImageByFrame,
-  ] = await Promise.all([
-    scopedDb.frameVariants.getSelectedByFrameIds(anchorRows.map((f) => f.id)),
-    // The pre-prompt stand-in is a `kind: 'preview'` row too (#1101) —
-    // resolved by frame like the still, not read off a frame column.
-    scopedDb.frameVariants.listLatestPreviewsByFrameIds(
-      anchorRows.map((f) => f.id)
-    ),
-    scopedDb.framePromptVersions.getSelectedByFrameIds(
-      anchorRows.map((f) => f.id)
-    ),
-    scopedDb.videoVariants.getSelectedByShotIds(shotIds),
-    scopedDb.videoVariants.getPrimaryByShotIds(shotIds),
-    scopedDb.frameVariants.getByIds(pendingPromoteIds),
-    scopedDb.frameVariants.getPrimaryByFrameIds(anchorRows.map((f) => f.id)),
-  ]);
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
   return shotRows.map((shot) => {
     const frame = anchorsByShot.get(shot.id);

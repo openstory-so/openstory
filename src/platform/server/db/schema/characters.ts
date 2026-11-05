@@ -102,6 +102,10 @@ export const characters = snakeCase.table(
     // no-ops); picking a completed voice or failing this husk clears it.
     // Persist promotes only when this still names the finishing row.
     pendingPromoteVoiceVersionId: text(),
+    // A photo the writer uploaded to draw the default look's sheet from
+    // (#2254): every default sheet run sends it as the reference, and its URL
+    // joins that sheet's hash. Null when the character has none.
+    referencePhotoUrl: text(),
     // First appearance in script
     firstMentionSceneId: text(),
     firstMentionText: text(),

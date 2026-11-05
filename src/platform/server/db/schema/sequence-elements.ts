@@ -61,6 +61,8 @@ export const sequenceElements = snakeCase.table(
     // media-less elements.
     imageUrl: text(),
     imagePath: text(), // R2 key
+    // The upload showed a real person on the likeness ledger (#2238).
+    personInMedia: integer({ mode: 'boolean' }).default(false).notNull(),
     // Vision analysis status
     visionStatus: text()
       .$type<ElementVisionStatus>()
@@ -86,6 +88,11 @@ export const sequenceElements = snakeCase.table(
   },
   (table) => [
     index('idx_sequence_elements_sequence_id').on(table.sequenceId),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_sequence_elements_vision_updated').on(
+      table.visionStatus,
+      table.updatedAt
+    ),
     uniqueIndex('sequence_elements_sequence_token_key').on(
       table.sequenceId,
       table.token
@@ -105,4 +112,5 @@ export type SequenceElementMinimal = Pick<
   | 'consistencyTag'
   | 'kind'
   | 'durationSeconds'
+  | 'personInMedia'
 >;

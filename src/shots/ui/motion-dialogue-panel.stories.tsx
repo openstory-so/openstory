@@ -32,6 +32,7 @@ const voice: SequenceElementMinimal = {
   consistencyTag: 'sarah-voice',
   kind: 'audio',
   durationSeconds: 4.2,
+  personInMedia: false,
 };
 
 const AUDIO_URL =

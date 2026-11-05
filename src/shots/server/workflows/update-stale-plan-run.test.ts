@@ -475,6 +475,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       lookId: 'gala',
       lookVersionId: 'lookver-gala',
       lookStyling: null,
+      referencePhotoUrl: null,
       bibleVersionId: 'bible-1',
       // what the hash reads
       characterMetadata: {

@@ -313,6 +313,12 @@ export type CharacterSheetHashInput = {
    */
   faceSheetVersionId: string | null;
   /**
+   * The character's reference photo (#2254), on the default look only: the
+   * image that look is drawn from. Joins every digest shape once set, so no
+   * digest stamped before it moves.
+   */
+  referencePhotoUrl: string | null;
+  /**
    * `talentSheetHash` and `talent` stay on the digest, always null, so
    * existing digests still verify.
    */
@@ -360,10 +366,12 @@ function characterSheetHashBody(
   // Every shape, same as styling: a legacy digest that omitted the face
   // must not verify a look once the default sheet's version is known.
   const faceSheetVersionId = trim(input.faceSheetVersionId);
+  const referencePhotoUrl = trim(input.referencePhotoUrl);
   return {
     artifact: 'character:sheet',
     ...(styling ? { styling } : {}),
     ...(faceSheetVersionId ? { faceSheetVersionId } : {}),
+    ...(referencePhotoUrl ? { referencePhotoUrl } : {}),
     characterBible: {
       ...(kind === 'named' ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
@@ -427,6 +435,7 @@ const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   styling: z.string().nullable(),
   faceSheetVersionId: z.string().nullable(),
+  referencePhotoUrl: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
   styleConfigHash: z.string().nullable(),

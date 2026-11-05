@@ -29,6 +29,7 @@ describe('copySequenceElements', () => {
       imagePath: 'elements/organization-1/seq-a/el-1.mp4',
       kind: 'video',
       durationSeconds: 22.5,
+      personInMedia: true,
       visionStatus: 'pending',
       description: null,
       consistencyTag: null,
@@ -44,7 +45,11 @@ describe('copySequenceElements', () => {
     });
 
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'video', durationSeconds: 22.5 })
+      expect.objectContaining({
+        kind: 'video',
+        durationSeconds: 22.5,
+        personInMedia: true,
+      })
     );
     // Vision reads pixels; a clip has none, so no vision run even though the
     // source never finished one.

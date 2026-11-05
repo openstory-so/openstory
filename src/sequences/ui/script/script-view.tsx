@@ -33,6 +33,8 @@ import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
 import { StyleSelector } from '@/look/ui/style-selector';
 import { CastSelector } from '@/cast/ui/cast-selector';
+import { renderingOfStyle } from '@/cast/rendering';
+import { parseStyleConfig } from '@/look/style-config';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -484,6 +486,8 @@ export const ScriptView: FC<{
   const { locationIds: selectedLocationIds, castCharacterIds } = selections;
   const [draftElements, setDraftElements] = useState<DraftElementUpload[]>([]);
   const [isElementBusy, setIsElementBusy] = useState(false);
+  // A new character's photo or sheet still finishing (#2254).
+  const [isCastBusy, setIsCastBusy] = useState(false);
   const elementSelectorRef = useRef<ElementSelectorHandle>(null);
   const dragCounterRef = useRef(0);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -1301,7 +1305,8 @@ export const ScriptView: FC<{
     Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
   const isSubmitting = peekCreatingSequence() !== null;
-  const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
+  const isDisabled =
+    !isReady || isSubmitting || isEnhancing || isElementBusy || isCastBusy;
 
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
@@ -1309,6 +1314,11 @@ export const ScriptView: FC<{
     (isEditing ? 0 : castCharacterIds.length) +
     selectedLocationIds.length +
     (isEditing ? 0 : draftElements.length);
+  // What a character or location made in the pickers is rendered as.
+  const newReferenceRendering = () =>
+    renderingOfStyle(
+      selectedStyle ? parseStyleConfig(selectedStyle.config) : null
+    );
   const referenceSelectors = (
     <>
       {/* A sequence that exists is cast on its Cast tab and with `@`. */}
@@ -1322,9 +1332,12 @@ export const ScriptView: FC<{
             setSelections((s) => ({ ...s, castCharacterIds: v }))
           }
           disabled={loading}
+          rendering={newReferenceRendering}
+          onImagesPendingChange={setIsCastBusy}
         />
       )}
       <LocationSuggestionSelector
+        rendering={newReferenceRendering}
         locations={isAuthenticated ? organizationLocations : []}
         signedOut={!isAuthenticated}
         failed={organizationLocationsFailed}
@@ -1839,7 +1852,7 @@ export const ScriptView: FC<{
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
                       }
                     >
-                      {isSubmitting || isElementBusy ? (
+                      {isSubmitting || isElementBusy || isCastBusy ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
                         <GenerateSequenceIcon className="size-4" />
@@ -1848,11 +1861,13 @@ export const ScriptView: FC<{
                         ? 'Generating…'
                         : isElementBusy
                           ? 'Analyzing elements…'
-                          : !isAuthenticated
-                            ? 'Sign in to Generate'
-                            : isEditing
-                              ? 'Generate Copy'
-                              : 'Generate'}
+                          : isCastBusy
+                            ? 'Adding character images…'
+                            : !isAuthenticated
+                              ? 'Sign in to Generate'
+                              : isEditing
+                                ? 'Generate Copy'
+                                : 'Generate'}
                     </InButtonCost>
                   </span>
                   {/* Shine effect */}

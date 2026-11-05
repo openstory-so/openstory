@@ -49,6 +49,7 @@ import { generateId } from '@/platform/id';
 import { giftTokenRedemptions, giftTokens } from '@/platform/server/db/schema';
 
 import { getLogger } from '@/platform/logger';
+import { onPrimary } from '@/platform/server/db/d1-session';
 
 /**
  * Best-effort live balance push for the credit pill (#1090).
@@ -155,7 +156,10 @@ function mapBatchSource(
  * Read-only billing methods — balance checks, transaction history, settings.
  */
 function createBillingReadMethods(db: Database, organizationId: string) {
-  async function getBalance(): Promise<Microdollars> {
+  // Money reads stay on the primary: a replica can pass a spend another session just made (#2233).
+  const getBalance = (): Promise<Microdollars> => onPrimary(readBalance);
+
+  async function readBalance(): Promise<Microdollars> {
     const [row] = await db
       .select({ balance: credits.balance })
       .from(credits)
@@ -179,8 +183,11 @@ function createBillingReadMethods(db: Database, organizationId: string) {
    * serializes a database's statements, so a later read has a later clock
    * whichever isolate took it (#1881).
    */
-  async function readAvailable(
-    now = new Date(),
+  const readAvailable = (now = new Date(), reservationId?: string) =>
+    onPrimary(() => readAvailableOnPrimary(now, reservationId));
+
+  async function readAvailableOnPrimary(
+    now: Date,
     reservationId?: string
   ): Promise<{
     balance: Microdollars;
@@ -1535,7 +1542,11 @@ export function createBillingMethods(
    * cap is also full — that check comes before the cap, so a single-use code
    * the caller used does not come back as "fully redeemed".
    */
-  async function redeemGiftToken(opts: {
+  // The cap pre-check must not read a replica (#2233); the unique index closes the rest.
+  const redeemGiftToken = (opts: Parameters<typeof redeemOnPrimary>[0]) =>
+    onPrimary(() => redeemOnPrimary(opts));
+
+  async function redeemOnPrimary(opts: {
     code: string;
     organizationId: string;
     userId: string;

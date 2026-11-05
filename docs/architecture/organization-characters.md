@@ -175,8 +175,40 @@ What follows from one character in two sequences:
   its default look (the character's own id) and that look's first version.
   No cast link and no event (events are per sequence). The consistency tag
   is `char_<name>: <name>`, the tag a hand-added character of that name gets
-  in a sequence. The dialog and the cast panel's Add Character share one
-  form (`NewCharacterForm`).
+  in a sequence.
+- **One New character form** (#2254, `NewCharacterForm` + `useNewCharacter`)
+  on the Characters tab, the cast panel's Add Character and the create
+  screen's Cast picker: a name, an optional description (the bible's
+  `physicalDescription`) and an optional photo or sheet. From no sequence it
+  creates with `createOrganizationCharacterFn` (the Characters tab says
+  photoreal; the Cast picker says the picked style's medium,
+  `renderingOfStyle`); the cast panel with `createSequenceCharacterFn`.
+  - The image is uploaded on drop, before the character exists
+    (`presignCharacterDraftUploadFn`, `org/<id>/characters/drafts/`), and
+    goes through the likeness check and sign-off there, as an element does.
+  - Create never waits for the image: the character is made at once and
+    `useNewCharacter` finishes the image after, as a promise the form hands
+    over. The image is described once cleared or signed
+    (`describeUploadFn` → `describeUpload`, billed per call; it refuses an
+    upload with no verdict before calling the model). While the form is open
+    the description fills a blank one; after Create, a character made with
+    no description takes it (`updateOrganizationCharacterFn`), before the
+    attach so the sheet run it starts is not revoked.
+  - The same vision call says whether the image is already a sheet. A sheet
+    is attached as the default look's sheet
+    (`setCharacterSheetFromUploadFn`). A photo becomes the character's
+    reference photo (`setCharacterReferencePhotoFromUploadFn`,
+    `characters.referencePhotoUrl`) and a sheet run starts, drawn from it;
+    every later default-look sheet is drawn from it too, until it is removed
+    on the character's page. `isPerson` follows the ledger either way. A
+    failed upload, check or attach keeps the character and says so in a
+    toast. A failed description says so too, and the image is still
+    attached, as a reference photo. The Cast picker selects the new
+    character and the draft keeps its script; Generate waits while a new
+    character's image is still finishing, as it does for an element, so
+    the run never draws a text sheet the photo then replaces.
+  - Closing the dialog after any edit asks first (`useDiscardGuard`), as
+    New location does.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getOrganizationCharacterShotCountsFn`).
@@ -224,7 +256,11 @@ the script then names her like any cast member.
   the db method, not only by its callers), and while a live cast member of
   the sequence already has her name (`ConflictError`, `assertNameFree`): the
   text could not tell two ADAs apart. The same check runs before a removed
-  link is brought back, by an attach or by Restore. Two characters may still
+  link is brought back, by an attach or by Restore, and before a rename
+  (`updateBible` with a `name`), in every sequence that casts her live, from
+  any sequence or none (#2248): a clash in another sequence would fail its
+  generation plan. The error names the sequence where the clash is. Two
+  characters may still
   share a plain name when analysis made them; nothing refuses that.
   Attaching a character the sequence already casts is idempotent.
 - **Surfaces.** The script editor's `@` dropdown lists the organization's characters
@@ -295,7 +331,7 @@ the script then names her like any cast member.
   the cast link; rename one of them.
 - **A character the page cannot list** (another organization's, deleted, or gone)
   reads "Character not found" with a way back, not an error.
-- MCP: `list_library_characters`.
+- MCP: `list_library_characters`, `get_library_character`, and `update_character` with no `sequenceId` (#2252).
 
 ## Writes
 

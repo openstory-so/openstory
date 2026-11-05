@@ -4,7 +4,7 @@ import {
   elementKindFromFilename,
   type SequenceElementKind,
 } from '@/cast/element-kind';
-import { requireUploadRights } from '@/cast/server/upload-rights';
+import { requireUploadRightsFor } from '@/cast/server/upload-rights';
 import { measureStoredMediaDuration } from './media-duration';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 import type { SequenceElement } from '@/platform/server/db/schema';
@@ -52,13 +52,14 @@ async function triggerElementVision(params: {
  *
  * Every path that points a row at an uploaded object goes through here:
  * draft attach at creation, finalize on an existing sequence, and replace.
+ * Returns whether the ledger saw a real person in it (#2238), for the row.
  */
 async function assertElementUploadAttachable(params: {
   scopedDb: ScopedDb;
   path: string;
   filename: string;
   organizationId: string;
-}): Promise<void> {
+}): Promise<{ personInMedia: boolean }> {
   const { scopedDb, path, filename, organizationId } = params;
   if (!isValidElementStoragePath(path, organizationId)) {
     throw new ValidationError(
@@ -75,9 +76,12 @@ async function assertElementUploadAttachable(params: {
   // still be sent to a motion model (#2153). An unknown extension predates
   // #1559 and was an image.
   const kind = elementKindAgreed(path, filename);
-  if (kind !== 'audio') {
-    await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
-  }
+  if (kind === 'audio') return { personInMedia: false };
+  const rights = await requireUploadRightsFor(
+    scopedDb,
+    elementImageUrlFromPath(path)
+  );
+  return { personInMedia: rights.depictsRealPerson };
 }
 
 /**
@@ -106,7 +110,7 @@ export async function attachElementUpload(params: {
   const { scopedDb, organizationId, userId, sequenceId, path, filename } =
     params;
 
-  await assertElementUploadAttachable({
+  const { personInMedia } = await assertElementUploadAttachable({
     scopedDb,
     path,
     filename,
@@ -144,6 +148,7 @@ export async function attachElementUpload(params: {
           null),
     imageUrl,
     imagePath: path,
+    personInMedia,
     description: hasInlineVision ? params.description : null,
     consistencyTag: hasInlineVision ? params.consistencyTag : null,
     visionStatus: visionDone ? 'completed' : 'pending',
@@ -282,7 +287,7 @@ export async function replaceElementUpload(params: {
   durationSeconds?: number | null;
 }): Promise<SequenceElement> {
   const { scopedDb, organizationId, sequenceId } = params;
-  await assertElementUploadAttachable({
+  const { personInMedia } = await assertElementUploadAttachable({
     scopedDb,
     path: params.path,
     filename: params.filename,
@@ -303,6 +308,7 @@ export async function replaceElementUpload(params: {
   const updated = await scopedDb.sequenceElements.update(params.elementId, {
     imageUrl,
     imagePath: params.path,
+    personInMedia,
     uploadedFilename: params.filename,
     kind,
     durationSeconds:

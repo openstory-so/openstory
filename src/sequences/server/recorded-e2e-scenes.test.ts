@@ -203,6 +203,7 @@ describe('recorded derived still fixtures', () => {
           id: entry.locationId,
           referenceImageUrl: `https://fixture/${entry.locationId}`,
           referenceInputHash: null,
+          referencePersonInMedia: false,
           selectedReferenceVersionId: null,
           referenceStatus: 'completed',
         }));
@@ -217,6 +218,7 @@ describe('recorded derived still fixtures', () => {
           imageUrl: `https://fixture/${entry.token}`,
           kind: 'image',
           durationSeconds: null,
+          personInMedia: false,
         }));
       const dir = resolve(
         dirname(fileURLToPath(import.meta.url)),

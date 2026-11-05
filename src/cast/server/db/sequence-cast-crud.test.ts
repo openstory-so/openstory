@@ -2156,6 +2156,42 @@ describe('organization characters (#2017)', () => {
     expect(await looks().listByCharacter(ada.id)).toHaveLength(2);
   });
 
+  it('a rename runs the name check in every sequence that casts the character (#2248)', async () => {
+    const make = async (seq: string, characterId: string, name: string) =>
+      await chars().create(
+        {
+          sequenceId: seq,
+          characterId,
+          name,
+          rendering: 'Photoreal live action',
+        },
+        analysis
+      );
+    const edit = { actorId, source: 'edit' } as const;
+    const other = await secondSequence();
+    const ada = await make(sequenceId, 'char_001', 'Ada');
+    await chars().attach(other, ada.id, { actorId });
+    await make(other, 'char_002', 'Grace');
+    const gone = await make(sequenceId, 'char_003', 'Joan');
+    await chars().softDelete(sequenceId, gone.id, { actorId });
+
+    // Grace is live only in the other sequence: refused from either side.
+    await expect(
+      chars().updateBible(sequenceId, ada.id, { name: 'Grace' }, edit)
+    ).rejects.toThrow(
+      'Grace is already a name in the cast of S2. Rename one first.'
+    );
+    await expect(
+      chars().updateBible(null, ada.id, { name: 'GRACE' }, edit)
+    ).rejects.toThrow('already a name');
+    expect((await chars().getCurrent(ada.id))?.name).toBe('Ada');
+
+    // A removed member's name and the character's own are free.
+    await chars().updateBible(sequenceId, ada.id, { name: 'Joan' }, edit);
+    await chars().updateBible(null, ada.id, { name: 'JOAN' }, edit);
+    expect((await chars().getCurrent(ada.id))?.name).toBe('JOAN');
+  });
+
   it("a revive or restore runs the name check, and an attach refuses another organization's sequence (#2050)", async () => {
     const ada = await chars().create(
       {

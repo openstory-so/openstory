@@ -1,10 +1,29 @@
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { selectFilesToAccept } from './element-selector';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { LocalUploadError, selectFilesToAccept } from './element-selector';
 import { MAX_SEQUENCE_ELEMENTS } from './limits';
 import { getFileKey } from '@/ui/upload';
 
 // Pinned lastModified so keys (`name-lastModified`) are deterministic.
 const file = (name: string) => new File([], name, { lastModified: 1 });
+
+describe('LocalUploadError', () => {
+  it('shows the failure and a retry and a remove control', () => {
+    const html = renderToStaticMarkup(
+      createElement(LocalUploadError, {
+        message: 'Rights to this person’s likeness were not confirmed',
+        onRetry: () => {},
+        onRemove: () => {},
+      })
+    );
+    expect(html).toContain(
+      'Rights to this person’s likeness were not confirmed'
+    );
+    expect(html).toContain('Retry');
+    expect(html).toContain('Remove');
+  });
+});
 
 describe('selectFilesToAccept', () => {
   it('accepts new files and skips duplicates (existing and within the batch)', () => {

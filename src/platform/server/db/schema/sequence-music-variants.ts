@@ -84,6 +84,11 @@ export const sequenceMusicVariants = snakeCase.table(
   },
   (table) => [
     index('idx_sequence_music_variants_sequence').on(table.sequenceId),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_sequence_music_variants_status_created').on(
+      table.status,
+      table.createdAt
+    ),
   ]
 );
 

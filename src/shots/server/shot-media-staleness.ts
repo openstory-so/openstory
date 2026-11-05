@@ -11,13 +11,21 @@ import {
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
-import { loadSequenceSegments } from '@/shots/server/sequence-segments';
+import {
+  loadSequenceSegments,
+  type SequenceSegmentsShared,
+} from '@/shots/server/sequence-segments';
 import { loadVoiceMovedShotIds } from '@/shots/server/shot-dialogue';
 import type { StartFrameSequence } from '@/shots/use-start-frame';
 
 export type ShotMediaStaleness = {
   dialogue: ArtifactStaleness;
   video: ArtifactStaleness;
+};
+
+/** Reads the caller already made, and the shots with a speech in flight. */
+export type ShotMediaShared = SequenceSegmentsShared & {
+  recording: ReadonlySet<string>;
 };
 
 function clipsMatchKey(
@@ -31,9 +39,10 @@ function clipsMatchKey(
 export async function loadShotMediaStaleness(
   scopedDb: ScopedDb,
   sequence: StartFrameSequence & { id: string },
-  shots: readonly Shot[]
+  shots: readonly Shot[],
+  shared?: ShotMediaShared
 ): Promise<Map<string, ShotMediaStaleness>> {
-  const states = await loadShotMediaStates(scopedDb, sequence, shots);
+  const states = await loadShotMediaStates(scopedDb, sequence, shots, shared);
   return new Map([...states].map(([id, state]) => [id, state.staleness]));
 }
 
@@ -44,25 +53,23 @@ export async function loadShotMediaStaleness(
 export async function loadShotMediaStates(
   scopedDb: ScopedDb,
   sequence: StartFrameSequence & { id: string },
-  shots: readonly Shot[]
+  shots: readonly Shot[],
+  shared?: ShotMediaShared
 ): Promise<
   Map<string, { staleness: ShotMediaStaleness; clipInFlight: boolean }>
 > {
-  const { assembled, versions, live } = await loadSequenceSegments(
-    scopedDb,
-    sequence,
-    shots
-  );
-  // A voice change dates every shot recorded alongside it, not just the
-  // speaker's own (#1802).
-  const [voiceMoved, recording] = await Promise.all([
-    loadVoiceMovedShotIds(scopedDb, sequence.id, shots),
-    // A speech in flight that will become the shot's audio: updating, not
-    // stale, so nothing offers to record it again meanwhile.
-    scopedDb.shotDialogue.listShotIdsWithLiveClaim(
-      shots.map((shot) => shot.id)
-    ),
-  ]);
+  // A voice change dates every shot recorded alongside it (#1802).
+  const [{ assembled, versions, live }, voiceMoved, recording] =
+    await Promise.all([
+      loadSequenceSegments(scopedDb, sequence, shots, shared),
+      loadVoiceMovedShotIds(scopedDb, sequence.id, shots),
+      // A speech in flight that will become the shot's audio: updating, not
+      // stale, so nothing offers to record it again meanwhile.
+      shared?.recording ??
+        scopedDb.shotDialogue.listShotIdsWithLiveClaim(
+          shots.map((shot) => shot.id)
+        ),
+    ]);
 
   const videoByShot = new Map<
     string,

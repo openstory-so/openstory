@@ -34,8 +34,8 @@ import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { loadShotMediaStates } from '@/shots/server/shot-media-staleness';
 import {
   computeShotStaleness,
-  loadShotStalenessBatch,
   loadShotStalenessReads,
+  loadShotStalenessRefs,
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
@@ -80,7 +80,10 @@ export async function computeGenerationPlan(
     sequenceOverrides?: FreshPlanSequenceOverrides;
   }
 ): Promise<PlanUnit[]> {
-  const row = await scopedDb.sequences.getById(sequenceId);
+  const [row, shots] = await Promise.all([
+    scopedDb.sequences.getById(sequenceId),
+    scopedDb.shots.listBySequence(sequenceId),
+  ]);
   if (!row) throw new NotFoundError(`Sequence ${sequenceId} not found`);
   const sequence = {
     ...row,
@@ -90,7 +93,6 @@ export async function computeGenerationPlan(
     includeMusic: flags?.includeMusic ?? row.includeMusic,
     status: options?.ignoreOwnProcessing ? ('completed' as const) : row.status,
   };
-  const shots = await scopedDb.shots.listBySequence(sequenceId);
   // Script is the root, not a unit: nothing to plan until it made shots.
   if (shots.length === 0) return [];
   const units = planUnits(
@@ -107,15 +109,19 @@ async function loadPlanInput(
 ) {
   // No anchor backfill: a read does not write. A frameless shot's prompt and
   // still read `missing`, which is what a fresh anchor would say too.
-  const { anchorsByShot, sceneContext, selectedByFrame, refs } =
-    await loadShotStalenessBatch(scopedDb, sequence);
-  const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
   const shotIds = shots.map((shot) => shot.id);
-
-  // The cast and locations are the batch's `refs`: the same read, once (#2082).
-  const { characters, locations } = refs;
-  const [reads, media, liveDialogue, music, primaryImageByFrame] =
+  const [{ anchorsByShot, sceneContext, refs }, liveDialogue] =
     await Promise.all([
+      loadShotStalenessRefs(scopedDb, sequence),
+      scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
+    ]);
+  const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
+
+  // None of these reads needs another's answer (#2234).
+  const { characters, locations } = refs;
+  const [selectedByFrame, reads, media, music, primaryImageByFrame, sheets] =
+    await Promise.all([
+      scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
       loadShotStalenessReads(
         scopedDb,
         sequence.id,
@@ -124,14 +130,18 @@ async function loadPlanInput(
         frameIds,
         sceneContext
       ),
-      loadShotMediaStates(scopedDb, sequence, shots),
-      scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
+      loadShotMediaStates(scopedDb, sequence, shots, {
+        sceneContext,
+        characters,
+        elements: refs.elements,
+        recording: liveDialogue,
+      }),
       sequence.includeMusic
         ? readMusicPromptStaleness(scopedDb, sequence)
         : Promise.resolve(null),
       scopedDb.frameVariants.getPrimaryByFrameIds(frameIds),
+      loadSheetVerdicts(scopedDb, sequence, sceneContext, refs),
     ]);
-
   // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
   // the hashing is per shot. Null = an uncomputable compare.
   const stalenessByShot = new Map(
@@ -279,6 +289,52 @@ async function loadPlanInput(
     });
   }
 
+  return {
+    processing: sequence.status === 'processing',
+    runStopAt: resolveStopAt({
+      generationStopAt: sequence.generationStopAt,
+    }),
+    ...sheets,
+    // Element references have no staleness or status of their own: an image
+    // is the whole story.
+    elementRefs: refs.elements.map((e) => ({
+      id: e.id,
+      ref: artifactVerdict({ exists: !!e.imageUrl }),
+    })),
+    voices: characters
+      .filter((c) => speakers.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        voice: artifactVerdict({
+          exists: !!c.voiceId,
+          inFlight: !c.voiceId && c.pendingPromoteVoiceVersionId != null,
+        }),
+      })),
+    shots: planShots,
+    // The Music switch (`includeMusic`): off, the sequence owes no music.
+    music: music && {
+      prompt: artifactVerdict({
+        exists: !!sequence.musicPrompt,
+        staleness: music.musicPrompt,
+      }),
+      track: artifactVerdict({
+        exists: !!sequence.musicUrl,
+        staleness: music.musicTrack,
+        inFlight: sequence.musicStatus === 'generating',
+      }),
+    },
+  };
+}
+
+/** Every sheet's verdict, from rows that depend on no shot. */
+async function loadSheetVerdicts(
+  scopedDb: ScopedDb,
+  sequence: Sequence,
+  sceneContext: Awaited<
+    ReturnType<typeof loadShotStalenessRefs>
+  >['sceneContext'],
+  refs: Awaited<ReturnType<typeof loadShotStalenessRefs>>['refs']
+) {
   // Every sheet's verdict from rows read once per sequence (#2082): the
   // live sheet versions, the location photos and the style.
   // The compare is the detail page's (`lookSheetStaleness`,
@@ -288,6 +344,7 @@ async function loadPlanInput(
   // One sheet per look some scene uses (#2015): a character's default look
   // always, any other only once a live scene picks it. A look nobody wears
   // gets a sheet when someone asks for one, not from the plan.
+  const { characters, locations } = refs;
   const pickedLookIds = new Set(
     [...sceneContext.values()].flatMap((ctx) =>
       Object.values(ctx.scene.continuity?.characterLooks ?? {})
@@ -390,41 +447,5 @@ async function loadPlanInput(
       }))
     ),
   ]);
-
-  return {
-    processing: sequence.status === 'processing',
-    runStopAt: resolveStopAt({
-      generationStopAt: sequence.generationStopAt,
-    }),
-    characterSheets,
-    locationSheets,
-    // Element references have no staleness or status of their own: an image
-    // is the whole story.
-    elementRefs: refs.elements.map((e) => ({
-      id: e.id,
-      ref: artifactVerdict({ exists: !!e.imageUrl }),
-    })),
-    voices: characters
-      .filter((c) => speakers.has(c.id))
-      .map((c) => ({
-        id: c.id,
-        voice: artifactVerdict({
-          exists: !!c.voiceId,
-          inFlight: !c.voiceId && c.pendingPromoteVoiceVersionId != null,
-        }),
-      })),
-    shots: planShots,
-    // The Music switch (`includeMusic`): off, the sequence owes no music.
-    music: music && {
-      prompt: artifactVerdict({
-        exists: !!sequence.musicPrompt,
-        staleness: music.musicPrompt,
-      }),
-      track: artifactVerdict({
-        exists: !!sequence.musicUrl,
-        staleness: music.musicTrack,
-        inFlight: sequence.musicStatus === 'generating',
-      }),
-    },
-  };
+  return { characterSheets, locationSheets };
 }

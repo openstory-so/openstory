@@ -42,6 +42,7 @@ import {
   undiscardLocationSheetVersion,
   updateCharacter,
   updateLocation,
+  updateOrganizationCharacter,
 } from '@/cast/server/cast-edit';
 import {
   characterVoiceVersionReadSchema,
@@ -70,7 +71,7 @@ const destructive = { ...writeAnnotations, destructiveHint: true };
 
 const sequenceId = ulidSchema;
 const characterId = ulidSchema.describe(
-  'Database character ID (list_characters / get_character), not the char_* token.'
+  'Database character ID (list_characters / get_character, or list_library_characters for any of the organization’s), not the char_* token.'
 );
 const locationId = ulidSchema.describe(
   'Database location ID (list_locations / get_location; the same id list_library_locations gives), not the loc_* token.'
@@ -197,11 +198,15 @@ const addCharacterToSequenceTool = openstoryTool({
 const updateCharacterTool = openstoryTool({
   name: 'update_character',
   description:
-    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. isPerson cannot be set to false while its sheet is an uploaded photo of a real person. The character’s sheet and the prompts that use it become stale; no generation starts.',
+    'Edit a character’s bible (read it with get_character, or get_library_character from no sequence). The character is the organization’s: the edit changes it in every sequence that casts it. Leave sequenceId out to edit it from no sequence, as on the Characters page; it need not be cast anywhere. An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. isPerson cannot be set to false while its sheet is an uploaded photo of a real person. The character’s sheet and the prompts that use it become stale; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterBibleFieldsSchema
-    .extend({ sequenceId, characterId, name: name.optional() })
+    .extend({
+      sequenceId: sequenceId.optional(),
+      characterId,
+      name: name.optional(),
+    })
     .extend({ voiceOnly: z.boolean() })
     .strict(),
   outputSchema: characterResult,
@@ -209,14 +214,21 @@ const updateCharacterTool = openstoryTool({
     { sequenceId: id, characterId: charId, ...fields },
     { scopedDb, userId }
   ) => {
-    const sequence = await productionAccess(scopedDb).sequence(id);
-    const character = await updateCharacter(
-      scopedDb,
-      { userId },
-      sequence.id,
-      charId,
-      fields
-    );
+    const character =
+      id === undefined
+        ? await updateOrganizationCharacter(
+            scopedDb,
+            { userId },
+            charId,
+            fields
+          )
+        : await updateCharacter(
+            scopedDb,
+            { userId },
+            (await productionAccess(scopedDb).sequence(id)).id,
+            charId,
+            fields
+          );
     return {
       data: { characterId: character.id },
       summary: `Updated character ${character.name}.`,

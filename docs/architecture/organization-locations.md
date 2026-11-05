@@ -129,7 +129,9 @@ nothing is drawn: the sequence reads the bible and the sheet as they are.
   db method), and while a live location of the sequence already has its name
   (`ConflictError`, `assertNameFree`): a scene names its place in the
   slugline, and two of one name could not be told apart. Restore and Replace
-  run the same name check.
+  run the same name check, and so does a rename (`updateBible` with a
+  `name`), in every sequence that uses the location live, from any sequence
+  or none (#2248). The error names the sequence where the clash is.
 
 ## Replace (recast)
 
@@ -214,6 +216,13 @@ sheet hash read no sequence style.
   create and on edit.
 - Analysis fills it from the sequence style's medium, else photoreal
   (`renderingOfStyle`). It is not on the LLM's wire schema.
+- New location from the create screen's Locations picker takes the picked
+  style's medium (`renderingOfStyle`), as New character does in the Cast
+  picker; the Locations page says photoreal.
+- New location's first photo, once cleared or signed, fills a blank
+  description (`describeUploadFn`, #2254) in the background, as a new
+  character's image does; only Create waits for it. Closing after an edit
+  asks first.
 - It is in `LOCATION_SHEET_BIBLE_FIELDS`, so an edit to it revokes the sheet
   claim and stales the sheet. The shot prompts do not read it.
 

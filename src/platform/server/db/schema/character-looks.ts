@@ -74,6 +74,10 @@ export const characterLooks = snakeCase.table(
     uniqueIndex('character_looks_default_key')
       .on(table.characterId)
       .where(sql`${table.isDefault} = 1`),
+    // Reconcile sweep (#2235). IS NOT NULL is not bound, so partial is used.
+    index('idx_character_looks_sheet_claim')
+      .on(table.pendingPromoteSheetVersionId, table.updatedAt)
+      .where(sql`${table.pendingPromoteSheetVersionId} IS NOT NULL`),
   ]
 );
 

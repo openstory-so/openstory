@@ -529,6 +529,7 @@ describe('a dialogue line bound to a voice element', () => {
     consistencyTag: 'sarah_voice',
     kind: 'audio' as const,
     durationSeconds: 6,
+    personInMedia: false,
   };
 
   const scene = {

@@ -1,0 +1,2 @@
+ALTER TABLE `location_sheet_variants` ADD `person_in_media` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `sequence_elements` ADD `person_in_media` integer DEFAULT false NOT NULL;

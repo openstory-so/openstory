@@ -104,6 +104,15 @@ export function assertQueuedWithFace(input: object): void {
   }
 }
 
+/** A sheet payload queued before reference photos (#2254). */
+export function assertQueuedWithReferencePhoto(input: object): void {
+  if (!('referencePhotoUrl' in input)) {
+    throw new WorkflowValidationError(
+      'Queued before character reference photos shipped. Run it again.'
+    );
+  }
+}
+
 /**
  * A sheet payload queued before the bible carried `rendering` (#2017): the
  * sheet would read the sequence's style, which is no longer on the payload.
@@ -179,6 +188,7 @@ function characterSheetHashInput(
     characterBible: characterBibleFields(input.characterMetadata),
     styling: input.lookStyling,
     faceSheetVersionId: input.face === null ? null : input.face.versionId,
+    referencePhotoUrl: input.referencePhotoUrl,
     talentSheetHash: null,
     talent: null,
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,

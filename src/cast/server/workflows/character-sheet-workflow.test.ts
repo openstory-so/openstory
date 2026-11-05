@@ -130,6 +130,7 @@ async function makeEvent(
     lookVersionId: 'lookver-1',
     lookStyling: null,
     face: null,
+    referencePhotoUrl: null,
     bibleVersionId: null,
     characterName: 'Sam',
     characterMetadata,

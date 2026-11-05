@@ -71,6 +71,7 @@ describe('buildElementDescription', () => {
       consistencyTag: entry.consistencyTag,
       kind: 'image',
       durationSeconds: null,
+      personInMedia: false,
     });
 
     expect(result).toBe(

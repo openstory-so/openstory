@@ -23,12 +23,36 @@ import type { SceneContext } from './scene-script';
 import { loadShotDialogueLines, shotDialogueResolver } from './shot-dialogue';
 import { dialogueLinesKey } from '@/shots/shot-dialogue';
 
-export async function loadLiveShotInputs(
+/** The rows `liveShotInputs` reads, none of which needs the cast or scenes. */
+export async function loadLiveShotReads(
   scopedDb: Pick<
     ScopedDb,
     'shotDialogue' | 'shotPromptVersions' | 'locations' | 'sequenceElements'
   >,
   sequenceId: string,
+  shots: readonly Shot[],
+  /** The sequence's elements when the caller already read them. */
+  loadedElements?: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>
+) {
+  const [linesByShotId, selectedMotionByShot, locations, elements] =
+    await Promise.all([
+      loadShotDialogueLines(scopedDb, sequenceId),
+      scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        shots.map((shot) => shot.id)
+      ),
+      scopedDb.locations.listWithReferences(sequenceId),
+      loadedElements ?? scopedDb.sequenceElements.list(sequenceId),
+    ]);
+  return { linesByShotId, selectedMotionByShot, locations, elements };
+}
+
+export function liveShotInputs(
+  {
+    linesByShotId,
+    selectedMotionByShot,
+    locations,
+    elements,
+  }: Awaited<ReturnType<typeof loadLiveShotReads>>,
   shots: readonly Shot[],
   characters: readonly (VoiceCharacter & {
     id: string;
@@ -40,16 +64,7 @@ export async function loadLiveShotInputs(
   })[],
   scriptBySceneId: ReadonlyMap<string, SceneContext>,
   sequence: StartFrameSequence
-): Promise<LoadedShotInputs> {
-  const [linesByShotId, selectedMotionByShot, locations, elements] =
-    await Promise.all([
-      loadShotDialogueLines(scopedDb, sequenceId),
-      scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shots.map((shot) => shot.id)
-      ),
-      scopedDb.locations.listWithReferences(sequenceId),
-      scopedDb.sequenceElements.list(sequenceId),
-    ]);
+): LoadedShotInputs {
   // The SAME answer a render trigger stamps the clip with — a different
   // ladder here would read a fresh render stale.
   const dialogueOf = shotDialogueResolver({

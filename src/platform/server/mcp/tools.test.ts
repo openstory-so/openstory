@@ -3266,6 +3266,48 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject({ token: 'char_maya_ross_2' });
   });
 
+  it('reads and edits a character no sequence casts, with no sequenceId (#2252)', async () => {
+    const cast = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_uncast',
+      name: 'Uncast',
+    });
+    await data('delete_character', { sequenceId, characterId: cast.id });
+    await db.delete(sequenceEvents).where(eq(sequenceEvents.targetId, cast.id));
+
+    await data('update_character', {
+      characterId: cast.id,
+      voiceOnly: false,
+      movement: 'Strides',
+    });
+    expect(await data('get_library_character', { id: cast.id })).toMatchObject({
+      character: {
+        id: cast.id,
+        name: 'Uncast',
+        movement: 'Strides',
+        lastUsedAt: null,
+        sequences: [],
+      },
+    });
+    // An edit from no sequence writes no event.
+    expect(
+      await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.targetId, cast.id))
+    ).toEqual([]);
+    // Another organization cannot read or edit it.
+    scopedDb = createScopedDb(generateId(), generateId());
+    expect(await call('get_library_character', { id: cast.id })).toMatchObject(
+      refusal('NOT_FOUND')
+    );
+    expect(
+      await call('update_character', { characterId: cast.id, voiceOnly: false })
+    ).toMatchObject(refusal('NOT_FOUND'));
+    scopedDb = createScopedDb(organizationId, generateId());
+  });
+
   it('keeps a character a person while an uploaded photo says so (#2065)', async () => {
     const actor = { userId: actorId };
     const photo = await castCharacter({

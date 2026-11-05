@@ -214,7 +214,8 @@ export const sequences = snakeCase.table(
   },
   (table) => [
     index('idx_sequences_created_at').on(table.createdAt),
-    index('idx_sequences_status').on(table.status),
+    // Reconcile sweep (#2235) also ranges on updated_at. Bound status, so not partial.
+    index('idx_sequences_status_updated').on(table.status, table.updatedAt),
     index('idx_sequences_style_id').on(table.styleId),
     index('idx_sequences_organization_id').on(table.organizationId),
   ]

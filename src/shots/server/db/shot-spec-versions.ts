@@ -3,6 +3,7 @@
  * See `shot_spec_versions` for what a spec holds and what it leaves out.
  */
 
+import { selectInChunks } from '@/platform/server/db/select-in-chunks';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -224,14 +225,16 @@ export function createShotSpecVersionsMethods(db: Database) {
       shotIds: readonly string[]
     ): Promise<Map<string, ShotSpecVersion>> => {
       if (shotIds.length === 0) return new Map();
-      const rows = await db
-        .select({ version: shotSpecVersions })
-        .from(shots)
-        .innerJoin(
-          shotSpecVersions,
-          eq(shotSpecVersions.id, shots.selectedSpecVersionId)
-        )
-        .where(inArray(shots.id, [...shotIds]));
+      const rows = await selectInChunks(db, shotIds, 90, (chunk) =>
+        db
+          .select({ version: shotSpecVersions })
+          .from(shots)
+          .innerJoin(
+            shotSpecVersions,
+            eq(shotSpecVersions.id, shots.selectedSpecVersionId)
+          )
+          .where(inArray(shots.id, chunk))
+      );
       return new Map(rows.map((row) => [row.version.shotId, row.version]));
     },
   };

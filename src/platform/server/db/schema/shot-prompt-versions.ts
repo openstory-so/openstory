@@ -228,6 +228,11 @@ export const shotPromptVersions = snakeCase.table(
       .where(
         sql`${table.pendingInputHash} IS NOT NULL AND ${table.status} IN ('pending', 'generating')`
       ),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_shot_prompt_versions_status_created').on(
+      table.status,
+      table.createdAt
+    ),
   ]
 );
 

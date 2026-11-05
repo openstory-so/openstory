@@ -134,6 +134,7 @@ const character = (fields: Partial<CharacterRow>): CharacterRow =>
     voiceOnly: false,
     isPerson: true,
     rendering: 'Photoreal live action',
+    referencePhotoUrl: null,
     sheetStatus: 'completed',
     selectedBibleVersionId: null,
     deletedAt: null,
@@ -516,7 +517,7 @@ function clipIsStale(world: World): boolean {
   return segment.stale;
 }
 
-/** What a render of shot-1 would be sent now, as `loadLiveShotInputs` resolves it. */
+/** What a render of shot-1 would be sent now, as `liveShotInputs` resolves it. */
 function wouldBeSent(world: World): ReadonlySet<string> {
   const sent = resolveShotReferences(
     {
@@ -1408,6 +1409,15 @@ const SHEET_MATRIX: SheetRow[] = [
     mutation: "Alice's personality edited (motion only)",
     apply: (w) => ({ ...w, alice: { ...w.alice, personality: 'restless' } }),
     character: 'fresh',
+    location: 'fresh',
+  },
+  {
+    mutation: 'Alice given a reference photo (#2254)',
+    apply: (w) => ({
+      ...w,
+      alice: { ...w.alice, referencePhotoUrl: '/r2/alice-photo.jpg' },
+    }),
+    character: 'stale',
     location: 'fresh',
   },
   {

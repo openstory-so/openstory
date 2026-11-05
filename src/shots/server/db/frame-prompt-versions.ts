@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import { ownerId, selectInChunks } from '@/platform/server/db/select-in-chunks';
 import type { VisualPromptComponents } from '@/shots/scene-analysis.schema';
 import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
@@ -92,18 +93,21 @@ async function getSelectedImagePromptsByFrameIds(
 ): Promise<Map<string, FramePromptVersion>> {
   if (frameIds.length === 0) return new Map();
   const byFrame = new Map<string, FramePromptVersion>();
-  for (let i = 0; i < frameIds.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
-    const batch = frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH);
-    const rows = await db
-      .select({ frameId: frames.id, version: framePromptVersions })
-      .from(frames)
-      .innerJoin(
-        framePromptVersions,
-        eq(frames.selectedImagePromptVersionId, framePromptVersions.id)
-      )
-      .where(inArray(frames.id, batch));
-    for (const r of rows) byFrame.set(r.frameId, r.version);
-  }
+  const rows = await selectInChunks(
+    db,
+    frameIds,
+    SELECTED_PROMPTS_BY_FRAMES_BATCH,
+    (batch) =>
+      db
+        .select({ frameId: ownerId(frames.id), version: framePromptVersions })
+        .from(frames)
+        .innerJoin(
+          framePromptVersions,
+          eq(frames.selectedImagePromptVersionId, framePromptVersions.id)
+        )
+        .where(inArray(frames.id, batch))
+  );
+  for (const r of rows) byFrame.set(r.frameId, r.version);
   return byFrame;
 }
 
@@ -119,35 +123,39 @@ async function latestCompletedByFrameIds(
 ): Promise<Map<string, FramePromptVersion>> {
   if (frameIds.length === 0) return new Map();
   const byFrame = new Map<string, FramePromptVersion>();
-  for (let i = 0; i < frameIds.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
-    const batch = frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH);
-    const ranked = db
-      .select({
-        id: framePromptVersions.id,
-        position:
-          sql<number>`row_number() over (partition by ${framePromptVersions.frameId} order by ${framePromptVersions.createdAt} desc, ${framePromptVersions.id} desc)`.as(
-            'position'
-          ),
-      })
-      .from(framePromptVersions)
-      .where(
-        and(
-          inArray(framePromptVersions.frameId, batch),
-          eq(framePromptVersions.status, 'completed'),
-          hashedOnly ? isNotNull(framePromptVersions.inputHash) : undefined
+  const rows = await selectInChunks(
+    db,
+    frameIds,
+    SELECTED_PROMPTS_BY_FRAMES_BATCH,
+    (batch) => {
+      const ranked = db
+        .select({
+          id: framePromptVersions.id,
+          position:
+            sql<number>`row_number() over (partition by ${framePromptVersions.frameId} order by ${framePromptVersions.createdAt} desc, ${framePromptVersions.id} desc)`.as(
+              'position'
+            ),
+        })
+        .from(framePromptVersions)
+        .where(
+          and(
+            inArray(framePromptVersions.frameId, batch),
+            eq(framePromptVersions.status, 'completed'),
+            hashedOnly ? isNotNull(framePromptVersions.inputHash) : undefined
+          )
         )
-      )
-      .as('ranked_frame_prompts');
-    const latest = db
-      .select({ id: ranked.id })
-      .from(ranked)
-      .where(eq(ranked.position, 1));
-    const rows = await db
-      .select()
-      .from(framePromptVersions)
-      .where(inArray(framePromptVersions.id, latest));
-    for (const row of rows) byFrame.set(row.frameId, row);
-  }
+        .as('ranked_frame_prompts');
+      const latest = db
+        .select({ id: ranked.id })
+        .from(ranked)
+        .where(eq(ranked.position, 1));
+      return db
+        .select()
+        .from(framePromptVersions)
+        .where(inArray(framePromptVersions.id, latest));
+    }
+  );
+  for (const row of rows) byFrame.set(row.frameId, row);
   return byFrame;
 }
 
@@ -749,49 +757,42 @@ export function createFramePromptVersionsMethods(db: Database) {
     ): Promise<Map<string, FramePromptVersion[]>> => {
       if (frameIds.length === 0) return new Map();
       const byFrame = new Map<string, FramePromptVersion[]>();
-      for (
-        let i = 0;
-        i < frameIds.length;
-        i += SELECTED_PROMPTS_BY_FRAMES_BATCH
-      ) {
-        const rows = await db
-          .select()
-          .from(framePromptVersions)
-          .where(
-            and(
-              inArray(
-                framePromptVersions.frameId,
-                frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
-              ),
-              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+      const rows = await selectInChunks(
+        db,
+        frameIds,
+        SELECTED_PROMPTS_BY_FRAMES_BATCH,
+        (chunk) =>
+          db
+            .select()
+            .from(framePromptVersions)
+            .where(
+              and(
+                inArray(framePromptVersions.frameId, chunk),
+                inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+              )
             )
-          )
-          .orderBy(desc(framePromptVersions.createdAt));
-        for (const row of rows) {
-          const list = byFrame.get(row.frameId);
-          if (list) list.push(row);
-          else byFrame.set(row.frameId, [row]);
-        }
+            .orderBy(desc(framePromptVersions.createdAt))
+      );
+      for (const row of rows) {
+        const list = byFrame.get(row.frameId);
+        if (list) list.push(row);
+        else byFrame.set(row.frameId, [row]);
       }
       return byFrame;
     },
 
     getByIds: async (ids: string[]): Promise<FramePromptVersion[]> => {
       if (ids.length === 0) return [];
-      const rows: FramePromptVersion[] = [];
-      for (let i = 0; i < ids.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
-        rows.push(
-          ...(await db
+      const rows = await selectInChunks(
+        db,
+        ids,
+        SELECTED_PROMPTS_BY_FRAMES_BATCH,
+        (chunk) =>
+          db
             .select()
             .from(framePromptVersions)
-            .where(
-              inArray(
-                framePromptVersions.id,
-                ids.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
-              )
-            ))
-        );
-      }
+            .where(inArray(framePromptVersions.id, chunk))
+      );
       return rows;
     },
   };

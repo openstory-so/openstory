@@ -44,6 +44,8 @@ export const locationSheetVariants = snakeCase.table(
     // rows from before portraits and when the draw failed: tiles then crop
     // the sheet itself.
     portraitUrl: text(),
+    // An uploaded sheet the likeness ledger saw a real person in (#2238).
+    personInMedia: integer({ mode: 'boolean' }).default(false).notNull(),
 
     status: text()
       .$type<LocationSheetVariantStatus>()

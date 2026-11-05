@@ -43,6 +43,12 @@ import {
 import { errorHeadline, getLogger, toErrorPayload } from './logger';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import type { Sequence } from '@/platform/server/db/schema';
+import { getEnv } from '#env';
+import {
+  D1_BOOKMARK_COOKIE,
+  parseBookmark,
+  runInReadSession,
+} from '@/platform/server/db/d1-session';
 import { createMiddleware } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -175,6 +181,43 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
         );
       }
       throw error;
+    }
+  }
+);
+
+// ============================================================================
+// D1 read replication (#2233)
+// ============================================================================
+
+/**
+ * Request middleware: every query in the request reads from a D1 replica near
+ * the user, at or after the bookmark in the `d1_bookmark` cookie, which the
+ * response moves forward so the next request sees this one's writes. A
+ * client that sends a key instead of cookies starts on the primary, so its
+ * first query already sees the call before it.
+ */
+export const d1SessionMiddleware = createMiddleware().server(
+  async ({ next, request }) => {
+    const incoming = parseBookmark(request.headers.get('cookie'));
+    const keyed =
+      request.headers.has('authorization') || request.headers.has('x-api-key');
+    const { value, bookmark } = await runInReadSession(
+      getEnv().DB,
+      keyed ? 'first-primary' : (incoming ?? 'first-unconstrained'),
+      async () => next()
+    );
+    if (!bookmark || bookmark === incoming) return value;
+
+    const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+    const cookie = `${D1_BOOKMARK_COOKIE}=${bookmark}; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${secure}`;
+    try {
+      value.response.headers.append('set-cookie', cookie);
+      return value;
+    } catch {
+      // Immutable headers (a redirect or a fetched response): copy, then set.
+      const response = new Response(value.response.body, value.response);
+      response.headers.append('set-cookie', cookie);
+      return response;
     }
   }
 );

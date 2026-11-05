@@ -46,6 +46,7 @@ import type {
   VoicePreview,
   VoicePreviewUnusable,
   CharacterVoiceVersionStatus,
+  CharacterLook,
 } from '@/platform/server/db/schema';
 import {
   CHARACTER_BIBLE_FIELDS,
@@ -521,10 +522,13 @@ export function createCharactersMethods(db: Database, organizationId: string) {
    * had. A character with no look wears its legacy columns.
    */
   const resolveLooks = async (
-    rows: readonly OwnRow[]
+    rows: readonly OwnRow[],
+    /** Looks already read for these rows; the rest are ignored. */
+    loaded?: readonly CharacterLook[]
   ): Promise<CharacterWithSheet[]> => {
     if (rows.length === 0) return [];
-    const all = await looks.listByCharacters(rows.map((row) => row.id));
+    const all =
+      loaded ?? (await looks.listByCharacters(rows.map((row) => row.id)));
     return rows.map((row) => {
       // The pointer has no FK. A character that names a missing version has
       // no bible to read, and must not come back with a blank one.
@@ -590,9 +594,10 @@ export function createCharactersMethods(db: Database, organizationId: string) {
 
   /** Cast rows resolved, each with the link it was read through. */
   const resolveCastLooks = async (
-    rows: readonly Row[]
+    rows: readonly Row[],
+    loaded?: readonly CharacterLook[]
   ): Promise<CastCharacterWithSheet[]> =>
-    (await resolveLooks(rows)).map((character, index) => {
+    (await resolveLooks(rows, loaded)).map((character, index) => {
       const row = rows[index];
       if (!row) throw new Error('resolveLooks returned a row it was not given');
       const { castId, sequenceId, characterId } = row;
@@ -977,6 +982,23 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     data: CharacterBibleUpdate,
     opts: BibleWriteOpts
   ): Promise<Character> {
+    // A rename from any sequence, or none, must stay free in every sequence that casts it (#2248).
+    if (data.name !== undefined) {
+      const casting = await db
+        .select({ sequenceId: sequenceCast.sequenceId })
+        .from(sequenceCast)
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .where(
+          and(
+            eq(sequenceCast.characterId, id),
+            eq(characters.organizationId, organizationId),
+            isNull(sequenceCast.removedAt)
+          )
+        );
+      for (const link of casting) {
+        await assertNameFree(db, link.sequenceId, data.name, id);
+      }
+    }
     if (sequenceId === null) {
       const current = await currentOf(id);
       if (!current) throw new NotFoundError(`Character ${id} not found`);
@@ -1305,8 +1327,9 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       sequenceId: string,
       page?: PageOptions
     ): Promise<CastCharacterWithSheet[]> => {
-      return await resolveCastLooks(
-        await pageOf(
+      // The looks go out beside the cast, not after it (#2234).
+      const [rows, castLooks] = await Promise.all([
+        pageOf(
           selectRows().$dynamic(),
           and(
             inOrganization,
@@ -1315,8 +1338,10 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           ),
           characters.id,
           page
-        )
-      );
+        ),
+        looks.listBySequence(sequenceId),
+      ]);
+      return await resolveCastLooks(rows, castLooks);
     },
 
     /** Soft-deleted characters of the sequence, most recently deleted first. */
@@ -2289,6 +2314,33 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         )
         .returning({ id: characters.id });
       return rows.length > 0;
+    },
+
+    /**
+     * Set or clear the reference photo the default look is drawn from
+     * (#2254). It is a sheet input, so it revokes every in-flight sheet run.
+     */
+    setReferencePhoto: async (
+      id: string,
+      url: string | null
+    ): Promise<void> => {
+      const [updated] = await db.batch([
+        db
+          .update(characters)
+          .set({ referencePhotoUrl: url, updatedAt: new Date() })
+          .where(
+            and(
+              eq(characters.id, id),
+              inOrganization,
+              isNull(characters.deletedAt)
+            )
+          )
+          .returning({ id: characters.id }),
+        demoteCharacterSheetClaims(db, eq(characters.id, id)),
+      ]);
+      if (updated.length === 0) {
+        throw new NotFoundError(`Character ${id} not found`);
+      }
     },
 
     /** Undo {@link softDeleteForOrganization}. False when it was not deleted. */

@@ -133,6 +133,11 @@ export const generatedAssets = snakeCase.table(
       table.source,
       table.id
     ),
+    // Reconcile sweep (#2235). Bound status, so not a partial index.
+    index('idx_generated_assets_status_updated').on(
+      table.status,
+      table.updatedAt
+    ),
   ]
 );
 
