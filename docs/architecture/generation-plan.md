@@ -213,6 +213,13 @@ refetch on focus, invalidated by realtime and by any refused continue —
   first with work are locked (done).
 - **SFX & dialogue is always on for a batch.** Only a single shot's editor can
   turn it off.
+- **A speaker the plan cannot place is a line, not a crash (#2257).**
+  `matchSpeaker` still refuses an ambiguous cue (`Newsreader 3` is nobody
+  when the cast is `Newsreader 1` and `Newsreader 2`; `SARAH` against
+  `Sarah Chen` and `Sarah's Mother` still conflicts). The plan catches
+  that, leaves the line out of the voice and dialogue units, and returns
+  `speakerConflicts` with the same message. The footer prints it.
+  Recording the line still refuses.
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
 prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale

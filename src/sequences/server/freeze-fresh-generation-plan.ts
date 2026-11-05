@@ -32,10 +32,15 @@ export async function freezeFreshGenerationPlan(
     aspectRatio: input.aspectRatio,
     resolution: input.resolution,
   };
-  const units = await computeGenerationPlan(scopedDb, input.sequenceId, flags, {
-    ignoreOwnProcessing: true,
-    sequenceOverrides,
-  });
+  const { units } = await computeGenerationPlan(
+    scopedDb,
+    input.sequenceId,
+    flags,
+    {
+      ignoreOwnProcessing: true,
+      sequenceOverrides,
+    }
+  );
   const work = planWork(units, input.stopAt);
   const imageModels = resolveImageModels(input.imageModels, input.imageModel);
   const videoModels = resolveVideoModels(input.videoModels, input.videoModel);

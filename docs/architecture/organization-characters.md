@@ -326,7 +326,11 @@ the script then names her like any cast member.
   are keyed on the character's tag (a NEW entry whose tag is in use gets a
   number, `sarah_2`); dialogue speakers are matched by text, so
   `matchSpeaker` refuses two whole-name matches (`ConflictError`, "Rename
-  one so dialogue knows who speaks"); scene tags (`reconcileSceneTags`) tag
+  one so dialogue knows who speaks"). A number is part of the name
+  (`Newsreader 3` is not `Newsreader 1`), and a partial match is only when
+  one side's tokens sit inside the other's. The generation plan reports
+  that refusal on `speakerConflicts` instead of failing the page;
+  recording the line still refuses. Scene tags (`reconcileSceneTags`) tag
   both wherever the name appears. A known limit until a scene tag can name
   the cast link; rename one of them.
 - **A character the page cannot list** (another organization's, deleted, or gone)

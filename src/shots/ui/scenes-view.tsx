@@ -1421,7 +1421,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // sequence — its units read running.
   const { data: plan } = useGenerationPlan(sequenceId);
   const nextStage = useMemo(
-    () => (isProcessing || !plan ? null : firstStageWithWork(plan)),
+    () => (isProcessing || !plan ? null : firstStageWithWork(plan.units)),
     [isProcessing, plan]
   );
 

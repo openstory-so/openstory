@@ -475,6 +475,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // frames or Voices on adds units before anything saves. The saved plan says
   // which switches can no longer turn off.
   const { data: savedPlan } = useGenerationPlan(sequenceId);
+  const savedUnits = savedPlan?.units ?? [];
+  const speakerConflicts = savedPlan?.speakerConflicts ?? [];
   // The steps show at every step until every unit is done (#1780 §1): out of
   // date, missing, blocked or running keeps them. The Motion / Music / Drafts
   // controls sit under them.
@@ -484,20 +486,20 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     (shots?.length ?? 0) > 0 &&
     // A row stored with voices off still owes them (#2067). The steps stay
     // up so Continue goes back to Dialogue without anyone passing a flag.
-    ((savedPlan?.some((u) => u.state !== 'done') ?? false) ||
-      (voices && !generateVoices));
+    (savedUnits.some((u) => u.state !== 'done') || (voices && !generateVoices));
   const switchesMoved =
     draftStartFrames !== generateStartFrames || voices !== generateVoices;
   // While a switch's plan loads the last one stays on screen; the click
   // waits for the plan it would actually run.
-  const { data: footerPlan = [], isPlaceholderData: planLoading } =
+  const { data: footerQuery, isPlaceholderData: planLoading } =
     useGenerationPlan(
       sequenceId,
       switchesMoved
         ? { generateStartFrames: draftStartFrames, generateVoices: voices }
         : undefined
     );
-  const locks = switchLocks(savedPlan ?? []);
+  const footerPlan = footerQuery?.units ?? [];
+  const locks = switchLocks(savedUnits);
   // Stops before the first one with work are done; the thumb cannot go there.
   // With no work left every stop is done (#1780 §1).
   const minStage =
@@ -1084,8 +1086,17 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         </div>
       </ScrollArea>
 
-      {(showSteps || showButton || showMusicFooter || showDraftFooter) && (
+      {(showSteps ||
+        showButton ||
+        showMusicFooter ||
+        showDraftFooter ||
+        speakerConflicts.length > 0) && (
         <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-4 max-md:gap-2 max-md:p-3">
+          {speakerConflicts.map((line) => (
+            <p key={line} className="text-xs text-muted-foreground">
+              {line}
+            </p>
+          ))}
           {showSteps && (
             <div className="flex flex-col gap-3 max-md:gap-2">
               {stepsSection}
