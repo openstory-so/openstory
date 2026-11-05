@@ -23,6 +23,7 @@ const MAX_AHEAD_BLOCKS = 32; // 2 MiB
  */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
+const PROBE_TIMEOUT_MS = 5000;
 
 type FetchFn = typeof fetch;
 
@@ -48,21 +49,37 @@ export function createRangedReader(
 
   /**
    * A bare `TypeError` ("Failed to fetch") names neither the file nor the
-   * cause (#2258). One no-cors probe tells them apart: it loads when the
-   * server answered without CORS headers, and fails too on a network error.
+   * cause (#2258). A CORS probe that loads means the file is there and the
+   * connection failed; failing that, a no-cors probe that loads means the
+   * server answered without CORS headers.
    */
-  async function explain(error: unknown): Promise<unknown> {
+  async function explain(
+    error: unknown,
+    signal: AbortSignal
+  ): Promise<unknown> {
     if (!(error instanceof TypeError)) return error;
     const probe = new AbortController();
-    const reachable = await fetchFn(url, {
-      mode: 'no-cors',
-      signal: probe.signal,
-    }).then(
-      () => true,
-      () => false
-    );
-    probe.abort(); // the headers are all the probe needs
-    const cause = reachable ? 'no CORS headers' : 'network error';
+    const send = (init: RequestInit) =>
+      fetchFn(url, {
+        ...init,
+        signal: AbortSignal.any([
+          signal,
+          probe.signal,
+          AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        ]),
+      }).then(
+        (response) => response,
+        () => null
+      );
+    const cors = await send({ headers: { Range: 'bytes=0-0' } });
+    const cause = cors
+      ? cors.ok
+        ? 'connection dropped'
+        : `HTTP ${cors.status}`
+      : (await send({ mode: 'no-cors' }))
+        ? 'no CORS headers'
+        : 'network error';
+    probe.abort(); // the headers are all a probe needs
     return new Error(`${error.message}: ${url} (${cause})`, { cause: error });
   }
 
@@ -84,7 +101,7 @@ export function createRangedReader(
       } catch (error) {
         const delay = RETRY_DELAYS_MS[attempt];
         if (abort.signal.aborted) throw error;
-        if (delay === undefined) throw await explain(error);
+        if (delay === undefined) throw await explain(error, abort.signal);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -192,7 +209,7 @@ export function createRangedReader(
         } catch (error) {
           const delay = RETRY_DELAYS_MS[attempt];
           if (signal.aborted) throw error;
-          if (delay === undefined) throw await explain(error);
+          if (delay === undefined) throw await explain(error, signal);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }

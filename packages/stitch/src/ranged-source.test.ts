@@ -221,22 +221,31 @@ describe('createRangedReader whole-file download (#2124)', () => {
 
 describe('createRangedReader failure reason (#2258)', () => {
   const url = 'https://storage.example/clip.mp4';
+  type Probe = 'loads' | 'missing' | 'no-cors only' | 'unreachable';
+  /** Every real read fails; the probes answer as `probe` says. */
   const failing =
-    (noCorsLoads: boolean) =>
-    async (_u: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.mode === 'no-cors' && noCorsLoads) return new Response(null);
+    (probe: Probe) => async (_u: RequestInfo | URL, init?: RequestInit) => {
+      const range = new Headers(init?.headers).get('range');
+      if (range === 'bytes=0-0' && probe === 'loads')
+        return new Response('x', { status: 206 });
+      if (range === 'bytes=0-0' && probe === 'missing')
+        return new Response(null, { status: 404 });
+      if (init?.mode === 'no-cors' && probe === 'no-cors only')
+        return new Response(null);
       throw new TypeError('Failed to fetch');
     };
 
   it.each([
-    [true, 'no CORS headers'],
-    [false, 'network error'],
-  ])(
-    'names the url and the cause (no-cors loads: %s)',
-    async (noCorsLoads, cause) => {
+    ['loads', 'connection dropped'],
+    ['missing', 'HTTP 404'],
+    ['no-cors only', 'no CORS headers'],
+    ['unreachable', 'network error'],
+  ] as const)(
+    'names the url and the cause (probe %s)',
+    async (probe, cause) => {
       vi.useFakeTimers();
       try {
-        const reader = createRangedReader(url, failing(noCorsLoads));
+        const reader = createRangedReader(url, failing(probe));
         const read = reader.read(0, 10);
         const settled = expect(read).rejects.toThrow(
           `Failed to fetch: ${url} (${cause})`
@@ -248,4 +257,33 @@ describe('createRangedReader failure reason (#2258)', () => {
       }
     }
   );
+
+  it('a stream that drops after CORS headers is a dropped connection, not CORS', async () => {
+    vi.useFakeTimers();
+    try {
+      const size = 1 * MB;
+      const server = fakeServer(size);
+      const fetchFn: typeof server.fetchFn = async (u, init) => {
+        const range = new Headers(init?.headers).get('range') ?? '';
+        if (!range.endsWith(`-${size - 1}`)) return server.fetchFn(u, init);
+        const stream = new ReadableStream<Uint8Array>({
+          pull: (controller) =>
+            controller.error(new TypeError('Failed to fetch')),
+        });
+        return new Response(stream, {
+          status: 206,
+          headers: { 'Content-Range': `bytes 0-${size - 1}/${size}` },
+        });
+      };
+      const reader = createRangedReader(url, fetchFn);
+      await reader.getSize();
+      const settled = expect(reader.fetchAll()).rejects.toThrow(
+        `Failed to fetch: ${url} (connection dropped)`
+      );
+      await vi.runAllTimersAsync();
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
