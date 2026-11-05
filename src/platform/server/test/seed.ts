@@ -84,8 +84,11 @@ export type CreatedTestShot = {
  * Create a test user + organization + membership + credits.
  * Mirrors the previous direct logic from e2e/fixtures/auth.fixture.ts
  */
+/** In `ADMIN_EMAILS` for [env.test] in wrangler.jsonc. */
+const E2E_ADMIN_EMAIL = 'e2e-admin@e2e.test';
+
 export async function createTestUser(
-  opts: { name?: string } = {}
+  opts: { name?: string; admin?: boolean } = {}
 ): Promise<CreatedTestUser> {
   const db = getDb();
   const now = new Date();
@@ -94,7 +97,21 @@ export async function createTestUser(
   const organizationId = generateId();
   const name = opts.name ?? 'E2E Test User';
 
-  const email = `test-${userId.slice(-8).toLowerCase()}@e2e.test`;
+  // The admin address is fixed, so a run replaces the previous run's admin.
+  if (opts.admin) {
+    const previous = await db
+      .select({ userId: member.userId, organizationId: member.organizationId })
+      .from(member)
+      .innerJoin(user, eq(user.id, member.userId))
+      .where(eq(user.email, E2E_ADMIN_EMAIL));
+    for (const row of previous) {
+      await cleanupTestUser(row.userId, row.organizationId);
+    }
+  }
+
+  const email = opts.admin
+    ? E2E_ADMIN_EMAIL
+    : `test-${userId.slice(-8).toLowerCase()}@e2e.test`;
   const organizationSlug = `test-organization-${organizationId.slice(-8).toLowerCase()}`;
 
   await db.insert(user).values({
