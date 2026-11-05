@@ -114,10 +114,9 @@ export const LocationSuggestionSelector: React.FC<
           size="sm"
           onClick={() => setOpen(true)}
           disabled={disabled || !hydrated}
-          className="gap-2 text-muted-foreground"
+          className="text-muted-foreground"
         >
-          <MapPin className="h-4 w-4" />
-          <span>Locations</span>
+          Locations
         </Button>
 
         {selected.length + gone.length > 0 && (

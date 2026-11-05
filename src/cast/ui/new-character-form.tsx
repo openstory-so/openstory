@@ -36,14 +36,15 @@ const newCharacterSchema = z.object({
 export type CharacterImage = {
   url: string;
   isCharacterSheet: boolean;
-  description: string;
+  /** Null when describing failed: the image is still attached, as a photo. */
+  description: string | null;
 };
 
 export type NewCharacterFields = z.output<typeof newCharacterSchema> & {
   /**
    * Still running when Create is pressed: the character is made at once and
-   * `useNewCharacter` finishes the image after. Rejects when the upload, the
-   * check or the description fails.
+   * `useNewCharacter` finishes the image after. Rejects when the upload or the
+   * check fails; a failed description still attaches the image as a photo.
    */
   image?: Promise<CharacterImage>;
 };
@@ -79,9 +80,20 @@ export const NewCharacterForm: React.FC<{
         onProgress: (percent) => onProgress(file, percent),
       });
       if (image.current === run) onSuccess(file);
-      const result = await describeUploadFn({
-        data: { url, filename: file.name, subject: 'character' },
-      });
+      let result;
+      try {
+        result = await describeUploadFn({
+          data: { url, filename: file.name, subject: 'character' },
+        });
+      } catch (error) {
+        // The upload passed the check: keep it, as a photo the sheet is drawn from.
+        if (image.current === run) {
+          toast.error('Image not described', {
+            description: errorMessage(error),
+          });
+        }
+        return { url, isCharacterSheet: false, description: null };
+      }
       // A description the user typed is theirs; a removed image's is not used.
       if (
         image.current === run &&

@@ -118,10 +118,9 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
           size="sm"
           onClick={() => setOpen(true)}
           disabled={disabled || !hydrated}
-          className="gap-2 text-muted-foreground"
+          className="text-muted-foreground"
         >
-          <User className="h-4 w-4" />
-          <span>Cast</span>
+          Cast
         </Button>
         {selected.length + gone.length > 0 && (
           <div className="flex items-center -space-x-2">

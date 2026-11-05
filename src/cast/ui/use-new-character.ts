@@ -53,7 +53,7 @@ export function useNewCharacter(
     try {
       const image = await pending;
       // Before the attach: a bible edit revokes the sheet run it starts.
-      if (!hasDescription) {
+      if (!hasDescription && image.description) {
         await updateOrganizationCharacterFn({
           data: {
             characterId: character.id,

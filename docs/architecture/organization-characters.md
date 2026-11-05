@@ -201,8 +201,9 @@ What follows from one character in two sequences:
     `characters.referencePhotoUrl`) and a sheet run starts, drawn from it;
     every later default-look sheet is drawn from it too, until it is removed
     on the character's page. `isPerson` follows the ledger either way. A
-    failed upload, check, description or attach keeps the character and
-    says so in a toast. The Cast picker selects the new
+    failed upload, check or attach keeps the character and says so in a
+    toast. A failed description says so too, and the image is still
+    attached, as a reference photo. The Cast picker selects the new
     character and the draft keeps its script; Generate waits while a new
     character's image is still finishing, as it does for an element, so
     the run never draws a text sheet the photo then replaces.
