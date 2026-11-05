@@ -397,9 +397,10 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
                 {
                   onSuccess: () => {
                     toast(`Merged ${from.name} into ${into.name}`, {
+                      description: `Restore brings ${from.name} back. The rewritten lines stay.`,
                       duration: 60_000,
                       action: {
-                        label: 'Undo',
+                        label: 'Restore',
                         onClick: () =>
                           void restoreSequenceCharacter(queryClient, {
                             sequenceId,

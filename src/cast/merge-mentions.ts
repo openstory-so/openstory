@@ -5,7 +5,7 @@
  */
 
 import { canonicalBibleTag } from '@/cast/bible-field';
-import { normalizeCastName, oneEditApart } from '@/cast/near-name';
+import { normalizeCastName } from '@/cast/near-name';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import {
   canonicalStoredShotSpec,
@@ -98,7 +98,7 @@ export function repointMentionText(
   return next;
 }
 
-/** A speaker cue that names the loser, spelled as the winner. */
+/** The loser's name, script id, or tag, spelled as the winner. A name one letter away stays. */
 export function repointSpeaker(
   speaker: string,
   from: CastMention,
@@ -109,7 +109,6 @@ export function repointSpeaker(
   if (normalizeCastName(cue) === normalizeCastName(into.name)) return speaker;
   const namesLoser =
     normalizeCastName(cue) === normalizeCastName(from.name) ||
-    oneEditApart(cue, from.name) ||
     cue === from.scriptCharacterId ||
     (from.consistencyTag !== null && cue === from.consistencyTag);
   return namesLoser ? into.name : speaker;

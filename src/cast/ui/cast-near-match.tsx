@@ -79,7 +79,8 @@ export function CastMergeOffer({
               <span>
                 {fromName} leaves this sequence and stays in the organization.{' '}
                 {intoName} keeps its sheet, looks and voice.
-                {sheetNote} Undo brings {fromName} back into the cast.
+                {sheetNote} Restore brings {fromName} back into the cast. The
+                rewritten lines stay.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>

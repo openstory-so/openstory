@@ -679,9 +679,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                       {
                         onSuccess: () => {
                           toast(`Merged ${character.name} into ${intoName}`, {
+                            description: `Restore brings ${character.name} back. The rewritten lines stay.`,
                             duration: 60_000,
                             action: {
-                              label: 'Undo',
+                              label: 'Restore',
                               onClick: () =>
                                 void restoreSequenceCharacter(queryClient, {
                                   sequenceId,

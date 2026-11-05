@@ -330,7 +330,8 @@ the script then names her like any cast member.
 - **Merge** (`merge_characters`, the cast page, the character page) is one
   sequence. The winner's link, bible, looks and voice stay. Scene tags,
   dialogue speakers and prompt text in that sequence are appended as new
-  versions, so prompts go stale by derivation. The loser's look id is never
+  versions, so prompts go stale by derivation. A speaker moves only when
+  it is the loser's name, script id, or tag. The loser's look id is never
   copied. Its completed sheet is copied onto the winner's default look only
   when the winner has no sheet and none is generating. The loser is then
   soft-removed and stays in the organization. Restore brings the link back
