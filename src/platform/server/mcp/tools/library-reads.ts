@@ -18,6 +18,10 @@ import {
   listGalleryStyles,
   readGalleryStyle,
 } from '@/look/server/library-inspection';
+import {
+  libraryCharacterReadSchema,
+  readOrganizationCharacter,
+} from '@/cast/server/production-inspection';
 import { listAssets, readAsset } from '@/models/server/asset-inspection';
 import { listStudioUploadReads } from '@/studio/server/upload-reads';
 import { buildSampleEntries } from '@/look/ui/sample-entries';
@@ -111,7 +115,7 @@ const libraryCharactersSchema = z.object({
 });
 const listLibraryCharacters = productionRead(
   'list_library_characters',
-  "List the organization's characters, every one of them. Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
+  "List the organization's characters, every one of them. Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one whole with get_library_character, or as a sequence casts it with get_character.",
   pageInput,
   libraryCharactersSchema,
   async (input, { scopedDb, origin }) =>
@@ -125,6 +129,15 @@ const listLibraryCharacters = productionRead(
       ),
       origin
     )
+);
+const getLibraryCharacter = productionRead(
+  'get_library_character',
+  "Read one of the organization's characters by id (the id list_library_characters or the Characters page gives): its current bible, voice, looks and default sheet, and the live sequences that cast it. It needs no sequence and works for a character no sequence casts. Edit it with update_character, leaving sequenceId out.",
+  z.strictObject({ id: ulidSchema }),
+  z.object({ character: libraryCharacterReadSchema }),
+  async (input, { scopedDb, origin }) => ({
+    character: await readOrganizationCharacter(scopedDb, input.id, origin),
+  })
 );
 const libraryLocationUse = {
   lastUsedAt: z.string().nullable(),
@@ -346,6 +359,7 @@ export const libraryReadTools = [
   listLibraryLocations,
   getLibraryLocation,
   listLibraryCharacters,
+  getLibraryCharacter,
   listLibraryResources,
   getLibraryResource,
   listGallerySamples,
