@@ -518,7 +518,8 @@ export async function planUpdateAll(args: {
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
   const [generationPlan, allShots] = await Promise.all([
-    args.generationPlan ?? computeGenerationPlan(scopedDb, sequenceId),
+    args.generationPlan ??
+      computeGenerationPlan(scopedDb, sequenceId).then((plan) => plan.units),
     scopedDb.shots.listBySequence(sequenceId),
   ]);
   const shotIds = args.shotIds

@@ -493,7 +493,10 @@ const withPlan =
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    queryClient.setQueryData(generationPlanKeys.detail(PS_SEQ), plan);
+    queryClient.setQueryData(generationPlanKeys.detail(PS_SEQ), {
+      units: plan,
+      speakerConflicts: [],
+    });
     return (
       <QueryClientProvider client={queryClient}>
         <Story />

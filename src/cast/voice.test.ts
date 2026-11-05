@@ -92,6 +92,17 @@ describe('speakingCharacterIds', () => {
       'al',
     ]);
   });
+  it('does not treat a different number as the same speaker (#2257)', () => {
+    expect(
+      speakingCharacterIds(
+        [
+          { characterId: 'n1', name: 'Newsreader 1' },
+          { characterId: 'n2', name: 'Newsreader 2' },
+        ],
+        [scene(['Newsreader 3'])]
+      )
+    ).toEqual([]);
+  });
   it('matches names in any script, including one-character names (#1609)', () => {
     const cast = [
       { characterId: 'taro', name: '太郎' },
@@ -145,6 +156,24 @@ describe('matchSpeaker', () => {
       { name: 'Sarah', voiceOnly: false },
     ];
     expect(matchSpeaker('SARAH', family)?.name).toBe('Sarah');
+  });
+  it('does not treat a different number as the same name (#2257)', () => {
+    const readers = [
+      { name: 'Newsreader 1', voiceOnly: false },
+      { name: 'Newsreader 2', voiceOnly: false },
+    ];
+    expect(matchSpeaker('Newsreader 3', readers)).toBeUndefined();
+    expect(matchSpeaker('Newsreader 1', readers)?.name).toBe('Newsreader 1');
+  });
+  it('still refuses a bare name that fits several numbered ones (#2257)', () => {
+    expect(() =>
+      matchSpeaker('Newsreader', [
+        { name: 'Newsreader 1', voiceOnly: false },
+        { name: 'Newsreader 2', voiceOnly: false },
+      ])
+    ).toThrow(
+      '"Newsreader" could be Newsreader 1 or Newsreader 2. Use the full name so dialogue knows who speaks.'
+    );
   });
 });
 
@@ -394,6 +423,20 @@ describe('speakersWithoutVoice (#1773)', () => {
 
   it('ignores a speaker nobody in the cast matches', () => {
     expect(speakersWithoutVoice([line('Stranger')], [aria, ben])).toEqual([]);
+  });
+
+  it('skips a cue that names more than one cast member (#2257)', () => {
+    const sam = { id: 'c3', name: 'Sam', voiceId: null };
+    expect(
+      speakersWithoutVoice(
+        [line('SARAH'), line('Sam')],
+        [
+          { id: 's1', name: 'Sarah Chen', voiceId: null },
+          { id: 's2', name: "Sarah's Mother", voiceId: null },
+          sam,
+        ]
+      )
+    ).toEqual([sam]);
   });
 });
 

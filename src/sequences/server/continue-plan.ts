@@ -138,12 +138,13 @@ export async function prepareContinue(args: {
     generateVoices: sequence.generateVoices,
   };
   const current =
-    args.generationPlan ?? (await computeGenerationPlan(scopedDb, sequence.id));
+    args.generationPlan ??
+    (await computeGenerationPlan(scopedDb, sequence.id)).units;
   const next =
     saved.generateStartFrames === requested.generateStartFrames &&
     saved.generateVoices === requested.generateVoices
       ? current
-      : await computeGenerationPlan(scopedDb, sequence.id, requested);
+      : (await computeGenerationPlan(scopedDb, sequence.id, requested)).units;
   const { work, stopAt } = continueFromPlan({
     current,
     next,

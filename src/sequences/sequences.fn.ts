@@ -100,7 +100,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(continueFlagsSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
-    const [plan, shots] = await Promise.all([
+    const [{ units: plan }, shots] = await Promise.all([
       computeGenerationPlan(scopedDb, sequence.id, {
         generateStartFrames: data.generateStartFrames,
         generateVoices: data.generateVoices,

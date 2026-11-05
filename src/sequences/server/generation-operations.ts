@@ -281,7 +281,10 @@ async function prepareGeneration(
 ): Promise<Prepared> {
   const shotIds = await shotIdsFor(scopedDb, sequence.id, request.target);
   // Computed once: the planners below take it instead of walking D1 again.
-  const generationPlan = await computeGenerationPlan(scopedDb, sequence.id);
+  const { units: generationPlan } = await computeGenerationPlan(
+    scopedDb,
+    sequence.id
+  );
   const inFlight = [
     ...new Set(
       generationPlan

@@ -4,24 +4,27 @@ import type { StoryboardWorkflowInput } from '@/platform/server/workflow/types';
 import type { StyleConfig } from '@/look/style-config';
 import { asStub } from '@/test/as-stub';
 
-const computeGenerationPlan = vi.fn(async () => [
-  {
-    kind: 'sheet:character',
-    id: 'cast',
-    state: 'missing',
-    requires: [],
-    cascaded: false,
-    reused: false,
-  },
-  {
-    kind: 'clip',
-    id: 'shot',
-    state: 'missing',
-    requires: [],
-    cascaded: false,
-    reused: false,
-  },
-]);
+const computeGenerationPlan = vi.fn(async () => ({
+  units: [
+    {
+      kind: 'sheet:character',
+      id: 'cast',
+      state: 'missing',
+      requires: [],
+      cascaded: false,
+      reused: false,
+    },
+    {
+      kind: 'clip',
+      id: 'shot',
+      state: 'missing',
+      requires: [],
+      cascaded: false,
+      reused: false,
+    },
+  ],
+  speakerConflicts: [],
+}));
 const computePlan = vi.fn(async () => ({
   targets: [],
   references: null,
