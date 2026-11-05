@@ -203,7 +203,9 @@ What follows from one character in two sequences:
     on the character's page. `isPerson` follows the ledger either way. A
     failed upload, check, description or attach keeps the character and
     says so in a toast. The Cast picker selects the new
-    character and the draft keeps its script.
+    character and the draft keeps its script; Generate waits while a new
+    character's image is still finishing, as it does for an element, so
+    the run never draws a text sheet the photo then replaces.
   - Closing the dialog after any edit asks first (`useDiscardGuard`), as
     New location does.
 - **Shot count** is on that page only. A shot is matched to a character by

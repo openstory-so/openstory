@@ -486,6 +486,8 @@ export const ScriptView: FC<{
   const { locationIds: selectedLocationIds, castCharacterIds } = selections;
   const [draftElements, setDraftElements] = useState<DraftElementUpload[]>([]);
   const [isElementBusy, setIsElementBusy] = useState(false);
+  // A new character's photo or sheet still finishing (#2254).
+  const [isCastBusy, setIsCastBusy] = useState(false);
   const elementSelectorRef = useRef<ElementSelectorHandle>(null);
   const dragCounterRef = useRef(0);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -1303,7 +1305,8 @@ export const ScriptView: FC<{
     Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
   const isSubmitting = peekCreatingSequence() !== null;
-  const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
+  const isDisabled =
+    !isReady || isSubmitting || isEnhancing || isElementBusy || isCastBusy;
 
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
@@ -1330,6 +1333,7 @@ export const ScriptView: FC<{
           }
           disabled={loading}
           rendering={newReferenceRendering}
+          onImagesPendingChange={setIsCastBusy}
         />
       )}
       <LocationSuggestionSelector
@@ -1848,7 +1852,7 @@ export const ScriptView: FC<{
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
                       }
                     >
-                      {isSubmitting || isElementBusy ? (
+                      {isSubmitting || isElementBusy || isCastBusy ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
                         <GenerateSequenceIcon className="size-4" />
@@ -1857,11 +1861,13 @@ export const ScriptView: FC<{
                         ? 'Generating…'
                         : isElementBusy
                           ? 'Analyzing elements…'
-                          : !isAuthenticated
-                            ? 'Sign in to Generate'
-                            : isEditing
-                              ? 'Generate Copy'
-                              : 'Generate'}
+                          : isCastBusy
+                            ? 'Adding character images…'
+                            : !isAuthenticated
+                              ? 'Sign in to Generate'
+                              : isEditing
+                                ? 'Generate Copy'
+                                : 'Generate'}
                     </InButtonCost>
                   </span>
                   {/* Shine effect */}

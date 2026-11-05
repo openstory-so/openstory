@@ -24,10 +24,10 @@ import { useDiscardGuard } from '@/ui/use-discard-guard';
  */
 export const NewCharacterDialog: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const createCharacter = useNewCharacter({
-    sequenceId: null,
-    rendering: () => PHOTOREAL_RENDERING,
-  });
+  const createCharacter = useNewCharacter(
+    { sequenceId: null, rendering: () => PHOTOREAL_RENDERING },
+    null
+  );
   const navigate = useNavigate();
   const hydrated = useHydrated();
   const guard = useDiscardGuard('character');

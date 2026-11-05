@@ -39,7 +39,7 @@ export const AddCharacterDialog: React.FC<{
   const [query, setQuery] = useState('');
   const { data: library } = useLibraryCharacters(open);
   const attach = useAttachLibraryCharacter();
-  const createCharacter = useNewCharacter({ sequenceId });
+  const createCharacter = useNewCharacter({ sequenceId }, null);
   const navigate = useNavigate();
 
   const q = query.trim().toLowerCase();

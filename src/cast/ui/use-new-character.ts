@@ -15,6 +15,7 @@ import {
 } from '@/shots/media-upload.fn';
 import { invalidateCharacterSheets } from '@/shots/ui/use-media-upload';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { toast } from 'sonner';
 
 /** In a sequence, or from none: then the caller says what it is rendered as. */
@@ -29,8 +30,17 @@ type NewCharacterTarget =
  * the reference photo that sheet is drawn from. A failure there keeps the
  * character and says so; the caller shows a failed create.
  */
-export function useNewCharacter(target: NewCharacterTarget) {
+export function useNewCharacter(
+  target: NewCharacterTarget,
+  /** Whether any image is still finishing; null when the caller does not wait. */
+  onImagesPendingChange: ((pending: boolean) => void) | null
+) {
   const queryClient = useQueryClient();
+  const pendingImages = useRef(0);
+  const countPending = (delta: 1 | -1) => {
+    pendingImages.current += delta;
+    onImagesPendingChange?.(pendingImages.current > 0);
+  };
   const createInSequence = useCreateSequenceCharacter();
   const createInOrganization = useCreateOrganizationCharacter();
 
@@ -39,6 +49,7 @@ export function useNewCharacter(target: NewCharacterTarget) {
     pending: Promise<CharacterImage>,
     hasDescription: boolean
   ) => {
+    countPending(1);
     try {
       const image = await pending;
       // Before the attach: a bible edit revokes the sheet run it starts.
@@ -64,6 +75,7 @@ export function useNewCharacter(target: NewCharacterTarget) {
         description: errorMessage(error),
       });
     } finally {
+      countPending(-1);
       await invalidateCharacterSheets(queryClient);
       await queryClient.invalidateQueries({
         queryKey: organizationCharacterKeys.all,

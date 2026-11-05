@@ -40,6 +40,8 @@ type CastSelectorProps = {
   disabled: boolean;
   /** What a character made here is rendered as: the picked style's medium. */
   rendering: () => string;
+  /** A new character's image is still finishing: Generate waits for it. */
+  onImagesPendingChange: (pending: boolean) => void;
 };
 
 const Picture: React.FC<{
@@ -72,10 +74,14 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   onSelectionChange,
   disabled,
   rendering,
+  onImagesPendingChange,
 }) => {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const createCharacter = useNewCharacter({ sequenceId: null, rendering });
+  const createCharacter = useNewCharacter(
+    { sequenceId: null, rendering },
+    onImagesPendingChange
+  );
   const guard = useDiscardGuard('character');
   const closePicker = () => {
     setOpen(false);
