@@ -12,7 +12,7 @@ import { expect } from 'playwright/test';
  * SSR markup; under `vite dev` with parallel workers, first-hit hydration of a
  * heavy client chunk routinely takes longer than that.
  */
-const HYDRATION_TIMEOUT = 15_000;
+export const HYDRATION_TIMEOUT = 15_000;
 const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
 /** Mirrors `STORAGE_KEY` in src/sequences/ui/use-generation-settings.ts — bump both
  *  together, or the pin lands under a key the app never reads and the recorded
@@ -277,4 +277,19 @@ export async function cleanupLocationByName(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ organizationId, name }),
   });
+}
+
+/** Wait until React owns `selector`, so a click runs its handler, not a native submit. */
+export async function waitForHydration(
+  page: Page,
+  selector: string
+): Promise<void> {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel);
+      return !!el && Object.keys(el).some((k) => k.startsWith('__react'));
+    },
+    selector,
+    { timeout: HYDRATION_TIMEOUT }
+  );
 }
