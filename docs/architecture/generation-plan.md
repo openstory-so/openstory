@@ -17,7 +17,7 @@ columns are gone (#1819).
   exception is a character whose default look has no row yet, which the
   compare backfills (a read and a write per such character).
   `generation-plan-queries.test.ts` pins the count against a sequence of 2
-  and of 8 shots, characters and locations, and of 2 and 95 shots.
+  and of 8 shots, characters and locations, and of 2 and 120 shots.
   Round trips, not queries, are the cost (#2234): reads that need nothing
   from each other go out in one `Promise.all` (the sheets, stills, prompts
   and media after the refs), the media loader reuses the refs' scene

@@ -160,8 +160,8 @@ describe('sequence page query counts (#2082)', () => {
   });
 
   it('do not grow past one chunk of ids (#2234)', async () => {
-    // 95 shots: every id list spans two chunks under D1's 100-param cap.
-    expect(await countQueries(1, 95)).toEqual(await countQueries(1, 2));
+    // 120 shots: past D1's 100-param cap, so an unchunked list throws.
+    expect(await countQueries(1, 120)).toEqual(await countQueries(1, 2));
   });
 });
 
