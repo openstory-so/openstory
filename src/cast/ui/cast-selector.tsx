@@ -161,7 +161,12 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
       <Dialog
         open={open}
         onOpenChange={(next) =>
-          next ? setOpen(true) : guard.confirmDiscard(closePicker)
+          next
+            ? setOpen(true)
+            : creating
+              ? // Closing New character goes back to the list, not out.
+                guard.confirmDiscard(() => setCreating(false))
+              : closePicker()
         }
       >
         <DialogContent className="max-w-2xl">

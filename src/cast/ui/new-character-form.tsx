@@ -57,7 +57,10 @@ export const NewCharacterForm: React.FC<{
   onEdit: () => void;
 }> = ({ isPending, onSubmit, onEdit }) => {
   const [files, setFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
+  // Bytes going up, then the real-person check (and any sign-off).
+  const [uploading, setUploading] = useState<'bytes' | 'check' | null>(null);
+  // The file being handled; a removed one's late results are dropped.
+  const current = useRef<File | null>(null);
   const [describing, setDescribing] = useState(false);
   const [waiting, setWaiting] = useState(false);
   // The image's description, running or done; null with no usable image.
@@ -70,22 +73,28 @@ export const NewCharacterForm: React.FC<{
     { onProgress, onSuccess, onError }
   ) => {
     if (!file) return;
-    setUploading(true);
+    current.current = file;
+    setUploading('bytes');
     let url: string;
     try {
       url = await uploadSheet.mutateAsync({
         file,
-        onProgress: (percent) => onProgress(file, percent),
+        onProgress: (percent) => {
+          onProgress(file, percent);
+          if (percent >= 100 && current.current === file) setUploading('check');
+        },
       });
     } catch (error) {
+      if (current.current !== file) return;
+      setUploading(null);
       onError(
         file,
         error instanceof Error ? error : new Error('Upload failed')
       );
       return;
-    } finally {
-      setUploading(false);
     }
+    if (current.current !== file) return;
+    setUploading(null);
     onSuccess(file);
     setDescribing(true);
     const run = describeUploadFn({
@@ -138,7 +147,7 @@ export const NewCharacterForm: React.FC<{
     onSubmit({ ...result.data, image });
   };
 
-  const busy = isPending || uploading || waiting;
+  const busy = isPending || uploading !== null || waiting;
   return (
     <form
       onInput={onEdit}
@@ -190,7 +199,9 @@ export const NewCharacterForm: React.FC<{
             setFiles(next);
             if (next.length > 0) onEdit();
             else {
+              current.current = null;
               described.current = null;
+              setUploading(null);
               setDescribing(false);
             }
           }}
@@ -234,9 +245,11 @@ export const NewCharacterForm: React.FC<{
         <Button type="submit" disabled={busy}>
           {isPending || waiting
             ? 'Creating…'
-            : uploading
+            : uploading === 'bytes'
               ? 'Uploading…'
-              : 'Create'}
+              : uploading === 'check'
+                ? 'Checking…'
+                : 'Create'}
         </Button>
       </div>
     </form>

@@ -293,6 +293,8 @@ export function useUploadDraftCharacterSheet() {
         file,
         input.onProgress
       );
+      // The bytes are in; the caller now shows the check.
+      input.onProgress?.(100);
       await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
       return publicUrl;
     },
