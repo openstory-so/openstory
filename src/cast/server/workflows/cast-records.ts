@@ -252,7 +252,7 @@ export async function createCastRecords(
       consistencyTag: row.consistencyTag,
       kind: row.kind,
       durationSeconds: row.durationSeconds,
-      personInImage: row.personInImage,
+      personInMedia: row.personInMedia,
     });
   }
   return { elements, lookIds };

@@ -1,2 +1,0 @@
-ALTER TABLE `location_sheet_variants` ADD `person_in_image` integer DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE `sequence_elements` ADD `person_in_image` integer DEFAULT false NOT NULL;

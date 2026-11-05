@@ -36,7 +36,7 @@ it('binds shuffled bible references by logical identity without mutating inputs'
       referenceImageUrl: `https://ref/${locationId}`,
       referenceStatus: 'completed',
       referenceInputHash: null,
-      referencePersonInImage: false,
+      referencePersonInMedia: false,
       selectedReferenceVersionId: null,
       description: '',
       consistencyTag: locationId,
@@ -51,7 +51,7 @@ it('binds shuffled bible references by logical identity without mutating inputs'
       consistencyTag: token,
       kind: 'image',
       durationSeconds: null,
-      personInImage: false,
+      personInMedia: false,
     })
   );
   const before = structuredClone({ characters, locations, elements });

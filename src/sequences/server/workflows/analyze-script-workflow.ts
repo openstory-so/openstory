@@ -167,7 +167,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       consistencyTag: el.consistencyTag,
       kind: el.kind,
       durationSeconds: el.durationSeconds,
-      personInImage: el.personInImage,
+      personInMedia: el.personInMedia,
     }));
 
     if (pendingAutoStyleId && !sequenceId) {

@@ -460,7 +460,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
         storagePath: '/r2/theirs.png',
         inputHash: null,
         model: 'upload',
-        personInImage: false,
+        personInMedia: false,
       })
     ).rejects.toThrow(/not found/);
     await other.setPortrait(variant.id, 'https://example.com/portrait.png');

@@ -59,7 +59,7 @@ async function assertElementUploadAttachable(params: {
   path: string;
   filename: string;
   organizationId: string;
-}): Promise<{ personInImage: boolean }> {
+}): Promise<{ personInMedia: boolean }> {
   const { scopedDb, path, filename, organizationId } = params;
   if (!isValidElementStoragePath(path, organizationId)) {
     throw new ValidationError(
@@ -76,12 +76,12 @@ async function assertElementUploadAttachable(params: {
   // still be sent to a motion model (#2153). An unknown extension predates
   // #1559 and was an image.
   const kind = elementKindAgreed(path, filename);
-  if (kind === 'audio') return { personInImage: false };
+  if (kind === 'audio') return { personInMedia: false };
   const rights = await requireUploadRightsFor(
     scopedDb,
     elementImageUrlFromPath(path)
   );
-  return { personInImage: rights.depictsRealPerson };
+  return { personInMedia: rights.depictsRealPerson };
 }
 
 /**
@@ -110,7 +110,7 @@ export async function attachElementUpload(params: {
   const { scopedDb, organizationId, userId, sequenceId, path, filename } =
     params;
 
-  const { personInImage } = await assertElementUploadAttachable({
+  const { personInMedia } = await assertElementUploadAttachable({
     scopedDb,
     path,
     filename,
@@ -148,7 +148,7 @@ export async function attachElementUpload(params: {
           null),
     imageUrl,
     imagePath: path,
-    personInImage,
+    personInMedia,
     description: hasInlineVision ? params.description : null,
     consistencyTag: hasInlineVision ? params.consistencyTag : null,
     visionStatus: visionDone ? 'completed' : 'pending',
@@ -287,7 +287,7 @@ export async function replaceElementUpload(params: {
   durationSeconds?: number | null;
 }): Promise<SequenceElement> {
   const { scopedDb, organizationId, sequenceId } = params;
-  const { personInImage } = await assertElementUploadAttachable({
+  const { personInMedia } = await assertElementUploadAttachable({
     scopedDb,
     path: params.path,
     filename: params.filename,
@@ -308,7 +308,7 @@ export async function replaceElementUpload(params: {
   const updated = await scopedDb.sequenceElements.update(params.elementId, {
     imageUrl,
     imagePath: params.path,
-    personInImage,
+    personInMedia,
     uploadedFilename: params.filename,
     kind,
     durationSeconds:

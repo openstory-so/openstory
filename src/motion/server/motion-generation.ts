@@ -433,18 +433,18 @@ type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
  * sent as a URL. The run has already refused a clip the ledger has not
  * cleared or signed (`check-reference-clip-rights`). A location/element
  * still is ingested unless its upload is known to show no person
- * (`personInImage`, #2238); audio never is. Submit uses the same helper so
+ * (`personInMedia`, #2238); audio never is. Submit uses the same helper so
  * `arkUrlFor` is not asked for a URL the map does not hold.
  */
 function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
   // ponytail: every clip spends a CreateAsset turn; gate clips on
-  // `personInImage` too if clips without a person ever crowd the pool.
+  // `personInMedia` too if clips without a person ever crowd the pool.
   if (ref.kind === 'video') {
     return { storedUrl: ref.referenceImageUrl, slot: 'library', kind: 'Video' };
   }
   if (ref.kind === 'audio') return null;
   if (ref.role === 'location' || ref.role === 'element') {
-    return registersWithArk(ref.personInImage)
+    return registersWithArk(ref.personInMedia)
       ? { storedUrl: ref.referenceImageUrl, slot: 'library' }
       : null;
   }
@@ -458,7 +458,7 @@ function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
 /**
  * The stills a BytePlus submit needs registered: the start frame, every
  * character sheet that may show a person, and every location/element still
- * whose upload showed one (`personInImage`, #2238). CreateAsset is paced by
+ * whose upload showed one (`personInMedia`, #2238). CreateAsset is paced by
  * `BYTEPLUS_ASSET_WRITE_QPM`, so other location and element sheets are not
  * ingested at all, and non-person character sheets (#1682) go through ingest
  * as `plain` so submit looks them up in the same map. The workflow runs these through `ingestArkAssets` before
@@ -757,7 +757,7 @@ async function submitMotionJobOnce(
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
           // Same helper as `arkStillsForMotion`: ingested stills (faces and
-          // `personInImage` uploads as asset://, non-person character sheets
+          // `personInMedia` uploads as asset://, non-person character sheets
           // as `plain`) live in the map.
           const registered = arkStillForMotionRef(ref) !== null;
           referenceImages.push({

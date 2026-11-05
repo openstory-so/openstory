@@ -197,7 +197,7 @@ export function createLocationSheetVariantsMethods(
       inputHash: LocationSheetInputHash | null;
       model: string;
       /** The ledger's verdict on the upload (#2238). */
-      personInImage: boolean;
+      personInMedia: boolean;
       workflowRunId?: string | null;
     }): Promise<{ version: LocationSheetVariant }> => {
       const {
@@ -206,7 +206,7 @@ export function createLocationSheetVariantsMethods(
         storagePath,
         inputHash,
         model,
-        personInImage,
+        personInMedia,
         workflowRunId,
       } = args;
       const [existing] = await db
@@ -226,7 +226,7 @@ export function createLocationSheetVariantsMethods(
             model,
             url,
             storagePath,
-            personInImage,
+            personInMedia,
             status: 'completed',
             workflowRunId: workflowRunId ?? null,
             generatedAt: now,

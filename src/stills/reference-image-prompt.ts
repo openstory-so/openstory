@@ -44,7 +44,7 @@ export type ReferenceImageDescription = {
    */
   isPerson?: boolean;
   /** Element/location upload the ledger saw a person in (#2238); like `isPerson`, absent means register. */
-  personInImage?: boolean;
+  personInMedia?: boolean;
   /**
    * Which entity this reference is, and the identity of what was sent
    * (`referenceProvenanceKey`, #1657). Stamped on the clip manifest as

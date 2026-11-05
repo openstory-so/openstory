@@ -268,11 +268,11 @@ describe('assertDraftElementUploadsAttachable', () => {
     expect(mockRequireRights).not.toHaveBeenCalled();
   });
 
-  it('writes the ledger verdict onto the row as personInImage (#2238)', async () => {
+  it('writes the ledger verdict onto the row as personInMedia (#2238)', async () => {
     mockRequireRights.mockResolvedValue({ depictsRealPerson: true });
     await attachDrafts([makeUpload()]);
     expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
-      personInImage: true,
+      personInMedia: true,
     });
 
     mockCreate.mockClear();
@@ -283,11 +283,11 @@ describe('assertDraftElementUploadsAttachable', () => {
       }),
     ]);
     expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
-      personInImage: false,
+      personInMedia: false,
     });
   });
 
-  it('rewrites personInImage on replace from the new upload (#2238)', async () => {
+  it('rewrites personInMedia on replace from the new upload (#2238)', async () => {
     mockGetById.mockResolvedValue({ id: 'el-1', sequenceId: 'seq-1' });
     mockUpdate.mockImplementation(async (id: string, values: object) => ({
       id,
@@ -307,7 +307,7 @@ describe('assertDraftElementUploadsAttachable', () => {
       filename: 'portrait.png',
     });
     expect(mockUpdate.mock.calls[0]?.[1]).toMatchObject({
-      personInImage: true,
+      personInMedia: true,
     });
   });
 

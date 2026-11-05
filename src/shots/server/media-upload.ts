@@ -716,7 +716,7 @@ export async function setLocationSheetFromUpload(
       storagePath,
       inputHash,
       model: USER_UPLOAD_MODEL,
-      personInImage: rights.depictsRealPerson,
+      personInMedia: rights.depictsRealPerson,
     });
   const updated = await requireLocation(scopedDb, sequenceId, location.id);
   // A write from no sequence writes no event.

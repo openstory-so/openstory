@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "1108af6c-0b71-4a4e-b81c-2a9d0905c308",
+  "id": "10cf1b2e-06c5-49a3-8450-564dd6a1753d",
   "prevIds": ["0cdbde54-7b07-4d41-9033-9046b85dac7b"],
   "ddl": [
     {
@@ -4374,7 +4374,7 @@
       "autoincrement": false,
       "default": "false",
       "generated": null,
-      "name": "person_in_image",
+      "name": "person_in_media",
       "entityType": "columns",
       "table": "location_sheet_variants"
     },
@@ -6844,7 +6844,7 @@
       "autoincrement": false,
       "default": "false",
       "generated": null,
-      "name": "person_in_image",
+      "name": "person_in_media",
       "entityType": "columns",
       "table": "sequence_elements"
     },

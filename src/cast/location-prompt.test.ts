@@ -40,7 +40,7 @@ const officeLocation: SequenceLocationMinimal = {
   description: 'A modern corporate office with glass walls',
   consistencyTag: 'office_modern_glass',
   referenceInputHash: null,
-  referencePersonInImage: false,
+  referencePersonInMedia: false,
   selectedReferenceVersionId: null,
 };
 
@@ -53,7 +53,7 @@ const streetLocation: SequenceLocationMinimal = {
   description: 'A busy city street at night',
   consistencyTag: 'city_street_night',
   referenceInputHash: null,
-  referencePersonInImage: true,
+  referencePersonInMedia: true,
   selectedReferenceVersionId: null,
 };
 
@@ -66,7 +66,7 @@ const apartmentLocation: SequenceLocationMinimal = {
   description: 'A cozy apartment',
   consistencyTag: 'apartment_cozy',
   referenceInputHash: null,
-  referencePersonInImage: false,
+  referencePersonInMedia: false,
   selectedReferenceVersionId: null,
 };
 
@@ -102,9 +102,9 @@ describe('location-prompt', () => {
       const [first, second] = refs;
       if (!first || !second) throw new Error('test setup: refs missing');
       expect(first.referenceImageUrl).toBe('https://example.com/office.png');
-      expect(first.personInImage).toBe(false);
+      expect(first.personInMedia).toBe(false);
       expect(second.referenceImageUrl).toBe('https://example.com/street.png');
-      expect(second.personInImage).toBe(true);
+      expect(second.personInMedia).toBe(true);
     });
 
     it('should return empty array for locations without images', () => {

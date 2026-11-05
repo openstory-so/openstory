@@ -11,7 +11,7 @@ describe('collectElementResults', () => {
     consistencyTag: token.toLowerCase().replaceAll('_', '-'),
     kind: 'image',
     durationSeconds: null,
-    personInImage: false,
+    personInMedia: false,
   });
   const fulfilled = (
     token: string

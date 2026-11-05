@@ -59,7 +59,7 @@ export function buildElementReferenceImages(
               kind: el.kind ?? ('image' as const),
               durationSeconds: el.durationSeconds,
               token: el.token,
-              personInImage: el.personInImage,
+              personInMedia: el.personInMedia,
               provenanceKey: referenceProvenanceKey(
                 'element',
                 el.id,

@@ -15,7 +15,7 @@ const el = (token: string): SequenceElementMinimal => ({
   consistencyTag: null,
   kind: 'image',
   durationSeconds: null,
-  personInImage: false,
+  personInMedia: false,
 });
 
 const emptyContinuity: Continuity = {

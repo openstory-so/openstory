@@ -118,14 +118,14 @@ describe('arkStillsForMotion', () => {
             description: 'cafe',
             role: 'location',
             token: 'CAFE',
-            personInImage: false,
+            personInMedia: false,
           },
           {
             referenceImageUrl: 'https://cdn/logo.png',
             description: 'logo',
             role: 'element',
             token: 'LOGO',
-            personInImage: false,
+            personInMedia: false,
           },
         ],
       })
@@ -175,21 +175,21 @@ describe('arkStillsForMotion', () => {
             description: 'the photo',
             role: 'element',
             token: 'PHOTO',
-            personInImage: true,
+            personInMedia: true,
           },
           {
             referenceImageUrl: 'https://cdn/logo.png',
             description: 'logo',
             role: 'element',
             token: 'LOGO',
-            personInImage: false,
+            personInMedia: false,
           },
           {
             referenceImageUrl: 'https://cdn/host.png',
             description: 'the host',
             role: 'location',
             token: 'HOST',
-            personInImage: true,
+            personInMedia: true,
           },
           {
             referenceImageUrl: 'https://cdn/inflight.png',
@@ -235,14 +235,14 @@ describe('arkStillsToRegister', () => {
       description: 'The pub',
       role: 'location' as const,
       token: 'Pub',
-      personInImage: false,
+      personInMedia: false,
     };
     const element = {
       referenceImageUrl: 'https://cdn/ute.png',
       description: 'The ute',
       role: 'element' as const,
       token: 'Ute',
-      personInImage: false,
+      personInMedia: false,
     };
     // Reference-only shots: no start frame, the same sheets on every shot.
     const shot = {
@@ -569,7 +569,7 @@ describe('Motion Service', () => {
             description: 'a logo',
             role: 'element',
             token: 'LOGO',
-            personInImage: false,
+            personInMedia: false,
           },
         ],
       });
@@ -618,14 +618,14 @@ describe('Motion Service', () => {
             description: 'the photo',
             role: 'element',
             token: 'PHOTO',
-            personInImage: true,
+            personInMedia: true,
           },
           {
             referenceImageUrl: 'https://example.com/logo.png',
             description: 'a logo',
             role: 'element',
             token: 'LOGO',
-            personInImage: false,
+            personInMedia: false,
           },
         ],
       });

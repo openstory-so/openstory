@@ -141,7 +141,7 @@ function makeElement(
     consistencyTag: 'silver-bottle',
     imageUrl: 'https://example.com/bottle.png',
     imagePath: 'elements/seq1/bottle.png',
-    personInImage: false,
+    personInMedia: false,
     visionStatus: 'completed',
     visionError: null,
     visionGeneratedAt: NOW,

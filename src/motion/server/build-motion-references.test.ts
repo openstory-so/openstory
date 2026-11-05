@@ -38,7 +38,7 @@ const element = (token: string, imageUrl: string): SequenceElementMinimal => ({
   consistencyTag: token.toLowerCase(),
   kind: 'image',
   durationSeconds: null,
-  personInImage: true,
+  personInMedia: true,
 });
 
 describe('buildMotionReferenceImages', () => {
@@ -76,7 +76,7 @@ describe('buildMotionReferenceImages', () => {
         kind: 'image',
         durationSeconds: null,
         token: 'LOGO',
-        personInImage: true,
+        personInMedia: true,
       },
     ]);
   });
@@ -172,7 +172,7 @@ const location = (
   referenceImageUrl,
   referenceStatus: 'completed',
   referenceInputHash: 'hash',
-  referencePersonInImage: false,
+  referencePersonInMedia: false,
   selectedReferenceVersionId: null,
   description: `${name} description`,
   consistencyTag: name.toLowerCase(),
