@@ -70,6 +70,10 @@ const ELEVENLABS_FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/elevenlabs'
 );
+const BYTEPLUS_FIXTURE_DIR = resolve(
+  import.meta.dirname,
+  '../fixtures/recorded/byteplus'
+);
 // aimock's recorder writes flat into a single directory; we point it here and
 // `sortStagingFixtures()` (run on shutdown) classifies each new file by its
 // provider-key prefix (`openai-…` vs `fal-…` vs `elevenlabs-…`) and moves it
@@ -93,6 +97,10 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Extract a complete character bible', 'script-bibles'],
   ['Cover each scene.', 'script-shot-list'],
   ["Rewrite this shot's spec.", 'shot-spec-rewrite'],
+  [
+    'Rewrite this motion prompt so a video model will accept it.',
+    'motion-soften',
+  ],
   ['Match the following library locations', 'location-match'],
   ['Generate the visual prompt for the starting frame', 'visual-prompts'],
   ['Generate the motion prompt for this scene', 'motion-prompts'],
@@ -362,6 +370,23 @@ function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
 }
 
 /**
+ * Seedance keys carry a digest of each media URL, and an `asset://` id is new
+ * on every run, so any 12-hex digest matches.
+ */
+function tolerateMediaDigests(fixtures: Fixture[]): Fixture[] {
+  for (const fixture of fixtures) {
+    const message = fixture.match.userMessage;
+    if (typeof message !== 'string') continue;
+    const pattern = message
+      .split(/\b[0-9a-f]{12}(?=[,\]])/)
+      .map(escapeRegex)
+      .join('[0-9a-f]{12}');
+    fixture.match.userMessage = new RegExp(`^${pattern}$`);
+  }
+  return fixtures;
+}
+
+/**
  * xAI's `/v1/images/edits` takes `application/json` (the Grok adapter posts
  * `{ model, prompt, image | images }`), but aimock's built-in edits handler
  * only parses OpenAI's multipart form and 400s a JSON body with
@@ -501,6 +526,7 @@ export async function startAimockServer(): Promise<string> {
         providers: {
           openai: 'https://openrouter.ai/api/v1',
           elevenlabs: 'https://api.elevenlabs.io',
+          byteplus: 'https://ark.ap-southeast.bytepluses.com',
         },
         fixturePath: RECORD_STAGING_DIR,
         // Reasoning models (e.g. Grok 4.5 + structured output under concurrent
@@ -509,6 +535,8 @@ export async function startAimockServer(): Promise<string> {
         // recorded stream — recordings for the slowest calls are silently
         // dropped (CopilotKit/aimock#197, shipped in >=1.35.0).
         bodyTimeoutMs: 120_000,
+        // A Seedream still takes longer than aimock's 30s default.
+        upstreamTimeoutMs: 300_000,
       },
     }),
   });
@@ -544,6 +572,13 @@ export async function startAimockServer(): Promise<string> {
   // OpenRouter/fal — the paths do not collide.
   if (existsSync(ELEVENLABS_FIXTURE_DIR)) {
     mockServer.addFixtures(loadFixturesRecursive(ELEVENLABS_FIXTURE_DIR));
+  }
+
+  // BytePlus Ark (Seedance tasks, Seedream images on `/api/v3`).
+  if (existsSync(BYTEPLUS_FIXTURE_DIR)) {
+    mockServer.addFixtures(
+      tolerateMediaDigests(loadFixturesRecursive(BYTEPLUS_FIXTURE_DIR))
+    );
   }
 
   const url = await mockServer.start();
@@ -839,6 +874,12 @@ function sortStagingFixtures(): void {
     if (name.startsWith('elevenlabs-')) {
       const base = stableBaseName(userMessage, 'elevenlabs');
       moveToStableName(src, ELEVENLABS_FIXTURE_DIR, base, userMessage);
+      sorted++;
+      continue;
+    }
+    if (name.startsWith('byteplus-')) {
+      const base = stableBaseName(userMessage, 'byteplus');
+      moveToStableName(src, BYTEPLUS_FIXTURE_DIR, base, userMessage);
       sorted++;
       continue;
     }

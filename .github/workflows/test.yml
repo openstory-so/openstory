@@ -188,7 +188,7 @@ jobs:
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
           ARK_API_KEY=test-mock-key
-          ARK_BASE_URL=http://localhost:4012/api/v3
+          ARK_BASE_URL=http://localhost:4010/api/v3
           BYTEPLUS_ACCESS_KEY=test-mock-key
           BYTEPLUS_SECRET_KEY=test-mock-secret
           BYTEPLUS_OPENAPI_HOST=http://localhost:4012
@@ -301,7 +301,7 @@ jobs:
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
           ARK_API_KEY=test-mock-key
-          ARK_BASE_URL=http://localhost:4012/api/v3
+          ARK_BASE_URL=http://localhost:4010/api/v3
           BYTEPLUS_ACCESS_KEY=test-mock-key
           BYTEPLUS_SECRET_KEY=test-mock-secret
           BYTEPLUS_OPENAPI_HOST=http://localhost:4012

@@ -1,0 +1,37 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "video",
+        "userMessage": "Natural, even lighting. #000000, #FFFFFF. Cinematic, Natural.\n\n@Image1 looks up as a short, plain doorbell ding sounds off-screen. The only audio is quiet room tone and the single ding, with no music and no melody. Slow push in on her face.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n[media: reference_image:c558680101f4]",
+        "model": "dreamina-seedance-2-5-260628"
+      },
+      "response": {
+        "json": {
+          "model": "dreamina-seedance-2-5-260628",
+          "status": "succeeded",
+          "content": {
+            "video_url": "https://assets.openstory.so/e2e/2f0384940ce49e9aefbab98926272fe0cfd09b43ece9d9ad3fa7df18428b7460.mp4"
+          },
+          "usage": {
+            "completion_tokens": 38830,
+            "total_tokens": 38830
+          },
+          "created_at": 1793853727,
+          "updated_at": 1793853788,
+          "seed": 35641,
+          "resolution": "480p",
+          "ratio": "16:9",
+          "duration": 4,
+          "framespersecond": 24,
+          "service_tier": "default",
+          "execution_expires_after": 172800,
+          "generate_audio": true,
+          "draft": true,
+          "priority": 0,
+          "output_format": "mp4"
+        }
+      }
+    }
+  ]
+}

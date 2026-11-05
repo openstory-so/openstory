@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Maya (Image 1) wipes down the counter of the Corner diner at closing time.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Corner diner - Chrome counter",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/5ebcd1114074153ae807add24dff6450d51eda84a198e942c35fc04916c48905.jpeg"
+        }
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 /**
  * Generation through MCP (#2243): sheets, stills and clips on fal and on
  * BytePlus Ark (Seedream / Seedance, with asset ingest), music, and Studio.
- * Replay runs Ark against e2e/mocks/ark-mock.ts; fal and LLMs replay aimock.
+ * Ark, fal, ElevenLabs and LLMs replay aimock; Ark assets hit e2e/mocks/byteplus-assets-mock.ts.
  */
 import type { APIRequestContext } from 'playwright/test';
 import { z } from 'zod';
@@ -219,6 +219,64 @@ test.describe('Generation', () => {
       z.object({ started: z.boolean(), variantId: z.string().nullable() })
     );
     expect(music.started).toBe(true);
+  });
+
+  // Unrecorded: the ElevenLabs account is over its custom-voice limit.
+  test.fixme('a character voice is designed, saved, then released on delete', async ({
+    request,
+    testUser,
+  }) => {
+    const { id: sequenceId } = await createTestSequence(
+      testUser.organizationId,
+      testUser.id,
+      'Voice sequence'
+    );
+    const { characterId } = await call(
+      request,
+      'create_character',
+      {
+        sequenceId,
+        name: 'Walt',
+        age: '60s',
+        physicalDescription: 'Grey beard, flat cap',
+        personality: 'Unhurried, dry',
+        voiceDescription: 'A warm, gravelly man in his sixties, slow and dry.',
+      },
+      z.object({ characterId: z.string() })
+    );
+    const s = { sequenceId, characterId };
+    await call(request, 'generate_character_voice', s);
+
+    const Voices = z.object({
+      selectedVoiceVersionId: z.string().nullable(),
+      versions: z.array(
+        z.object({
+          id: z.string(),
+          status: z.string(),
+          voiceId: z.string().nullable(),
+          error: z.string().nullable(),
+        })
+      ),
+    });
+    for (;;) {
+      const { versions, selectedVoiceVersionId } = await call(
+        request,
+        'list_character_voices',
+        s,
+        Voices
+      );
+      const voice = versions[0];
+      expect(voice?.error ?? null, 'voice failed').toBeNull();
+      if (voice?.status === 'completed') {
+        expect(voice.voiceId).toBeTruthy();
+        expect(selectedVoiceVersionId).toBe(voice.id);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, E2E_RECORDING ? 5000 : 500));
+    }
+
+    // Deleting the character frees the saved voice on ElevenLabs.
+    await call(request, 'delete_character', s);
   });
 
   test('Studio: an Ark image, a Seedance draft that references it, an edit', async ({

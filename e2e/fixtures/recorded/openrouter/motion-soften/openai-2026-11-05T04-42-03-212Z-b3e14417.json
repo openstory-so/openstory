@@ -1,0 +1,50 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Rewrite this motion prompt so a video model will accept it.\n\n<ORIGINAL_PROMPT>\nMaya looks up as the door bell rings; slow push in.\n</ORIGINAL_PROMPT>\n\n<REJECTION>\nOutputAudioSensitiveContentDetected.PolicyViolation: The request failed because the output audio may be related to copyright restrictions.\n</REJECTION>",
+        "model": "anthropic/claude-sonnet-5.5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"prompt\":\"Maya looks up as a short, plain doorbell ding sounds off-screen. The only audio is quiet room tone and the single ding, with no music and no melody. Slow push in on her face.\"}",
+        "usage": {
+          "prompt_tokens": 1015,
+          "completion_tokens": 283,
+          "total_tokens": 1298,
+          "cost": 0.00486,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00486,
+            "upstream_inference_prompt_cost": 0.00203,
+            "upstream_inference_completions_cost": 0.00283
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 213,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 2050,
+        "interChunkDelaysMs": [
+          419, 420, 220, 498, 352, 32, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 12, 1, 0
+        ],
+        "totalDurationMs": 4010
+      },
+      "metadata": {
+        "systemHash": "81b6a6b0"
+      }
+    }
+  ]
+}
