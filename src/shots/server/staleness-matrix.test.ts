@@ -134,6 +134,7 @@ const character = (fields: Partial<CharacterRow>): CharacterRow =>
     voiceOnly: false,
     isPerson: true,
     rendering: 'Photoreal live action',
+    referencePhotoUrl: null,
     sheetStatus: 'completed',
     selectedBibleVersionId: null,
     deletedAt: null,
@@ -1408,6 +1409,15 @@ const SHEET_MATRIX: SheetRow[] = [
     mutation: "Alice's personality edited (motion only)",
     apply: (w) => ({ ...w, alice: { ...w.alice, personality: 'restless' } }),
     character: 'fresh',
+    location: 'fresh',
+  },
+  {
+    mutation: 'Alice given a reference photo (#2254)',
+    apply: (w) => ({
+      ...w,
+      alice: { ...w.alice, referencePhotoUrl: '/r2/alice-photo.jpg' },
+    }),
+    character: 'stale',
     location: 'fresh',
   },
   {

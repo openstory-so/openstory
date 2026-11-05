@@ -44,7 +44,9 @@ import {
 } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import {
+  clearCharacterReferencePhoto,
   replaceFrameContent,
+  setCharacterReferencePhotoFromUpload,
   setCharacterSheetFromUpload,
   setLocationSheetFromUpload,
   setSequenceMusicFromUpload,
@@ -237,6 +239,38 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       lookId: data.lookId ?? data.characterId,
     })
   );
+
+/**
+ * Draw a character's default look from an uploaded photo (#2254): stored as
+ * its reference photo, then a sheet run starts.
+ */
+export const setCharacterReferencePhotoFromUploadFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([castAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema.nullable(),
+        characterId: ulidSchema,
+        publicUrl: mediaUrlSchema,
+      })
+    )
+  )
+  .handler(({ context, data }) =>
+    setCharacterReferencePhotoFromUpload(context, data)
+  );
+
+export const clearCharacterReferencePhotoFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([castAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({ sequenceId: ulidSchema.nullable(), characterId: ulidSchema })
+    )
+  )
+  .handler(({ context, data }) => clearCharacterReferencePhoto(context, data));
 
 // `sequenceId` null is the Locations page (#1695): the same upload, stored
 // under the organization, with no sequence event or channel.

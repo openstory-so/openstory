@@ -7,6 +7,7 @@
  */
 
 import {
+  clearCharacterReferencePhotoFn,
   presignCharacterDraftUploadFn,
   presignCharacterSheetUploadFn,
   presignFrameImageUploadFn,
@@ -263,6 +264,16 @@ export function invalidateCharacterSheets(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: characterSheetVariantKeys.all }),
     queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
   ]);
+}
+
+/** Stop drawing the default look from its photo (#2254); the sheet reads stale. */
+export function useClearCharacterReferencePhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string | null; characterId: string }) =>
+      clearCharacterReferencePhotoFn({ data }),
+    onSuccess: () => invalidateCharacterSheets(queryClient),
+  });
 }
 
 /**

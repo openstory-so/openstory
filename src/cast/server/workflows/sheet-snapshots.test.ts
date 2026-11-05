@@ -60,6 +60,7 @@ describe('character-sheet hash', () => {
     lookVersionId: 'c1',
     lookStyling: null,
     face: null,
+    referencePhotoUrl: null,
     bibleVersionId: null,
     characterName: 'Jack',
     characterMetadata: {

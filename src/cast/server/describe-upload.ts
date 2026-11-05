@@ -23,11 +23,14 @@ import { z } from 'zod';
 
 export type UploadSubject = 'character' | 'location';
 
-const responseSchema = z.object({ description: z.string() });
+const responseSchema = z.object({
+  description: z.string(),
+  isCharacterSheet: z.boolean(),
+});
 
 const SYSTEM_PROMPTS: Record<UploadSubject, string> = {
-  character: `You describe a character from one image (a photo or a character sheet) for a film production's character bible. Write how the character looks so an image model can draw them again: apparent age, build, face, skin, hair, and any marks such as scars or tattoos. 30-70 words, plain prose, no name. Do not describe clothing, pose, background, lighting or the photograph. Return JSON: {"description": "..."}.`,
-  location: `You describe a place from one photo for a film production's location bible. Write what the place is and how it looks so an image model can draw it again: kind of place, period, layout, architecture, materials, colours and notable fixtures. 30-70 words, plain prose. Do not describe people, weather, lighting or the camera. Return JSON: {"description": "..."}.`,
+  character: `You describe a character from one image (a photo or a character sheet) for a film production's character bible. Write how the character looks so an image model can draw them again: apparent age, build, face, skin, hair, and any marks such as scars or tattoos. 30-70 words, plain prose, no name. Do not describe clothing, pose, background, lighting or the photograph. Also say whether the image is already a character sheet (several views of the character side by side on a plain background) rather than a single photo or picture. Return JSON: {"description": "...", "isCharacterSheet": true|false}.`,
+  location: `You describe a place from one photo for a film production's location bible. Write what the place is and how it looks so an image model can draw it again: kind of place, period, layout, architecture, materials, colours and notable fixtures. 30-70 words, plain prose. Do not describe people, weather, lighting or the camera. Return JSON: {"description": "...", "isCharacterSheet": false}.`,
 };
 
 export async function describeUpload(opts: {
@@ -38,7 +41,11 @@ export async function describeUpload(opts: {
   url: string;
   filename: string;
   subject: UploadSubject;
-}): Promise<{ description: string }> {
+}): Promise<{
+  description: string;
+  /** A character image that is already a sheet; null for a location. */
+  isCharacterSheet: boolean | null;
+}> {
   const { scopedDb } = opts;
   requireCheckable(opts.url, scopedDb.organizationId);
   await requireUploadRights(scopedDb, [opts.url]);
@@ -85,7 +92,11 @@ export async function describeUpload(opts: {
     }
   }
   const description = parsed?.description.trim();
-  if (!description) throw new Error('Vision returned no description');
+  if (!parsed || !description) {
+    throw new Error('Vision returned no description');
+  }
+  const isCharacterSheet =
+    opts.subject === 'character' ? parsed.isCharacterSheet : null;
 
   if (llmKey.source !== 'organization') {
     const costMicros = llmCostFromUsage(usage, model, via);
@@ -104,5 +115,5 @@ export async function describeUpload(opts: {
       });
     }
   }
-  return { description };
+  return { description, isCharacterSheet };
 }

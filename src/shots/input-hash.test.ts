@@ -218,11 +218,24 @@ describe('computeCharacterSheetInputHash', () => {
     },
     styling: null,
     faceSheetVersionId: null,
+    referencePhotoUrl: null,
     talentSheetHash: 'talent-sha',
     talent: null,
     styleConfigHash: 'style-sha',
     imageModel: 'flux-pro-v1.1',
   };
+
+  it('joins a reference photo only when set (#2254)', async () => {
+    const withoutPhoto = await computeCharacterSheetInputHash(base);
+    const withPhoto = await computeCharacterSheetInputHash({
+      ...base,
+      referencePhotoUrl: '/r2/characters/org/o/characters/drafts/p.jpg',
+    });
+    expect(withPhoto).not.toBe(withoutPhoto);
+    expect(
+      await computeCharacterSheetInputHash({ ...base, referencePhotoUrl: '  ' })
+    ).toBe(withoutPhoto);
+  });
 
   it('is stable and sensitive to visual bible field changes, not a rename', async () => {
     const a = await computeCharacterSheetInputHash(base);
@@ -823,6 +836,7 @@ describe('canonical serialization', () => {
       },
       styling: null,
       faceSheetVersionId: null,
+      referencePhotoUrl: null,
       talentSheetHash: 'talent',
       talent: null,
       styleConfigHash: 'style',
@@ -834,6 +848,7 @@ describe('canonical serialization', () => {
       styleConfigHash: 'style',
       styling: null,
       faceSheetVersionId: null,
+      referencePhotoUrl: null,
       talentSheetHash: 'talent',
       talent: null,
       characterBible: {

@@ -214,6 +214,14 @@ sheet.
   look with no face (`buildRegenerateCharacterSheetPayload`), so no path
   draws a look without a face. A payload from before the field is
   failed at the top of `CharacterSheetWorkflow` (`assertQueuedWithFace`).
+- **The reference photo** (#2254, `characters.referencePhotoUrl`) is what
+  the default look is drawn from when the character has one: the payload
+  carries `referencePhotoUrl`, required, null on every other look, and the
+  default sheet's hash joins its URL only when set. Every other look is
+  still drawn from the default sheet alone. Setting or clearing it revokes
+  every sheet claim (`characters.setReferencePhoto`). A payload from before
+  the field fails at the top of `CharacterSheetWorkflow`
+  (`assertQueuedWithReferencePhoto`).
 - **One run makes every look.** In the plan the default sheet is the look's
   upstream, with the ordinary rules: a default this run makes puts the look
   in the same run (a look that was done goes stale by cascade, since its

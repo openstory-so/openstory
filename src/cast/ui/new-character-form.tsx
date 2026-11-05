@@ -15,6 +15,7 @@ import { describeUploadFn } from '@/cast/describe-upload.fn';
 import { errorMessage } from '@/platform/errors';
 import { useUploadDraftCharacterSheet } from '@/shots/ui/use-media-upload';
 import {
+  FileUploadItemMetadata,
   FileUploadItemProgress,
   type FileUploadProps,
 } from '@/ui/shadcn/file-upload';
@@ -31,16 +32,21 @@ const newCharacterSchema = z.object({
     .trim()
     .max(2000)
     .transform((v) => v || undefined),
-  /** Uploaded and cleared or signed on drop; attached as the sheet on create. */
-  sheetUrl: z.string().optional(),
+  /**
+   * Uploaded, cleared or signed, and described on drop. A sheet is attached
+   * as it is; a photo becomes the reference the sheet is drawn from.
+   */
+  image: z
+    .object({ url: z.string(), isCharacterSheet: z.boolean() })
+    .optional(),
 });
 
 export type NewCharacterFields = z.output<typeof newCharacterSchema>;
 
 /**
  * A new character (#2254): a name, and optionally a description and a photo
- * or sheet. The image is checked for a real person on drop and then fills
- * a blank description. One form for the cast panel, the Cast picker and the
+ * or sheet. The image is checked for a real person on drop, then described:
+ * the description fills a blank one, and says whether it is a sheet. One form for the cast panel, the Cast picker and the
  * Characters page; `useNewCharacter` makes it.
  */
 export const NewCharacterForm: React.FC<{
@@ -48,7 +54,7 @@ export const NewCharacterForm: React.FC<{
   onSubmit: (fields: NewCharacterFields) => void;
 }> = ({ isPending, onSubmit }) => {
   const [files, setFiles] = useState<File[]>([]);
-  const [sheetUrl, setSheetUrl] = useState<string>();
+  const [image, setImage] = useState<NewCharacterFields['image']>();
   const [stage, setStage] = useState<'idle' | 'uploading' | 'describing'>(
     'idle'
   );
@@ -75,8 +81,6 @@ export const NewCharacterForm: React.FC<{
       );
       return;
     }
-    setSheetUrl(url);
-    onSuccess(file);
     setStage('describing');
     try {
       const result = await describeUploadFn({
@@ -86,10 +90,11 @@ export const NewCharacterForm: React.FC<{
       if (description.current && !description.current.value.trim()) {
         description.current.value = result.description;
       }
+      setImage({ url, isCharacterSheet: result.isCharacterSheet === true });
+      onSuccess(file);
     } catch (error) {
-      toast.error('Image not described', {
-        description: errorMessage(error),
-      });
+      // Not knowing photo from sheet, Create cannot use it: remove or retry.
+      onError(file, new Error(`Image not described: ${errorMessage(error)}`));
     } finally {
       setStage('idle');
     }
@@ -104,7 +109,7 @@ export const NewCharacterForm: React.FC<{
         event.stopPropagation();
         const result = newCharacterSchema.safeParse({
           ...Object.fromEntries(new FormData(event.currentTarget)),
-          sheetUrl,
+          image,
         });
         if (!result.success) {
           toast.error('Check the character', {
@@ -151,7 +156,7 @@ export const NewCharacterForm: React.FC<{
           value={files}
           onValueChange={(next) => {
             setFiles(next);
-            if (next.length === 0) setSheetUrl(undefined);
+            if (next.length === 0) setImage(undefined);
           }}
           onUpload={onUpload}
         >
@@ -168,20 +173,18 @@ export const NewCharacterForm: React.FC<{
           )}
           <FileUploadList>
             {files.map((file) => (
-              <FileUploadItem
-                key={getFileKey(file)}
-                value={file}
-                className="group relative aspect-square w-32 overflow-hidden rounded-lg border-0 p-0"
-              >
-                <FileUploadItemPreview className="size-full rounded-none border-0" />
-                <FileUploadItemProgress className="absolute bottom-0 left-0 right-0 h-1" />
+              <FileUploadItem key={getFileKey(file)} value={file}>
+                <FileUploadItemPreview className="size-16" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <FileUploadItemMetadata />
+                  <FileUploadItemProgress />
+                </div>
                 <FileUploadItemDelete asChild>
                   <Button
                     type="button"
-                    variant="destructive"
+                    variant="ghost"
                     size="icon"
                     aria-label={`Remove ${file.name}`}
-                    className="absolute right-2 top-2 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   >
                     <X className="h-4 w-4" />
                   </Button>

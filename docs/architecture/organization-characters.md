@@ -187,12 +187,18 @@ What follows from one character in two sequences:
     (`presignCharacterDraftUploadFn`, `org/<id>/characters/drafts/`), and
     goes through the likeness check and sign-off there, as an element does.
   - A cleared or signed image then fills a blank description
-    (`describeUploadFn` → `describeUpload`, billed vision; it refuses an
+    (`describeUploadFn` → `describeUpload`, billed per call; it refuses an
     upload with no verdict before calling the model). A description the
     user typed is kept.
-  - Create attaches the URL as the default look's sheet
-    (`setCharacterSheetFromUploadFn`; `isPerson` from the ledger). A failed
-    attach keeps the character and says so. The Cast picker selects the new
+  - The same vision call says whether the image is already a sheet. Create
+    attaches a sheet as the default look's sheet
+    (`setCharacterSheetFromUploadFn`). A photo becomes the character's
+    reference photo (`setCharacterReferencePhotoFromUploadFn`,
+    `characters.referencePhotoUrl`) and a sheet run starts, drawn from it;
+    every later default-look sheet is drawn from it too, until it is removed
+    on the character's page. `isPerson` follows the ledger either way. A
+    failure there keeps the character and says so. An image the vision call
+    could not describe is refused in the form: remove it or drop it again. The Cast picker selects the new
     character and the draft keeps its script.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
