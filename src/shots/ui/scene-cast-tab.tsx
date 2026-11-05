@@ -266,6 +266,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   const [replacement, setReplacement] = useState<{
     id: string;
     name: string;
+    alreadyCast: boolean;
   } | null>(null);
 
   const handleConfirmDelete = (character: CharacterWithSheet) => {
@@ -427,7 +428,13 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
           onOpenChange={setPickerOpen}
           excludeCharacterId={replacing.id}
           onSelect={(picked) => {
-            setReplacement({ id: picked.id, name: picked.name });
+            setReplacement({
+              id: picked.id,
+              name: picked.name,
+              alreadyCast: picked.sequences.some(
+                (sequence) => sequence.id === sequenceId
+              ),
+            });
             setReplaceConfirmOpen(true);
           }}
         />
@@ -438,6 +445,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
           onOpenChange={setReplaceConfirmOpen}
           characterName={replacing.name}
           withCharacterName={replacement.name}
+          alreadyCast={replacement.alreadyCast}
           isLoading={replaceCharacter.isPending}
           onConfirm={() => {
             const from = replacing;

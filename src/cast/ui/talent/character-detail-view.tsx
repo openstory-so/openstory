@@ -834,6 +834,9 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           onOpenChange={setIsReplaceConfirmOpen}
           characterName={character.name}
           withCharacterName={replacement.name}
+          alreadyCast={replacement.sequences.some(
+            (sequence) => sequence.id === sequenceId
+          )}
           isLoading={replaceCharacter.isPending}
           onConfirm={() => {
             const withCharacter = replacement;

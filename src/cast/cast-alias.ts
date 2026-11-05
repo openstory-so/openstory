@@ -1,4 +1,5 @@
 import type { CastScriptAlias } from '@/platform/server/db/schema';
+import { ValidationError } from '@/platform/errors';
 import { z } from 'zod';
 
 const castAliasSchema = z.array(
@@ -9,8 +10,12 @@ const castAliasSchema = z.array(
   })
 );
 
-/** Aliases stored on a cast link. Null, and anything that is not the shape, are none. */
+/** Aliases stored on a cast link. Null is none. A present value of the wrong shape throws. */
 export function parseCastAliases(value: unknown): CastScriptAlias[] {
-  const parsed = castAliasSchema.safeParse(value ?? []);
-  return parsed.success ? parsed.data : [];
+  if (value == null) return [];
+  const parsed = castAliasSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ValidationError('Cast aliases are not the stored shape.');
+  }
+  return parsed.data;
 }

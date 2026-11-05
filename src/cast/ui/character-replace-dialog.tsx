@@ -66,8 +66,8 @@ export const CharacterReplacePicker: React.FC<{
         <DialogHeader>
           <DialogTitle>Replace character</DialogTitle>
           <DialogDescription>
-            The slot keeps its place in the script. The character you pick
-            supplies the sheet, looks and voice.
+            The character you pick supplies the sheet, looks and voice. If they
+            are already in this sequence, this card is dropped.
           </DialogDescription>
         </DialogHeader>
         <Input
@@ -138,24 +138,33 @@ export const CharacterReplacePicker: React.FC<{
   );
 };
 
-/** Confirm copy. Scenes stay on the slot. Shots go stale. Nothing is copied. */
+/**
+ * Confirm copy. A character who is not in this sequence keeps the slot.
+ * One who already is drops this card. Shots go stale. Nothing is copied.
+ */
 export function replaceConfirmCopy(
   characterName: string,
-  withCharacterName: string
+  withCharacterName: string,
+  alreadyCast: boolean
 ): { title: string; description: string } {
+  const shared = 'Shots go stale. Nothing is copied.';
   return {
     title: `Replace ${characterName} with ${withCharacterName}?`,
-    description: `Scenes stay on this slot and use ${withCharacterName}'s sheet, looks and voice. Shots that used this slot go stale. Nothing is copied.`,
+    description: alreadyCast
+      ? `This card is dropped. ${withCharacterName} stays, and this script id, name and tag are remembered there. Scenes are not rewritten. ${shared}`
+      : `Scenes stay on this slot and use ${withCharacterName}'s sheet, looks and voice. Shots that used this slot go stale. Nothing is copied.`,
   };
 }
 
-/** Confirm a Replace. Scenes stay on the slot. Shots go stale. Nothing is copied. */
+/** Confirm a Replace. The copy depends on whether the pick is already cast. */
 export const CharacterReplaceConfirm: React.FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   characterName: string;
   withCharacterName: string;
+  /** The pick is a live member of this sequence, so this card is dropped. */
+  alreadyCast: boolean;
   isLoading: boolean;
 }> = ({
   open,
@@ -163,9 +172,14 @@ export const CharacterReplaceConfirm: React.FC<{
   onConfirm,
   characterName,
   withCharacterName,
+  alreadyCast,
   isLoading,
 }) => {
-  const copy = replaceConfirmCopy(characterName, withCharacterName);
+  const copy = replaceConfirmCopy(
+    characterName,
+    withCharacterName,
+    alreadyCast
+  );
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
