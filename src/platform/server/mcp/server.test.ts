@@ -176,6 +176,7 @@ describe('tools/list and whoami', () => {
       'openstory.list_library_locations',
       'openstory.get_library_location',
       'openstory.list_library_characters',
+      'openstory.get_library_character',
       'openstory.list_library_resources',
       'openstory.get_library_resource',
       'openstory.list_gallery_samples',

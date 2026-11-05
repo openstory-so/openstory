@@ -299,7 +299,7 @@ the script then names her like any cast member.
   the cast link; rename one of them.
 - **A character the page cannot list** (another organization's, deleted, or gone)
   reads "Character not found" with a way back, not an error.
-- MCP: `list_library_characters`.
+- MCP: `list_library_characters`, `get_library_character`, and `update_character` with no `sequenceId` (#2252).
 
 ## Writes
 
