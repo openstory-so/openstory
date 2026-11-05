@@ -977,6 +977,23 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     data: CharacterBibleUpdate,
     opts: BibleWriteOpts
   ): Promise<Character> {
+    // A rename from any sequence, or none, must stay free in every sequence that casts it (#2248).
+    if (data.name !== undefined) {
+      const casting = await db
+        .select({ sequenceId: sequenceCast.sequenceId })
+        .from(sequenceCast)
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .where(
+          and(
+            eq(sequenceCast.characterId, id),
+            eq(characters.organizationId, organizationId),
+            isNull(sequenceCast.removedAt)
+          )
+        );
+      for (const link of casting) {
+        await assertNameFree(db, link.sequenceId, data.name, id);
+      }
+    }
     if (sequenceId === null) {
       const current = await currentOf(id);
       if (!current) throw new NotFoundError(`Character ${id} not found`);

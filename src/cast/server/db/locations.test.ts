@@ -388,7 +388,7 @@ describe('attach', () => {
     const twin = await organizationLocation(' diner ');
     await expect(
       locs().attach(sequenceId, twin.id, { actorId })
-    ).rejects.toThrow(/already a location in this sequence/);
+    ).rejects.toThrow(/already a location in /);
     expect(await linksOf()).toHaveLength(1);
 
     // The same check before a removed link comes back.
@@ -397,7 +397,7 @@ describe('attach', () => {
     await analysed('DEPOT', 'loc_003');
     await expect(
       locs().attach(sequenceId, removed.id, { actorId })
-    ).rejects.toThrow(/already a location in this sequence/);
+    ).rejects.toThrow(/already a location in /);
     expect(
       (await locs().getById(sequenceId, removed.id))?.deletedAt
     ).toBeInstanceOf(Date);
@@ -522,7 +522,7 @@ describe('replace', () => {
     const twin = await organizationLocation('roadhouse');
     await expect(
       locs().replace(sequenceId, old.id, twin.id, { actorId })
-    ).rejects.toThrow(/already a location in this sequence/);
+    ).rejects.toThrow(/already a location in /);
     // Its own name is free to it: the link it takes over is not a twin.
     const sameName = await organizationLocation('Diner');
     await expect(
@@ -563,6 +563,31 @@ describe('replace', () => {
       locs().replace(sequenceId, old.id, next.id, { actorId })
     ).rejects.toThrow('Location not found');
     expect(await linksOf()).toMatchObject([{ locationId: old.id }]);
+  });
+});
+
+describe('rename', () => {
+  it('runs the name check in every sequence that uses the location (#2248)', async () => {
+    const edit = { actorId };
+    const diner = await analysed('Diner');
+    await locs().attach(secondSequenceId, diner.id, { actorId });
+    await analysed('Depot', 'loc_002', secondSequenceId);
+    const gone = await analysed('Barn', 'loc_003');
+    await locs().softDelete(sequenceId, gone.id, { actorId });
+
+    // Depot is live only in the second sequence: refused from either side, and named.
+    await expect(
+      locs().updateBible(sequenceId, diner.id, { name: 'Depot' }, edit)
+    ).rejects.toThrow('Depot is already a location in Two. Rename one first.');
+    await expect(
+      locs().updateBible(null, diner.id, { name: ' depot ' }, edit)
+    ).rejects.toThrow(/already a location in Two/);
+    expect((await locs().getCurrent(diner.id))?.name).toBe('Diner');
+
+    // A removed location's name and the location's own are free.
+    await locs().updateBible(sequenceId, diner.id, { name: 'Barn' }, edit);
+    await locs().updateBible(null, diner.id, { name: 'BARN' }, edit);
+    expect((await locs().getCurrent(diner.id))?.name).toBe('BARN');
   });
 });
 
@@ -638,7 +663,7 @@ describe('restore through a sequence', () => {
     await analysed('Diner', 'loc_002');
     await expect(
       locs().restore(sequenceId, diner.id, { actorId })
-    ).rejects.toThrow(/already a location in this sequence/);
+    ).rejects.toThrow(/already a location in /);
     expect(
       (await locs().getById(sequenceId, diner.id))?.deletedAt
     ).toBeInstanceOf(Date);

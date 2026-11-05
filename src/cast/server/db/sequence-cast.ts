@@ -17,6 +17,7 @@ import {
   characterBibleVersions,
   characters,
   sequenceCast,
+  sequences,
 } from '@/platform/server/db/schema';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 
@@ -66,7 +67,7 @@ export const analysisMayNotRewrite = async (
  * Refuse while a live cast member of the sequence, other than
  * `exceptCharacterId`, has this name (trimmed, case-blind). The script names
  * a character in capitals, and two of one name could not be told apart
- * (#2050). Attach, revive and restore all pass through here; analysis does
+ * (#2050). Attach, revive, restore and rename all pass through here; analysis does
  * not, since it may make two characters of one name.
  */
 export const assertNameFree = async (
@@ -101,8 +102,14 @@ export const assertNameFree = async (
         key(row.name) === key(name)
     )
   ) {
+    // Named, since a rename can clash in a sequence other than the open one (#2248).
+    const [sequence] = await db
+      .select({ title: sequences.title })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!sequence) throw new NotFoundError('Sequence not found');
     throw new ConflictError(
-      `${name} is already a name in this sequence's cast. Rename one first.`
+      `${name} is already a name in the cast of ${sequence.title}. Rename one first.`
     );
   }
 };
