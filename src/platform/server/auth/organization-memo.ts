@@ -49,5 +49,5 @@ export async function resolveOrganizationAndCompliance(
   });
   // A failed read is not kept: the next call reads again.
   value.catch(() => organizationMemo.delete(memoKey));
-  return await value;
+  return value;
 }
