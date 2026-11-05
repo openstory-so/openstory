@@ -48,6 +48,9 @@ export function CastMergeOffer({
   showHint?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const sheetNote = keepsLoserSheet
+    ? ` ${intoName} has no sheet, so ${fromName}'s sheet is kept.`
+    : '';
   return (
     <div className="flex flex-col gap-1">
       {showHint ? (
@@ -76,10 +79,7 @@ export function CastMergeOffer({
               <span>
                 {fromName} leaves this sequence and stays in the organization.{' '}
                 {intoName} keeps its sheet, looks and voice.
-                {keepsLoserSheet
-                  ? ` ${intoName} has no sheet, so ${fromName}'s sheet is kept.`
-                  : ''}{' '}
-                Undo brings {fromName} back into the cast.
+                {sheetNote} Undo brings {fromName} back into the cast.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>

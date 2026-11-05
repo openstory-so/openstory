@@ -34,10 +34,16 @@ function letterCount(normalized: string): number {
   return count;
 }
 
+function codePoints(value: string): string[] {
+  const points: string[] = [];
+  for (const char of value) points.push(char);
+  return points;
+}
+
 /** Distance is exactly one. Equal strings are not one edit apart. */
 function distanceIsOne(left: string, right: string): boolean {
-  const a = [...left];
-  const b = [...right];
+  const a = codePoints(left);
+  const b = codePoints(right);
   const gap = a.length - b.length;
   if (gap === 0) {
     let diffs = 0;
