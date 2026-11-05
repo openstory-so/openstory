@@ -619,6 +619,26 @@ export function createCharacterLooksMethods(
       return rows;
     },
 
+    /** `listByCharacters` for a sequence's live cast, keyed by the sequence so it needs no cast read first (#2234). */
+    listBySequence: async (sequenceId: string): Promise<CharacterLook[]> =>
+      await selectLooks(
+        db,
+        organizationId,
+        inArray(
+          characterLooks.characterId,
+          db
+            .select({ id: sequenceCast.characterId })
+            .from(sequenceCast)
+            .where(
+              and(
+                eq(sequenceCast.sequenceId, sequenceId),
+                isNull(sequenceCast.removedAt)
+              )
+            )
+        ),
+        lookOrder
+      ),
+
     /** Definition history of one of the organization's looks, newest first. */
     listVersions: async (lookId: string): Promise<CharacterLookVersion[]> =>
       await db
