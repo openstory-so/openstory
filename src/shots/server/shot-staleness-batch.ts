@@ -1,5 +1,5 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Sequence, Shot } from '@/platform/server/db/schema';
+import type { Shot } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
 import { typedFromEntries } from '@/platform/typed-object';
 import { resolveSceneForShot } from '@/shots/server/scene-script';
@@ -47,7 +47,7 @@ const toWireStaleness = (
  */
 export async function loadStalenessForShots(
   scopedDb: ScopedDb,
-  sequence: Sequence,
+  sequence: Parameters<typeof computeShotStaleness>[0]['sequence'],
   allShots: Shot[],
   targetShots: Shot[]
 ) {
@@ -139,8 +139,8 @@ export async function loadStalenessForShots(
             ),
           ];
         } catch (error) {
-          // Per-shot boundary: anything escaping computeShotStaleness must
-          // not reject the whole batch and blank the scene.
+          // Per-shot boundary: one shot must not blank a scene; a single shot fails as itself.
+          if (targetShots.length === 1) throw error;
           logger.error(
             `loadStalenessForShots: shot ${shot.id} staleness failed`,
             { err: error }
