@@ -401,8 +401,8 @@ export function createLocationsMethods(db: Database, organizationId: string) {
   /**
    * Refuse while a live location of the sequence, other than `exceptId`, has
    * this name (trimmed, case-blind): a scene names its place in the slugline,
-   * and two of one name could not be told apart. Attach, restore and replace
-   * pass through here; analysis does not.
+   * and two of one name could not be told apart. Attach, restore, replace
+   * and rename pass through here; analysis does not.
    */
   const assertNameFree = async (
     sequenceId: string,
@@ -416,8 +416,14 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     if (
       live.some((row) => row.id !== exceptId && key(row.name) === key(name))
     ) {
+      // Named, since a rename can clash in a sequence other than the open one (#2248).
+      const [sequence] = await db
+        .select({ title: sequences.title })
+        .from(sequences)
+        .where(eq(sequences.id, sequenceId));
+      if (!sequence) throw new NotFoundError('Sequence not found');
       throw new ConflictError(
-        `${name} is already a location in this sequence. Rename one first.`
+        `${name} is already a location in ${sequence.title}. Rename one first.`
       );
     }
   };
@@ -1392,6 +1398,26 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       // location's own bible.
       if (sequenceId === null) await requireCurrent(id);
       else await requireLinked(sequenceId, id);
+      // A rename from any sequence, or none, must stay free in every sequence that uses it (#2248).
+      if (data.name !== undefined) {
+        const using = await db
+          .select({ sequenceId: sequenceLocationLinks.sequenceId })
+          .from(sequenceLocationLinks)
+          .innerJoin(
+            locations,
+            eq(locations.id, sequenceLocationLinks.locationId)
+          )
+          .where(
+            and(
+              eq(sequenceLocationLinks.locationId, id),
+              inOrganization,
+              isNull(sequenceLocationLinks.removedAt)
+            )
+          );
+        for (const link of using) {
+          await assertNameFree(link.sequenceId, data.name, id);
+        }
+      }
       const existing = await ownOf(id);
       const prev: Record<string, string | null> = {};
       for (const key of LOCATION_BIBLE_FIELDS) {

@@ -227,7 +227,8 @@ the script then names her like any cast member.
   link is brought back, by an attach or by Restore, and before a rename
   (`updateBible` with a `name`), in every sequence that casts her live, from
   any sequence or none (#2248): a clash in another sequence would fail its
-  generation plan. Two characters may still
+  generation plan. The error names the sequence where the clash is. Two
+  characters may still
   share a plain name when analysis made them; nothing refuses that.
   Attaching a character the sequence already casts is idempotent.
 - **Surfaces.** The script editor's `@` dropdown lists the organization's characters

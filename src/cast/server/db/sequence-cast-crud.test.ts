@@ -2177,8 +2177,10 @@ describe('organization characters (#2017)', () => {
 
     // Grace is live only in the other sequence: refused from either side.
     await expect(
-      chars().updateBible(sequenceId, ada.id, { name: ' grace ' }, edit)
-    ).rejects.toThrow('already a name');
+      chars().updateBible(sequenceId, ada.id, { name: 'Grace' }, edit)
+    ).rejects.toThrow(
+      'Grace is already a name in the cast of S2. Rename one first.'
+    );
     await expect(
       chars().updateBible(null, ada.id, { name: 'GRACE' }, edit)
     ).rejects.toThrow('already a name');

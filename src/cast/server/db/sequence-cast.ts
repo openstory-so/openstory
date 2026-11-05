@@ -17,6 +17,7 @@ import {
   characterBibleVersions,
   characters,
   sequenceCast,
+  sequences,
 } from '@/platform/server/db/schema';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 
@@ -101,8 +102,14 @@ export const assertNameFree = async (
         key(row.name) === key(name)
     )
   ) {
+    // Named, since a rename can clash in a sequence other than the open one (#2248).
+    const [sequence] = await db
+      .select({ title: sequences.title })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!sequence) throw new NotFoundError('Sequence not found');
     throw new ConflictError(
-      `${name} is already a name in this sequence's cast. Rename one first.`
+      `${name} is already a name in the cast of ${sequence.title}. Rename one first.`
     );
   }
 };

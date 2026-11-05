@@ -129,7 +129,9 @@ nothing is drawn: the sequence reads the bible and the sheet as they are.
   db method), and while a live location of the sequence already has its name
   (`ConflictError`, `assertNameFree`): a scene names its place in the
   slugline, and two of one name could not be told apart. Restore and Replace
-  run the same name check.
+  run the same name check, and so does a rename (`updateBible` with a
+  `name`), in every sequence that uses the location live, from any sequence
+  or none (#2248). The error names the sequence where the clash is.
 
 ## Replace (recast)
 
