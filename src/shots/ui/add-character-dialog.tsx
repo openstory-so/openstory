@@ -12,6 +12,7 @@ import { AppImage } from '@/ui/shadcn/app-image';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { NewCharacterForm } from '@/cast/ui/new-character-form';
 import { useNewCharacter } from '@/cast/ui/use-new-character';
+import { useDiscardGuard } from '@/ui/use-discard-guard';
 import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
@@ -46,7 +47,9 @@ export const AddCharacterDialog: React.FC<{
     (c) => !castCharacterIds.has(c.id) && c.name.toLowerCase().includes(q)
   );
 
+  const guard = useDiscardGuard('character');
   const close = () => {
+    guard.reset();
     setOpen(false);
     setCreating(false);
     setQuery('');
@@ -70,7 +73,9 @@ export const AddCharacterDialog: React.FC<{
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => (next ? setOpen(true) : close())}
+      onOpenChange={(next) =>
+        next ? setOpen(true) : guard.confirmDiscard(close)
+      }
     >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
@@ -87,6 +92,7 @@ export const AddCharacterDialog: React.FC<{
           </DialogHeader>
           <NewCharacterForm
             isPending={createCharacter.isPending}
+            onEdit={guard.markDirty}
             onSubmit={(fields) =>
               createCharacter.mutate(fields, {
                 onSuccess: ({ character }) => {
@@ -109,7 +115,7 @@ export const AddCharacterDialog: React.FC<{
             variant="ghost"
             size="sm"
             className="self-start"
-            onClick={() => setCreating(false)}
+            onClick={() => guard.confirmDiscard(() => setCreating(false))}
           >
             Back to characters
           </Button>
@@ -200,6 +206,7 @@ export const AddCharacterDialog: React.FC<{
           </div>
         </DialogContent>
       )}
+      {guard.dialog}
     </Dialog>
   );
 };

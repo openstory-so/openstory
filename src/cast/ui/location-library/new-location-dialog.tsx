@@ -20,6 +20,7 @@ import { Input } from '@/ui/shadcn/input';
 import { Label } from '@/ui/shadcn/label';
 import { Textarea } from '@/ui/shadcn/textarea';
 import { useHydrated } from '@/ui/use-hydrated';
+import { useDiscardGuard } from '@/ui/use-discard-guard';
 
 const newLocationSchema = z.object({
   name: z.string().trim().min(1).max(255),
@@ -42,48 +43,60 @@ export const NewLocationDialog: React.FC<{
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [describing, setDescribing] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const description = useRef<HTMLTextAreaElement>(null);
-  // One description per dialog, even when photos land together.
-  const described = useRef(false);
+  // One description per dialog, even when photos land together; Create waits on it.
+  const described = useRef<Promise<void> | null>(null);
+  const guard = useDiscardGuard('location');
 
-  // The first photo fills a blank description; one the user typed is theirs.
-  const describe = async (photo: { url: string; filename: string }) => {
+  // In the background: the first photo fills a blank description; one the user typed is theirs.
+  const describe = (photo: { url: string; filename: string }) => {
     if (described.current || description.current?.value.trim()) return;
-    described.current = true;
     setDescribing(true);
-    try {
-      const result = await describeUploadFn({
-        data: { ...photo, subject: 'location' },
-      });
-      if (description.current && !description.current.value.trim()) {
-        description.current.value = result.description;
-      }
-    } catch (error) {
-      toast.error('Photo not described', {
-        description: errorMessage(error),
-      });
-    } finally {
-      setDescribing(false);
-    }
+    described.current = describeUploadFn({
+      data: { ...photo, subject: 'location' },
+    })
+      .then((result) => {
+        if (description.current && !description.current.value.trim()) {
+          description.current.value = result.description;
+        }
+      })
+      .catch((error: unknown) => {
+        toast.error('Photo not described', {
+          description: errorMessage(error),
+        });
+      })
+      .finally(() => setDescribing(false));
   };
   const createLocation = useCreateOrganizationLocation();
   const hydrated = useHydrated();
 
   const close = () => {
+    guard.reset();
     setOpen(false);
     setFiles([]);
     setPhotoUrls([]);
     setUploading(false);
     setDescribing(false);
-    described.current = false;
+    described.current = null;
   };
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Opened from inside the create screen's picker, which is a form too.
     event.stopPropagation();
+    void submit(event.currentTarget);
+  };
+
+  const submit = async (form: HTMLFormElement) => {
+    if (described.current) {
+      setWaiting(true);
+      await described.current;
+      setWaiting(false);
+    }
+    // Read after the wait: the description may have just been filled.
     const result = newLocationSchema.safeParse(
-      Object.fromEntries(new FormData(event.currentTarget))
+      Object.fromEntries(new FormData(form))
     );
     if (!result.success) {
       toast.error('Check the location fields', {
@@ -123,7 +136,9 @@ export const NewLocationDialog: React.FC<{
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => (next ? setOpen(true) : close())}
+      onOpenChange={(next) =>
+        next ? setOpen(true) : guard.confirmDiscard(close)
+      }
     >
       <DialogTrigger asChild>
         {trigger ?? <Button disabled={!hydrated}>New location</Button>}
@@ -135,7 +150,11 @@ export const NewLocationDialog: React.FC<{
             Photos are checked for a real person and fill a blank description.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form
+          onSubmit={onSubmit}
+          onInput={guard.markDirty}
+          className="flex flex-col gap-4"
+        >
           <div className="flex flex-col gap-1">
             <Label htmlFor="new-organization-location-name">Name</Label>
             <Input
@@ -155,35 +174,38 @@ export const NewLocationDialog: React.FC<{
               id="new-organization-location-description"
               name="description"
               rows={3}
+              placeholder={describing ? 'Describing the photo…' : undefined}
             />
           </div>
           <div className="flex flex-col gap-1">
             <Label>Photos (optional)</Label>
             <LocationMediaUpload
               files={files}
-              onFilesChange={setFiles}
+              onFilesChange={(next) => {
+                setFiles(next);
+                if (next.length > 0) guard.markDirty();
+              }}
               onUploadedUrlsChange={setPhotoUrls}
               onUploadingChange={setUploading}
-              onPhotoReady={(photo) => void describe(photo)}
+              onPhotoReady={describe}
               disabled={createLocation.isPending}
             />
           </div>
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={createLocation.isPending || uploading || describing}
+              disabled={createLocation.isPending || uploading || waiting}
             >
-              {createLocation.isPending
+              {createLocation.isPending || waiting
                 ? 'Creating…'
                 : uploading
                   ? 'Uploading…'
-                  : describing
-                    ? 'Describing…'
-                    : 'Create'}
+                  : 'Create'}
             </Button>
           </div>
         </form>
       </DialogContent>
+      {guard.dialog}
     </Dialog>
   );
 };

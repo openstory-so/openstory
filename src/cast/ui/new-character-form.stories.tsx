@@ -24,7 +24,10 @@ const meta: Meta<typeof NewCharacterForm> = {
       </DialogContent>
     </Dialog>
   ),
-  argTypes: { onSubmit: { action: 'submitted' } },
+  argTypes: {
+    onSubmit: { action: 'submitted' },
+    onEdit: { action: 'edited' },
+  },
 };
 
 export default meta;

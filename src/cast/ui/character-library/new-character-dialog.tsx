@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from '@/ui/shadcn/dialog';
 import { useHydrated } from '@/ui/use-hydrated';
+import { useDiscardGuard } from '@/ui/use-discard-guard';
 
 /**
  * Make a character with no sequence (#2065), then open its page, where its
@@ -29,9 +30,15 @@ export const NewCharacterDialog: React.FC = () => {
   });
   const navigate = useNavigate();
   const hydrated = useHydrated();
+  const guard = useDiscardGuard('character');
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) =>
+        next ? setOpen(true) : guard.confirmDiscard(() => setOpen(false))
+      }
+    >
       <DialogTrigger asChild>
         <Button disabled={!hydrated}>New character</Button>
       </DialogTrigger>
@@ -44,9 +51,11 @@ export const NewCharacterDialog: React.FC = () => {
         </DialogHeader>
         <NewCharacterForm
           isPending={createCharacter.isPending}
+          onEdit={guard.markDirty}
           onSubmit={(fields) =>
             createCharacter.mutate(fields, {
               onSuccess: ({ character }) => {
+                guard.reset();
                 setOpen(false);
                 void navigate({
                   to: '/characters/$id',
@@ -61,6 +70,7 @@ export const NewCharacterDialog: React.FC = () => {
           }
         />
       </DialogContent>
+      {guard.dialog}
     </Dialog>
   );
 };

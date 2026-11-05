@@ -9,6 +9,7 @@ import type { OrganizationCharacter } from '@/cast/server/db/characters';
 import { NewCharacterForm } from '@/cast/ui/new-character-form';
 import { useNewCharacter } from '@/cast/ui/use-new-character';
 import { errorMessage } from '@/platform/errors';
+import { useDiscardGuard } from '@/ui/use-discard-guard';
 import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
@@ -75,6 +76,12 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const createCharacter = useNewCharacter({ sequenceId: null, rendering });
+  const guard = useDiscardGuard('character');
+  const closePicker = () => {
+    setOpen(false);
+    setSearch('');
+    setCreating(false);
+  };
   // Server-rendered before its handler exists: a click then does nothing.
   // Disabled until hydrated, like the library filters.
   const hydrated = useHydrated();
@@ -153,13 +160,9 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
 
       <Dialog
         open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) {
-            setSearch('');
-            setCreating(false);
-          }
-        }}
+        onOpenChange={(next) =>
+          next ? setOpen(true) : guard.confirmDiscard(closePicker)
+        }
       >
         <DialogContent className="max-w-2xl">
           {creating ? (
@@ -173,12 +176,14 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
               </DialogHeader>
               <NewCharacterForm
                 isPending={createCharacter.isPending}
+                onEdit={guard.markDirty}
                 onSubmit={(fields) =>
                   createCharacter.mutate(fields, {
                     onSuccess: ({ character }) => {
                       if (!selectedIds.includes(character.id)) {
                         onSelectionChange([...selectedIds, character.id]);
                       }
+                      guard.reset();
                       setCreating(false);
                     },
                     onError: (error) =>
@@ -193,7 +198,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
                 variant="ghost"
                 size="sm"
                 className="self-start"
-                onClick={() => setCreating(false)}
+                onClick={() => guard.confirmDiscard(() => setCreating(false))}
               >
                 Back to characters
               </Button>
@@ -312,6 +317,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
           )}
         </DialogContent>
       </Dialog>
+      {guard.dialog}
     </>
   );
 };

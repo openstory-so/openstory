@@ -188,8 +188,9 @@ What follows from one character in two sequences:
     goes through the likeness check and sign-off there, as an element does.
   - A cleared or signed image then fills a blank description
     (`describeUploadFn` → `describeUpload`, billed per call; it refuses an
-    upload with no verdict before calling the model). A description the
-    user typed is kept.
+    upload with no verdict before calling the model). It runs in the
+    background: the user keeps typing, and only Create waits for it. A
+    description the user typed is kept.
   - The same vision call says whether the image is already a sheet. Create
     attaches a sheet as the default look's sheet
     (`setCharacterSheetFromUploadFn`). A photo becomes the character's
@@ -200,6 +201,8 @@ What follows from one character in two sequences:
     failure there keeps the character and says so. An image the vision call
     could not describe is refused in the form: remove it or drop it again. The Cast picker selects the new
     character and the draft keeps its script.
+  - Closing the dialog after any edit asks first (`useDiscardGuard`), as
+    New location does.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getOrganizationCharacterShotCountsFn`).
