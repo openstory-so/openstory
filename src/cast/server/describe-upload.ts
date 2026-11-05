@@ -14,6 +14,7 @@ import {
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
+import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadRightsReader } from '@/cast/server/upload-rights';
 import type { VisionBillingDb } from '@/cast/server/talent/analyze-talent-media';
@@ -92,7 +93,8 @@ export async function describeUpload(opts: {
       await scopedDb.billing.deductCredits(costMicros, {
         description: `Upload description (${model})`,
         metadata: { model, subject: opts.subject },
-        idempotencyKey: `describe-upload:${opts.subject}:${opts.url}`,
+        // Every call is a model call: one charge each, never keyed by URL.
+        idempotencyKey: `describe-upload:${generateId()}`,
       });
     } else {
       reportMissingBillingCost({
