@@ -224,6 +224,8 @@ type LiveReference = {
   referencePortraitUrl: string | null;
   referenceGeneratedAt: Date | null;
   referenceInputHash: string | null;
+  /** `location_sheet_variants.personInMedia` of the live reference (#2238). */
+  referencePersonInMedia: boolean;
 };
 
 /** A location as a read from no sequence returns it. */
@@ -270,6 +272,7 @@ export type SequenceLocationMinimal = Pick<
   | 'locationId'
   | 'name'
   | 'referenceImageUrl'
+  | 'referencePersonInMedia'
   | 'referenceStatus'
   | 'referenceInputHash'
   | 'selectedReferenceVersionId'

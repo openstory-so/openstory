@@ -459,6 +459,7 @@ describe('buildShotPromptPreview with a bound voice', () => {
     consistencyTag: null,
     kind: 'audio' as const,
     durationSeconds: 3.75,
+    personInMedia: false,
   };
   const preview = () =>
     buildShotPromptPreview({

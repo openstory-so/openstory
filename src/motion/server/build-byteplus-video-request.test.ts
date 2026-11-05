@@ -213,6 +213,7 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
               referenceImageUrl: 'https://cdn.example.com/corner.png',
               referenceStatus: 'completed',
               referenceInputHash: 'hash',
+              referencePersonInMedia: false,
               selectedReferenceVersionId: null,
               description: 'A busy corner',
               consistencyTag: 'metropolitan_sidewalk_corner',

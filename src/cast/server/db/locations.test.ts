@@ -973,7 +973,13 @@ describe('the organization list', () => {
       url: '/r2/diner.png',
       storagePath: 'diner.png',
       portraitUrl: '/r2/diner-portrait.png',
+      personInMedia: true,
       status: 'completed',
+    });
+    // No sheet yet: the flag reads false, not null (#2238).
+    expect(await locs().getById(sequenceId, diner.id)).toMatchObject({
+      referenceImageUrl: null,
+      referencePersonInMedia: false,
     });
     await db
       .update(locations)
@@ -986,6 +992,10 @@ describe('the organization list', () => {
         referencePortraitUrl: '/r2/diner-portrait.png',
       },
     ]);
+    expect(await locs().getById(sequenceId, diner.id)).toMatchObject({
+      referenceImageUrl: '/r2/diner.png',
+      referencePersonInMedia: true,
+    });
   });
 });
 
@@ -1044,6 +1054,7 @@ const linked = (
   referenceGeneratedAt: null,
   referenceError: null,
   referenceInputHash: null,
+  referencePersonInMedia: false,
   legacyLibraryReferenceHash: null,
   selectedReferenceVersionId: null,
   selectedBibleVersionId: null,

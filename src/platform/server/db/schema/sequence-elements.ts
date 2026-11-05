@@ -61,6 +61,8 @@ export const sequenceElements = snakeCase.table(
     // media-less elements.
     imageUrl: text(),
     imagePath: text(), // R2 key
+    // The upload showed a real person on the likeness ledger (#2238).
+    personInMedia: integer({ mode: 'boolean' }).default(false).notNull(),
     // Vision analysis status
     visionStatus: text()
       .$type<ElementVisionStatus>()
@@ -105,4 +107,5 @@ export type SequenceElementMinimal = Pick<
   | 'consistencyTag'
   | 'kind'
   | 'durationSeconds'
+  | 'personInMedia'
 >;

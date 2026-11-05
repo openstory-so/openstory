@@ -15,13 +15,17 @@ vi.doMock('@/platform/server/workflow/client', () => ({
 }));
 vi.doMock('#storage', () => ({ fileExists: mockFileExists }));
 vi.doMock('@/cast/server/upload-rights', () => ({
-  requireUploadRights: mockRequireRights,
+  requireUploadRightsFor: mockRequireRights,
 }));
+
+const mockUpdate = vi.fn();
+const mockGetById = vi.fn();
 
 const {
   assertDraftElementUploadsAttachable,
   attachDraftElementUploads,
   attachElementUpload,
+  replaceElementUpload,
 } = await import('./attach-element-upload');
 
 function makeScopedDb(): ScopedDb {
@@ -29,6 +33,8 @@ function makeScopedDb(): ScopedDb {
   return asStub<ScopedDb>({
     sequenceElements: {
       create: mockCreate,
+      update: mockUpdate,
+      getById: mockGetById,
       ensureUniqueToken: mockEnsureUniqueToken,
       updateVisionStatus: mockUpdateVisionStatus,
     },
@@ -72,6 +78,7 @@ beforeEach(() => {
   mockCreate.mockImplementation(async (values: Record<string, unknown>) => ({
     ...values,
   }));
+  mockRequireRights.mockResolvedValue({ depictsRealPerson: false });
 });
 
 describe('attachElementUpload', () => {
@@ -226,9 +233,10 @@ describe('assertDraftElementUploadsAttachable', () => {
         uploads: [makeUpload()],
       })
     ).rejects.toThrow('not checked');
-    expect(mockRequireRights).toHaveBeenCalledWith(expect.anything(), [
-      '/r2/elements/organization-1/uploads/up-1.png',
-    ]);
+    expect(mockRequireRights).toHaveBeenCalledWith(
+      expect.anything(),
+      '/r2/elements/organization-1/uploads/up-1.png'
+    );
 
     mockRequireRights.mockClear();
     await assertDraftElementUploadsAttachable({
@@ -241,9 +249,10 @@ describe('assertDraftElementUploadsAttachable', () => {
         }),
       ],
     });
-    expect(mockRequireRights).toHaveBeenCalledWith(expect.anything(), [
-      '/r2/elements/organization-1/uploads/walk.mp4',
-    ]);
+    expect(mockRequireRights).toHaveBeenCalledWith(
+      expect.anything(),
+      '/r2/elements/organization-1/uploads/walk.mp4'
+    );
 
     mockRequireRights.mockClear();
     await assertDraftElementUploadsAttachable({
@@ -257,6 +266,49 @@ describe('assertDraftElementUploadsAttachable', () => {
       ],
     });
     expect(mockRequireRights).not.toHaveBeenCalled();
+  });
+
+  it('writes the ledger verdict onto the row as personInMedia (#2238)', async () => {
+    mockRequireRights.mockResolvedValue({ depictsRealPerson: true });
+    await attachDrafts([makeUpload()]);
+    expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
+      personInMedia: true,
+    });
+
+    mockCreate.mockClear();
+    await attachDrafts([
+      makeUpload({
+        tempPath: 'elements/organization-1/uploads/line.mp3',
+        filename: 'line.mp3',
+      }),
+    ]);
+    expect(mockCreate.mock.calls[0]?.[0]).toMatchObject({
+      personInMedia: false,
+    });
+  });
+
+  it('rewrites personInMedia on replace from the new upload (#2238)', async () => {
+    mockGetById.mockResolvedValue({ id: 'el-1', sequenceId: 'seq-1' });
+    mockUpdate.mockImplementation(async (id: string, values: object) => ({
+      id,
+      uploadedFilename: 'portrait.png',
+      token: 'JERSEY',
+      ...values,
+    }));
+    mockRequireRights.mockResolvedValue({ depictsRealPerson: true });
+
+    await replaceElementUpload({
+      scopedDb: makeScopedDb(),
+      organizationId: 'organization-1',
+      userId: 'user-1',
+      sequenceId: 'seq-1',
+      elementId: 'el-1',
+      path: 'elements/organization-1/uploads/portrait.png',
+      filename: 'portrait.png',
+    });
+    expect(mockUpdate.mock.calls[0]?.[1]).toMatchObject({
+      personInMedia: true,
+    });
   });
 
   it('refuses a video filename on a non-video stored path (#2153)', async () => {

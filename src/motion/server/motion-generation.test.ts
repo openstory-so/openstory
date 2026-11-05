@@ -118,12 +118,14 @@ describe('arkStillsForMotion', () => {
             description: 'cafe',
             role: 'location',
             token: 'CAFE',
+            personInMedia: false,
           },
           {
             referenceImageUrl: 'https://cdn/logo.png',
             description: 'logo',
             role: 'element',
             token: 'LOGO',
+            personInMedia: false,
           },
         ],
       })
@@ -164,6 +166,46 @@ describe('arkStillsForMotion', () => {
     ]);
   });
 
+  it('registers an element or location still whose upload showed a person (#2238)', () => {
+    expect(
+      arkStillsForMotion({
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/portrait.png',
+            description: 'the photo',
+            role: 'element',
+            token: 'PHOTO',
+            personInMedia: true,
+          },
+          {
+            referenceImageUrl: 'https://cdn/logo.png',
+            description: 'logo',
+            role: 'element',
+            token: 'LOGO',
+            personInMedia: false,
+          },
+          {
+            referenceImageUrl: 'https://cdn/host.png',
+            description: 'the host',
+            role: 'location',
+            token: 'HOST',
+            personInMedia: true,
+          },
+          {
+            referenceImageUrl: 'https://cdn/inflight.png',
+            description: 'from a payload made before #2238',
+            role: 'element',
+            token: 'OLD',
+          },
+        ],
+      })
+    ).toEqual([
+      { storedUrl: 'https://cdn/portrait.png', slot: 'library' },
+      { storedUrl: 'https://cdn/host.png', slot: 'library' },
+      { storedUrl: 'https://cdn/inflight.png', slot: 'library' },
+    ]);
+  });
+
   it('treats a missing isPerson as a face, including in-flight payloads', () => {
     expect(
       arkStillsForMotion({
@@ -193,12 +235,14 @@ describe('arkStillsToRegister', () => {
       description: 'The pub',
       role: 'location' as const,
       token: 'Pub',
+      personInMedia: false,
     };
     const element = {
       referenceImageUrl: 'https://cdn/ute.png',
       description: 'The ute',
       role: 'element' as const,
       token: 'Ute',
+      personInMedia: false,
     };
     // Reference-only shots: no start frame, the same sheets on every shot.
     const shot = {
@@ -525,6 +569,7 @@ describe('Motion Service', () => {
             description: 'a logo',
             role: 'element',
             token: 'LOGO',
+            personInMedia: false,
           },
         ],
       });
@@ -546,6 +591,55 @@ describe('Motion Service', () => {
               }),
             }),
             // An element sheet carries no face; it is not ingested.
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'https://example.com/logo.png',
+              }),
+            }),
+          ],
+        })
+      );
+    });
+
+    it('sends an element whose upload showed a person as asset://, a cleared one as a URL (#2238)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-person-element' });
+
+      await submitMotionJob({
+        heldSeedanceEditSeconds: null,
+        arkAssets: registeredAssets,
+        prompt: 'PHOTO beside LOGO',
+        model: 'seedance_v2_5',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/portrait.png',
+            description: 'the photo',
+            role: 'element',
+            token: 'PHOTO',
+            personInMedia: true,
+          },
+          {
+            referenceImageUrl: 'https://example.com/logo.png',
+            description: 'a logo',
+            role: 'element',
+            token: 'LOGO',
+            personInMedia: false,
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [
+            expect.objectContaining({ type: 'text' }),
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'asset://https://example.com/portrait.png',
+              }),
+            }),
             expect.objectContaining({
               type: 'image',
               source: expect.objectContaining({

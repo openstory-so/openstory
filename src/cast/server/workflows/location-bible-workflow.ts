@@ -259,6 +259,8 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           locationId: location.locationId,
           name: row?.name ?? location.name,
           referenceInputHash: null,
+          // A sheet drawn by this run shows no uploaded person.
+          referencePersonInMedia: false,
           description: row?.description ?? null,
           consistencyTag: row?.consistencyTag ?? null,
         };
@@ -272,6 +274,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
               referenceImageUrl: row?.referenceImageUrl ?? null,
               referenceStatus: row?.referenceStatus ?? 'pending',
               referenceInputHash: row?.referenceInputHash ?? null,
+              referencePersonInMedia: row?.referencePersonInMedia ?? false,
               selectedReferenceVersionId:
                 row?.selectedReferenceVersionId ?? null,
             };

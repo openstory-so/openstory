@@ -286,6 +286,16 @@ export async function attestUploads(
   }
 }
 
+/** {@link requireUploadRights} for one URL; the verdict is never absent. */
+export async function requireUploadRightsFor(
+  scopedDb: UploadRightsReader,
+  url: string
+): Promise<{ depictsRealPerson: boolean }> {
+  const rights = (await requireUploadRights(scopedDb, [url])).get(url);
+  if (!rights) throw new Error(`No likeness verdict for ${url}`);
+  return rights;
+}
+
 /**
  * Refuse unless every URL is cleared or signed. Returns whether each depicts
  * a real person, so a caller can derive `isHuman` from the ledger.

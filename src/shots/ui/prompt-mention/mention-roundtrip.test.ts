@@ -57,6 +57,7 @@ const elementMinimal: SequenceElementMinimal = {
   consistencyTag: element.consistencyTag,
   kind: 'image',
   durationSeconds: null,
+  personInMedia: false,
 };
 
 const baseExisting = {

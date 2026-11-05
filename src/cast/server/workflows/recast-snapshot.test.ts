@@ -109,6 +109,7 @@ function makeLocation(
     referenceGeneratedAt: NOW,
     referenceError: null,
     referenceInputHash: 'docks-hash-v1',
+    referencePersonInMedia: false,
     selectedReferenceVersionId: null,
     selectedBibleVersionId: null,
     pendingPromoteReferenceVersionId: null,

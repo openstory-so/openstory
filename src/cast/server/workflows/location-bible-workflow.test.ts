@@ -312,6 +312,7 @@ describe('LocationBibleWorkflow with a matched organization location (#1695)', (
       referenceImageUrl: '/r2/organization/diner.png',
       referenceStatus: 'completed',
       referenceInputHash: 'organization-hash',
+      referencePersonInMedia: false,
       selectedReferenceVersionId: 'organization-sheet',
     });
     expect(result[1]).toMatchObject({

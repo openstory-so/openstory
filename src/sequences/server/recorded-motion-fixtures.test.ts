@@ -38,6 +38,7 @@ it('recorded packed and individual motion requests match canonical direction and
     imageUrl: 'https://x/' + x.token,
     kind: 'image' as const,
     durationSeconds: null,
+    personInMedia: false,
   }));
   characters.sort((a, b) =>
     a.characterId < b.characterId ? -1 : a.characterId > b.characterId ? 1 : 0
