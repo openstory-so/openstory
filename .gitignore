@@ -13,6 +13,7 @@
 # testing
 /coverage
 /e2e/results
+/e2e/coverage
 /playwright-report
 /test-results
 

@@ -1,3 +1,4 @@
+import { E2E_COVERAGE, cleanClientCoverage } from './coverage';
 import { startAimockServer } from './mocks/aimock-server';
 
 /**
@@ -7,5 +8,6 @@ import { startAimockServer } from './mocks/aimock-server';
  * starts. Doing it here races the vite Miniflare (SQLITE_BUSY_RECOVERY).
  */
 export default async function globalSetup() {
+  if (E2E_COVERAGE) cleanClientCoverage();
   await startAimockServer();
 }

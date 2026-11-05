@@ -6,7 +6,7 @@
  * routing for `/` and `/sequences/new` is covered in auth.spec.ts.
  */
 
-import { test, expect } from 'playwright/test';
+import { test, expect } from '../fixtures/base';
 import {
   fillScriptEditor,
   waitForScriptEditor,

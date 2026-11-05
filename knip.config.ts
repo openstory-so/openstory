@@ -10,6 +10,7 @@ export default {
         'src/routes/**/*.{ts,tsx}', // file-based routes
         'src/**/*.fn.ts', // createServerFn endpoints
         'scripts/**/*.ts',
+        'e2e/**/*.ts', // Playwright specs, fixtures, setup and coverage tooling
         'src/platform/server/auth/cli-config.ts', // `bun auth:generate` (Better Auth CLI) — was wrongly swept as dead code once
         '.storybook/**/*.{ts,tsx}',
         'content-collections.ts', // content-collections build config (root)
@@ -26,7 +27,7 @@ export default {
         // keep prismjs out of the worker's startup path.
         'src/platform/server/emails/stubs/code-block.tsx',
       ],
-      project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+      project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts', 'e2e/**/*.ts'],
     },
     // @openstory/stitch: its four public entries. The bin is plain JS.
     'packages/stitch': {
@@ -42,6 +43,8 @@ export default {
     },
   },
   ignore: [
+    // Runs scripts by path (`bun scripts/seed.ts`), which knip misreads as imports.
+    'e2e/start-webserver.ts',
     '**/*.gen.ts', // generated (routeTree.gen.ts, etc.)
     '**/*.stories.tsx', // analysed by the Storybook build, not the app graph
     '**/*.test.ts',

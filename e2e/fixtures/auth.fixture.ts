@@ -12,7 +12,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { test as base, expect, type Page } from 'playwright/test';
+import type { Page } from 'playwright/test';
+import { test as base, expect } from './base';
 import { z } from 'zod';
 import { pinRecordedPipelineSettings } from './test-utils';
 

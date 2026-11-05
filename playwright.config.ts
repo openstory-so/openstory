@@ -113,6 +113,7 @@ export default defineConfig({
             `BYTEPLUS_OPENAPI_HOST=${process.env.BYTEPLUS_OPENAPI_HOST ?? 'ark.ap-southeast-1.byteplusapi.com'}`,
           ]
         : []),
+      ...(process.env.E2E_COVERAGE === 'true' ? ['E2E_COVERAGE=true'] : []),
       'PORT=3020',
       'VITE_APP_URL=http://localhost:3020',
       'OPENROUTER_BASE_URL=http://localhost:4010',
