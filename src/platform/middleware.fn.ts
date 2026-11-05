@@ -204,7 +204,7 @@ export const d1SessionMiddleware = createMiddleware().server(
     const { value, bookmark } = await runInReadSession(
       getEnv().DB,
       keyed ? 'first-primary' : (incoming ?? 'first-unconstrained'),
-      () => next()
+      async () => next()
     );
     if (!bookmark || bookmark === incoming) return value;
 
