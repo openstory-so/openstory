@@ -74,6 +74,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           lookVersionId: string;
           lookName: string;
           lookStyling: string | null;
+          referencePhotoUrl: string | null;
           voiceId: string | null;
           voiceDescription: string | null;
           useVoice: boolean | null;

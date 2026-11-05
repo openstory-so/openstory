@@ -63,7 +63,7 @@ export async function describeUpload(opts: {
   let parsed: z.infer<typeof responseSchema> | undefined;
   let usage;
   let model = DEFAULT_VISION_MODEL;
-  let via = llmKey.via;
+  let via: Parameters<typeof llmCostFromUsage>[2] = llmKey.via;
   for await (const chunk of callLLMStream({
     model: DEFAULT_VISION_MODEL,
     messages: [

@@ -73,7 +73,7 @@ export const NewCharacterForm: React.FC<{
     { onProgress, onSuccess, onError }
   ) => {
     if (!file) return;
-    const run = (async (): Promise<CharacterImage> => {
+    const pipeline = async (): Promise<CharacterImage> => {
       const url = await uploadSheet.mutateAsync({
         file,
         onProgress: (percent) => onProgress(file, percent),
@@ -95,7 +95,8 @@ export const NewCharacterForm: React.FC<{
         isCharacterSheet: result.isCharacterSheet === true,
         description: result.description,
       };
-    })();
+    };
+    const run = pipeline();
     image.current = run;
     setImageBusy(true);
     run
