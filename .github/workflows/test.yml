@@ -194,6 +194,7 @@ jobs:
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
           EMAIL_FROM=$E2E_EMAIL_FROM
           E2E_TEST=true
+          ADMIN_EMAILS=e2e-admin@e2e.test
           VITE_APP_URL=http://localhost:3001
           EOF
           # Mirror at project root for the non-built (vite dev) path.
@@ -301,6 +302,7 @@ jobs:
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
           EMAIL_FROM=$E2E_EMAIL_FROM
           E2E_TEST=true
+          ADMIN_EMAILS=e2e-admin@e2e.test
           E2E_FULL_PIPELINE=true
           VITE_APP_URL=http://localhost:3001
           EOF

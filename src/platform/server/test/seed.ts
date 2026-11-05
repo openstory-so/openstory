@@ -93,36 +93,44 @@ export async function createTestUser(
   const db = getDb();
   const now = new Date();
 
-  const userId = generateId();
   const organizationId = generateId();
   const name = opts.name ?? 'E2E Test User';
 
-  // The admin address is fixed, so a run replaces the previous run's admin.
-  if (opts.admin) {
-    const previous = await db
-      .select({ userId: member.userId, organizationId: member.organizationId })
+  // The admin address is fixed and owns gift codes and reports, so it is
+  // reused, never deleted; it gets a fresh organization if it has lost one.
+  const [admin] = opts.admin
+    ? await db
+        .select({ id: user.id, name: user.name })
+        .from(user)
+        .where(eq(user.email, E2E_ADMIN_EMAIL))
+    : [];
+  if (admin) {
+    const [membership] = await db
+      .select({ organizationId: member.organizationId })
       .from(member)
-      .innerJoin(user, eq(user.id, member.userId))
-      .where(eq(user.email, E2E_ADMIN_EMAIL));
-    for (const row of previous) {
-      await cleanupTestUser(row.userId, row.organizationId);
+      .where(eq(member.userId, admin.id));
+    if (membership) {
+      return { ...admin, email: E2E_ADMIN_EMAIL, ...membership };
     }
   }
 
+  const userId = admin?.id ?? generateId();
   const email = opts.admin
     ? E2E_ADMIN_EMAIL
     : `test-${userId.slice(-8).toLowerCase()}@e2e.test`;
   const organizationSlug = `test-organization-${organizationId.slice(-8).toLowerCase()}`;
 
-  await db.insert(user).values({
-    id: userId,
-    name,
-    email,
-    emailVerified: true,
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-  });
+  if (!admin) {
+    await db.insert(user).values({
+      id: userId,
+      name,
+      email,
+      emailVerified: true,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   await db.insert(organization).values({
     id: organizationId,

@@ -114,6 +114,8 @@ export default defineConfig({
           ]
         : []),
       ...(process.env.E2E_COVERAGE === 'true' ? ['E2E_COVERAGE=true'] : []),
+      // Beats a laptop's ADMIN_EMAILS in .env.local (createTestUser admin).
+      'ADMIN_EMAILS=e2e-admin@e2e.test',
       'PORT=3020',
       'VITE_APP_URL=http://localhost:3020',
       'OPENROUTER_BASE_URL=http://localhost:4010',
