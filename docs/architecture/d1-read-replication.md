@@ -30,7 +30,7 @@ consistent with their own writes.
   session is open, so the handle is the primary. Workflows already take no
   mid-run reads (`WorkflowScopedDb`); the `liveRead` hatches run on the
   primary for the same reason.
-- Money reads, in any context: `billing.getBalance` / `getAvailable` /
+- Money reads, in any context: `billing.getBalance` / `getAvailable` / `redeemGiftToken` /
   `hasEnoughCredits` wrap themselves in `onPrimary`, which pins the handle to
   the primary for that call. A replica can lag by seconds, which is enough to
   pass a spend another session just made.
@@ -52,3 +52,12 @@ Re-run the per-location D1 wall-time query on `posthog.trace_spans`
 (`name LIKE 'd1_%'`, joined to the root span's `cloudflare.colo`). The
 `served_by_region` / `served_by_primary` fields on each D1 result say which
 side answered.
+
+## Known lag
+
+Session, API-key and membership lookups read the replica like everything
+else, so a revoked session or key can pass for the replica's lag (seconds)
+after the revocation. Pinning auth to the primary would put the Australia
+round trip back on every request, which is what this change removes; the
+lag is accepted. A keyed request is on `first-primary` whatever cookie it
+sends, so it is not affected.

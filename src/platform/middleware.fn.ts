@@ -203,7 +203,7 @@ export const d1SessionMiddleware = createMiddleware().server(
       request.headers.has('authorization') || request.headers.has('x-api-key');
     const { value, bookmark } = await runInReadSession(
       getEnv().DB,
-      incoming ?? (keyed ? 'first-primary' : 'first-unconstrained'),
+      keyed ? 'first-primary' : (incoming ?? 'first-unconstrained'),
       () => next()
     );
     if (!bookmark || bookmark === incoming) return value;

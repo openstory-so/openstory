@@ -1542,7 +1542,11 @@ export function createBillingMethods(
    * cap is also full — that check comes before the cap, so a single-use code
    * the caller used does not come back as "fully redeemed".
    */
-  async function redeemGiftToken(opts: {
+  // The cap pre-check must not read a replica (#2233); the unique index closes the rest.
+  const redeemGiftToken = (opts: Parameters<typeof redeemOnPrimary>[0]) =>
+    onPrimary(() => redeemOnPrimary(opts));
+
+  async function redeemOnPrimary(opts: {
     code: string;
     organizationId: string;
     userId: string;
