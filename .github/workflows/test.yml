@@ -128,9 +128,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  e2e:
+  e2e-shard:
+    name: e2e (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     needs: build-e2e
+    # Sharded so the suite stays under five minutes as it grows (#2243).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,7 +213,7 @@ jobs:
             > .wrangler/deploy/config.json
 
       - name: Run E2E tests
-        run: bun run test:e2e
+        run: bun run test:e2e --shard=${{ matrix.shard }}/4
         env:
           E2E_TEST: 'true'
           E2E_BUILT: 'true'
@@ -230,6 +236,15 @@ jobs:
           OPENROUTER_KEY: test-mock-key
           OPENROUTER_BASE_URL: http://localhost:4010
           EMAIL_FROM: ${{ env.E2E_EMAIL_FROM }}
+
+  # The required `e2e` check: green only when every shard is.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: e2e-shard
+    if: always()
+    steps:
+      - name: All shards passed
+        run: test "${{ needs.e2e-shard.result }}" = success
 
   e2e-full-pipeline:
     runs-on: ubuntu-latest
