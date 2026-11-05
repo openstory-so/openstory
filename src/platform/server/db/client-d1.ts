@@ -9,6 +9,7 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { getEnv } from '@/platform/server/env/cloudflare';
 import { relations } from '@/platform/server/db/schema/relations';
+import { routeD1 } from '@/platform/server/db/d1-session';
 
 import { getLogger } from '@/platform/logger';
 
@@ -31,7 +32,8 @@ export const getDb = (): Database => {
     );
   }
 
-  _db = buildDb(d1);
+  // Per query: this request's replica session, else the primary (#2233).
+  _db = buildDb(routeD1(() => getEnv().DB));
 
   return _db;
 };
