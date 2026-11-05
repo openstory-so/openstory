@@ -39,7 +39,9 @@ export async function loadLiveShotInputs(
     sheetImageUrl: string | null;
   })[],
   scriptBySceneId: ReadonlyMap<string, SceneContext>,
-  sequence: StartFrameSequence
+  sequence: StartFrameSequence,
+  /** The sequence's elements when the caller already read them. */
+  loadedElements?: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>
 ): Promise<LoadedShotInputs> {
   const [linesByShotId, selectedMotionByShot, locations, elements] =
     await Promise.all([
@@ -48,7 +50,7 @@ export async function loadLiveShotInputs(
         shots.map((shot) => shot.id)
       ),
       scopedDb.locations.listWithReferences(sequenceId),
-      scopedDb.sequenceElements.list(sequenceId),
+      loadedElements ?? scopedDb.sequenceElements.list(sequenceId),
     ]);
   // The SAME answer a render trigger stamps the clip with — a different
   // ladder here would read a fresh render stale.

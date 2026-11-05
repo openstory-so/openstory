@@ -1,11 +1,12 @@
 import { usesStartFrame } from './use-start-frame';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { requireCredits } from '@/billing/server/preflight';
-import type { NewShot } from '@/platform/server/db/schema';
+import type { NewShot, Sequence, Shot } from '@/platform/server/db/schema';
+import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
   computeShotStaleness,
   GENERATING_STALENESS,
-  loadShotStalenessBatch,
+  loadShotStalenessRefs,
   loadShotStalenessReads,
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
@@ -33,10 +34,7 @@ import {
 import { toShotView, pendingUpscaleUrlFromVersion } from './shot-view';
 import { getVideoDownloadUrl } from '@/motion/server/video-storage';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
-import {
-  loadShotDialogueResolver,
-  loadShotPromptDialogue,
-} from '@/shots/server/shot-dialogue';
+import { loadShotDialogueResolver } from '@/shots/server/shot-dialogue';
 import { sectionLineTiming } from '@/shots/shot-dialogue';
 import { projectVideoVariants } from '@/motion/server/video-variant-projection';
 import {
@@ -610,21 +608,16 @@ export const getShotStalenessFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ context }) => {
-    const { shot, frame, sequence, scopedDb, scene } = context;
-    const allShots = await scopedDb.shots.listBySequence(sequence.id);
-    const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
-    return toWireStaleness(
-      await computeShotStaleness({
-        scopedDb,
-        sequence,
-        shot,
-        frame,
-        selectedImage: await scopedDb.frameVariants.getSelected(frame.id),
-        scene,
-        dialogue: await loadShotPromptDialogue(scopedDb, sequence.id, shot),
-      }),
-      media.get(shot.id)
+    const { shot, sequence, scopedDb } = context;
+    const staleness = await loadStalenessForShots(
+      scopedDb,
+      sequence,
+      await scopedDb.shots.listBySequence(sequence.id),
+      [shot]
     );
+    const entry = staleness[shot.id];
+    if (!entry) throw new Error(`No staleness computed for shot ${shot.id}`);
+    return entry;
   });
 
 /**
@@ -672,102 +665,124 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
     if (targetShots.length === 0) {
       return {};
     }
-    // Mid-run the per-shot compare returns 'generating' before any read, and
-    // the media overlay then forces dialogue and video to the same. Skip the
-    // bible, prompt, and segment loads entirely (#1121, #1795).
-    if (sequence.status === 'processing') {
-      return typedFromEntries(
-        targetShots.map((shot) => [
-          shot.id,
-          toWireStaleness(GENERATING_STALENESS),
-        ])
-      );
-    }
-
-    // Loaded once here and threaded into every shot's comparison; without
-    // that each shot would re-read the bibles for both prompt branches.
-    let loaded = await loadShotStalenessBatch(scopedDb, sequence);
-    const missingAnchors = targetShots.filter(
-      (shot) => !loaded.anchorsByShot.has(shot.id)
-    );
-    if (missingAnchors.length > 0) {
-      await scopedDb.shots.ensureAnchorFrames(missingAnchors);
-      loaded = await loadShotStalenessBatch(scopedDb, sequence);
-    }
-    const {
-      anchorsByShot,
-      sceneContext: scriptBySceneId,
-      selectedByFrame,
-      refs,
-    } = loaded;
-    const frameIds = targetShots.flatMap((shot) => {
-      const frame = anchorsByShot.get(shot.id);
-      return frame ? [frame.id] : [];
-    });
-    const [reads, media] = await Promise.all([
-      loadShotStalenessReads(
-        scopedDb,
-        sequence.id,
-        allShots,
-        targetShots.map((shot) => shot.id),
-        frameIds,
-        scriptBySceneId
-      ),
-      loadShotMediaStaleness(scopedDb, sequence, allShots),
-    ]);
-
-    const entries = await Promise.all(
-      targetShots.map(
-        async (shot): Promise<[string, ReturnType<typeof toWireStaleness>]> => {
-          const frame = anchorsByShot.get(shot.id);
-          if (!frame) {
-            // ensureAnchorFrames guarantees an anchor; if it's somehow absent
-            // we have no image surface to compare, so report the shot
-            // untracked rather than dropping it from the result.
-            logger.error(
-              `getShotStalenessBatchFn: shot ${shot.id} has no anchor frame`
-            );
-            return [
-              shot.id,
-              toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
-            ];
-          }
-          const { scene } = resolveSceneForShot(shot, scriptBySceneId);
-          try {
-            return [
-              shot.id,
-              toWireStaleness(
-                await computeShotStaleness({
-                  scopedDb,
-                  sequence,
-                  shot,
-                  frame,
-                  selectedImage: selectedByFrame.get(frame.id) ?? null,
-                  scene,
-                  refs,
-                  reads,
-                  dialogue: reads.dialogueOf(shot),
-                }),
-                media.get(shot.id)
-              ),
-            ];
-          } catch (error) {
-            // Per-shot boundary: anything escaping computeShotStaleness must
-            // not reject the whole batch and blank the scene.
-            logger.error(
-              `getShotStalenessBatchFn: shot ${shot.id} staleness failed`,
-              { err: error }
-            );
-            return [
-              shot.id,
-              toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
-            ];
-          }
-        }
-      )
-    );
-    return typedFromEntries(entries);
+    return loadStalenessForShots(scopedDb, sequence, allShots, targetShots);
   });
+
+/**
+ * Staleness of `targetShots`, keyed by shot id, from reads loaded once for
+ * the sequence (#1795, #2234): both staleness fns share it, so a single shot
+ * costs the same few round trips as a whole scene.
+ */
+async function loadStalenessForShots(
+  scopedDb: ScopedDb,
+  sequence: Sequence,
+  allShots: Shot[],
+  targetShots: Shot[]
+) {
+  // Mid-run the per-shot compare returns 'generating' before any read, and
+  // the media overlay then forces dialogue and video to the same. Skip the
+  // bible, prompt, and segment loads entirely (#1121, #1795).
+  if (sequence.status === 'processing') {
+    return typedFromEntries(
+      targetShots.map((shot) => [
+        shot.id,
+        toWireStaleness(GENERATING_STALENESS),
+      ])
+    );
+  }
+
+  // Loaded once here and threaded into every shot's comparison; without
+  // that each shot would re-read the bibles for both prompt branches.
+  const allShotIds = allShots.map((shot) => shot.id);
+  const loadBase = () =>
+    Promise.all([
+      loadShotStalenessRefs(scopedDb, sequence),
+      scopedDb.shotDialogue.listShotIdsWithLiveClaim(allShotIds),
+    ]);
+  let [loaded, recording] = await loadBase();
+  const missingAnchors = targetShots.filter(
+    (shot) => !loaded.anchorsByShot.has(shot.id)
+  );
+  if (missingAnchors.length > 0) {
+    await scopedDb.shots.ensureAnchorFrames(missingAnchors);
+    [loaded, recording] = await loadBase();
+  }
+  const { anchorsByShot, sceneContext: scriptBySceneId, refs } = loaded;
+  const frameIds = targetShots.flatMap((shot) => {
+    const frame = anchorsByShot.get(shot.id);
+    return frame ? [frame.id] : [];
+  });
+  // The stills, the prompts and the media read nothing from each other.
+  const [selectedByFrame, reads, media] = await Promise.all([
+    scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
+    loadShotStalenessReads(
+      scopedDb,
+      sequence.id,
+      allShots,
+      targetShots.map((shot) => shot.id),
+      frameIds,
+      scriptBySceneId
+    ),
+    loadShotMediaStaleness(scopedDb, sequence, allShots, {
+      sceneContext: scriptBySceneId,
+      characters: refs.characters,
+      elements: refs.elements,
+      recording,
+    }),
+  ]);
+
+  const entries = await Promise.all(
+    targetShots.map(
+      async (shot): Promise<[string, ReturnType<typeof toWireStaleness>]> => {
+        const frame = anchorsByShot.get(shot.id);
+        if (!frame) {
+          // ensureAnchorFrames guarantees an anchor; if it's somehow absent
+          // we have no image surface to compare, so report the shot
+          // untracked rather than dropping it from the result.
+          logger.error(
+            `getShotStalenessBatchFn: shot ${shot.id} has no anchor frame`
+          );
+          return [
+            shot.id,
+            toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+          ];
+        }
+        const { scene } = resolveSceneForShot(shot, scriptBySceneId);
+        try {
+          return [
+            shot.id,
+            toWireStaleness(
+              await computeShotStaleness({
+                scopedDb,
+                sequence,
+                shot,
+                frame,
+                selectedImage: selectedByFrame.get(frame.id) ?? null,
+                scene,
+                refs,
+                reads,
+                dialogue: reads.dialogueOf(shot),
+              }),
+              media.get(shot.id)
+            ),
+          ];
+        } catch (error) {
+          // Per-shot boundary: anything escaping computeShotStaleness must
+          // not reject the whole batch and blank the scene.
+          logger.error(
+            `getShotStalenessBatchFn: shot ${shot.id} staleness failed`,
+            { err: error }
+          );
+          return [
+            shot.id,
+            toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+          ];
+        }
+      }
+    )
+  );
+  return typedFromEntries(entries);
+}
 
 /**
  * "Update all" (#1077, depth picker #1085): compute the regeneration plan and

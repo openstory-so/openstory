@@ -15,6 +15,7 @@
  * See docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import { selectInChunks } from '@/platform/server/db/select-in-chunks';
 import type { Database } from '@/platform/server/db/client';
 import { frameVariants, frames } from '@/platform/server/db/schema';
 import type {
@@ -125,17 +126,12 @@ export function createFramesMethods(db: Database) {
 
     getByIds: async (frameIds: string[]): Promise<Frame[]> => {
       if (frameIds.length === 0) return [];
-      const rows: Frame[] = [];
-      for (let i = 0; i < frameIds.length; i += FRAMES_BY_IDS_BATCH) {
-        rows.push(
-          ...(await db
-            .select()
-            .from(frames)
-            .where(
-              inArray(frames.id, frameIds.slice(i, i + FRAMES_BY_IDS_BATCH))
-            ))
-        );
-      }
+      const rows = await selectInChunks(
+        db,
+        frameIds,
+        FRAMES_BY_IDS_BATCH,
+        (chunk) => db.select().from(frames).where(inArray(frames.id, chunk))
+      );
       return rows;
     },
 

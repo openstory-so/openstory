@@ -179,7 +179,7 @@ export type ShotStalenessRefs = ShotPromptContextRefs;
  * The sequence-wide rows a batch of comparisons shares: anchors, scene scripts,
  * selected stills and the reference bibles. One read each, not one per shot.
  */
-export async function loadShotStalenessBatch(
+export async function loadShotStalenessRefs(
   scopedDb: ScopedDb,
   sequence: { id: string; styleId: string | null }
 ) {
@@ -196,13 +196,27 @@ export async function loadShotStalenessBatch(
     ]);
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
   return {
+    anchorRows,
     anchorsByShot: new Map(anchorRows.map((f) => [f.shotId, f])),
     sceneContext,
-    // Stills live on the selected `frame_variants` rows (#1067).
+    refs,
+  };
+}
+
+/** The refs plus the selected stills, which live on `frame_variants` (#1067). */
+export async function loadShotStalenessBatch(
+  scopedDb: ScopedDb,
+  sequence: { id: string; styleId: string | null }
+) {
+  const { anchorRows, ...loaded } = await loadShotStalenessRefs(
+    scopedDb,
+    sequence
+  );
+  return {
+    ...loaded,
     selectedByFrame: await scopedDb.frameVariants.getSelectedByFrameIds(
       anchorRows.map((f) => f.id)
     ),
-    refs,
   };
 }
 

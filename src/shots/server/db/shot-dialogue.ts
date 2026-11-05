@@ -21,6 +21,7 @@
  * clear-then-set done as two round trips that raced.
  */
 
+import { selectInChunks } from '@/platform/server/db/select-in-chunks';
 import { generateId } from '@/platform/id';
 import {
   buildDialogueStartEvent,
@@ -524,16 +525,18 @@ export function createShotDialogueMethods(db: Database) {
       shotIds: readonly string[]
     ): Promise<Set<string>> => {
       if (shotIds.length === 0) return new Set();
-      const rows = await db
-        .selectDistinct({ shotId: shotDialogueClaims.shotId })
-        .from(shotDialogueClaims)
-        .where(
-          and(
-            inArray(shotDialogueClaims.shotId, [...shotIds]),
-            eq(shotDialogueClaims.status, 'generating'),
-            isNotNull(shotDialogueClaims.pendingSourceKey)
+      const rows = await selectInChunks(db, shotIds, 90, (chunk) =>
+        db
+          .selectDistinct({ shotId: shotDialogueClaims.shotId })
+          .from(shotDialogueClaims)
+          .where(
+            and(
+              inArray(shotDialogueClaims.shotId, chunk),
+              eq(shotDialogueClaims.status, 'generating'),
+              isNotNull(shotDialogueClaims.pendingSourceKey)
+            )
           )
-        );
+      );
       return new Set(rows.map((row) => row.shotId));
     },
 
@@ -732,9 +735,8 @@ export function createShotDialogueMethods(db: Database) {
         string,
         { url: string; turns: DialogueSpeechTurn[]; createdAt: Date }
       >();
-      // Under D1's 100-bound-parameter cap (#1019).
-      for (let i = 0; i < ids.length; i += 90) {
-        const rows = await db
+      const rows = await selectInChunks(db, ids, 90, (chunk) =>
+        db
           .select({
             id: dialogueSpeeches.id,
             url: dialogueSpeeches.url,
@@ -742,9 +744,9 @@ export function createShotDialogueMethods(db: Database) {
             createdAt: dialogueSpeeches.createdAt,
           })
           .from(dialogueSpeeches)
-          .where(inArray(dialogueSpeeches.id, ids.slice(i, i + 90)));
-        for (const { id, ...speech } of rows) out.set(id, speech);
-      }
+          .where(inArray(dialogueSpeeches.id, chunk))
+      );
+      for (const { id, ...speech } of rows) out.set(id, speech);
       return out;
     },
 

@@ -21,6 +21,7 @@
  * See docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import { ownerId, selectInChunks } from '@/platform/server/db/select-in-chunks';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { ConflictError, NotFoundError } from '@/platform/errors';
@@ -77,23 +78,27 @@ export async function getPrimaryVideoByShotIds(
   if (shotIds.length === 0) return new Map();
   // Read only the newest primary per shot, without materializing its render history.
   const byShot = new Map<string, VideoVariant>();
-  for (let i = 0; i < shotIds.length; i += VIDEO_BY_SHOTS_BATCH) {
-    const rows = await db
-      .select({ shotId: shots.id, version: videoVariants })
-      .from(shots)
-      .innerJoin(
-        videoVariants,
-        eq(videoVariants.renderSegmentId, shots.renderSegmentId)
-      )
-      .where(
-        and(
-          inArray(shots.id, shotIds.slice(i, i + VIDEO_BY_SHOTS_BATCH)),
-          eq(videoVariants.id, primaryVideoIdForShot())
+  const rows = await selectInChunks(
+    db,
+    shotIds,
+    VIDEO_BY_SHOTS_BATCH,
+    (chunk) =>
+      db
+        .select({ shotId: ownerId(shots.id), version: videoVariants })
+        .from(shots)
+        .innerJoin(
+          videoVariants,
+          eq(videoVariants.renderSegmentId, shots.renderSegmentId)
         )
-      )
-      .orderBy(asc(videoVariants.id));
-    for (const r of rows) byShot.set(r.shotId, r.version);
-  }
+        .where(
+          and(
+            inArray(shots.id, chunk),
+            eq(videoVariants.id, primaryVideoIdForShot())
+          )
+        )
+        .orderBy(asc(videoVariants.id))
+  );
+  for (const r of rows) byShot.set(r.shotId, r.version);
   return byShot;
 }
 
@@ -630,26 +635,27 @@ export function createVideoVariantsMethods(db: Database) {
       if (shotIds.length === 0) return new Map();
       // Chunked for D1's 100-bound-parameter ceiling — see VIDEO_BY_SHOTS_BATCH.
       const byShot = new Map<string, VideoVariant>();
-      for (let i = 0; i < shotIds.length; i += VIDEO_BY_SHOTS_BATCH) {
-        const rows = await db
-          .select({ shotId: shots.id, version: videoVariants })
-          .from(shots)
-          .innerJoin(
-            renderSegments,
-            eq(renderSegments.id, shots.renderSegmentId)
-          )
-          .innerJoin(
-            videoVariants,
-            eq(videoVariants.id, renderSegments.selectedVideoVersionId)
-          )
-          .where(
-            and(
-              inArray(shots.id, shotIds.slice(i, i + VIDEO_BY_SHOTS_BATCH)),
-              isNull(videoVariants.discardedAt)
+      const rows = await selectInChunks(
+        db,
+        shotIds,
+        VIDEO_BY_SHOTS_BATCH,
+        (chunk) =>
+          db
+            .select({ shotId: ownerId(shots.id), version: videoVariants })
+            .from(shots)
+            .innerJoin(
+              renderSegments,
+              eq(renderSegments.id, shots.renderSegmentId)
             )
-          );
-        for (const r of rows) byShot.set(r.shotId, r.version);
-      }
+            .innerJoin(
+              videoVariants,
+              eq(videoVariants.id, renderSegments.selectedVideoVersionId)
+            )
+            .where(
+              and(inArray(shots.id, chunk), isNull(videoVariants.discardedAt))
+            )
+      );
+      for (const r of rows) byShot.set(r.shotId, r.version);
       return byShot;
     },
 

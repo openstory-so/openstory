@@ -63,13 +63,16 @@ beforeAll(async () => {
 });
 afterAll(() => closeDb());
 
-/** A sequence with `n` shots, `n` characters with hashed sheets and `n` locations with hashed sheets. */
-async function seed(n: number) {
+/**
+ * A sequence with `shots` shots, `n` characters with hashed sheets and `n`
+ * locations with hashed sheets.
+ */
+async function seed(n: number, shots = n) {
   const user = await createTestUser();
   const sequence = await createTestSequence(user.organizationId, user.id);
   const now = new Date();
+  for (let i = 0; i < shots; i++) await createTestShot(sequence.id, i);
   for (let i = 0; i < n; i++) {
-    await createTestShot(sequence.id, i);
     const character = await createTestCharacter(
       sequence.id,
       `char-${i}`,
@@ -137,16 +140,20 @@ const LOADERS: Record<
   },
 };
 
-async function countQueries(n: number) {
-  const { scopedDb, sequence: created } = await seed(n);
+/** Round trips per loader: a query, or a `db.batch()` of them (#2234). */
+async function countQueries(n: number, shots = n) {
+  const { scopedDb, sequence: created } = await seed(n, shots);
   const sequence = await scopedDb.sequences.getById(created.id);
   if (!sequence) throw new Error('seeded sequence not found');
+  const batch = vi.spyOn(db, 'batch');
   const counts: Record<string, number> = {};
   for (const [name, load] of Object.entries(LOADERS)) {
     queries = [];
+    batch.mockClear();
     await load(scopedDb, sequence);
-    counts[name] = queries.length;
+    counts[name] = queries.length + batch.mock.calls.length;
   }
+  batch.mockRestore();
   return counts;
 }
 
@@ -164,6 +171,11 @@ describe('sequence page query counts (#2082)', () => {
         .join('\n')
     );
     expect(large).toEqual(small);
+  });
+
+  it('do not grow past one chunk of ids (#2234)', async () => {
+    // 95 shots: every id list spans two chunks under D1's 100-param cap.
+    expect(await countQueries(1, 95)).toEqual(await countQueries(1, 2));
   });
 });
 

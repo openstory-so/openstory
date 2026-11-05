@@ -10,6 +10,7 @@
  * § prompt versioning.
  */
 
+import { ownerId, selectInChunks } from '@/platform/server/db/select-in-chunks';
 import type {
   MotionAudio,
   MotionPromptParameters,
@@ -65,36 +66,40 @@ async function latestCompletedByShotIds(
 ): Promise<Map<string, ShotPromptVersion>> {
   if (shotIds.length === 0) return new Map();
   const byShot = new Map<string, ShotPromptVersion>();
-  for (let i = 0; i < shotIds.length; i += SELECTED_MOTION_BY_SHOTS_BATCH) {
-    const batch = shotIds.slice(i, i + SELECTED_MOTION_BY_SHOTS_BATCH);
-    const ranked = db
-      .select({
-        id: shotPromptVersions.id,
-        position:
-          sql<number>`row_number() over (partition by ${shotPromptVersions.shotId} order by ${shotPromptVersions.createdAt} desc, ${shotPromptVersions.id} desc)`.as(
-            'position'
-          ),
-      })
-      .from(shotPromptVersions)
-      .where(
-        and(
-          inArray(shotPromptVersions.shotId, batch),
-          eq(shotPromptVersions.promptType, promptType),
-          eq(shotPromptVersions.status, 'completed'),
-          hashedOnly ? isNotNull(shotPromptVersions.inputHash) : undefined
+  const rows = await selectInChunks(
+    db,
+    shotIds,
+    SELECTED_MOTION_BY_SHOTS_BATCH,
+    (batch) => {
+      const ranked = db
+        .select({
+          id: shotPromptVersions.id,
+          position:
+            sql<number>`row_number() over (partition by ${shotPromptVersions.shotId} order by ${shotPromptVersions.createdAt} desc, ${shotPromptVersions.id} desc)`.as(
+              'position'
+            ),
+        })
+        .from(shotPromptVersions)
+        .where(
+          and(
+            inArray(shotPromptVersions.shotId, batch),
+            eq(shotPromptVersions.promptType, promptType),
+            eq(shotPromptVersions.status, 'completed'),
+            hashedOnly ? isNotNull(shotPromptVersions.inputHash) : undefined
+          )
         )
-      )
-      .as('ranked_shot_prompts');
-    const latest = db
-      .select({ id: ranked.id })
-      .from(ranked)
-      .where(eq(ranked.position, 1));
-    const rows = await db
-      .select()
-      .from(shotPromptVersions)
-      .where(inArray(shotPromptVersions.id, latest));
-    for (const row of rows) byShot.set(row.shotId, row);
-  }
+        .as('ranked_shot_prompts');
+      const latest = db
+        .select({ id: ranked.id })
+        .from(ranked)
+        .where(eq(ranked.position, 1));
+      return db
+        .select()
+        .from(shotPromptVersions)
+        .where(inArray(shotPromptVersions.id, latest));
+    }
+  );
+  for (const row of rows) byShot.set(row.shotId, row);
   return byShot;
 }
 
@@ -670,22 +675,21 @@ export function createShotPromptVersionsMethods(db: Database) {
     ): Promise<Map<string, ShotPromptVersion>> => {
       if (shotIds.length === 0) return new Map();
       const result = new Map<string, ShotPromptVersion>();
-      for (let i = 0; i < shotIds.length; i += SELECTED_MOTION_BY_SHOTS_BATCH) {
-        const rows = await db
-          .select({ shotId: shots.id, version: shotPromptVersions })
-          .from(shots)
-          .innerJoin(
-            shotPromptVersions,
-            eq(shots.selectedMotionPromptVersionId, shotPromptVersions.id)
-          )
-          .where(
-            inArray(
-              shots.id,
-              shotIds.slice(i, i + SELECTED_MOTION_BY_SHOTS_BATCH)
+      const rows = await selectInChunks(
+        db,
+        shotIds,
+        SELECTED_MOTION_BY_SHOTS_BATCH,
+        (chunk) =>
+          db
+            .select({ shotId: ownerId(shots.id), version: shotPromptVersions })
+            .from(shots)
+            .innerJoin(
+              shotPromptVersions,
+              eq(shots.selectedMotionPromptVersionId, shotPromptVersions.id)
             )
-          );
-        for (const r of rows) result.set(r.shotId, r.version);
-      }
+            .where(inArray(shots.id, chunk))
+      );
+      for (const r of rows) result.set(r.shotId, r.version);
       return result;
     },
 
@@ -1003,26 +1007,27 @@ export function createShotPromptVersionsMethods(db: Database) {
     ): Promise<Map<string, ShotPromptVersion[]>> => {
       if (shotIds.length === 0) return new Map();
       const byShot = new Map<string, ShotPromptVersion[]>();
-      for (let i = 0; i < shotIds.length; i += SELECTED_MOTION_BY_SHOTS_BATCH) {
-        const rows = await db
-          .select()
-          .from(shotPromptVersions)
-          .where(
-            and(
-              inArray(
-                shotPromptVersions.shotId,
-                shotIds.slice(i, i + SELECTED_MOTION_BY_SHOTS_BATCH)
-              ),
-              eq(shotPromptVersions.promptType, 'motion'),
-              inArray(shotPromptVersions.status, [...LIVE_PENDING_STATUSES])
+      const rows = await selectInChunks(
+        db,
+        shotIds,
+        SELECTED_MOTION_BY_SHOTS_BATCH,
+        (chunk) =>
+          db
+            .select()
+            .from(shotPromptVersions)
+            .where(
+              and(
+                inArray(shotPromptVersions.shotId, chunk),
+                eq(shotPromptVersions.promptType, 'motion'),
+                inArray(shotPromptVersions.status, [...LIVE_PENDING_STATUSES])
+              )
             )
-          )
-          .orderBy(desc(shotPromptVersions.createdAt));
-        for (const row of rows) {
-          const list = byShot.get(row.shotId);
-          if (list) list.push(row);
-          else byShot.set(row.shotId, [row]);
-        }
+            .orderBy(desc(shotPromptVersions.createdAt))
+      );
+      for (const row of rows) {
+        const list = byShot.get(row.shotId);
+        if (list) list.push(row);
+        else byShot.set(row.shotId, [row]);
       }
       return byShot;
     },
