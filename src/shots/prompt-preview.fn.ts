@@ -63,9 +63,9 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(previewShotPromptsInputSchema))
   .handler(async ({ data, context }): Promise<ShotPromptPreview> => {
     const { shot, frame, sequence, scene, script, scopedDb } = context;
-    const styleConfig = await loadSequenceStyle(scopedDb, sequence);
     const usesFrame = usesStartFrame(shot, sequence);
     const [
+      styleConfig,
       characters,
       elements,
       locations,
@@ -75,6 +75,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       sequenceShots,
       linesByShotId,
     ] = await Promise.all([
+      loadSequenceStyle(scopedDb, sequence),
       scopedDb.characters.listWithSheets(sequence.id),
       // Same lengths submit will see, or the preview binds a clip submit drops.
       scopedDb.sequenceElements
@@ -116,21 +117,26 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       data.videoModel,
       DEFAULT_VIDEO_MODEL
     );
-    const packedPreview = await loadPackedPreviewMembers({
-      scopedDb,
-      sequence,
-      scene,
-      styleConfig,
-      script,
-      shot,
-      sceneShots,
-      linesByShotId,
-      videoModel,
-      motionPrompt,
-      selectedStillUrl: selectedStill?.url ?? null,
-      usesFrame,
-      generateAudio: data.generateAudio ?? true,
-    });
+    const [packedPreview, byteplusEnabled] = await Promise.all([
+      loadPackedPreviewMembers({
+        scopedDb,
+        sequence,
+        scene,
+        styleConfig,
+        script,
+        shot,
+        sceneShots,
+        linesByShotId,
+        videoModel,
+        motionPrompt,
+        selectedStillUrl: selectedStill?.url ?? null,
+        usesFrame,
+        generateAudio: data.generateAudio ?? true,
+      }),
+      // Where this organization's Seedance lands, not whether the platform has
+      // Ark: an organization on its own fal key is never sent an edit (#2036).
+      seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials),
+    ]);
 
     return buildShotPromptPreview({
       imageModel: safeTextToImageModel(data.imageModel, DEFAULT_IMAGE_MODEL),
@@ -148,11 +154,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       characters,
       elements,
       locations,
-      // Where this organization's Seedance lands, not whether the platform has
-      // Ark: an organization on its own fal key is never sent an edit (#2036).
-      byteplusEnabled: await seedanceRunsOnArk(
-        toWorkflowScopedDb(scopedDb).credentials
-      ),
+      byteplusEnabled,
       // The shot's working set is what the next render sends (#1786).
       audioClips: shot.audioClips ?? [],
       packedMembers: packedPreview?.members,

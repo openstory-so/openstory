@@ -36,11 +36,8 @@ import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snaps
 import { loadSceneFacets } from '@/shots/server/scene-facets';
 import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
-import { loadShotMediaStates } from '@/shots/server/shot-media-staleness';
-import {
-  loadShotStalenessBatch,
-  loadShotStalenessReads,
-} from '@/shots/server/shot-staleness';
+import { loadShotViews } from '@/shots/server/load-shot-views';
+import { loadStalenessForShots } from '@/shots/server/shot-staleness-batch';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { computeGenerationPlan } from './generation-plan';
@@ -63,13 +60,16 @@ beforeAll(async () => {
 });
 afterAll(() => closeDb());
 
-/** A sequence with `n` shots, `n` characters with hashed sheets and `n` locations with hashed sheets. */
-async function seed(n: number) {
+/**
+ * A sequence with `shots` shots, `n` characters with hashed sheets and `n`
+ * locations with hashed sheets.
+ */
+async function seed(n: number, shots = n) {
   const user = await createTestUser();
   const sequence = await createTestSequence(user.organizationId, user.id);
   const now = new Date();
+  for (let i = 0; i < shots; i++) await createTestShot(sequence.id, i);
   for (let i = 0; i < n; i++) {
-    await createTestShot(sequence.id, i);
     const character = await createTestCharacter(
       sequence.id,
       `char-${i}`,
@@ -121,32 +121,25 @@ const LOADERS: Record<
     loadSceneFacets(scopedDb, sequence),
   getShotStalenessBatchFn: async (scopedDb, sequence) => {
     const shots = await scopedDb.shots.listBySequence(sequence.id);
-    const loaded = await loadShotStalenessBatch(scopedDb, sequence);
-    const frameIds = [...loaded.anchorsByShot.values()].map((f) => f.id);
-    return Promise.all([
-      loadShotStalenessReads(
-        scopedDb,
-        sequence.id,
-        shots,
-        shots.map((s) => s.id),
-        frameIds,
-        loaded.sceneContext
-      ),
-      loadShotMediaStates(scopedDb, sequence, shots),
-    ]);
+    return loadStalenessForShots(scopedDb, sequence, shots, shots);
   },
+  getShotsFn: (scopedDb, sequence) => loadShotViews(scopedDb, sequence),
 };
 
-async function countQueries(n: number) {
-  const { scopedDb, sequence: created } = await seed(n);
+/** Round trips per loader: a query, or a `db.batch()` of them (#2234). */
+async function countQueries(n: number, shots = n) {
+  const { scopedDb, sequence: created } = await seed(n, shots);
   const sequence = await scopedDb.sequences.getById(created.id);
   if (!sequence) throw new Error('seeded sequence not found');
+  const batch = vi.spyOn(db, 'batch');
   const counts: Record<string, number> = {};
   for (const [name, load] of Object.entries(LOADERS)) {
     queries = [];
+    batch.mockClear();
     await load(scopedDb, sequence);
-    counts[name] = queries.length;
+    counts[name] = queries.length + batch.mock.calls.length;
   }
+  batch.mockRestore();
   return counts;
 }
 
@@ -164,6 +157,11 @@ describe('sequence page query counts (#2082)', () => {
         .join('\n')
     );
     expect(large).toEqual(small);
+  });
+
+  it('do not grow past one chunk of ids (#2234)', async () => {
+    // 120 shots: past D1's 100-param cap, so an unchunked list throws.
+    expect(await countQueries(1, 120)).toEqual(await countQueries(1, 2));
   });
 });
 

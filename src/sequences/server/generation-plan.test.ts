@@ -20,7 +20,7 @@ let primaryImageStatus: string | null = null;
 
 vi.doMock('@/shots/server/shot-staleness', () => ({
   UNTRACKED_STALENESS: {},
-  loadShotStalenessBatch: vi.fn(
+  loadShotStalenessRefs: vi.fn(
     async (scopedDb: ScopedDb, sequence: { id: string }) => ({
       anchorsByShot: new Map([['s1', frame]]),
       sceneContext: new Map(
@@ -36,7 +36,6 @@ vi.doMock('@/shots/server/shot-staleness', () => ({
             ]
           : []
       ),
-      selectedByFrame: new Map(selectedStill ? [['f1', selectedStill]] : []),
       refs: {
         characters: await scopedDb.characters.list(sequence.id),
         locations: await scopedDb.locations.list(sequence.id),
@@ -197,6 +196,10 @@ describe('computeGenerationPlan', () => {
         characterSheetVariants: { getByIds: () => Promise.resolve([]) },
         locationSheetVariants: { getByIds: () => Promise.resolve([]) },
         frameVariants: {
+          getSelectedByFrameIds: () =>
+            Promise.resolve(
+              new Map(selectedStill ? [['f1', selectedStill]] : [])
+            ),
           getPrimaryByFrameIds: () =>
             Promise.resolve(
               new Map(

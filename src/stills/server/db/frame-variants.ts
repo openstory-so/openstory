@@ -20,6 +20,7 @@
  * See docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import { ownerId, selectInChunks } from '@/platform/server/db/select-in-chunks';
 import type { Database } from '@/platform/server/db/client';
 import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Resolution } from '@/models/resolutions';
@@ -164,18 +165,14 @@ export async function getFrameVariantsByIds(
 ): Promise<Map<string, FrameVariant>> {
   if (versionIds.length === 0) return new Map();
   const byId = new Map<string, FrameVariant>();
-  for (let i = 0; i < versionIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-    const rows = await db
-      .select()
-      .from(frameVariants)
-      .where(
-        inArray(
-          frameVariants.id,
-          versionIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
-        )
-      );
-    for (const row of rows) byId.set(row.id, row);
-  }
+  const rows = await selectInChunks(
+    db,
+    versionIds,
+    PREVIEW_BY_FRAMES_BATCH,
+    (chunk) =>
+      db.select().from(frameVariants).where(inArray(frameVariants.id, chunk))
+  );
+  for (const row of rows) byId.set(row.id, row);
   return byId;
 }
 
@@ -195,41 +192,43 @@ export async function getLatestPreviewByFrameIds(
   if (frameIds.length === 0) return new Map();
   // Resolve the newest usable ID in SQL so callers never load preview history.
   const byFrame = new Map<string, FrameVariant>();
-  for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-    const ranked = db
-      .select({
-        id: frameVariants.id,
-        position:
-          sql<number>`row_number() over (partition by ${frameVariants.frameId} order by ${frameVariants.createdAt} desc, ${frameVariants.id} desc)`.as(
-            'position'
-          ),
-      })
-      .from(frameVariants)
-      .where(
-        and(
-          inArray(
-            frameVariants.frameId,
-            frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
-          ),
-          eq(frameVariants.kind, 'preview'),
-          // Historical migrations left completed rows with no URL. Those must
-          // not shadow an older preview that actually has an image (#1101).
-          eq(frameVariants.status, 'completed'),
-          isNotNull(frameVariants.url),
-          isNull(frameVariants.discardedAt)
+  const rows = await selectInChunks(
+    db,
+    frameIds,
+    PREVIEW_BY_FRAMES_BATCH,
+    (chunk) => {
+      const ranked = db
+        .select({
+          id: frameVariants.id,
+          position:
+            sql<number>`row_number() over (partition by ${frameVariants.frameId} order by ${frameVariants.createdAt} desc, ${frameVariants.id} desc)`.as(
+              'position'
+            ),
+        })
+        .from(frameVariants)
+        .where(
+          and(
+            inArray(frameVariants.frameId, chunk),
+            eq(frameVariants.kind, 'preview'),
+            // Historical migrations left completed rows with no URL. Those must
+            // not shadow an older preview that actually has an image (#1101).
+            eq(frameVariants.status, 'completed'),
+            isNotNull(frameVariants.url),
+            isNull(frameVariants.discardedAt)
+          )
         )
-      )
-      .as('ranked_previews');
-    const latest = db
-      .select({ id: ranked.id })
-      .from(ranked)
-      .where(eq(ranked.position, 1));
-    const rows = await db
-      .select()
-      .from(frameVariants)
-      .where(inArray(frameVariants.id, latest));
-    for (const row of rows) byFrame.set(row.frameId, row);
-  }
+        .as('ranked_previews');
+      const latest = db
+        .select({ id: ranked.id })
+        .from(ranked)
+        .where(eq(ranked.position, 1));
+      return db
+        .select()
+        .from(frameVariants)
+        .where(inArray(frameVariants.id, latest));
+    }
+  );
+  for (const row of rows) byFrame.set(row.frameId, row);
   return byFrame;
 }
 
@@ -254,26 +253,23 @@ export async function getPrimaryImageByFrameIds(
 ): Promise<Map<string, FrameVariant>> {
   if (frameIds.length === 0) return new Map();
   const byFrame = new Map<string, FrameVariant>();
-  for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-    const newest = db
-      .select({ id: sql<string>`max(${frameVariants.id})` })
-      .from(frameVariants)
-      .where(
-        and(
-          inArray(
-            frameVariants.frameId,
-            frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
-          ),
-          speaksForFrame()
-        )
-      )
-      .groupBy(frameVariants.frameId);
-    const rows = await db
-      .select()
-      .from(frameVariants)
-      .where(inArray(frameVariants.id, newest));
-    for (const row of rows) byFrame.set(row.frameId, row);
-  }
+  const rows = await selectInChunks(
+    db,
+    frameIds,
+    PREVIEW_BY_FRAMES_BATCH,
+    (chunk) => {
+      const newest = db
+        .select({ id: sql<string>`max(${frameVariants.id})` })
+        .from(frameVariants)
+        .where(and(inArray(frameVariants.frameId, chunk), speaksForFrame()))
+        .groupBy(frameVariants.frameId);
+      return db
+        .select()
+        .from(frameVariants)
+        .where(inArray(frameVariants.id, newest));
+    }
+  );
+  for (const row of rows) byFrame.set(row.frameId, row);
   return byFrame;
 }
 
@@ -1099,30 +1095,31 @@ export function createFrameVariantsMethods(db: Database) {
     ): Promise<Map<string, FrameVariant[]>> => {
       if (frameIds.length === 0) return new Map();
       const byFrame = new Map<string, FrameVariant[]>();
-      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-        const rows = await db
-          .select()
-          .from(frameVariants)
-          .where(
-            and(
-              inArray(
-                frameVariants.frameId,
-                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
-              ),
-              inArray(frameVariants.status, [...LIVE_PENDING_STATUSES]),
-              isNull(frameVariants.discardedAt),
-              or(
-                isNotNull(frameVariants.pendingInputHash),
-                isNotNull(frameVariants.dependsOnVersionId)
+      const rows = await selectInChunks(
+        db,
+        frameIds,
+        PREVIEW_BY_FRAMES_BATCH,
+        (chunk) =>
+          db
+            .select()
+            .from(frameVariants)
+            .where(
+              and(
+                inArray(frameVariants.frameId, chunk),
+                inArray(frameVariants.status, [...LIVE_PENDING_STATUSES]),
+                isNull(frameVariants.discardedAt),
+                or(
+                  isNotNull(frameVariants.pendingInputHash),
+                  isNotNull(frameVariants.dependsOnVersionId)
+                )
               )
             )
-          )
-          .orderBy(...newestFirst);
-        for (const row of rows) {
-          const list = byFrame.get(row.frameId);
-          if (list) list.push(row);
-          else byFrame.set(row.frameId, [row]);
-        }
+            .orderBy(...newestFirst)
+      );
+      for (const row of rows) {
+        const list = byFrame.get(row.frameId);
+        if (list) list.push(row);
+        else byFrame.set(row.frameId, [row]);
       }
       return byFrame;
     },
@@ -1639,25 +1636,23 @@ export function createFrameVariantsMethods(db: Database) {
     ): Promise<Map<string, FrameVariant>> => {
       if (frameIds.length === 0) return new Map();
       const byFrame = new Map<string, FrameVariant>();
-      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-        const rows = await db
-          .select({ frameId: frames.id, version: frameVariants })
-          .from(frames)
-          .innerJoin(
-            frameVariants,
-            eq(frameVariants.id, frames.selectedImageVersionId)
-          )
-          .where(
-            and(
-              inArray(
-                frames.id,
-                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
-              ),
-              isNull(frameVariants.discardedAt)
+      const rows = await selectInChunks(
+        db,
+        frameIds,
+        PREVIEW_BY_FRAMES_BATCH,
+        (chunk) =>
+          db
+            .select({ frameId: ownerId(frames.id), version: frameVariants })
+            .from(frames)
+            .innerJoin(
+              frameVariants,
+              eq(frameVariants.id, frames.selectedImageVersionId)
             )
-          );
-        for (const r of rows) byFrame.set(r.frameId, r.version);
-      }
+            .where(
+              and(inArray(frames.id, chunk), isNull(frameVariants.discardedAt))
+            )
+      );
+      for (const r of rows) byFrame.set(r.frameId, r.version);
       return byFrame;
     },
 

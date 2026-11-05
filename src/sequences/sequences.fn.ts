@@ -106,6 +106,8 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
         generateVoices: data.generateVoices,
       }),
       scopedDb.shots.listBySequence(sequence.id),
+      // Warms the pricing cache beside the plan, not after it.
+      getEffectiveFalPricing(),
     ]);
     const estimate = await estimateContinueCost({
       sequence,

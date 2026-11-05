@@ -1,12 +1,25 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import { assembleSequenceSegments } from '@/shots/scene-segments';
-import { loadLiveShotInputs } from '@/shots/server/live-shot-state';
-import { loadSceneContextBySequence } from '@/shots/server/scene-script';
+import {
+  liveShotInputs,
+  loadLiveShotReads,
+} from '@/shots/server/live-shot-state';
+import {
+  loadSceneContextBySequence,
+  type SceneContext,
+} from '@/shots/server/scene-script';
 import {
   rendersReferenceOnly,
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
+
+/** Reads the caller already made, so the loader skips them. */
+export type SequenceSegmentsShared = {
+  sceneContext: ReadonlyMap<string, SceneContext>;
+  characters: Awaited<ReturnType<ScopedDb['characters']['list']>>;
+  elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
+};
 
 /**
  * Every render segment of a sequence, assembled with its staleness verdict.
@@ -21,24 +34,25 @@ import {
 export async function loadSequenceSegments(
   scopedDb: ScopedDb,
   sequence: StartFrameSequence & { id: string },
-  shots: readonly Shot[]
+  shots: readonly Shot[],
+  shared?: SequenceSegmentsShared
 ) {
-  const [segments, versions, frames, scriptBySceneId, characters] =
+  const [segments, versions, frames, sceneContext, characters, liveReads] =
     await Promise.all([
       scopedDb.renderSegments.listBySequence(sequence.id),
       scopedDb.videoVariants.listBySequence(sequence.id),
       scopedDb.frames.listBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-      scopedDb.characters.list(sequence.id),
+      shared?.sceneContext ?? loadSceneContextBySequence(scopedDb, sequence.id),
+      shared?.characters ?? scopedDb.characters.list(sequence.id),
+      loadLiveShotReads(scopedDb, sequence.id, shots, shared?.elements),
     ]);
   // What each shot would render from NOW beyond its two pointers (#1657):
   // dialogue key and clip ids, reference provenance, duration.
-  const live = await loadLiveShotInputs(
-    scopedDb,
-    sequence.id,
+  const live = liveShotInputs(
+    liveReads,
     shots,
     characters,
-    scriptBySceneId,
+    sceneContext,
     sequence
   );
   // Versions are oldest-first here (listBySequence orders by ULID).

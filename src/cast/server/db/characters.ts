@@ -46,6 +46,7 @@ import type {
   VoicePreview,
   VoicePreviewUnusable,
   CharacterVoiceVersionStatus,
+  CharacterLook,
 } from '@/platform/server/db/schema';
 import {
   CHARACTER_BIBLE_FIELDS,
@@ -521,10 +522,13 @@ export function createCharactersMethods(db: Database, organizationId: string) {
    * had. A character with no look wears its legacy columns.
    */
   const resolveLooks = async (
-    rows: readonly OwnRow[]
+    rows: readonly OwnRow[],
+    /** Looks already read for these rows; the rest are ignored. */
+    loaded?: readonly CharacterLook[]
   ): Promise<CharacterWithSheet[]> => {
     if (rows.length === 0) return [];
-    const all = await looks.listByCharacters(rows.map((row) => row.id));
+    const all =
+      loaded ?? (await looks.listByCharacters(rows.map((row) => row.id)));
     return rows.map((row) => {
       // The pointer has no FK. A character that names a missing version has
       // no bible to read, and must not come back with a blank one.
@@ -590,9 +594,10 @@ export function createCharactersMethods(db: Database, organizationId: string) {
 
   /** Cast rows resolved, each with the link it was read through. */
   const resolveCastLooks = async (
-    rows: readonly Row[]
+    rows: readonly Row[],
+    loaded?: readonly CharacterLook[]
   ): Promise<CastCharacterWithSheet[]> =>
-    (await resolveLooks(rows)).map((character, index) => {
+    (await resolveLooks(rows, loaded)).map((character, index) => {
       const row = rows[index];
       if (!row) throw new Error('resolveLooks returned a row it was not given');
       const { castId, sequenceId, characterId } = row;
@@ -1322,8 +1327,9 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       sequenceId: string,
       page?: PageOptions
     ): Promise<CastCharacterWithSheet[]> => {
-      return await resolveCastLooks(
-        await pageOf(
+      // The looks go out beside the cast, not after it (#2234).
+      const [rows, castLooks] = await Promise.all([
+        pageOf(
           selectRows().$dynamic(),
           and(
             inOrganization,
@@ -1332,8 +1338,10 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           ),
           characters.id,
           page
-        )
-      );
+        ),
+        looks.listBySequence(sequenceId),
+      ]);
+      return await resolveCastLooks(rows, castLooks);
     },
 
     /** Soft-deleted characters of the sequence, most recently deleted first. */
