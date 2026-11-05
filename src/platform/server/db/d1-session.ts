@@ -27,19 +27,20 @@ export function routeD1(primary: () => D1Database): D1Database {
     const s = als.getStore();
     return s && !s.pinned ? s.session : primary();
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- drizzle's D1 driver calls only prepare and batch
-  return {
+  const handle = {
     prepare: (sql: string) => target().prepare(sql),
     batch: (statements: D1PreparedStatement[]) => target().batch(statements),
-  } as unknown as D1Database;
+  };
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- drizzle's D1 driver calls only prepare and batch
+  return handle as unknown as D1Database;
 }
 
-/** Run `fn` in a session started at `start`; `bookmark` is where it ended. */
+/** Run `fn` in a session started at `start` (a bookmark or a constraint); `bookmark` is where it ended. */
 export async function runInReadSession<T>(
   db: D1Database,
-  start: D1SessionBookmark | D1SessionConstraint,
+  start: string,
   fn: () => Promise<T>
-): Promise<{ value: T; bookmark: D1SessionBookmark | null }> {
+): Promise<{ value: T; bookmark: string | null }> {
   const session = db.withSession(start);
   const value = await als.run({ session, pinned: false }, fn);
   return { value, bookmark: session.getBookmark() };
