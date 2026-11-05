@@ -7,6 +7,7 @@
  */
 
 import {
+  presignCharacterDraftUploadFn,
   presignCharacterSheetUploadFn,
   presignFrameImageUploadFn,
   presignLocationSheetUploadFn,
@@ -26,11 +27,15 @@ import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
-import { putToR2 } from '@/ui/upload';
+import { putToR2, snapshotFile } from '@/ui/upload';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { fitImageFileToAspectRatio } from '@/ui/fit-image-aspect';
 import type { AspectRatio } from '@/models/aspect-ratios';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 async function presignPut(
   presign: Promise<{
@@ -247,16 +252,38 @@ export function useUploadCharacterSheet() {
         },
       });
     },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: sequenceCharacterKeys.all,
-        }),
-        queryClient.invalidateQueries({
-          queryKey: characterSheetVariantKeys.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
-      ]);
+    onSuccess: () => invalidateCharacterSheets(queryClient),
+  });
+}
+
+/** What a new character sheet moves: the cast, its sheet history, staleness. */
+export function invalidateCharacterSheets(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: sequenceCharacterKeys.all }),
+    queryClient.invalidateQueries({ queryKey: characterSheetVariantKeys.all }),
+    queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+  ]);
+}
+
+/**
+ * A sheet for a character not made yet (#2254): uploaded and checked for a
+ * real person on drop. The caller attaches the URL once the character exists.
+ */
+export function useUploadDraftCharacterSheet() {
+  const { ensureUploadRights } = useUploadRightsGate();
+  return useMutation({
+    mutationFn: async (input: {
+      file: File;
+      onProgress?: (percent: number) => void;
+    }): Promise<string> => {
+      const file = await snapshotFile(input.file);
+      const publicUrl = await presignPut(
+        presignCharacterDraftUploadFn({ data: { filename: file.name } }),
+        file,
+        input.onProgress
+      );
+      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
+      return publicUrl;
     },
   });
 }

@@ -1,5 +1,6 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { describeUploadFn } from '@/cast/describe-upload.fn';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -40,6 +41,31 @@ export const NewLocationDialog: React.FC<{
   const [files, setFiles] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [describing, setDescribing] = useState(false);
+  const description = useRef<HTMLTextAreaElement>(null);
+  // One description per dialog, even when photos land together.
+  const described = useRef(false);
+
+  // The first photo fills a blank description; one the user typed is theirs.
+  const describe = async (photo: { url: string; filename: string }) => {
+    if (described.current || description.current?.value.trim()) return;
+    described.current = true;
+    setDescribing(true);
+    try {
+      const result = await describeUploadFn({
+        data: { ...photo, subject: 'location' },
+      });
+      if (description.current && !description.current.value.trim()) {
+        description.current.value = result.description;
+      }
+    } catch (error) {
+      toast.error('Photo not described', {
+        description: errorMessage(error),
+      });
+    } finally {
+      setDescribing(false);
+    }
+  };
   const createLocation = useCreateOrganizationLocation();
   const hydrated = useHydrated();
 
@@ -48,6 +74,8 @@ export const NewLocationDialog: React.FC<{
     setFiles([]);
     setPhotoUrls([]);
     setUploading(false);
+    setDescribing(false);
+    described.current = false;
   };
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -104,7 +132,7 @@ export const NewLocationDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>New location</DialogTitle>
           <DialogDescription>
-            Its sheet is drawn from the photos, or from the description.
+            Photos are checked for a real person and fill a blank description.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -123,6 +151,7 @@ export const NewLocationDialog: React.FC<{
               Description (optional)
             </Label>
             <Textarea
+              ref={description}
               id="new-organization-location-description"
               name="description"
               rows={3}
@@ -135,19 +164,22 @@ export const NewLocationDialog: React.FC<{
               onFilesChange={setFiles}
               onUploadedUrlsChange={setPhotoUrls}
               onUploadingChange={setUploading}
+              onPhotoReady={(photo) => void describe(photo)}
               disabled={createLocation.isPending}
             />
           </div>
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={createLocation.isPending || uploading}
+              disabled={createLocation.isPending || uploading || describing}
             >
               {createLocation.isPending
                 ? 'Creating…'
                 : uploading
                   ? 'Uploading…'
-                  : 'Create'}
+                  : describing
+                    ? 'Describing…'
+                    : 'Create'}
             </Button>
           </div>
         </form>

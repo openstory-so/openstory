@@ -182,13 +182,18 @@ What follows from one character in two sequences:
   `physicalDescription`) and an optional photo or sheet. From no sequence it
   creates with `createOrganizationCharacterFn` (the Characters tab says
   photoreal; the Cast picker says the picked style's medium,
-  `renderingOfStyle`); the cast panel with `createSequenceCharacterFn`. The
-  image needs the character's id, so it is uploaded after the create, as the
-  default look's sheet through the Upload Sheet path
-  (`useUploadCharacterSheet`: likeness check, sign-off, `isPerson` from the
-  ledger). A failed upload keeps the character and says so. Nothing reads
-  the image to fill the bible. The Cast picker selects the new character and
-  the draft keeps its script.
+  `renderingOfStyle`); the cast panel with `createSequenceCharacterFn`.
+  - The image is uploaded on drop, before the character exists
+    (`presignCharacterDraftUploadFn`, `org/<id>/characters/drafts/`), and
+    goes through the likeness check and sign-off there, as an element does.
+  - A cleared or signed image then fills a blank description
+    (`describeUploadFn` → `describeUpload`, billed vision; it refuses an
+    upload with no verdict before calling the model). A description the
+    user typed is kept.
+  - Create attaches the URL as the default look's sheet
+    (`setCharacterSheetFromUploadFn`; `isPerson` from the ledger). A failed
+    attach keeps the character and says so. The Cast picker selects the new
+    character and the draft keeps its script.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getOrganizationCharacterShotCountsFn`).

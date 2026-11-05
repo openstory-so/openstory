@@ -38,6 +38,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
+  authWithOrganizationMiddleware,
   castAccessMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
@@ -202,6 +203,22 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
       'image'
     );
   });
+
+/**
+ * A sheet for a character not made yet (#2254): checked on drop, attached
+ * with `setCharacterSheetFromUploadFn` once the character exists.
+ */
+export const presignCharacterDraftUploadFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
+  .validator(zodValidator(z.object({ filename: z.string().min(1) })))
+  .handler(({ context, data }) =>
+    signedUpload(
+      STORAGE_BUCKETS.CHARACTERS,
+      `${organizationKeyPrefix(context.organizationId)}/characters/drafts/${generateId()}`,
+      data.filename,
+      'image'
+    )
+  );
 
 const setCharacterSheetInput = z.object({
   sequenceId: ulidSchema.nullable(),

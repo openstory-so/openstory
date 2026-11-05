@@ -5,7 +5,8 @@ import {
 } from '@/cast/ui/use-organization-characters';
 import { useCreateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import { errorMessage } from '@/platform/errors';
-import { useUploadCharacterSheet } from '@/shots/ui/use-media-upload';
+import { setCharacterSheetFromUploadFn } from '@/shots/media-upload.fn';
+import { invalidateCharacterSheets } from '@/shots/ui/use-media-upload';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -15,17 +16,16 @@ type NewCharacterTarget =
   | { sequenceId: null; rendering: () => string };
 
 /**
- * Create the character, then upload its image as the default look's sheet
- * (#2254). A failed upload keeps the character and says so; the caller
- * shows a failed create.
+ * Create the character, then attach its checked upload as the default
+ * look's sheet (#2254). A failed attach keeps the character and says so; the
+ * caller shows a failed create.
  */
 export function useNewCharacter(target: NewCharacterTarget) {
   const queryClient = useQueryClient();
   const createInSequence = useCreateSequenceCharacter();
   const createInOrganization = useCreateOrganizationCharacter();
-  const uploadSheet = useUploadCharacterSheet();
   return useMutation({
-    mutationFn: async ({ image, ...bible }: NewCharacterFields) => {
+    mutationFn: async ({ sheetUrl, ...bible }: NewCharacterFields) => {
       const character =
         target.sequenceId === null
           ? await createInOrganization.mutateAsync({
@@ -37,13 +37,15 @@ export function useNewCharacter(target: NewCharacterTarget) {
               sequenceId: target.sequenceId,
             });
       let sheetError: unknown = null;
-      if (image) {
-        await uploadSheet
-          .mutateAsync({
-            file: image,
+      if (sheetUrl) {
+        await setCharacterSheetFromUploadFn({
+          data: {
             sequenceId: target.sequenceId,
             characterId: character.id,
-          })
+            publicUrl: sheetUrl,
+          },
+        })
+          .then(() => invalidateCharacterSheets(queryClient))
           .catch((error: unknown) => {
             sheetError = error;
           });
@@ -56,7 +58,7 @@ export function useNewCharacter(target: NewCharacterTarget) {
     },
     onSuccess: ({ character, sheetError }) => {
       if (sheetError !== null) {
-        toast.error(`${character.name} created, image not uploaded`, {
+        toast.error(`${character.name} created, image not added`, {
           description: errorMessage(sheetError),
         });
       }

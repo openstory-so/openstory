@@ -219,6 +219,8 @@ sheet hash read no sequence style.
 - New location from the create screen's Locations picker takes the picked
   style's medium (`renderingOfStyle`), as New character does in the Cast
   picker; the Locations page says photoreal.
+- New location's first photo, once cleared or signed, fills a blank
+  description (`describeUploadFn`, #2254), as a new character's image does.
 - It is in `LOCATION_SHEET_BIBLE_FIELDS`, so an edit to it revokes the sheet
   claim and stales the sheet. The shot prompts do not read it.
 

@@ -11,9 +11,16 @@ import {
   FileUploadList,
   FileUploadTrigger,
 } from '@/ui/shadcn/file-upload';
+import { describeUploadFn } from '@/cast/describe-upload.fn';
+import { errorMessage } from '@/platform/errors';
+import { useUploadDraftCharacterSheet } from '@/shots/ui/use-media-upload';
+import {
+  FileUploadItemProgress,
+  type FileUploadProps,
+} from '@/ui/shadcn/file-upload';
 import { getFileKey } from '@/ui/upload';
 import { Upload, X } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -24,21 +31,71 @@ const newCharacterSchema = z.object({
     .trim()
     .max(2000)
     .transform((v) => v || undefined),
-  image: z.instanceof(File).optional(),
+  /** Uploaded and cleared or signed on drop; attached as the sheet on create. */
+  sheetUrl: z.string().optional(),
 });
 
 export type NewCharacterFields = z.output<typeof newCharacterSchema>;
 
 /**
  * A new character (#2254): a name, and optionally a description and a photo
- * or sheet. One form for the cast panel, the Cast picker and the Characters
- * page; `useNewCharacter` makes it.
+ * or sheet. The image is checked for a real person on drop and then fills
+ * a blank description. One form for the cast panel, the Cast picker and the
+ * Characters page; `useNewCharacter` makes it.
  */
 export const NewCharacterForm: React.FC<{
   isPending: boolean;
   onSubmit: (fields: NewCharacterFields) => void;
 }> = ({ isPending, onSubmit }) => {
   const [files, setFiles] = useState<File[]>([]);
+  const [sheetUrl, setSheetUrl] = useState<string>();
+  const [stage, setStage] = useState<'idle' | 'uploading' | 'describing'>(
+    'idle'
+  );
+  const description = useRef<HTMLTextAreaElement>(null);
+  const uploadSheet = useUploadDraftCharacterSheet();
+
+  const onUpload: NonNullable<FileUploadProps['onUpload']> = async (
+    [file],
+    { onProgress, onSuccess, onError }
+  ) => {
+    if (!file) return;
+    setStage('uploading');
+    let url: string;
+    try {
+      url = await uploadSheet.mutateAsync({
+        file,
+        onProgress: (percent) => onProgress(file, percent),
+      });
+    } catch (error) {
+      setStage('idle');
+      onError(
+        file,
+        error instanceof Error ? error : new Error('Upload failed')
+      );
+      return;
+    }
+    setSheetUrl(url);
+    onSuccess(file);
+    setStage('describing');
+    try {
+      const result = await describeUploadFn({
+        data: { url, filename: file.name, subject: 'character' },
+      });
+      // A description the user typed is theirs.
+      if (description.current && !description.current.value.trim()) {
+        description.current.value = result.description;
+      }
+    } catch (error) {
+      toast.error('Image not described', {
+        description: errorMessage(error),
+      });
+    } finally {
+      setStage('idle');
+    }
+  };
+
+  const busy = isPending || stage !== 'idle';
   return (
     <form
       onSubmit={(event) => {
@@ -47,7 +104,7 @@ export const NewCharacterForm: React.FC<{
         event.stopPropagation();
         const result = newCharacterSchema.safeParse({
           ...Object.fromEntries(new FormData(event.currentTarget)),
-          image: files[0],
+          sheetUrl,
         });
         if (!result.success) {
           toast.error('Check the character', {
@@ -71,6 +128,7 @@ export const NewCharacterForm: React.FC<{
       <div className="flex flex-col gap-1">
         <Label htmlFor="new-character-description">Description</Label>
         <Textarea
+          ref={description}
           id="new-character-description"
           name="physicalDescription"
           rows={3}
@@ -89,9 +147,13 @@ export const NewCharacterForm: React.FC<{
         <FileUpload
           accept="image/*"
           maxFiles={1}
-          disabled={isPending}
+          disabled={busy}
           value={files}
-          onValueChange={setFiles}
+          onValueChange={(next) => {
+            setFiles(next);
+            if (next.length === 0) setSheetUrl(undefined);
+          }}
+          onUpload={onUpload}
         >
           {files.length === 0 && (
             <FileUploadDropzone className="min-h-[100px] focus:border-ring/50 focus:bg-accent/30">
@@ -112,6 +174,7 @@ export const NewCharacterForm: React.FC<{
                 className="group relative aspect-square w-32 overflow-hidden rounded-lg border-0 p-0"
               >
                 <FileUploadItemPreview className="size-full rounded-none border-0" />
+                <FileUploadItemProgress className="absolute bottom-0 left-0 right-0 h-1" />
                 <FileUploadItemDelete asChild>
                   <Button
                     type="button"
@@ -129,8 +192,14 @@ export const NewCharacterForm: React.FC<{
         </FileUpload>
       </div>
       <div className="flex justify-end">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Creating…' : 'Create'}
+        <Button type="submit" disabled={busy}>
+          {isPending
+            ? 'Creating…'
+            : stage === 'uploading'
+              ? 'Uploading…'
+              : stage === 'describing'
+                ? 'Describing…'
+                : 'Create'}
         </Button>
       </div>
     </form>
