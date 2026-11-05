@@ -36,13 +36,16 @@ export async function resolveOrganizationAndCompliance(
   for (const [key, entry] of organizationMemo)
     if (entry.until <= now) organizationMemo.delete(key);
   // Side by side (#2234): compliance needs only the ids; a non-member's is dropped.
-  const value = Promise.all([
-    getUserOrganizationMembership(userId, organizationId),
-    loadComplianceState(userId, organizationId),
-  ]).then(([membership, compliance]) => ({
-    organization: membership,
-    compliance: membership ? compliance : null,
-  }));
+  const value = (async () => {
+    const [membership, compliance] = await Promise.all([
+      getUserOrganizationMembership(userId, organizationId),
+      loadComplianceState(userId, organizationId),
+    ]);
+    return {
+      organization: membership,
+      compliance: membership ? compliance : null,
+    };
+  })();
   organizationMemo.set(memoKey, {
     until: now + ORGANIZATION_MEMO_TTL_MS,
     value,
