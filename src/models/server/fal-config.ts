@@ -51,19 +51,65 @@ function composeMiddleware(
  *
  * The `@tanstack/ai-fal` adapters call `fal.config({ credentials })` on the
  * singleton and would otherwise wipe any `requestMiddleware` we set, so we
- * monkey-patch `fal.config` to compose ours back in. Callers that build a
- * per-request client via `@fal-ai/client`'s `createFalClient(...)` get an
- * independent client whose config closure this monkey-patch can't touch. The
- * two call sites that do (`src/platform/server/storage/external-url.ts` and
+ * monkey-patch `fal.config` to compose ours back in. Since 1.1.1 the
+ * adapters do not use that singleton: their own client calls `fetch` and
+ * only honours `proxyUrl` in a browser. Wrapping `globalThis.fetch` is what
+ * reaches those calls. Callers that build a per-request client via
+ * `@fal-ai/client`'s `createFalClient(...)` get an independent client whose
+ * config closure this monkey-patch can't touch. The two call sites that do
+ * (`src/platform/server/storage/external-url.ts` and
  * `scripts/verify-fal-costs.ts`) bypass the proxy intentionally — see the
  * rationale comments there (#890).
  */
+export function rewriteFalUrl(
+  url: string,
+  proxyUrl: string
+): { url: string; host: string } | undefined {
+  let original: URL;
+  try {
+    original = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (!FAL_HOSTS.has(original.hostname)) return undefined;
+  const proxy = new URL(proxyUrl);
+  const rewritten = new URL(proxy.toString());
+  rewritten.pathname = proxy.pathname.replace(/\/$/, '') + original.pathname;
+  rewritten.search = original.search;
+  return { url: rewritten.toString(), host: original.hostname };
+}
+
+function installFetchProxy(proxyUrl: string): void {
+  const base = globalThis.fetch.bind(globalThis);
+  const proxied: typeof fetch = async (input, init) => {
+    const raw =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const rewritten = rewriteFalUrl(raw, proxyUrl);
+    if (!rewritten) return base(input, init);
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined)
+    );
+    headers.set('x-fal-target-host', rewritten.host);
+    const nextInit = { ...init, headers };
+    if (input instanceof Request) {
+      return base(new Request(rewritten.url, input), nextInit);
+    }
+    return base(rewritten.url, nextInit);
+  };
+  globalThis.fetch = proxied;
+}
+
 export function configureFalProxyFromEnv(): void {
   if (configured) return;
   configured = true;
   const proxyUrl = process.env.FAL_PROXY_URL;
   if (!proxyUrl) return;
 
+  installFetchProxy(proxyUrl);
   const middleware = buildProxyMiddleware(proxyUrl);
 
   const originalConfig = fal.config.bind(fal);
