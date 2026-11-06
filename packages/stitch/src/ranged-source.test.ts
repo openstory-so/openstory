@@ -323,3 +323,28 @@ describe('createRangedReader poisoned browser cache (#2258)', () => {
     }
   });
 });
+
+describe('createRangedReader hidden Content-Range (#2258)', () => {
+  it('retries past the cache instead of guessing the size', async () => {
+    vi.useFakeTimers();
+    try {
+      const size = 1 * MB;
+      const server = fakeServer(size);
+      const fetchFn: typeof server.fetchFn = async (u, init) => {
+        const response = await server.fetchFn(u, init);
+        if (init?.cache === 'reload') return response;
+        // A cached copy without Access-Control-Expose-Headers.
+        return new Response(response.body, { status: 206 });
+      };
+      const reader = createRangedReader(
+        'https://storage.example/clip.mp4',
+        fetchFn
+      );
+      const got = reader.getSize();
+      await vi.runAllTimersAsync();
+      expect(await got).toBe(size);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

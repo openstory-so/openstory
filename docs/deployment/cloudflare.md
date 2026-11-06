@@ -72,7 +72,7 @@ No opt-out flag was added. These are the behavior changes between `2025-11-18` a
 
 ## Storage domain headers
 
-The public storage domain (`storage.openstory.so`) has a zone Transform Rule (Rules → Transform Rules → Modify Response Header) that sets `Access-Control-Allow-Origin: *` and `Vary: Origin, Accept-Encoding` on every response. R2 sends CORS headers only when a request carries `Origin`, so a `<video>` without `crossorigin` leaves a copy in the browser cache with none, and Chrome then served that copy to the theatre's CORS fetch (#2258). The rule lives only in the dashboard; keep it. A self-hosted storage domain needs the same rule.
+The public storage domain (`storage.openstory.so`) has a zone Transform Rule (Rules → Transform Rules → Modify Response Header) that sets `Access-Control-Allow-Origin: *`, `Access-Control-Expose-Headers: ETag,Content-Length,Content-Range,Accept-Ranges` and `Vary: Origin, Accept-Encoding` on every response. Without the expose header a cached copy passes CORS but hides `Content-Range`, and the player cannot size the clip. R2 sends CORS headers only when a request carries `Origin`, so a `<video>` without `crossorigin` leaves a copy in the browser cache with none, and Chrome then served that copy to the theatre's CORS fetch (#2258). The rule lives only in the dashboard; keep it. A self-hosted storage domain needs the same rule.
 
 ## Build & Deploy
 

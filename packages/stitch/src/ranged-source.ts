@@ -94,6 +94,7 @@ export function createRangedReader(
     const end =
       size === null ? (last + 1) * BLOCK : Math.min(size, (last + 1) * BLOCK);
     let response: Response | null = null;
+    let total = 0;
     for (let attempt = 0; ; attempt++) {
       try {
         response = await fetchFn(url, {
@@ -104,6 +105,12 @@ export function createRangedReader(
         if (response.status !== 206) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }
+        // Hidden when a cached copy lacks Access-Control-Expose-Headers (#2258).
+        const range = /\/(\d+)$/.exec(
+          response.headers.get('Content-Range') ?? ''
+        );
+        if (!range) throw new Error(`No readable Content-Range for ${url}`);
+        total = Number(range[1]);
         break;
       } catch (error) {
         const delay = RETRY_DELAYS_MS[attempt];
@@ -112,9 +119,8 @@ export function createRangedReader(
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-    const total = /\/(\d+)$/.exec(response.headers.get('Content-Range') ?? '');
     const bytes = new Uint8Array(await response.arrayBuffer());
-    size ??= total ? Number(total[1]) : start + bytes.byteLength;
+    size ??= total;
     for (let b = first; b * BLOCK < start + bytes.byteLength; b++) {
       const from = (b - first) * BLOCK;
       blocks.delete(b); // re-insert: Map order is the LRU order
