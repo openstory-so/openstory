@@ -185,7 +185,7 @@ version out of date. The render it was made from stays selected until the
 lip-sync promotes. One video plus one dialogue file; a packed multi-shot
 clip is refused. Motion runs this phase itself when the model cannot take
 an uploaded audio reference (Kling, Omni Flash, Grok Imagine). Seedance and
-MiniMax H3 Max already send the file, so they do not. A 480p draft is left
-alone; its 1080p final is synced. Update all still takes this path when the
-clip's only drift is audio. Native fal spend, same as other fal jobs: an
+MiniMax H3 Max already send the file, so they are never synced, draft or
+final. Update all still takes this path when the clip's only drift is
+audio. Native fal spend, same as other fal jobs: an
 organization fal key skips the credit check.

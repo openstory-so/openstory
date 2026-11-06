@@ -204,9 +204,9 @@ export function planLipsync<T extends LipsyncEntry>(input: {
 
 /**
  * The motion phase. Kling, Omni Flash and Grok cannot take the dialogue
- * file, so a finished single-shot clip is synced after the render. A model
- * that already uploaded the audio, a 480p draft, a packed clip and a
- * variant-only take are left as rendered.
+ * file, so a finished single-shot clip is synced after the render. Seedance
+ * and MiniMax already uploaded that file, so they are never synced. A packed
+ * clip and a variant-only take are left as rendered.
  */
 export function planMotionLipsync<T extends LipsyncEntry>(input: {
   model: ImageToVideoModel;
