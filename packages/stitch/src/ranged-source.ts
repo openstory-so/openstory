@@ -24,6 +24,9 @@ const MAX_AHEAD_BLOCKS = 32; // 2 MiB
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
 const PROBE_TIMEOUT_MS = 5000;
+/** A retry skips the browser cache: a `<video>`'s no-CORS copy can poison it (#2258). */
+const cacheFor = (attempt: number): RequestCache =>
+  attempt === 0 ? 'default' : 'reload';
 
 type FetchFn = typeof fetch;
 
@@ -71,7 +74,10 @@ export function createRangedReader(
         (response) => response,
         () => null
       );
-    const cors = await send({ headers: { Range: 'bytes=0-0' } });
+    const cors = await send({
+      headers: { Range: 'bytes=0-0' },
+      cache: 'reload',
+    });
     const cause = cors
       ? cors.ok
         ? 'connection dropped'
@@ -92,6 +98,7 @@ export function createRangedReader(
       try {
         response = await fetchFn(url, {
           headers: { Range: `bytes=${start}-${end - 1}` },
+          cache: cacheFor(attempt),
           signal: abort.signal,
         });
         if (response.status !== 206) {
@@ -135,11 +142,13 @@ export function createRangedReader(
     first: number,
     total: number,
     waiters: Map<number, Waiter>,
-    signal: AbortSignal
+    signal: AbortSignal,
+    cache: RequestCache
   ): Promise<void> {
     const last = Math.ceil(total / BLOCK) - 1;
     const response = await fetchFn(url, {
       headers: { Range: `bytes=${first * BLOCK}-${total - 1}` },
+      cache,
       signal,
     });
     if (response.status !== 206 || response.body === null) {
@@ -204,7 +213,7 @@ export function createRangedReader(
         while (first <= last && blocks.has(first)) first++;
         if (first > last) return;
         try {
-          await streamFrom(first, total, waiters, signal);
+          await streamFrom(first, total, waiters, signal, cacheFor(attempt));
           return;
         } catch (error) {
           const delay = RETRY_DELAYS_MS[attempt];

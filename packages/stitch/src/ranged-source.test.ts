@@ -287,3 +287,39 @@ describe('createRangedReader failure reason (#2258)', () => {
     }
   });
 });
+
+describe('createRangedReader poisoned browser cache (#2258)', () => {
+  /** The cached copy has no CORS headers; only a fetch past the cache loads. */
+  function poisoned(size: number) {
+    const server = fakeServer(size);
+    const fetchFn: typeof server.fetchFn = async (u, init) => {
+      if (init?.cache !== 'reload') throw new TypeError('Failed to fetch');
+      return server.fetchFn(u, init);
+    };
+    return fetchFn;
+  }
+
+  it.each([
+    [
+      'a range read',
+      (r: ReturnType<typeof createRangedReader>) => r.read(0, 10),
+    ],
+    [
+      'a whole-file download',
+      (r: ReturnType<typeof createRangedReader>) => r.fetchAll(),
+    ],
+  ])('%s retries past the browser cache', async (_name, run) => {
+    vi.useFakeTimers();
+    try {
+      const reader = createRangedReader(
+        'https://storage.example/clip.mp4',
+        poisoned(1 * MB)
+      );
+      const done = run(reader);
+      await vi.runAllTimersAsync();
+      await expect(done).resolves.not.toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
