@@ -183,6 +183,9 @@ fits the shot. The new `video_variants` row has `source: 'lipsync'` and the
 `audioSourceKey` it was synced to. A later line or voice edit marks that
 version out of date. The render it was made from stays selected until the
 lip-sync promotes. One video plus one dialogue file; a packed multi-shot
-clip is refused. Update all takes this path when the clip's only drift is
-audio. Native fal spend, same as other fal jobs: an organization fal key
-skips the credit check.
+clip is refused. Motion runs this phase itself when the model cannot take
+an uploaded audio reference (Kling, Omni Flash, Grok Imagine). Seedance and
+MiniMax H3 Max already send the file, so they do not. A 480p draft is left
+alone; its 1080p final is synced. Update all still takes this path when the
+clip's only drift is audio. Native fal spend, same as other fal jobs: an
+organization fal key skips the credit check.

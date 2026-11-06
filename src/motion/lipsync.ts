@@ -6,10 +6,13 @@
  * so the call uses `cut_off` and does not remap timing. The price is a
  * static card until `model_pricing` carries the fal row.
  *
- * Client-safe: the button estimate and the server gate share this module.
+ * Client-safe: the cost estimate and the server gate share this module.
  */
 
 import { usdToMicros, type Microdollars } from '@/billing/money';
+import type { ImageToVideoModel } from '@/models/models';
+import type { RenderedResolution } from '@/models/resolutions';
+import { modelTakesDialogueAudio } from '@/motion/dialogue-tts';
 
 /** Catalog id stamped on the version. Not an image-to-video model, so the
  * voiceless-model audio shortcut does not apply and a later voice edit
@@ -115,7 +118,7 @@ export type LipsyncPlan<T extends LipsyncEntry = LipsyncEntry> = {
   sourceKey: string;
   manifest: T[];
   durationSeconds: number;
-  resolution: string | null;
+  resolution: RenderedResolution | null;
   cost: Microdollars;
 };
 
@@ -135,7 +138,7 @@ export function planLipsync<T extends LipsyncEntry>(input: {
   selected: {
     url: string | null;
     status: string;
-    resolution?: string | null;
+    resolution?: RenderedResolution | null;
     manifest: readonly T[];
   } | null;
   generating: boolean;
@@ -199,15 +202,40 @@ export function planLipsync<T extends LipsyncEntry>(input: {
   };
 }
 
-/** The shot button's gate. The server re-checks packed clips and keys. */
-export function shotCanLipsync(shot: {
+/**
+ * The motion phase. Kling, Omni Flash and Grok cannot take the dialogue
+ * file, so a finished single-shot clip is synced after the render. A model
+ * that already uploaded the audio, a 480p draft, a packed clip and a
+ * variant-only take are left as rendered.
+ */
+export function planMotionLipsync<T extends LipsyncEntry>(input: {
+  model: ImageToVideoModel;
+  draftPreview: boolean;
+  packed: boolean;
+  variantOnly: boolean;
+  shotId: string;
+  renderSegmentId: string | null;
   videoUrl: string | null;
-  videoStatus: string;
-  audioClips: readonly { url: string }[] | null;
-}): boolean {
-  return (
-    !!shot.videoUrl &&
-    shot.videoStatus === 'completed' &&
-    (shot.audioClips?.some((clip) => clip.url) ?? false)
-  );
+  resolution: RenderedResolution | null;
+  manifest: readonly T[] | null;
+  clips: readonly LipsyncClip[] | null;
+  shotDurationMs: number | null;
+}): LipsyncPlan<T> | null {
+  if (modelTakesDialogueAudio(input.model)) return null;
+  if (input.draftPreview || input.packed || input.variantOnly) return null;
+  if (!input.videoUrl || !input.manifest) return null;
+  const planned = planLipsync({
+    shotId: input.shotId,
+    renderSegmentId: input.renderSegmentId,
+    selected: {
+      url: input.videoUrl,
+      status: 'completed',
+      resolution: input.resolution,
+      manifest: input.manifest,
+    },
+    generating: false,
+    clips: input.clips,
+    shotDurationMs: input.shotDurationMs,
+  });
+  return planned.ok ? planned.plan : null;
 }

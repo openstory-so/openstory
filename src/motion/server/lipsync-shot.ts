@@ -1,8 +1,8 @@
 /**
- * Start a lip-sync of one shot's selected clip (#2263). The editor, the
- * scene button, MCP and Update all all come through here or `planLipsync`.
- * The claim row opens inside the workflow, so a failed trigger leaves no
- * generating version.
+ * Start a lip-sync of one shot's selected clip (#2263). MCP and Update all
+ * come through here. Motion runs the same workflow itself when the model
+ * cannot take an audio upload. The claim row opens inside the workflow, so
+ * a failed trigger leaves no generating version.
  */
 
 import { requireCredits } from '@/billing/server/preflight';
@@ -11,18 +11,10 @@ import {
   planLipsync,
   type LipsyncRefusal,
 } from '@/motion/lipsync';
-import {
-  ConflictError,
-  NotFoundError,
-  ValidationError,
-} from '@/platform/errors';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import { ConflictError, ValidationError } from '@/platform/errors';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { LipsyncWorkflowInput } from '@/platform/server/workflow/types';
-import {
-  loadShotTarget,
-  type ShotEditContext,
-} from '@/shots/server/shot-context';
+import type { ShotEditContext } from '@/shots/server/shot-context';
 
 function refusalError(reason: LipsyncRefusal): Error {
   const message = LIPSYNC_REFUSAL[reason];
@@ -72,48 +64,4 @@ export async function startLipsync(
   };
   const workflowRunId = await triggerWorkflow('/lipsync', body);
   return { workflowRunId, shotId: shot.id };
-}
-
-export async function startSceneLipsync(
-  context: {
-    scopedDb: ScopedDb;
-    user: { id: string };
-    organizationId: string;
-    sequenceId: string;
-  },
-  shotIds: readonly string[]
-): Promise<{
-  started: { shotId: string; workflowRunId: string }[];
-  skipped: { shotId: string; reason: string }[];
-}> {
-  const started: { shotId: string; workflowRunId: string }[] = [];
-  const skipped: { shotId: string; reason: string }[] = [];
-  for (const shotId of shotIds) {
-    try {
-      const target = await loadShotTarget(
-        context.scopedDb,
-        context.sequenceId,
-        shotId
-      );
-      started.push(
-        await startLipsync({
-          ...target,
-          scopedDb: context.scopedDb,
-          user: context.user,
-          organizationId: context.organizationId,
-        })
-      );
-    } catch (error) {
-      if (
-        error instanceof ValidationError ||
-        error instanceof ConflictError ||
-        error instanceof NotFoundError
-      ) {
-        skipped.push({ shotId, reason: error.message });
-        continue;
-      }
-      throw error;
-    }
-  }
-  return { started, skipped };
 }

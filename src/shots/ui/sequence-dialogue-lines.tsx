@@ -11,9 +11,7 @@ import {
   voicedDialogueLines,
   type VoiceCharacter,
 } from '@/motion/dialogue-tts';
-import { shotCanLipsync } from '@/motion/lipsync';
 import { dialogueTakeRuns } from '@/shots/dialogue-take-runs';
-import { LipsyncSceneButton } from '@/shots/ui/lipsync-button';
 import { clipSpeechId } from '@/shots/shot-dialogue';
 import { getDialogueSpeechUrlsFn } from '@/shots/shot-dialogue.fn';
 import { useQuery } from '@tanstack/react-query';
@@ -171,13 +169,6 @@ export const SequenceDialogueLines: React.FC<{
         // A shot with no scene groups under its own id; it has no scene to
         // open or record as one.
         const isScene = group.sceneId !== group.shots[0]?.id;
-        const lipsyncShots = group.shots.filter((shot) =>
-          shotCanLipsync({
-            videoUrl: shot.video?.url ?? null,
-            videoStatus: shot.videoStatus,
-            audioClips: shot.audioClips,
-          })
-        );
         return (
           <div key={group.sceneId} className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
@@ -218,13 +209,6 @@ export const SequenceDialogueLines: React.FC<{
                           )
                         : undefined
                     }
-                  />
-                ) : null}
-                {isScene && lipsyncShots.length > 0 ? (
-                  <LipsyncSceneButton
-                    sequenceId={sequenceId}
-                    label={group.title}
-                    shots={lipsyncShots}
                   />
                 ) : null}
                 <PlayDialogueButton

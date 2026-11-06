@@ -6,7 +6,7 @@ import {
   lipsyncFalInput,
   lipsyncManifest,
   planLipsync,
-  shotCanLipsync,
+  planMotionLipsync,
 } from './lipsync';
 
 const entry = {
@@ -69,7 +69,7 @@ describe('planLipsync', () => {
     selected: {
       url: 'https://cdn.test/clip.mp4',
       status: 'completed',
-      resolution: '720p',
+      resolution: '720p' as const,
       manifest: [entry],
     },
     generating: false,
@@ -117,21 +117,52 @@ describe('planLipsync', () => {
   });
 });
 
-describe('shotCanLipsync', () => {
-  it('needs a finished clip and a dialogue file', () => {
+describe('planMotionLipsync', () => {
+  const finished = {
+    shotId: 'shot-1',
+    renderSegmentId: 'seg-1',
+    videoUrl: 'https://cdn.test/clip.mp4',
+    resolution: '720p' as const,
+    manifest: [entry],
+    clips: [clip],
+    shotDurationMs: 5000,
+    draftPreview: false,
+    packed: false,
+    variantOnly: false,
+  };
+
+  it('syncs Kling, Omni Flash and Grok after a single-shot render', () => {
+    for (const model of [
+      'kling_v3_pro',
+      'kling_v4',
+      'gemini_omni_flash',
+      'grok_imagine_video_1_5',
+    ] as const) {
+      expect(planMotionLipsync({ ...finished, model })?.audioUrl).toBe(
+        clip.url
+      );
+    }
+  });
+
+  it('leaves models that already took the audio file', () => {
+    for (const model of ['seedance_v2_5', 'minimax_h3_max'] as const) {
+      expect(planMotionLipsync({ ...finished, model })).toBeNull();
+    }
+  });
+
+  it('skips a draft, a packed clip and a variant-only take', () => {
     expect(
-      shotCanLipsync({
-        videoUrl: 'https://v',
-        videoStatus: 'completed',
-        audioClips: [{ url: 'https://a' }],
+      planMotionLipsync({
+        ...finished,
+        model: 'kling_v4',
+        draftPreview: true,
       })
-    ).toBe(true);
+    ).toBeNull();
     expect(
-      shotCanLipsync({
-        videoUrl: 'https://v',
-        videoStatus: 'generating',
-        audioClips: [{ url: 'https://a' }],
-      })
-    ).toBe(false);
+      planMotionLipsync({ ...finished, model: 'kling_v4', packed: true })
+    ).toBeNull();
+    expect(
+      planMotionLipsync({ ...finished, model: 'kling_v4', variantOnly: true })
+    ).toBeNull();
   });
 });

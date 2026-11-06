@@ -1,7 +1,5 @@
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
-import { shotCanLipsync } from '@/motion/lipsync';
-import { LipsyncShotButton } from '@/shots/ui/lipsync-button';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
 import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
@@ -2401,20 +2399,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               {EMPTY_GENERATION_PROMPT_MESSAGE}
             </p>
           </div>
-          {shot &&
-          shotCanLipsync({
-            videoUrl: shot.video?.url ?? null,
-            videoStatus: shot.videoStatus,
-            audioClips: shot.audioClips,
-          }) &&
-          !isGeneratingMotion &&
-          !videoVariantIsGenerating ? (
-            <LipsyncShotButton
-              sequenceId={sequenceId}
-              shotId={shot.id}
-              durationMs={shot.durationMs}
-            />
-          ) : null}
           <AlertDialog
             open={confirmSilentOpen}
             onOpenChange={setConfirmSilentOpen}
