@@ -79,6 +79,7 @@ import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import {
+  isChildFailureError,
   isEngineAbortError,
   WorkflowValidationError,
 } from '@/platform/server/workflow/errors';
@@ -1777,6 +1778,34 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             `[MotionWorkflow:cf] Lip-sync failed for shot ${shotId}`,
             { err: error }
           );
+          // A child that ran recorded its own failed version. One that never
+          // started (binding, spawn, await budget) left nothing, so record it.
+          if (!isChildFailureError(error)) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            await step.do('record-lipsync-spawn-failure', async () => {
+              await scopedDb.videoVariants.appendVersion({
+                renderSegmentId: lipsync.renderSegmentId,
+                sequenceId,
+                model: activeModel,
+                source: 'lipsync',
+                manifest: [],
+                status: 'failed',
+                error: `Lip-sync did not start: ${message}`,
+                workflowRunId,
+                isPrimary: true,
+              });
+              await getGenerationChannel(sequenceId).emit(
+                'generation.video:progress',
+                {
+                  shotId,
+                  status: 'failed',
+                  model: activeModel,
+                  error: `Lip-sync did not start: ${message}`,
+                }
+              );
+            });
+          }
         }
       }
     }

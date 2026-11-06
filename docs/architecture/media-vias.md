@@ -178,7 +178,8 @@ completion on a $0 model and requires `response.ok`.
 
 Post-process a finished clip. Endpoint `fal-ai/sync-lipsync/v3`, price card
 id `sync-lipsync-3` at $8 per minute of the source video until `model_pricing`
-carries the fal row. `sync_mode` is `cut_off`: the dialogue section already
+carries the fal row. A clip with no positive duration is refused, never
+priced as a default length. `sync_mode` is `cut_off`: the dialogue section already
 fits the shot. The new `video_variants` row has `source: 'lipsync'` and the
 `audioSourceKey` it was synced to. A later line or voice edit marks that
 version out of date. The render it was made from stays selected until the

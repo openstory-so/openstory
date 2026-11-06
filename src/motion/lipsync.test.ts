@@ -4,7 +4,7 @@ import {
   LIPSYNC_SYNC_MODE,
   estimateLipsyncCost,
   estimateMotionLipsyncCost,
-  lipsyncVersionModel,
+  lipsyncResultIsTerminal,
   lipsyncFalInput,
   lipsyncManifest,
   planLipsync,
@@ -33,28 +33,23 @@ const clip = {
 describe('estimateLipsyncCost', () => {
   it('prices sync-3 at $8 per minute of the clip', () => {
     expect(estimateLipsyncCost(5)).toBe(usdToMicros((5 / 60) * 8));
-    expect(estimateLipsyncCost(0)).toBe(usdToMicros((5 / 60) * 8));
+  });
+
+  it('refuses to invent a duration', () => {
+    expect(() => estimateLipsyncCost(0)).toThrow(/duration/);
+    expect(() => estimateLipsyncCost(Number.NaN)).toThrow(/duration/);
   });
 });
 
-describe('lipsyncVersionModel', () => {
-  it('keeps the selected render model', () => {
+describe('lipsyncResultIsTerminal', () => {
+  it('retries a dropped connection and a 5xx, and stops on a 4xx', () => {
+    expect(lipsyncResultIsTerminal(new Error('fetch failed'))).toBe(false);
     expect(
-      lipsyncVersionModel('gemini_omni_flash', [
-        { model: 'kling_v4' },
-        { model: 'sync-lipsync-3' },
-      ])
-    ).toBe('gemini_omni_flash');
-  });
-
-  it('uses the newest real video model when the selected row is a lip-sync', () => {
+      lipsyncResultIsTerminal(Object.assign(new Error('down'), { status: 503 }))
+    ).toBe(false);
     expect(
-      lipsyncVersionModel('sync-lipsync-3', [
-        { model: 'kling_v4' },
-        { model: 'gemini_omni_flash' },
-        { model: 'sync-lipsync-3' },
-      ])
-    ).toBe('gemini_omni_flash');
+      lipsyncResultIsTerminal(Object.assign(new Error('no'), { status: 422 }))
+    ).toBe(true);
   });
 });
 
@@ -132,6 +127,7 @@ describe('planLipsync', () => {
     selected: {
       url: 'https://cdn.test/clip.mp4',
       status: 'completed',
+      model: 'kling_v4',
       resolution: '720p' as const,
       manifest: [entry],
     },
@@ -148,7 +144,14 @@ describe('planLipsync', () => {
     expect(planned.plan.sourceKey).toBe(clip.sourceKey);
     expect(planned.plan.durationSeconds).toBe(5);
     expect(planned.plan.manifest[0]?.audioSourceKey).toBe(clip.sourceKey);
+    expect(planned.plan.videoModel).toBe('kling_v4');
     expect(planned.plan.cost).toBe(estimateLipsyncCost(5));
+  });
+
+  it('throws on a selected row that is not a video model', () => {
+    expect(() =>
+      planLipsync({ ...ready, selected: { ...ready.selected, model: 'nope' } })
+    ).toThrow(/no video model/);
   });
 
   it('refuses a packed clip, a second file, and a take that was never keyed', () => {
@@ -177,6 +180,17 @@ describe('planLipsync', () => {
       ok: false,
       reason: 'generating',
     });
+    expect(
+      planLipsync({
+        ...ready,
+        shotDurationMs: null,
+        selected: {
+          ...ready.selected,
+          manifest: [{ ...entry, durationMs: undefined }],
+        },
+        clips: [{ ...clip, durationSeconds: null }],
+      })
+    ).toMatchObject({ ok: false, reason: 'no-duration' });
   });
 });
 

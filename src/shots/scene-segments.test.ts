@@ -457,7 +457,7 @@ describe('isSelectedVersionStale', () => {
   });
 
   it('treats a lip-sync whose audio moved as audio drift, and a prompt change as picture (#2263)', () => {
-    const synced = version('v1', 'seg', 'sync-lipsync-3', [
+    const synced = version('v1', 'seg', 'kling_v4', [
       {
         shotId: 'shot-1',
         motionPromptVersionId: 'mp-1',
@@ -483,7 +483,7 @@ describe('isSelectedVersionStale', () => {
         ]),
       })
     ).toBe('current');
-    const reprompted = version('v2', 'seg', 'sync-lipsync-3', [
+    const reprompted = version('v2', 'seg', 'kling_v4', [
       {
         shotId: 'shot-1',
         motionPromptVersionId: 'mp-0',

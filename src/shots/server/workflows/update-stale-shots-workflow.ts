@@ -72,7 +72,7 @@ import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import {
   estimateLipsyncCost,
-  lipsyncVersionModel,
+  LIPSYNC_REFUSAL,
   planLipsync,
 } from '@/motion/lipsync';
 import { addMicros } from '@/billing/money';
@@ -1028,8 +1028,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
 
           // Audio-only drift on a single-shot clip (#2263). A picture or
-          // prompt change falls through and re-renders. A clip already
-          // generating is left alone.
+          // prompt change re-renders instead. A clip already generating is
+          // left alone; any other refusal fails the shot, because the user
+          // was quoted a lip-sync, not a render.
           if (
             target.lipsyncVideo &&
             promptedMotionVersionId == null &&
@@ -1055,17 +1056,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 : (speechClipsByShotId[target.shotId] ?? shot.audioClips),
               shotDurationMs: shot.durationMs,
             });
-            const videoModel = lipsyncVersionModel(
-              selectedVideo?.model,
-              segmentVersions
-            );
             if (planned.ok) {
-              if (!videoModel) {
-                throw new NonRetryableError(
-                  `Shot ${shot.id} has no video model to keep`,
-                  'WorkflowValidationError'
-                );
-              }
               const payload: PreparedLipsync = {
                 sequenceId,
                 shotId: shot.id,
@@ -1076,13 +1067,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 manifest: planned.plan.manifest,
                 durationSeconds: planned.plan.durationSeconds,
                 resolution: selectedVideo?.resolution ?? null,
-                videoModel,
+                videoModel: planned.plan.videoModel,
                 sequenceTitle: sequenceSnapshot.title,
                 sceneTitle: target.motionRender.sceneTitle,
               };
               return JSON.stringify({ kind: 'lipsync' as const, payload });
             }
             if (planned.reason === 'generating') return null;
+            throw new NonRetryableError(
+              LIPSYNC_REFUSAL[planned.reason],
+              'WorkflowValidationError'
+            );
           }
 
           // The still (#1067): this run's own render when the image stage

@@ -29,14 +29,24 @@ export const LIPSYNC_SYNC_MODE = 'cut_off' as const;
 /** fal's published sync-3 rate, USD per minute of source video. */
 const LIPSYNC_USD_PER_MINUTE = 8;
 
-const FALLBACK_DURATION_SECONDS = 5;
-
 export function estimateLipsyncCost(durationSeconds: number): Microdollars {
-  const seconds =
-    Number.isFinite(durationSeconds) && durationSeconds > 0
-      ? durationSeconds
-      : FALLBACK_DURATION_SECONDS;
-  return usdToMicros((seconds / 60) * LIPSYNC_USD_PER_MINUTE);
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw new Error('Lip-sync needs the clip duration to price the run.');
+  }
+  return usdToMicros((durationSeconds / 60) * LIPSYNC_USD_PER_MINUTE);
+}
+
+/**
+ * A fal queue result with an HTTP status is the job's answer. 408, 429 and
+ * 5xx are the transport and can be retried. An error with no status is a
+ * dropped connection.
+ */
+export function lipsyncResultIsTerminal(error: unknown): boolean {
+  if (!(error instanceof Error) || !('status' in error)) return false;
+  const { status } = error;
+  if (typeof status !== 'number') return false;
+  if (status === 408 || status === 429 || status >= 500) return false;
+  return status >= 400;
 }
 
 /**
@@ -44,22 +54,6 @@ export function estimateLipsyncCost(durationSeconds: number): Microdollars {
  * `planMotionLipsync`: models that upload dialogue, drafts, and silent
  * shots stay at zero. The duration is the one the video quote already uses.
  */
-/**
- * The video model a lip-sync version should keep. The selected row when it
- * is a real video model, otherwise the newest render on the segment.
- */
-export function lipsyncVersionModel(
-  selected: string | null | undefined,
-  versions: readonly { model: string }[]
-): ImageToVideoModel | null {
-  if (isValidImageToVideoModel(selected)) return selected;
-  for (let index = versions.length - 1; index >= 0; index -= 1) {
-    const model = versions[index]?.model;
-    if (isValidImageToVideoModel(model)) return model;
-  }
-  return null;
-}
-
 export function estimateMotionLipsyncCost(input: {
   model: ImageToVideoModel;
   draft: boolean;
@@ -120,7 +114,8 @@ export type LipsyncRefusal =
   | 'generating'
   | 'no-audio'
   | 'many-clips'
-  | 'unkeyed-audio';
+  | 'unkeyed-audio'
+  | 'no-duration';
 
 export const LIPSYNC_REFUSAL: Record<LipsyncRefusal, string> = {
   'no-clip': 'This shot has no finished clip to lip-sync.',
@@ -129,6 +124,7 @@ export const LIPSYNC_REFUSAL: Record<LipsyncRefusal, string> = {
   'no-audio': 'This shot has no dialogue audio to lip-sync.',
   'many-clips': 'This shot has more than one dialogue clip.',
   'unkeyed-audio': 'Record the dialogue before lip-syncing.',
+  'no-duration': 'This clip has no duration to price the lip-sync.',
 };
 
 type LipsyncClip = {
@@ -154,6 +150,8 @@ export type LipsyncPlan<T extends LipsyncEntry = LipsyncEntry> = {
   manifest: T[];
   durationSeconds: number;
   resolution: RenderedResolution | null;
+  /** The model that rendered the clip. The lip-sync row keeps it. */
+  videoModel: ImageToVideoModel;
   cost: Microdollars;
 };
 
@@ -173,6 +171,7 @@ export function planLipsync<T extends LipsyncEntry>(input: {
   selected: {
     url: string | null;
     status: string;
+    model: string;
     resolution?: RenderedResolution | null;
     manifest: readonly T[];
   } | null;
@@ -185,6 +184,12 @@ export function planLipsync<T extends LipsyncEntry>(input: {
   const selected = input.selected;
   if (!selected?.url || selected.status !== 'completed') {
     return { ok: false, reason: 'no-clip' };
+  }
+  // Every version row, a lip-sync included, keeps the render model.
+  if (!isValidImageToVideoModel(selected.model)) {
+    throw new Error(
+      `Selected video for shot ${input.shotId} has no video model: ${selected.model}`
+    );
   }
   const entry = selected.manifest[0];
   if (selected.manifest.length !== 1 || entry?.shotId !== input.shotId) {
@@ -212,8 +217,8 @@ export function planLipsync<T extends LipsyncEntry>(input: {
     positiveSeconds(
       input.shotDurationMs == null ? null : input.shotDurationMs / 1000
     ) ??
-    clipSeconds ??
-    FALLBACK_DURATION_SECONDS;
+    clipSeconds;
+  if (durationSeconds == null) return { ok: false, reason: 'no-duration' };
 
   const audioUrl = clips[0]?.url;
   if (!audioUrl) return { ok: false, reason: 'no-audio' };
@@ -232,6 +237,7 @@ export function planLipsync<T extends LipsyncEntry>(input: {
       }),
       durationSeconds,
       resolution: selected.resolution ?? null,
+      videoModel: selected.model,
       cost: estimateLipsyncCost(durationSeconds),
     },
   };
@@ -285,6 +291,7 @@ export function planMotionLipsync<T extends LipsyncEntry>(input: {
       manifest: input.manifest.map((entry) => ({ ...entry })),
       durationSeconds,
       resolution: input.resolution,
+      videoModel: input.model,
       cost: estimateLipsyncCost(durationSeconds),
     };
   }
@@ -294,6 +301,7 @@ export function planMotionLipsync<T extends LipsyncEntry>(input: {
     selected: {
       url: input.videoUrl,
       status: 'completed',
+      model: input.model,
       resolution: input.resolution,
       manifest: input.manifest,
     },

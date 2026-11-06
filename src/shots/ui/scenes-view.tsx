@@ -81,7 +81,6 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   safeAudioModel,
-  isValidImageToVideoModel,
   safeImageToVideoModel,
   safeTextToImageModel,
   type AudioModel,
@@ -1152,15 +1151,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       }
 
       if (effectiveTab === 'motion-prompt') {
-        // A lip-sync row keeps `source: 'lipsync'` and, on rows written
-        // before the render model was stored, a model id that is not a
-        // video model. That is still this shot's clip. Falling through to
-        // the app default made the player treat it as another model.
-        const currentVideoModel = isValidImageToVideoModel(
-          selectedShot.video?.model
-        )
-          ? selectedShot.video.model
-          : safeImageToVideoModel(sequence?.videoModel, DEFAULT_VIDEO_MODEL);
+        const currentVideoModel = safeImageToVideoModel(
+          selectedShot.video?.model,
+          DEFAULT_VIDEO_MODEL
+        );
         if (
           videoVariantForSelectedModel?.status === 'completed' &&
           videoVariantForSelectedModel.url &&
@@ -1191,7 +1185,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       variantForSelectedModel,
       effectiveVideoModel,
       videoVariantForSelectedModel,
-      sequence?.videoModel,
     ]);
 
   const setterForType = useCallback((type: RegenerationType) => {

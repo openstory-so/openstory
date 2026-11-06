@@ -30,6 +30,7 @@ import {
   LIPSYNC_MODEL_ID,
   estimateLipsyncCost,
   lipsyncFalInput,
+  lipsyncResultIsTerminal,
 } from '@/motion/lipsync';
 import { uploadVideoToStorage } from '@/motion/server/video-storage';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -171,6 +172,12 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
       );
     }
     const videoModel = input.videoModel;
+    if (!Number.isFinite(input.durationSeconds) || input.durationSeconds <= 0) {
+      throw new NonRetryableError(
+        'durationSeconds is required to lip-sync this clip',
+        'WorkflowValidationError'
+      );
+    }
     const cost = estimateLipsyncCost(input.durationSeconds);
 
     const { usedOwnKey } = await step.do('check-credits', async () => {
@@ -290,6 +297,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
         return url;
       } catch (error) {
         if (error instanceof NonRetryableError) throw error;
+        if (!lipsyncResultIsTerminal(error)) throw error;
         throw new NonRetryableError(
           `Lip-sync failed: ${extractFalErrorMessage(error)}`
         );
