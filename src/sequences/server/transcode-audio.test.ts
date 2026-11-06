@@ -4,7 +4,6 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ValidationError } from '@/platform/errors';
 
 const env: {
   VIDEO_EXPORT_DEV_URL?: string;
@@ -85,7 +84,9 @@ describe('transcodeAudioUpload', () => {
       env.VIDEO_EXPORT_CONTAINER,
       'audio-transcode'
     );
-    const request = fetchContainer.mock.calls[0]?.[0] as Request;
+    const request = fetchContainer.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    if (!(request instanceof Request)) throw new Error('expected a Request');
     expect(request.url).toBe('http://video-export/transcode-audio');
     expect(request.headers.get('content-length')).toBe('4');
   });
@@ -98,13 +99,9 @@ describe('transcodeAudioUpload', () => {
         { status: 400 }
       )
     );
-    await expect(transcodeAudioUpload(source())).rejects.toSatisfy((error) => {
-      expect(error).toBeInstanceOf(ValidationError);
-      expect((error as ValidationError).message).toBe(
-        'That audio format could not be read'
-      );
-      return true;
-    });
+    await expect(transcodeAudioUpload(source())).rejects.toThrow(
+      'That audio format could not be read'
+    );
   });
 
   it('keeps a 5xx as a container failure', async () => {

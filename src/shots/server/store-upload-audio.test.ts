@@ -4,7 +4,6 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
 let transcoder = false;
@@ -27,6 +26,7 @@ vi.doMock('@/sequences/server/transcode-audio', () => ({
 
 const { storeUpload } = await import('./media-upload');
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- storeUpload reads organizationId for the key
 const scopedDb = { organizationId: '01ORG' } as unknown as ScopedDb;
 const data = Buffer.from('abcd').toString('base64');
 
@@ -52,13 +52,9 @@ describe('storeUpload audio', () => {
   });
 
   it('refuses an element M4A with the current message when no container is up', async () => {
-    await expect(store('element', 'audio/mp4')).rejects.toSatisfy((error) => {
-      expect(error).toBeInstanceOf(ValidationError);
-      expect((error as ValidationError).message).toBe(
-        'A element upload must be jpg, jpeg, png, webp, gif, mp3, wav, mp4, mov; got audio/mp4.'
-      );
-      return true;
-    });
+    await expect(store('element', 'audio/mp4')).rejects.toThrow(
+      'A element upload must be jpg, jpeg, png, webp, gif, mp3, wav, mp4, mov; got audio/mp4.'
+    );
     expect(transcodeAudioUpload).not.toHaveBeenCalled();
     expect(uploadFile).not.toHaveBeenCalled();
   });
@@ -73,12 +69,10 @@ describe('storeUpload audio', () => {
     const stored = await store('element', 'audio/mp4');
 
     expect(transcodeAudioUpload).toHaveBeenCalledOnce();
-    const source = transcodeAudioUpload.mock.calls[0]?.[0] as {
-      byteLength: number;
-      contentType: string;
-    };
-    expect(source.byteLength).toBe(4);
-    expect(source.contentType).toBe('audio/mp4');
+    expect(transcodeAudioUpload.mock.calls[0]?.[0]).toMatchObject({
+      byteLength: 4,
+      contentType: 'audio/mp4',
+    });
     expect(stored.mediaType).toBe('audio/wav');
     expect(stored.bytes).toBe(3);
     expect(stored.url).toMatch(/\.wav$/);

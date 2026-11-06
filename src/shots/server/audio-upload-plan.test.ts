@@ -26,8 +26,8 @@ function refusal(
     planAudioUpload(use, mediaType, transcoderAvailable);
     return null;
   } catch (error) {
-    expect(error).toBeInstanceOf(ValidationError);
-    return (error as ValidationError).message;
+    if (!(error instanceof ValidationError)) throw error;
+    return error.message;
   }
 }
 
