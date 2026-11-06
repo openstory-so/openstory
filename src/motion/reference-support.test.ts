@@ -123,6 +123,22 @@ describe('unusableReferenceLines', () => {
     ).toEqual([]);
   });
 
+  it('does not warn that a lip-synced model cannot take the dialogue file', () => {
+    expect(
+      unusableReferenceLines('gemini_omni_flash', [
+        el(DIALOGUE_CLIP_TOKEN, 'audio', 4),
+      ])
+    ).toEqual([]);
+    expect(
+      unusableReferenceLines('grok_imagine_video_1_5', [
+        el(DIALOGUE_CLIP_TOKEN, 'audio', 4),
+      ])
+    ).toEqual([]);
+    expect(
+      unusableReferenceLines('kling_v4', [el(DIALOGUE_CLIP_TOKEN, 'audio', 4)])
+    ).toEqual([]);
+  });
+
   it('refuses at submit with the same words', () => {
     expect(() =>
       assertReferencesUsable('kling_v3_pro', [el('VOICE', 'audio', 3)], {
