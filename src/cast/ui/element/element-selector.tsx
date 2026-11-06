@@ -33,7 +33,6 @@ import {
 import type { SequenceElement } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import {
-  AUDIO_UPLOAD_FORMATS,
   ELEMENT_UPLOAD_ACCEPT,
   elementKindFromFile,
   elementKindFromFilename,
@@ -406,7 +405,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
         // no upload and no message is indistinguishable from a broken app.
         if (newFiles.length > 0) {
           toast.error("That file can't be a reference", {
-            description: `Drop an image, ${AUDIO_UPLOAD_FORMATS}, or an MP4 or MOV.`,
+            description: 'Drop an image, an audio file, or an MP4 or MOV.',
           });
         }
         return;
@@ -718,9 +717,9 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">Upload reference elements</p>
               <p className="text-xs text-muted-foreground">
-                Images, {AUDIO_UPLOAD_FORMATS}, or MP4 or MOV — a logo, a
-                product shot, a dialogue line, a music bed. Type @ in a prompt
-                or script to insert one.
+                Images, audio, or MP4 or MOV — a logo, a product shot, a
+                dialogue line, a music bed. Type @ in a prompt or script to
+                insert one.
               </p>
             </div>
             {currentCount < MAX_SEQUENCE_ELEMENTS && (

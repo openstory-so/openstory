@@ -1,7 +1,6 @@
 import { fileExists } from '#storage';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
-  AUDIO_UPLOAD_FORMATS,
   elementKindFromFilename,
   type SequenceElementKind,
 } from '@/cast/element-kind';
@@ -247,7 +246,7 @@ export function elementKindOrThrow(filename: string) {
   const kind = elementKindFromFilename(filename);
   if (!kind) {
     throw new ValidationError(
-      `Unsupported element file "${filename}" - use an image, ${AUDIO_UPLOAD_FORMATS}, or an MP4 or MOV.`
+      `Unsupported element file "${filename}" - use an image, an audio file, or an MP4 or MOV.`
     );
   }
   return kind;

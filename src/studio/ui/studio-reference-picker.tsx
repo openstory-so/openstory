@@ -11,7 +11,6 @@
  * the start frame, or the end frame.
  */
 
-import { AUDIO_UPLOAD_ACCEPT, AUDIO_UPLOAD_FORMATS } from '@/cast/element-kind';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
 import { StudioDrawingCanvas } from './studio-drawing-canvas';
@@ -475,7 +474,7 @@ export function StudioReferencePicker({
 
   const accept =
     source === 'audio'
-      ? AUDIO_UPLOAD_ACCEPT
+      ? 'audio/*'
       : [
           'image/*',
           ...(slots.video > 0
@@ -573,16 +572,13 @@ export function StudioReferencePicker({
             ) : source === 'audio' ? (
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted-foreground">
-                  {limited ? (
-                    <span>
-                      {AUDIO_UPLOAD_FORMATS}, up to {slots.audio} more.
-                      Seedance: 15 seconds combined. Each clip becomes{' '}
-                      <span className="font-mono">@Audio1</span>,{' '}
-                      <span className="font-mono">@Audio2</span>… in the prompt.
-                    </span>
-                  ) : (
-                    <span>{AUDIO_UPLOAD_FORMATS}.</span>
-                  )}
+                  <span>
+                    {limited
+                      ? `Up to ${slots.audio} more. Seedance: 15 seconds combined. `
+                      : null}
+                    Each clip becomes <span className="font-mono">@Audio1</span>
+                    , <span className="font-mono">@Audio2</span>… in the prompt.
+                  </span>
                 </p>
                 <Button
                   type="button"

@@ -35,35 +35,20 @@ const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   mov: 'video',
 };
 
-/** Audio the element, Studio and music pickers name and accept. */
-export const AUDIO_UPLOAD_FORMATS = 'MP3, WAV, M4A, OGG or FLAC';
-
-const AUDIO_ACCEPT_TYPES: Record<string, readonly string[]> = {
-  mp3: ['audio/mpeg'],
-  wav: ['audio/wav'],
-  m4a: ['audio/mp4', 'audio/x-m4a'],
-  ogg: ['audio/ogg'],
-  flac: ['audio/flac', 'audio/x-flac'],
-};
-
-/** `accept` for an audio-only file input. Derived from the table above. */
-export const AUDIO_UPLOAD_ACCEPT = Object.entries(NON_IMAGE_EXTENSIONS)
-  .filter(([, kind]) => kind === 'audio')
-  .flatMap(([ext]) => [...(AUDIO_ACCEPT_TYPES[ext] ?? []), `.${ext}`])
-  .join(',');
-
 /**
  * `accept` for every element file input.
  *
- * DERIVED from the extension table above rather than spelled out: the two
- * drifted apart once already — `NON_IMAGE_EXTENSIONS` took `.m4a`, `.ogg` and
- * `.webm` while this string did not, so the picker silently refused a file
- * that paste and drag-and-drop both accepted, and that the server stores
- * happily. A list that can disagree with the parser will.
+ * Audio is `audio/*`: the browser re-encodes whatever it can play, so naming
+ * each extension both missed files and disagreed with the parser. Video stays
+ * an extension list — there is no conversion, and WebM was accepted until
+ * #1559 and then rejected by the model.
  */
 export const ELEMENT_UPLOAD_ACCEPT = [
   'image/*',
-  ...Object.keys(NON_IMAGE_EXTENSIONS).map((ext) => `.${ext}`),
+  'audio/*',
+  ...Object.entries(NON_IMAGE_EXTENSIONS)
+    .filter(([, kind]) => kind === 'video')
+    .map(([ext]) => `.${ext}`),
 ].join(',');
 
 const IMAGE_EXTENSIONS = new Set([
