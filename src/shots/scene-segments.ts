@@ -44,7 +44,14 @@ import type { ShotView } from './shot-view';
 /** One video render (version) of a segment, trimmed to what the editor shows. */
 export type SegmentVideoVersion = Pick<
   VideoVariant,
-  'id' | 'model' | 'resolution' | 'status' | 'url' | 'createdAt' | 'draftTaskId'
+  | 'id'
+  | 'model'
+  | 'resolution'
+  | 'status'
+  | 'url'
+  | 'createdAt'
+  | 'draftTaskId'
+  | 'source'
 >;
 
 /** A scene's render segment with its video versions + selection. */
@@ -302,6 +309,7 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
     url: v.url,
     createdAt: v.createdAt,
     draftTaskId: v.draftTaskId,
+    source: v.source,
   };
 }
 

@@ -255,6 +255,7 @@ const version = (
   model,
   resolution: null,
   draftTaskId: null,
+  source: null,
   status: 'completed',
   url: `https://cdn.test/${id}.mp4`,
   createdAt: new Date('2026-01-01'),

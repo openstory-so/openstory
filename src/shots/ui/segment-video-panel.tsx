@@ -115,7 +115,7 @@ export const SegmentVideoPanel: React.FC<SegmentVideoPanelProps> = ({
                       : version.resolution
                         ? ` (${version.resolution})`
                         : ''
-                  }`}
+                  }${version.source === 'lipsync' ? ' (lip-synced)' : ''}`}
                   aria-pressed={isSelected}
                   className="h-7 gap-1.5 px-2 text-xs"
                 >
@@ -129,6 +129,12 @@ export const SegmentVideoPanel: React.FC<SegmentVideoPanelProps> = ({
                         : version.resolution === '4k'
                           ? '4K'
                           : version.resolution}
+                    </span>
+                  )}
+                  {/* A lip-sync is the same picture with new mouths (#2263). */}
+                  {version.source === 'lipsync' && (
+                    <span className="font-mono text-[10px] opacity-70">
+                      lip-sync
                     </span>
                   )}
                 </Button>

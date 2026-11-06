@@ -465,6 +465,7 @@ function stampClip() {
     url: '/r2/clip-1.mp4',
     createdAt: AT,
     draftTaskId: null,
+    source: null,
     manifest: [
       {
         shotId: 'shot-1',
