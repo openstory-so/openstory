@@ -38,11 +38,11 @@
         "@tanstack/ai-durable-stream": "1.0.0",
         "@tanstack/ai-elevenlabs": "^1.1.1",
         "@tanstack/ai-fal": "^1.1.1",
-        "@tanstack/ai-gemini": "^1.1.1",
+        "@tanstack/ai-gemini": "^1.2.0",
         "@tanstack/ai-grok": "^1.1.1",
         "@tanstack/ai-mcp": "^1.1.0",
         "@tanstack/ai-openai": "^1.1.1",
-        "@tanstack/ai-openrouter": "^1.1.1",
+        "@tanstack/ai-openrouter": "^1.1.2",
         "@tanstack/ai-persistence": "1.0.1",
         "@tanstack/ai-react": "1.0.2",
         "@tanstack/highlight": "1.1.0",
@@ -370,8 +370,6 @@
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.12.0", "", {}, "sha512-mlUE+rZ8CatQekLhnaiN91Iemdd+e2gFKooGlnRB3oPTL3VghLfX24dx7HrzMNeC1JrIB/0kpsfyty3f5HNfxQ=="],
 
     "@durable-streams/server-cloudflare": ["@durable-streams/server-cloudflare@0.1.1", "", {}, "sha512-zWH8d/YVrJWqqtWFsnJJInAVxi4NseC1k5AYyEftALydGtA3S7wPFI8dEPoMHJ1Fg3I04M7iSYPiSZk7uzCYMw=="],
-
-    "@ecies/ciphers": ["@ecies/ciphers@0.2.6", "", { "peerDependencies": { "@noble/ciphers": "^1.0.0" } }, "sha512-patgsRPKGkhhoBjETV4XxD0En4ui5fbX0hzayqI3M8tvNMGUoUvmyYAIWwlxBc1KX5cturfqByYdj5bYGRpN9g=="],
 
     "@elevenlabs/client": ["@elevenlabs/client@1.25.0", "", { "dependencies": { "@elevenlabs/types": "0.23.0", "livekit-client": "^2.21.0" } }, "sha512-vBUCW7JNm0LXlReO1GQEuZSSg+AFwJ0EBvtVKfayPO2DpKh68Wq6WM6d27bMDrWkBf43C/Ifs9ZMBm6qaSj0Jg=="],
 
@@ -1199,7 +1197,7 @@
 
     "@tanstack/ai-fal": ["@tanstack/ai-fal@1.1.1", "", { "dependencies": { "@fal-ai/client": "^1.10.1", "@tanstack/ai-utils": "^1.1.0" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-ssCxgS8RHZ7LOHHcREYSgxigbVdecWlg6PFKEofxKv4T3Ma1GKltP1H9qStw+4V3rEXQLIDVPSRL3pfak8FTDg=="],
 
-    "@tanstack/ai-gemini": ["@tanstack/ai-gemini@1.1.1", "", { "dependencies": { "@google/genai": "^2.10.0", "@tanstack/ai-utils": "^1.1.0", "partial-json": "^0.1.7" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-3Po6xCLVkXEAq208io/czP1RP4q7WYmQhnwIXt55Y8gRUXY9Iur/j2JD97Aei5txK3bBQl7U+fIVL57dopIV6w=="],
+    "@tanstack/ai-gemini": ["@tanstack/ai-gemini@1.2.0", "", { "dependencies": { "@google/genai": "^2.10.0", "@tanstack/ai-utils": "^1.1.0", "partial-json": "^0.1.7" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-4iEtHFbJ5jD1KrSVS6B3+wM4Ig1yyuRgpipl7slpbLMsR7qaGgP2RtZHBHizkfd1HZMwHDEErrn9c+5DhBlhDQ=="],
 
     "@tanstack/ai-grok": ["@tanstack/ai-grok@1.1.1", "", { "dependencies": { "@tanstack/ai-utils": "^1.1.0", "@tanstack/openai-base": "^1.0.2", "openai": "^7.30.0" }, "peerDependencies": { "@tanstack/ai": "^1.2.0", "google-auth-library": "^10.5.0" }, "optionalPeers": ["google-auth-library"] }, "sha512-buR/pUJA7eM5gt/Fkb8afkCFKfiVDrawWlHVG09D+q/+SY3DzllhA6rUGQo3doXgpbKhhcJ3D5v8oNcyTX+6vA=="],
 
@@ -1207,7 +1205,7 @@
 
     "@tanstack/ai-openai": ["@tanstack/ai-openai@1.1.1", "", { "dependencies": { "@tanstack/ai-utils": "^1.1.0", "@tanstack/openai-base": "^1.0.2", "openai": "^7.30.0" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-IzieUf8FmAaZOVV4ADM3PrL0W7GQ+SPB1BOLHU/EG+cVGcg+KuunlflNrjJJB7pcvJTZUoOhgBn2ljn8NH4mdw=="],
 
-    "@tanstack/ai-openrouter": ["@tanstack/ai-openrouter@1.1.1", "", { "dependencies": { "@openrouter/sdk": "0.13.20", "@tanstack/ai-utils": "^1.1.0" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-i6a29UZk0Hp/l+PF8NujR40ktH9DAYB5M/2NI/CDl6hwkWICIvAOF9eDWntKwjNVPqL/Or4uyfT1N1SLEspj3w=="],
+    "@tanstack/ai-openrouter": ["@tanstack/ai-openrouter@1.1.2", "", { "dependencies": { "@openrouter/sdk": "0.13.20", "@tanstack/ai-utils": "^1.1.0" }, "peerDependencies": { "@tanstack/ai": "^1.2.0" } }, "sha512-x/6xLvdRDUNUYv9OcUs8pZxozZp+8PAJX14GBZxuolKowP31tDMiw+yoQ9U7MGMfh60l4v7N3J8nk7KSiz10fQ=="],
 
     "@tanstack/ai-persistence": ["@tanstack/ai-persistence@1.0.1", "", { "dependencies": { "@tanstack/ai-utils": "^1.0.0" }, "peerDependencies": { "@tanstack/ai": "^1.0.1", "vitest": "^4.1.10" }, "optionalPeers": ["vitest"] }, "sha512-nsQ6kHRyN/tN41Ccxxk6LRsmru9YnoE9aM3G9X888iBtYK0znh7bBGCMHGDc+dt5GAeHVKq7GLqW7wt92c0U4A=="],
 
@@ -2927,8 +2925,6 @@
 
     "@dotenvx/dotenvx/which": ["which@4.0.0", "", { "dependencies": { "isexe": "^3.1.1" }, "bin": { "node-which": "bin/which.js" } }, "sha512-GlaYyEb07DPxYCKhKzplCWBJtvxZcZMrL+4UkrTSJHHPyZU4mYYTv3qaOe77H7EODLSSopAUFAc6W8U4yqvscg=="],
 
-    "@ecies/ciphers/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
-
     "@fal-ai/client/eventsource-parser": ["eventsource-parser@1.1.2", "", {}, "sha512-v0eOBUbiaFojBu2s2NPBfYUoRR9GjcDNvCXVaqEf5vVfpIAh9f8RCo4vXTP8c63QRKCFwoLpMpTdPwwhEKVgzA=="],
 
     "@hey-api/json-schema-ref-parser/js-yaml": ["js-yaml@5.2.0", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.mjs" } }, "sha512-YeLUMlvR4Ou1B119LIaM0r65JvbOBooJDc9yEu0dClb/uSC5P4FrLU8OCCz/HXWvtPoIrR0dRzABTjo1sTN9Bw=="],
@@ -3114,6 +3110,8 @@
     "drizzle-kit/esbuild": ["esbuild@0.25.12", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.25.12", "@esbuild/android-arm": "0.25.12", "@esbuild/android-arm64": "0.25.12", "@esbuild/android-x64": "0.25.12", "@esbuild/darwin-arm64": "0.25.12", "@esbuild/darwin-x64": "0.25.12", "@esbuild/freebsd-arm64": "0.25.12", "@esbuild/freebsd-x64": "0.25.12", "@esbuild/linux-arm": "0.25.12", "@esbuild/linux-arm64": "0.25.12", "@esbuild/linux-ia32": "0.25.12", "@esbuild/linux-loong64": "0.25.12", "@esbuild/linux-mips64el": "0.25.12", "@esbuild/linux-ppc64": "0.25.12", "@esbuild/linux-riscv64": "0.25.12", "@esbuild/linux-s390x": "0.25.12", "@esbuild/linux-x64": "0.25.12", "@esbuild/netbsd-arm64": "0.25.12", "@esbuild/netbsd-x64": "0.25.12", "@esbuild/openbsd-arm64": "0.25.12", "@esbuild/openbsd-x64": "0.25.12", "@esbuild/openharmony-arm64": "0.25.12", "@esbuild/sunos-x64": "0.25.12", "@esbuild/win32-arm64": "0.25.12", "@esbuild/win32-ia32": "0.25.12", "@esbuild/win32-x64": "0.25.12" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg=="],
 
     "drizzle-kit/get-tsconfig": ["get-tsconfig@4.14.1", "", { "dependencies": { "resolve-pkg-maps": "^1.0.0" } }, "sha512-Dz/6HxkrxgNehhxLVeyv8sad9UzF2xBVeaKBQNDfJ5XiSXmp2gTR0eO0RWiT2NCKS5aGP9jjkOMggTN90qU50A=="],
+
+    "eciesjs/@ecies/ciphers": ["@ecies/ciphers@0.2.6", "", { "peerDependencies": { "@noble/ciphers": "^1.0.0" } }, "sha512-patgsRPKGkhhoBjETV4XxD0En4ui5fbX0hzayqI3M8tvNMGUoUvmyYAIWwlxBc1KX5cturfqByYdj5bYGRpN9g=="],
 
     "eciesjs/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
