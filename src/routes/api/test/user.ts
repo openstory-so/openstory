@@ -17,14 +17,17 @@ export const Route = createFileRoute('/api/test/user')({
          * POST /api/test/user
          */
         POST: async ({ request }) => {
-          let body: { name?: string } = {};
+          let body: { name?: string; admin?: boolean } = {};
           try {
             body = await request.json();
           } catch {
             // ok, use defaults
           }
 
-          const created = await createTestUser({ name: body.name });
+          const created = await createTestUser({
+            name: body.name,
+            admin: body.admin === true,
+          });
           return Response.json(created);
         },
 

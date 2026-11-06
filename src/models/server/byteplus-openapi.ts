@@ -57,7 +57,10 @@ async function bytePlusOpenApiOnce<T>(
   body: Record<string, unknown>,
   options?: { allowEmptyResult?: boolean }
 ): Promise<T> {
-  const host = config.host ?? DEFAULT_BYTEPLUS_OPENAPI_HOST;
+  // A scheme on the host (`http://localhost:4012`) is the e2e fake; real hosts are bare.
+  const origin = config.host ?? DEFAULT_BYTEPLUS_OPENAPI_HOST;
+  const host = origin.replace(/^https?:\/\//, '');
+  const base = /^https?:\/\//.test(origin) ? origin : `https://${origin}`;
   const region = config.region ?? DEFAULT_BYTEPLUS_OPENAPI_REGION;
   const payload = JSON.stringify(body);
   const query = buildCanonicalQuery({
@@ -77,7 +80,7 @@ async function bytePlusOpenApiOnce<T>(
     xDate: utcXDate(config.now?.() ?? new Date()),
   });
   const fetchImpl = config.fetch ?? workersSafeFetch;
-  const response = await fetchImpl(`https://${host}/?${query}`, {
+  const response = await fetchImpl(`${base}/?${query}`, {
     method: 'POST',
     headers,
     body: payload,

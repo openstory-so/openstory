@@ -5,7 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { test as setup } from 'playwright/test';
+import { test as setup } from '../fixtures/base';
 import { authenticateUser, createTestUser } from '../fixtures/auth.fixture';
 
 const authDir = path.join(import.meta.dirname, '../.auth');

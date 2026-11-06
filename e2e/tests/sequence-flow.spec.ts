@@ -9,7 +9,10 @@
 import { expect } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
-import { fillScriptEditor } from '../fixtures/test-utils';
+import {
+  expectPictureOnScreen,
+  fillScriptEditor,
+} from '../fixtures/test-utils';
 import {
   createTestSequence,
   createTestShot,
@@ -321,5 +324,11 @@ testWithUser.describe('Theatre stitcher clip language (#1744)', () => {
       .toBe(true);
 
     await expect(page.getByText(/Loading scene \d+ of/)).toHaveCount(0);
+    await expect(page.getByTestId('player-loading')).toHaveCount(0);
+    await theatrePlayer.getByRole('button', { name: 'Play' }).click();
+    await expect(
+      theatrePlayer.getByRole('button', { name: 'Pause' })
+    ).toBeVisible();
+    await expectPictureOnScreen(page, theatrePlayer, 'theatre still');
   });
 });

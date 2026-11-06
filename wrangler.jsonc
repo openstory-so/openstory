@@ -706,6 +706,8 @@
         // E2E_TEST gates /api/test/* routes (via testOnlyGuard) and many
         // test-specific branches in storage / workflow client code.
         "E2E_TEST": "true",
+        // The admin e2e user (createTestUser({ admin: true })).
+        "ADMIN_EMAILS": "e2e-admin@e2e.test",
         // Note: a developer's .env.local R2_PUBLIC_STORAGE_DOMAIN could leak
         // into this worker env via the env-file merge, but it can't break
         // e2e: isLocalStorageServing() (src/platform/server/storage/buckets.ts) forces

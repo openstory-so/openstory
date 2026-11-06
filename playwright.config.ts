@@ -102,17 +102,25 @@ export default defineConfig({
       // upstream, which can trip the SDK's retry path and produce duplicate
       // fixture writes for the same prompt.
       ...(process.env.E2E_RECORD === '1' ? ['E2E_RECORD=1'] : []),
-      // Record runs talk to the real providers with the keys in .env.local
-      // (bun autoloads it; CLOUDFLARE_INCLUDE_PROCESS_ENV forwards it). fal
-      // and xAI need nothing more, but Ark stays OFF under E2E_TEST unless a
-      // host is wired (byteplus-config.ts — a laptop ARK_API_KEY must never
-      // bill a replay run), so wire the real hosts only when recording.
+      // Ark stays OFF under E2E_TEST unless a host is wired (byteplus-config.ts),
+      // so a laptop ARK_API_KEY never bills replay. Seedance / Seedream go
+      // through aimock (it proxies to Ark when recording); the asset actions
+      // hit real BytePlus when recording, else e2e/mocks/byteplus-assets-mock.ts.
+      'ARK_BASE_URL=http://localhost:4010/api/v3',
       ...(process.env.E2E_RECORD === '1'
         ? [
-            `ARK_BASE_URL=${process.env.ARK_BASE_URL ?? 'https://ark.ap-southeast.bytepluses.com/api/v3'}`,
             `BYTEPLUS_OPENAPI_HOST=${process.env.BYTEPLUS_OPENAPI_HOST ?? 'ark.ap-southeast-1.byteplusapi.com'}`,
           ]
-        : []),
+        : [
+            'BYTEPLUS_OPENAPI_HOST=http://localhost:4012',
+            'ARK_API_KEY=test-mock-key',
+            'BYTEPLUS_ACCESS_KEY=test-mock-key',
+            'BYTEPLUS_SECRET_KEY=test-mock-secret',
+            'BYTEPLUS_ASSET_SLOTS=3',
+          ]),
+      ...(process.env.E2E_COVERAGE === 'true' ? ['E2E_COVERAGE=true'] : []),
+      // Beats a laptop's ADMIN_EMAILS in .env.local (createTestUser admin).
+      'ADMIN_EMAILS=e2e-admin@e2e.test',
       'PORT=3020',
       'VITE_APP_URL=http://localhost:3020',
       'OPENROUTER_BASE_URL=http://localhost:4010',

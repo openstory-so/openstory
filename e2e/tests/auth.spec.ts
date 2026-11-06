@@ -3,7 +3,7 @@
  * Tests authentication flows and route protection
  */
 
-import { test as baseTest } from 'playwright/test';
+import { test as baseTest } from '../fixtures/base';
 import { expect, test } from '../fixtures/auth.fixture';
 import { fillScriptEditor, waitForScriptEditor } from '../fixtures/test-utils';
 

@@ -265,6 +265,29 @@ test.describe('Characters page', () => {
     ).toBeAttached();
   });
 
+  test('the voice library lists voices and takes a search and filters', async ({
+    page,
+  }) => {
+    await openCharacterPage(page);
+    const voice = page.getByRole('switch', { name: 'Voice' });
+    await voice.click();
+    await expect(voice).toBeChecked();
+    await page.getByRole('button', { name: 'Browse voices' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Voice library' });
+    const first = dialog.getByText('Mark - Casual, Relaxed and Light');
+    await expect(first).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+    await expect(dialog.getByRole('button', { name: 'Use' })).toHaveCount(6);
+
+    await dialog.getByPlaceholder(/Search voices/).fill('deep');
+    await dialog.getByRole('button', { name: 'Female', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Old', exact: true }).click();
+    await expect(first).toBeVisible();
+    await dialog.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(
+      dialog.getByRole('button', { name: 'Clear filters' })
+    ).toBeDisabled();
+  });
+
   test('an unknown character is not found, with a way back', async ({
     page,
   }) => {

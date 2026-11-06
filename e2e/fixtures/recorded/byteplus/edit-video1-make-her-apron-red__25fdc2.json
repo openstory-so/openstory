@@ -1,0 +1,37 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "video",
+        "userMessage": "Edit @Video1. Make her apron red.\n[media: reference_video:d2893186b59b]",
+        "model": "dreamina-seedance-2-5-260628"
+      },
+      "response": {
+        "json": {
+          "model": "dreamina-seedance-2-5-260628",
+          "status": "succeeded",
+          "content": {
+            "video_url": "https://assets.openstory.so/e2e/51bbcf9795507a89d0cd34ae90355577067ae8728ba95ee1e2b87f1ff054f2c0.mp4"
+          },
+          "usage": {
+            "completion_tokens": 77260,
+            "total_tokens": 77260
+          },
+          "created_at": 1793853311,
+          "updated_at": 1793853373,
+          "seed": 72886,
+          "resolution": "480p",
+          "ratio": "427:240",
+          "duration": 4,
+          "framespersecond": 24,
+          "service_tier": "default",
+          "execution_expires_after": 172800,
+          "generate_audio": true,
+          "draft": true,
+          "priority": 0,
+          "output_format": "mp4"
+        }
+      }
+    }
+  ]
+}
