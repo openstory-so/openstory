@@ -101,6 +101,7 @@ export { CharacterSheetWorkflow } from '@/cast/server/workflows/character-sheet-
 export { CharacterVoiceWorkflow } from '@/cast/server/workflows/character-voice-workflow';
 export { DialogueAudioWorkflow } from '@/motion/server/workflows/dialogue-audio-workflow';
 export { DialogueTakeWorkflow } from '@/motion/server/workflows/dialogue-take-workflow';
+export { DialogueUploadWorkflow } from '@/motion/server/workflows/dialogue-upload-workflow';
 export { LocationSheetWorkflow } from '@/cast/server/workflows/location-sheet-workflow';
 export { ShotVariantWorkflow } from '@/stills/server/workflows/shot-variant-workflow';
 export { UpscaleShotVariantWorkflow } from '@/stills/server/workflows/upscale-shot-variant-workflow';

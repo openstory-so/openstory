@@ -25,8 +25,16 @@ import {
 import { generateId } from '@/platform/id';
 import { shots } from './shots';
 
-/** `mic`: a line the user performed, spliced into the reading (#1802). */
-const SHOT_DIALOGUE_SECTION_SOURCES = ['generated', 'context', 'mic'] as const;
+/**
+ * `mic`: a line the user performed, spliced into the reading (#1802).
+ * `upload`: a recording of the whole scene the user uploaded (#2264).
+ */
+const SHOT_DIALOGUE_SECTION_SOURCES = [
+  'generated',
+  'context',
+  'mic',
+  'upload',
+] as const;
 export type ShotDialogueSectionSource =
   (typeof SHOT_DIALOGUE_SECTION_SOURCES)[number];
 

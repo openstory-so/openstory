@@ -614,6 +614,27 @@ export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
   maxDurationSeconds: number;
 }
 
+/**
+ * A recording of a scene's whole conversation becomes its dialogue (#2264).
+ * The scene's voiced lines are snapshotted at the click; the run finds each
+ * in the recording and gives every speaking shot its section.
+ */
+export interface DialogueUploadWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  /** `<bucket>/<path>` of the uploaded PCM WAV. */
+  storageKey: string;
+  /** The scene's voiced turns in speaking order. Every line of the scene is voiced. */
+  voiced: SceneVoicedLine[];
+  /** shot id → the `shot_dialogue_versions` row spoken (absent = derived). */
+  dialogueVersionIdByShotId: Record<string, string>;
+  /** shot id → its 1-based place in the scene, as errors name it. */
+  sceneShotNumberByShotId: Record<string, number>;
+  /** Provider per-file floor (H3 Max 2s). */
+  minDurationSeconds: number;
+  /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
+  maxDurationSeconds: number;
+}
+
 export interface DialogueAudioWorkflowResult {
   clipsByShotId: Record<string, MotionAudioClip[]>;
 }

@@ -53,13 +53,15 @@ export function dialogueTakeRuns<
         : 'No audio yet'
       : runShots.some((shot) => clipOf(shot)?.source === 'mic')
         ? 'Your take'
-        : speechId === sceneTake?.[0]
-          ? `One take · ${shotsWord(count)}`
-          : sceneTake && speechId < sceneTake[0]
-            ? `Older take · ${shotsWord(count)}`
-            : count === 1
-              ? 'Regenerated alone'
-              : `Newer take · ${shotsWord(count)}`;
+        : runShots.some((shot) => clipOf(shot)?.source === 'upload')
+          ? 'Your recording'
+          : speechId === sceneTake?.[0]
+            ? `One take · ${shotsWord(count)}`
+            : sceneTake && speechId < sceneTake[0]
+              ? `Older take · ${shotsWord(count)}`
+              : count === 1
+                ? 'Regenerated alone'
+                : `Newer take · ${shotsWord(count)}`;
     return { shots: runShots, label };
   });
 }

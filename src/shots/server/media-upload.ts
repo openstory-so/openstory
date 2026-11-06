@@ -111,7 +111,7 @@ export function assertSingleShotSegmentForVideoUpload(
   }
 }
 
-function requireUploadedStoragePath(
+export function requireUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
   organizationId: string
@@ -835,6 +835,7 @@ export const UPLOAD_USES = [
   'shot_image',
   'shot_video',
   'music',
+  'dialogue',
   'character_sheet',
   'location_sheet',
   'element',
@@ -886,6 +887,8 @@ const USE_EXTENSIONS: Record<StoreUse, readonly string[]> = {
   location_sheet: UPLOAD_EXTENSIONS.image,
   shot_video: UPLOAD_EXTENSIONS.video,
   music: UPLOAD_EXTENSIONS.audio,
+  // A scene's recording (#2264) is cut as PCM; the server decodes nothing else yet (#2265).
+  dialogue: ['wav'],
   element: ELEMENT_EXTENSIONS,
   // A Studio reference, start/end frame or clip; the same types as elements.
   studio: ELEMENT_EXTENSIONS,
@@ -953,6 +956,11 @@ function uploadTarget(
       return {
         bucket: STORAGE_BUCKETS.AUDIO,
         path: `${inSequence}/music/${id}.${ext}`,
+      };
+    case 'dialogue':
+      return {
+        bucket: STORAGE_BUCKETS.AUDIO,
+        path: `${inSequence}/dialogue-uploads/${id}.${ext}`,
       };
     case 'character_sheet':
       return {

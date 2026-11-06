@@ -503,6 +503,28 @@ collide with it), and a take whose estimated length cannot fit. The run
 charges only after its own fit check, and its unclear-line flags follow the
 spliced speech's turns: the taken line is clean, the others keep theirs.
 
+**A scene's recording, uploaded (#2264).** A WAV of a scene's whole
+conversation (a real actor, another tool) becomes the scene's dialogue:
+"Upload recording" on the scene in the dialogue list
+(`presignSceneDialogueUploadFn` → `uploadSceneDialogueFn`) or MCP
+`upload_media` use `dialogue` then `set_scene_dialogue_from_upload`. Both go
+through `uploadSceneDialogue` (`src/shots/server/scene-dialogue-upload.ts`),
+which refuses, before reserving Scribe's cost: a file that is not a PCM WAV or
+is over 25 MB, a scene line with no generated voice (the reading is keyed on
+the voiced lines, so an unvoiced line's words would land in a neighbour's
+section), and a scene with a live dialogue claim. The browser decodes any
+format it can play and sends 16-bit mono 48 kHz; the server decodes nothing
+(MP3 and the rest wait on #2265). `DialogueUploadWorkflow` claims every
+speaking shot, transcribes with Scribe, finds each line with `checkParts`
+(`placeUploadedDialogue`; a line not found fails the run with the line named,
+nothing is guessed), cuts the shots' ranges the way a Seed speech does, fails a
+section over `dialogueFitBudget`'s limit (no rewrite, no time compression;
+Scribe is charged before either failure, since it ran), and lands one speech (`inputHash: upload:<id>`) with an
+`upload` section per shot through `appendSpeech`. Turns stamp the character's
+own `voiceId` and `ttsModel: 'upload'`, so the section keys match the shot's
+lines, motion sends them as the shot's audio, and a later recast dates the
+scene like any speech. Other scenes keep their generated voices.
+
 Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 **Continuous preview playback (#1690).** The existing scene/sequence player

@@ -23,8 +23,12 @@ export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 /** ElevenLabs Voice Changer model a mic take is turned into an ElevenLabs voice with (#1802). */
 export const DIALOGUE_STS_MODEL = 'eleven_multilingual_sts_v2';
 
+/** Stamped on the turns of an uploaded scene recording (#2264): no model spoke it. */
+export const UPLOADED_DIALOGUE_MODEL = 'upload';
+
 /** A dialogue model as the readings list names it. */
 export function dialogueModelLabel(model: string): string {
+  if (model === UPLOADED_DIALOGUE_MODEL) return 'Uploaded recording';
   if (model === SEED_AUDIO_MODEL) return 'Seed Audio';
   if (model === DIALOGUE_TTS_MODEL) return 'ElevenLabs v3';
   if (model === DIALOGUE_STS_MODEL) return 'ElevenLabs Voice Changer';
