@@ -19,10 +19,11 @@ export type SequenceElementKind = (typeof ELEMENT_KINDS)[number];
  * Extensions we accept for the two non-image kinds. Images are sniffed by
  * prefix.
  *
- * M4A and OGG are accepted but never STORED as such: the upload re-encodes
- * them to WAV (`normalizeElementFile`), since every model that documents its
- * formats takes only MP3 or WAV. Video has no such conversion, so it is MP4 or
- * MOV only — WebM was accepted until #1559 and then rejected by the model.
+ * M4A and OGG are accepted but never STORED as such: the browser upload
+ * re-encodes them to WAV (`normalizeElementFile`), and a server upload does
+ * the same in the video-export container (#2265). Every model that documents
+ * its formats takes only MP3 or WAV. Video has no such conversion, so it is
+ * MP4 or MOV only — WebM was accepted until #1559 and then rejected by the model.
  */
 const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   mp3: 'audio',

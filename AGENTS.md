@@ -335,7 +335,9 @@ changing the area, and update it in the same PR.**
 - **Server-side export** — `docs/architecture/public-api-internals.md`. No
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).
-  Plain `bun dev` and e2e have no renderer. The theatre does not use the
+  Plain `bun dev` and e2e have no renderer. The same container transcodes
+  uploaded M4A, OGG and FLAC to WAV (#2265); without it the server upload
+  path keeps refusing them. The theatre does not use the
   export: it always stitches the clips in the tab, loading each as the
   playhead reaches it (#1845). The HLS playlist and its ingest remux are
   gone — a whole clip must never sit in Worker memory, and a fragmented MP4

@@ -2,22 +2,27 @@
  * HTTP entrypoint for the video-export container.
  *
  * Routes:
- *   GET  /ping     → liveness (the Cloudflare Container ping endpoint)
- *   POST /export   → body = ExportJob (JSON); responds with the MP4 bytes and
- *                    an `x-export-meta` header (URI-encoded JSON ExportResultMeta).
+ *   GET  /ping              → liveness (the Cloudflare Container ping endpoint)
+ *   POST /export            → body = ExportJob (JSON); responds with the MP4
+ *                             bytes and an `x-export-meta` header.
+ *   POST /transcode-audio   → body = audio bytes (M4A, OGG, FLAC, …); responds
+ *                             with 16-bit 48 kHz mono WAV (#2265).
  *
- * The Worker-side export workflow streams the response straight into R2.
+ * The Worker streams either response straight into R2.
  */
 
 import { registerMediabunnyServer } from '@mediabunny/server';
 import http from 'node:http';
 import { exportSequence } from './export.js';
+import { transcodeAudioToWav, UnreadableAudioError } from './transcode.js';
 import type { ExportJob } from './types.js';
 
 registerMediabunnyServer();
 
 const PORT = Number(process.env.PORT ?? 8080);
 const MAX_BODY_BYTES = 2_000_000;
+/** Matches the Worker's URL media cap (`MAX_URL_MEDIA_BYTES`). */
+const MAX_AUDIO_BYTES = 500 * 1024 * 1024;
 
 class BadRequestError extends Error {}
 
@@ -41,6 +46,33 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
         reject(new BadRequestError('Invalid JSON body'));
       }
     });
+    req.on('error', reject);
+  });
+}
+
+function readRawBody(
+  req: http.IncomingMessage,
+  maxBytes: number
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      reject(new BadRequestError('Audio file is too large'));
+      req.destroy();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new BadRequestError('Audio file is too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -92,6 +124,18 @@ const server = http.createServer((req, res) => {
         return;
       }
 
+      if (req.method === 'POST' && url.startsWith('/transcode-audio')) {
+        const wav = await transcodeAudioToWav(
+          await readRawBody(req, MAX_AUDIO_BYTES)
+        );
+        res.writeHead(200, {
+          'content-type': 'audio/wav',
+          'content-length': String(wav.byteLength),
+        });
+        res.end(wav);
+        return;
+      }
+
       if (req.method === 'POST' && url.startsWith('/export')) {
         const job = parseJob(await readJsonBody(req));
         const { buffer, meta } = await exportSequence(job);
@@ -107,7 +151,10 @@ const server = http.createServer((req, res) => {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
     } catch (err) {
-      const status = err instanceof BadRequestError ? 400 : 500;
+      const status =
+        err instanceof BadRequestError || err instanceof UnreadableAudioError
+          ? 400
+          : 500;
       const message = err instanceof Error ? err.message : 'Export failed';
       console.error('[video-export] request failed:', err);
       if (!res.headersSent) {
