@@ -25,7 +25,7 @@ import { generateId } from '@/platform/id';
 import type { DialogueSpeechTurn } from '@/platform/server/db/schema';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
-import { readStorageObject, uploadFile } from '#storage';
+import { readStorageObject, storageObjectSize, uploadFile } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   honestDataSize,
@@ -36,15 +36,27 @@ import { shotSliceWindows } from './synthesize-dialogue';
 
 type Window = { shotId: string; fromSeconds: number; toSeconds: number };
 
-export type PlacedUpload = {
-  speechId: string;
-  storageKey: string;
-  url: string;
-  durationSeconds: number;
-  turns: DialogueSpeechTurn[];
-  windows: Window[];
-  charges: { endpointId: string; model: string; costMicros: Microdollars }[];
-};
+/** Scribe and the alignment hold the file whole: about 4 minutes of 48 kHz mono. */
+export const MAX_DIALOGUE_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+type Charge = { endpointId: string; model: string; costMicros: Microdollars };
+
+/**
+ * Scribe's charge stands whether or not the lines were found: a failed
+ * upload still spent the transcription.
+ */
+export type PlacedUpload = { charges: Charge[] } & (
+  | {
+      ok: true;
+      speechId: string;
+      storageKey: string;
+      url: string;
+      durationSeconds: number;
+      turns: DialogueSpeechTurn[];
+      windows: Window[];
+    }
+  | { ok: false; problem: string }
+);
 
 /**
  * Each line's turn and each shot's range in the recording. Throws, naming the
@@ -101,6 +113,15 @@ export async function placeUploadedDialogue(input: {
   storageKey: string;
   lines: readonly SceneVoicedLine[];
 }): Promise<PlacedUpload> {
+  // Checked again here: the presigned key can be written after the click.
+  const size = await storageObjectSize(input.storageKey);
+  if (size == null || size > MAX_DIALOGUE_UPLOAD_BYTES) {
+    throw new NonRetryableError(
+      size == null
+        ? 'The uploaded recording is missing from storage'
+        : `The uploaded recording is over ${MAX_DIALOGUE_UPLOAD_BYTES / 1024 / 1024} MB`
+    );
+  }
   const stored = await readStorageObject(input.storageKey);
   if (!stored) {
     throw new NonRetryableError(
@@ -114,12 +135,20 @@ export async function placeUploadedDialogue(input: {
     throw new NonRetryableError('The uploaded recording is not a PCM WAV');
   }
   const heard = await transcribeSpeech(input.elevenLabsKey, wav, 'audio/wav');
-  const { turns, windows } = placeLines(
-    input.lines,
-    heard.words,
-    wav,
-    durationSeconds
-  );
+  const charges: Charge[] = [
+    {
+      endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
+      model: SCRIBE_MODEL,
+      costMicros: scribeCost(heard.seconds || durationSeconds),
+    },
+  ];
+  let placed: ReturnType<typeof placeLines>;
+  try {
+    placed = placeLines(input.lines, heard.words, wav, durationSeconds);
+  } catch (error) {
+    if (!(error instanceof NonRetryableError)) throw error;
+    return { ok: false, problem: error.message, charges };
+  }
   // Its own speech file, header corrected, like every other speech.
   const speechId = generateId();
   const uploaded = await uploadFile(
@@ -129,18 +158,12 @@ export async function placeUploadedDialogue(input: {
     { contentType: 'audio/wav', upsert: true }
   );
   return {
+    ok: true,
     speechId,
     storageKey: uploaded.fullPath,
     url: uploaded.publicUrl,
     durationSeconds,
-    turns,
-    windows,
-    charges: [
-      {
-        endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
-        model: SCRIBE_MODEL,
-        costMicros: scribeCost(heard.seconds || durationSeconds),
-      },
-    ],
+    ...placed,
+    charges,
   };
 }

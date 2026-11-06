@@ -35,9 +35,7 @@ import type { DialogueUploadWorkflowInput } from '@/platform/server/workflow/typ
 import { readStorageObject, storageObjectSize } from '#storage';
 import { loadSceneDialogueJob } from './dialogue-edit';
 import { requireUploadedStoragePath } from './media-upload';
-
-/** Scribe and the alignment hold the file whole: about 4 minutes of 48 kHz mono. */
-const MAX_DIALOGUE_UPLOAD_BYTES = 25 * 1024 * 1024;
+import { MAX_DIALOGUE_UPLOAD_BYTES } from '@/motion/server/place-uploaded-dialogue';
 
 const HEADER_PROBE_BYTES = 4096;
 

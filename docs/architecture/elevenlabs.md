@@ -518,8 +518,8 @@ format it can play and sends 16-bit mono 48 kHz; the server decodes nothing
 speaking shot, transcribes with Scribe, finds each line with `checkParts`
 (`placeUploadedDialogue`; a line not found fails the run with the line named,
 nothing is guessed), cuts the shots' ranges the way a Seed speech does, fails a
-section over `dialogueFitBudget`'s limit (no rewrite, no time compression),
-charges Scribe, and lands one speech (`inputHash: upload:<id>`) with an
+section over `dialogueFitBudget`'s limit (no rewrite, no time compression;
+Scribe is charged before either failure, since it ran), and lands one speech (`inputHash: upload:<id>`) with an
 `upload` section per shot through `appendSpeech`. Turns stamp the character's
 own `voiceId` and `ttsModel: 'upload'`, so the section keys match the shot's
 lines, motion sends them as the shot's audio, and a later recast dates the

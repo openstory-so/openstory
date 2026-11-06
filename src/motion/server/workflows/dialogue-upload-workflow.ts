@@ -81,32 +81,17 @@ export class DialogueUploadWorkflow extends OpenStoryWorkflowEntrypoint<Dialogue
           lines: input.voiced,
         });
         // Minted with the speech, so the clip and the row agree on a retry.
-        return {
-          ...made,
-          sectionIdByShotId: Object.fromEntries(
-            made.windows.map((window) => [window.shotId, generateId()])
-          ),
-        };
+        return made.ok
+          ? {
+              ...made,
+              sectionIdByShotId: Object.fromEntries(
+                made.windows.map((window) => [window.shotId, generateId()])
+              ),
+            }
+          : made;
       });
 
-      // No time compression: a section that does not fit fails the upload.
-      const { limitSeconds } = dialogueFitBudget({
-        maxSeconds: input.maxDurationSeconds,
-      });
-      for (const window of placed.windows) {
-        const fileSeconds = Math.max(
-          window.toSeconds - window.fromSeconds,
-          input.minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
-        );
-        if (fileSeconds > limitSeconds) {
-          const shotNumber = shotIds.indexOf(window.shotId) + 1;
-          throw new NonRetryableError(
-            `In this recording, speaking shot ${shotNumber} of the scene runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Split its lines across more shots, or pick a video model that takes longer audio.`
-          );
-        }
-      }
-
-      // Billed only once the recording is usable.
+      // Scribe ran, so it is billed even when the lines were not found.
       await step.do('charge', async () => {
         for (const charge of placed.charges) {
           await deductWorkflowCredits({
@@ -125,6 +110,25 @@ export class DialogueUploadWorkflow extends OpenStoryWorkflowEntrypoint<Dialogue
           });
         }
       });
+
+      if (!placed.ok) throw new NonRetryableError(placed.problem);
+
+      // No time compression: a section that does not fit fails the upload.
+      const { limitSeconds } = dialogueFitBudget({
+        maxSeconds: input.maxDurationSeconds,
+      });
+      for (const window of placed.windows) {
+        const fileSeconds = Math.max(
+          window.toSeconds - window.fromSeconds,
+          input.minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
+        );
+        if (fileSeconds > limitSeconds) {
+          const shotNumber = shotIds.indexOf(window.shotId) + 1;
+          throw new NonRetryableError(
+            `In this recording, speaking shot ${shotNumber} of the scene runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Split its lines across more shots, or pick a video model that takes longer audio.`
+          );
+        }
+      }
 
       const sectionOf = (shotId: string) => {
         const id = placed.sectionIdByShotId[shotId];
