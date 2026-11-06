@@ -58,7 +58,7 @@ Theatre Download/Copy and the public API both `POST /api/v1/sequences/$id/export
 
 ### Uploaded audio (#2265)
 
-`POST /transcode-audio` on the same container reads an audio file (M4A, OGG, FLAC, and anything else mediabunny can decode) and answers 16-bit PCM WAV at 48 kHz, one channel. `storeUpload` calls it for element, studio and music whenever the file is not MP3 or WAV, and streams the WAV into R2. The source and the WAV do not sit in the Worker. Inline base64 is already in the isolate (8 MB cap); the WAV still streams out. `planAudioUpload` already treats a future `dialogue` use the same way (#2264); that use is not on `upload_media` yet.
+`POST /transcode-audio` on the same container reads an audio file (M4A, OGG, FLAC, and anything else mediabunny can decode) and answers 16-bit PCM WAV at 48 kHz, one channel. `storeUpload` calls it for element, studio and music whenever the file is not MP3 or WAV, and streams the WAV into R2. The source and the WAV do not sit in the Worker. Inline base64 is already in the isolate (8 MB cap); the WAV still streams out. `planAudioUpload` treats `dialogue` the same way (#2264): WAV until a container is up, then M4A, OGG and FLAC become WAV too.
 
 The browser still re-encodes element files before the presigned PUT (`normalizeElementFile`). That path keeps the file's channel count. The container averages channels to one.
 
