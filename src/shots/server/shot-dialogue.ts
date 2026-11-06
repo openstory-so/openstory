@@ -14,7 +14,6 @@ import {
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   matchingDialogueClips,
-  modelTakesDialogueAudio,
   ttsCharacterCount,
   voicedDialogueLines,
   type VoiceCharacter,
@@ -367,9 +366,13 @@ export function snapshotBatchDialogue<
 } {
   const byShotId = new Map(
     input.rendering.map((shot) => {
-      const voicedLines = modelTakesDialogueAudio(input.modelOf(shot))
-        ? voicedDialogueLines(input.dialogueOf(shot), input.characters)
-        : [];
+      // Snapshot the file for every speaking model. Upload-capable models
+      // send it with the render; the rest hand the same snapshot to sync-3
+      // after the unsynced clip is promoted.
+      const voicedLines = voicedDialogueLines(
+        input.dialogueOf(shot),
+        input.characters
+      );
       const audioClips = input.voiceMovedShotIds.has(shot.id)
         ? []
         : matchingDialogueClips(shot.audioClips, voicedLines);

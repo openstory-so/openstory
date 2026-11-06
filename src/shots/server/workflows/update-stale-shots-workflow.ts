@@ -74,7 +74,6 @@ import { estimateLipsyncCost, planLipsync } from '@/motion/lipsync';
 import { addMicros } from '@/billing/money';
 import {
   matchingDialogueClips,
-  modelTakesDialogueAudio,
   ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
@@ -1253,9 +1252,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const duration = packPayloadDurationSeconds(target.durationMs);
           // What the shot says, snapshotted on the target at click time
           // (#1657).
-          const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(target.dialogue, voicedPlan.characterVoices)
-            : [];
+          const voicedLines = voicedDialogueLines(
+            target.dialogue,
+            voicedPlan.characterVoices
+          );
           const audioClips = matchingDialogueClips(
             speechClipsByShotId[target.shotId] ??
               target.motionRender.audioClips,

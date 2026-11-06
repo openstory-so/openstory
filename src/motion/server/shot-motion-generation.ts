@@ -44,7 +44,6 @@ import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
   matchingDialogueClips,
-  modelTakesDialogueAudio,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
@@ -380,9 +379,9 @@ export async function generateShotMotion(
     model,
   });
 
-  const voicedLines = modelTakesDialogueAudio(model)
-    ? voicedDialogueLines(shotDialogue, voiceCharacters)
-    : [];
+  // Every model that speaks gets the file. Seedance and MiniMax upload it;
+  // Kling, Omni, and Grok keep it for the lip-sync phase after the render.
+  const voicedLines = voicedDialogueLines(shotDialogue, voiceCharacters);
   const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
   const batchDialogue = snapshotBatchDialogue({
     rendering: covered,
@@ -489,9 +488,10 @@ export async function generateShotMotion(
               },
               model
             );
-            const memberVoiced = modelTakesDialogueAudio(model)
-              ? voicedDialogueLines(dialogueOf(member), voiceCharacters)
-              : [];
+            const memberVoiced = voicedDialogueLines(
+              dialogueOf(member),
+              voiceCharacters
+            );
             const memberClips = matchingDialogueClips(
               member.audioClips,
               memberVoiced
