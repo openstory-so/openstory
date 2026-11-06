@@ -1734,6 +1734,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           : null;
       if (lipsync && input.sequenceId) {
         const sequenceId = input.sequenceId;
+        if (!input.sequenceTitle) {
+          throw new WorkflowValidationError(
+            'sequenceTitle is required to lip-sync this clip'
+          );
+        }
+        const sequenceTitle = input.sequenceTitle;
+        // The child records its own failure. Rethrowing would make onFailure
+        // append a failed motion row over the clip that already completed.
         try {
           await spawnAndAwaitChild<
             LipsyncWorkflowInput,
@@ -1755,7 +1763,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               manifest: lipsync.manifest,
               durationSeconds: lipsync.durationSeconds,
               resolution: lipsync.resolution,
-              sequenceTitle: input.sequenceTitle ?? 'sequence',
+              sequenceTitle,
               sceneTitle: input.sceneTitle,
               reservationId: input.reservationId,
             },
@@ -1765,7 +1773,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           });
         } catch (error) {
           logger.error(
-            `[MotionWorkflow:cf] Lip-sync failed for shot ${shotId}; the rendered clip stays`,
+            `[MotionWorkflow:cf] Lip-sync failed for shot ${shotId}`,
             { err: error }
           );
         }

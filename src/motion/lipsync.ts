@@ -231,29 +231,16 @@ export function planMotionLipsync<T extends LipsyncEntry>(input: {
   if (input.manifest.length > 1) {
     const audioUrl = clips[0]?.url;
     if (!audioUrl || urls.size !== 1) return null;
-    const coveredMs = input.manifest.reduce(
-      (sum, entry) =>
-        sum +
-        (positiveSeconds(
-          entry.durationMs == null ? null : entry.durationMs / 1000
-        ) ?? 0) *
-          1000,
-      0
+    const covered = input.manifest.map((entry) =>
+      positiveSeconds(entry.durationMs == null ? null : entry.durationMs / 1000)
     );
-    const durationSeconds =
-      positiveSeconds(coveredMs / 1000) ??
-      positiveSeconds(clips[0]?.durationSeconds) ??
-      positiveSeconds(
-        input.shotDurationMs == null ? null : input.shotDurationMs / 1000
-      ) ??
-      FALLBACK_DURATION_SECONDS;
-    const sourceKey =
-      clips[0]?.sourceKey ??
-      input.manifest
-        .map((entry) => entry.audioSourceKey)
-        .filter((key): key is string => Boolean(key))
-        .join('\n');
-    if (!sourceKey || !input.renderSegmentId) return null;
+    const durationSeconds = covered.every(
+      (seconds): seconds is number => seconds != null
+    )
+      ? positiveSeconds(covered.reduce((sum, seconds) => sum + seconds, 0))
+      : null;
+    const sourceKey = clips[0]?.sourceKey ?? input.manifest[0]?.audioSourceKey;
+    if (!durationSeconds || !sourceKey || !input.renderSegmentId) return null;
     return {
       renderSegmentId: input.renderSegmentId,
       videoUrl: input.videoUrl,
