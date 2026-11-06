@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dialogueClipSourceKey,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
+import {
   dialogueContextFor,
   requireSelectableSection,
   sceneDialogueJobs,
   shotDialogueResolver,
+  snapshotBatchDialogue,
 } from './shot-dialogue';
 import {
   castVoiceIds,
@@ -314,5 +319,45 @@ describe('voiceMovedShotIds', () => {
     expect(voiceMovedShotIds(input('kayden-new'))).toEqual(
       new Set(['tahlia-2'])
     );
+  });
+});
+
+describe('snapshotBatchDialogue', () => {
+  it('keeps the dialogue file for a model that cannot upload audio', () => {
+    const dialogueOf = shotDialogueResolver({
+      linesByShotId: new Map([['shot-1', [line('Ana', 'One.')]]]),
+      shots,
+      legacyDialogueOf: () => null,
+      scriptDialogueOf: () => undefined,
+    });
+    const lines = voicedDialogueLines(dialogueOf({ id: 'shot-1' }), characters);
+    const clip = {
+      id: 'section-1',
+      url: 'https://example.com/dialogue.wav',
+      token: 'DIALOGUE',
+      sourceKey: dialogueClipSourceKey(lines),
+      durationSeconds: 2,
+    };
+    const snapshot = snapshotBatchDialogue({
+      rendering: [
+        {
+          id: 'shot-1',
+          sceneId: 'scene-1',
+          durationMs: 4000,
+          audioClips: [clip],
+        },
+      ],
+      modelOf: () => 'gemini_omni_flash' as const,
+      shots,
+      dialogueOf,
+      characters,
+      versionIdByShotId: new Map([['shot-1', 'version-1']]),
+      voiceMovedShotIds: new Set<string>(),
+    });
+    expect(snapshot.byShotId.get('shot-1')).toEqual({
+      voicedLines: lines,
+      audioClips: [clip],
+    });
+    expect(snapshot.dialogueSpeech).toBeUndefined();
   });
 });

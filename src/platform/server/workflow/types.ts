@@ -12,7 +12,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution, Resolution } from '@/models/resolutions';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   CharacterMinimal,
@@ -642,6 +642,26 @@ export interface DialogueAudioWorkflowResult {
    * record (#2269). Absent only from a child started before this field.
    */
   reasonByShotId?: Record<string, string>;
+}
+
+/**
+ * Lip-sync one finished clip to its dialogue section (#2263). Every input
+ * is snapshotted at the trigger. The child does not re-read the selection.
+ */
+export interface LipsyncWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shotId: string;
+  sceneId: string | null;
+  renderSegmentId: string;
+  videoUrl: string;
+  audioUrl: string;
+  manifest: VideoManifest;
+  durationSeconds: number;
+  resolution: RenderedResolution | null;
+  /** The video model that rendered the clip. The lip-sync row keeps it. */
+  videoModel: ImageToVideoModel;
+  sequenceTitle: string;
+  sceneTitle?: string;
 }
 
 /**

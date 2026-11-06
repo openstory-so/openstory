@@ -255,6 +255,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.generate_shot_image_variants',
       'openstory.select_shot_image_variant',
       'openstory.generate_shot_video',
+      'openstory.lipsync_shot',
       'openstory.cancel_video_render',
       'openstory.render_shot_at_quality',
       'openstory.render_sequence_drafts_at_quality',

@@ -173,3 +173,24 @@ organization fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`). An organizatio
 an LLMTR key chose that gateway, so it outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
 is public and answers 200 for a bogus key — so validation is a 1-token
 completion on a $0 model and requires `response.ok`.
+
+## Sync lipsync (#2263)
+
+Post-process a finished clip. Endpoint `fal-ai/sync-lipsync/v3`, price card
+id `sync-lipsync-3` at $8 per minute of the source video until `model_pricing`
+carries the fal row. A clip with no positive duration is refused, never
+priced as a default length. `sync_mode` is `cut_off`: the dialogue section already
+fits the shot. The new `video_variants` row has `source: 'lipsync'` and the
+`audioSourceKey` it was synced to. A later line or voice edit marks that
+version out of date. The render it was made from stays selected until the
+lip-sync promotes. One video plus one dialogue file. A packed clip is
+already that pair: the spanning section of the scene's speech, the same
+file Seedance and MiniMax send with the render. Kling, Omni Flash and Grok
+Imagine never receive it as a reference. The motion trigger still
+snapshots the file. The regenerate price and its credit hold include
+the sync-3 amount ($8 per minute of the quoted clip) when that run will
+lip-sync. Motion promotes the unsynced clip, then sync-3 appends
+a `source: 'lipsync'` version and promotes that. Seedance and MiniMax are
+never synced, draft or final. Update all still takes this path when a single-shot clip's only
+drift is audio. Native fal spend, same as other fal jobs: an
+organization fal key skips the credit check.

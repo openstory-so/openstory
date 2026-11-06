@@ -1,0 +1,1 @@
+ALTER TABLE `video_variants` ADD `source` text;

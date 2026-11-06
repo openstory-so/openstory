@@ -338,6 +338,28 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The prompt version this run rendered from, named by the trigger snapshot — copied onto the softened row so staleness keeps the same upstream hash.',
     },
   ],
+  'lipsync-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The fal key, resolved inside the step that submits and the step that charges. BYOK is pinned on the check-credits result.',
+    },
+    {
+      read: 'shots.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'A shot deleted mid-run stands down without a failed row or a charge.',
+    },
+    {
+      read: 'renderSegments.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'On failure, the pending-promote pointer is cleared only while this run still holds it.',
+    },
+    {
+      read: 'videoVariants.getById',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The pending-promote claim, read back to confirm THIS run owns it before clearing it.',
+    },
+  ],
   'llm-call-helper.ts': [
     {
       read: 'resolveLlmKey',

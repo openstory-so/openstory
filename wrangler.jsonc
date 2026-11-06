@@ -173,6 +173,11 @@
       "class_name": "MotionWorkflow",
     },
     {
+      "name": "lipsync-workflow",
+      "binding": "LIPSYNC_WORKFLOW",
+      "class_name": "LipsyncWorkflow",
+    },
+    {
       "name": "motion-batch-workflow",
       "binding": "MOTION_BATCH_WORKFLOW",
       "class_name": "MotionBatchWorkflow",
@@ -475,6 +480,11 @@
           "name": "motion-workflow",
           "binding": "MOTION_WORKFLOW",
           "class_name": "MotionWorkflow",
+        },
+        {
+          "name": "lipsync-workflow",
+          "binding": "LIPSYNC_WORKFLOW",
+          "class_name": "LipsyncWorkflow",
         },
         {
           "name": "motion-batch-workflow",
@@ -789,6 +799,11 @@
           "name": "motion-workflow",
           "binding": "MOTION_WORKFLOW",
           "class_name": "MotionWorkflow",
+        },
+        {
+          "name": "lipsync-workflow",
+          "binding": "LIPSYNC_WORKFLOW",
+          "class_name": "LipsyncWorkflow",
         },
         {
           "name": "motion-batch-workflow",

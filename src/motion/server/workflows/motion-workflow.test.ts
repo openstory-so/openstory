@@ -1117,6 +1117,7 @@ describe('fresh MiniMax packed videos (#1720)', () => {
             model: 'minimax_h3_max',
             resolution: null,
             draftTaskId: null,
+            source: null,
             status: 'completed',
             url: '/r2/video.mp4',
             createdAt: new Date(),

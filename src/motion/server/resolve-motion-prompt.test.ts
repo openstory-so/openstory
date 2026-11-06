@@ -6,11 +6,10 @@ import {
   resolveMotionPromptFromVersion,
 } from './resolve-motion-prompt';
 
-// kling_v3_pro is audio-capable (dialogue/audio enriched); grok is not
-// (fullPrompt passes through untouched). Using both pins the model-specific
-// assembly branch vs. the bare passthrough.
+// Kling and Grok both output audio. Grok has no generate_audio field; the
+// lines still go in the prompt.
 const AUDIO_MODEL = 'kling_v3_pro' as const;
-const NON_AUDIO_MODEL = 'grok_imagine_video_1_5' as const;
+const GROK_MODEL = 'grok_imagine_video_1_5' as const;
 
 // What the shot says now (#1657) — resolved from the shot's dialogue
 // version by the caller, never read off the prompt row.
@@ -106,25 +105,26 @@ describe('resolveMotionPromptFromVersion', () => {
       resolveMotionPromptFromVersion(
         null,
         { dialogue, description: 'desc fallback' },
-        NON_AUDIO_MODEL
+        GROK_MODEL
       )
     ).toBe('desc fallback');
     expect(
       resolveMotionPromptFromVersion(
         undefined,
         { dialogue, description: null },
-        NON_AUDIO_MODEL
+        GROK_MODEL
       )
     ).toBe('');
   });
 
-  it('does not enrich when passing through a non-audio model', () => {
+  it('puts the caller lines in a Grok prompt and ignores the row copy', () => {
     const out = resolveMotionPromptFromVersion(
       versionRow,
       { dialogue, description: null },
-      NON_AUDIO_MODEL
+      GROK_MODEL
     );
-    // Non-audio model returns fullPrompt as-is — no dialogue appended.
-    expect(out).toBe(versionRow.text);
+    expect(out).toContain(versionRow.text);
+    expect(out).toContain('It was never about the money.');
+    expect(out).not.toContain('A stale line nobody says any more.');
   });
 });

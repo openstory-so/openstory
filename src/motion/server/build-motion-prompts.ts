@@ -45,6 +45,14 @@ import {
 const NO_MUSIC_DIRECTION =
   'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.';
 
+/** Same direction for a shot with no lines: a dialogue whitelist invites invented speech. */
+const NO_MUSIC_NO_DIALOGUE_DIRECTION =
+  'No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.';
+
+function noMusicDirection(hasDialogue: boolean): string {
+  return hasDialogue ? NO_MUSIC_DIRECTION : NO_MUSIC_NO_DIALOGUE_DIRECTION;
+}
+
 /** Audio "off" for a model that always renders sound (Kling 4). */
 const SILENT_SOUNDSCAPE = 'Silent. No dialogue, no sound effects, no music.';
 
@@ -100,9 +108,10 @@ type AssembleOptions = {
 /**
  * Assemble a model-specific motion prompt from structured data.
  *
- * The LLM's `fullPrompt` provides the rich narrative base. For audio-capable
- * models, we append dialogue lines and audio direction in the format each
- * model handles best. Non-audio models get `fullPrompt` as-is.
+ * The LLM's `fullPrompt` provides the rich narrative base. Every model that
+ * outputs audio gets the dialogue lines and the audio direction in the
+ * format it handles. A model with no `generate_audio` field is silenced in
+ * that prompt.
  */
 export function buildMotionShotPrompt({
   motionPrompt,
@@ -120,13 +129,8 @@ export function buildMotionShotPrompt({
 
   let assembled: string;
 
-  // Non-audio models: fullPrompt is already great, no enrichment needed
   if (!supportsAudio) {
     assembled = fullPrompt;
-    // Omni Flash defaults to multi-shot; pin a oner only on a 1-shot segment.
-    if (singleTake && model === 'gemini_omni_flash') {
-      assembled = `${fullPrompt}\n\nSingle unbroken scene.`;
-    }
   } else {
     // Audio-capable models: enrich fullPrompt with dialogue + audio sections.
     // Stored rows and UI overrides may still be null; the LLM schema uses
@@ -172,6 +176,25 @@ export function buildMotionShotPrompt({
         );
         break;
       case 'Google':
+      case 'SpaceXAI':
+        // No generate_audio field. Off is the prompt, as with Kling 4.
+        if (generateAudio === false) {
+          assembled = omitSharedConstraints
+            ? fullPrompt
+            : `${fullPrompt}\n\n${SILENT_SOUNDSCAPE}`;
+        } else {
+          assembled = buildVeoPrompt(
+            fullPrompt,
+            dialogueData,
+            audioData,
+            omitSharedConstraints
+          );
+        }
+        // Omni Flash defaults to multi-shot; pin a oner only on a 1-shot segment.
+        if (singleTake && model === 'gemini_omni_flash') {
+          assembled = `${assembled}\n\nSingle unbroken scene.`;
+        }
+        break;
       default:
         assembled = buildVeoPrompt(
           fullPrompt,
@@ -322,6 +345,11 @@ export function buildPackedMotionPrompt({
     characterTags,
     model,
     generateAudio,
+    hasDialogue: shots.some(
+      (shot) =>
+        shot.motionPrompt?.dialogue?.presence &&
+        shot.motionPrompt.dialogue.lines.length > 0
+    ),
   });
   if (model === 'kling_v3_pro' || model === 'kling_v4') {
     // Kling rejects `prompt` + `multi_prompt` together, so the header has to
@@ -376,6 +404,7 @@ function formatPackedHeader(input: {
   characterTags: readonly string[];
   model: ImageToVideoModel;
   generateAudio?: boolean;
+  hasDialogue: boolean;
 }): string {
   const parts: string[] = [];
   const env = formatPackedEnvironment(input.scene);
@@ -387,7 +416,7 @@ function formatPackedHeader(input: {
   } else if (input.model === 'kling_v4' && input.generateAudio === false) {
     parts.push(SILENT_SOUNDSCAPE);
   } else {
-    parts.push(NO_MUSIC_DIRECTION);
+    parts.push(noMusicDirection(input.hasDialogue));
     if (input.model === 'minimax_h3_max') {
       parts.push('non_diegetic_music: N/A');
     }
@@ -489,8 +518,8 @@ function buildKlingPrompt(
   } else {
     parts.push(
       ambientParts.length > 0
-        ? `Ambient sounds: ${ambientParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-        : NO_MUSIC_DIRECTION
+        ? `Ambient sounds: ${ambientParts.join('. ')}. ${noMusicDirection(Boolean(dialogue))}`
+        : noMusicDirection(Boolean(dialogue))
     );
   }
 
@@ -582,7 +611,7 @@ function buildSeedancePrompt(
   // Constraint words, which the ByteDance guide asks for at the end of the
   // prompt. Seedance invents edits otherwise, conflicting with
   // one-scene-one-take — omit that pin when the clip is a packed multi-shot.
-  const guards = [NO_MUSIC_DIRECTION];
+  const guards = [noMusicDirection(Boolean(dialogue))];
   if (singleTake) {
     guards.push('Single continuous shot, no cuts.');
   }
@@ -647,7 +676,7 @@ function buildMinimaxH3Prompt(
     }
     return parts.join('\n\n');
   }
-  soundscape.push(NO_MUSIC_DIRECTION);
+  soundscape.push(noMusicDirection(Boolean(dialogue)));
   parts.push(
     `overall_soundscape: ${soundscape.join(' ')}\nnon_diegetic_music: N/A`
   );
@@ -733,8 +762,8 @@ function buildVeoPrompt(
   }
   parts.push(
     audioParts.length > 0
-      ? `Audio: ${audioParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-      : `Audio: ${NO_MUSIC_DIRECTION}`
+      ? `Audio: ${audioParts.join('. ')}. ${noMusicDirection(Boolean(dialogue))}`
+      : `Audio: ${noMusicDirection(Boolean(dialogue))}`
   );
 
   return parts.join('\n\n');

@@ -119,11 +119,15 @@ export const previewLevels = (
       depth: 'dialogue',
       label: `Dialogue for ${label(preview.dialogueShotIds)}`,
     });
-  if (preview.videoShotIds.length > 0)
-    levels.push({
-      depth: 'video',
-      label: `Videos for ${label(preview.videoShotIds)}`,
-    });
+  if (preview.videoShotIds.length > 0) {
+    const lipsync = new Set(preview.lipsyncShotIds ?? []);
+    const rerender = preview.videoShotIds.filter((id) => !lipsync.has(id));
+    const synced = preview.videoShotIds.filter((id) => lipsync.has(id));
+    const parts: string[] = [];
+    if (rerender.length > 0) parts.push(`Videos for ${label(rerender)}`);
+    if (synced.length > 0) parts.push(`Lip-sync for ${label(synced)}`);
+    levels.push({ depth: 'video', label: parts.join(' · ') });
+  }
   if (preview.musicTrack || preview.musicPrompt)
     levels.push({
       depth: 'music',

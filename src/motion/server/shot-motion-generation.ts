@@ -42,9 +42,9 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
+import { estimateMotionLipsyncCost } from '@/motion/lipsync';
 import {
   matchingDialogueClips,
-  modelTakesDialogueAudio,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
@@ -380,9 +380,9 @@ export async function generateShotMotion(
     model,
   });
 
-  const voicedLines = modelTakesDialogueAudio(model)
-    ? voicedDialogueLines(shotDialogue, voiceCharacters)
-    : [];
+  // Every model that speaks gets the file. Seedance and MiniMax upload it;
+  // Kling, Omni, and Grok keep it for the lip-sync phase after the render.
+  const voicedLines = voicedDialogueLines(shotDialogue, voiceCharacters);
   const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
   const batchDialogue = snapshotBatchDialogue({
     rendering: covered,
@@ -410,19 +410,34 @@ export async function generateShotMotion(
     references: referenceImages,
   });
   const holdSeconds = Math.max(duration, editSeconds ?? 0);
+  const speaks = covered.some(
+    (member) =>
+      voicedDialogueLines(
+        member.shotId === shot.id ? shotDialogue : dialogueOf(member),
+        voiceCharacters
+      ).length > 0
+  );
   const reservationId = await reserveRunCredits(
     context.scopedDb,
     addMicros(
-      gateEstimate(
-        estimateVideoCost(model, holdSeconds, {
-          pricing: await getEffectiveFalPricing(),
-          resolution: sequence.resolution,
-          hasReferenceImages: referenceImages.length > 0,
-          referenceOnly: firstReferenceOnly,
-        }),
-        { model, operation: 'motion' }
+      addMicros(
+        gateEstimate(
+          estimateVideoCost(model, holdSeconds, {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+            hasReferenceImages: referenceImages.length > 0,
+            referenceOnly: firstReferenceOnly,
+          }),
+          { model, operation: 'motion' }
+        ),
+        estimateTtsCost(ttsChars)
       ),
-      estimateTtsCost(ttsChars)
+      estimateMotionLipsyncCost({
+        model,
+        draft,
+        durationSeconds: holdSeconds,
+        speaks,
+      })
     ),
     {
       errorMessage: 'Insufficient credits for motion generation',
@@ -489,9 +504,10 @@ export async function generateShotMotion(
               },
               model
             );
-            const memberVoiced = modelTakesDialogueAudio(model)
-              ? voicedDialogueLines(dialogueOf(member), voiceCharacters)
-              : [];
+            const memberVoiced = voicedDialogueLines(
+              dialogueOf(member),
+              voiceCharacters
+            );
             const memberClips = matchingDialogueClips(
               member.audioClips,
               memberVoiced

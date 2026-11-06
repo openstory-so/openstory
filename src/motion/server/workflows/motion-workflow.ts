@@ -44,6 +44,7 @@ import {
   withSpokenText,
   withVoicedLineTokens,
 } from '@/motion/dialogue-tts';
+import { planMotionLipsync } from '@/motion/lipsync';
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
@@ -75,12 +76,17 @@ import type {
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import {
+  isChildFailureError,
   isEngineAbortError,
   WorkflowValidationError,
 } from '@/platform/server/workflow/errors';
-import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  LipsyncWorkflowInput,
+  MotionWorkflowInput,
+} from '@/platform/server/workflow/types';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import type {
   AssemblableMotionPrompt,
@@ -251,6 +257,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
     const audioClips: MotionAudioClip[] = input.audioClips ?? [];
+    let wireClips: MotionAudioClip[] = audioClips;
     // The words the bound audio actually SAYS (#1651): a dialogue-stage section
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
@@ -289,7 +296,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
       // A packed clip sends one longer section of the recording, not each member's
       // overlapping section (#1794). The members keep their own clips.
-      const wireClips = packedClip
+      wireClips = packedClip
         ? await step.do('cut-spanning-section', () =>
             cutSpanningSection(audioClips, {
               organizationId: input.organizationId,
@@ -405,237 +412,258 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     );
 
     // Step 1: Set status to generating and store model being used
-    const { shotDeleted, videoVersionId, sceneId, manifest } = await step.do(
-      'set-generating-status',
-      async (): Promise<{
-        shotDeleted: boolean;
-        videoVersionId: string | null;
-        sceneId: string | null;
-        // The opened version's manifest, so a content-checker rescue (#1373)
-        // can repoint it at the softened prompt version. Absent on a run that
-        // cached this step before #1373.
-        manifest?: VideoManifest | null;
-      }> => {
-        if (!input.shotId) {
-          return { shotDeleted: false, videoVersionId: null, sceneId: null };
-        }
-
-        const shot = await scopedDb.liveRead.shots.getById(input.shotId);
-
-        if (!shot) {
-          logger.info(
-            `[MotionWorkflow:cf] Shot ${input.shotId} was deleted, skipping workflow`
-          );
-          return { shotDeleted: true, videoVersionId: null, sceneId: null };
-        }
-
-        // The clips this render consumes are recorded ONCE, as the manifest's
-        // `audioClipIds` below (#1786) — never stamped onto the prompt row.
-
-        // A run queued before #1786 still carries the edit for the run to
-        // write (see PreClickEditPayload); nothing else holds the typed text.
-        const preClickEditId = input.userEditProvenance
-          ? (
-              await scopedDb.shotPromptVersions.write({
-                shotId: input.shotId,
-                promptType: 'motion',
-                text: input.userEditText ?? input.prompt,
-                audio: input.priorMotion?.audio ?? null,
-                source: 'user-edit',
-                usesStartFrame: !input.referenceOnly,
-                inputHash: input.userEditProvenance.inputHash,
-                analysisModel: input.userEditProvenance.analysisModel,
-                createdBy: input.userId,
-              })
-            ).id
-          : null;
-        const renderedPromptVersionId =
-          preClickEditId ?? input.motionPromptVersionId ?? null;
-
-        // Open an append-only `video_variants` *version* for this render (#990,
-        // replaces the retired `shot_variants` video slice). It is keyed by
-        // (renderSegmentId, model); per-shot rendering is the degenerate
-        // one-shot segment whose id is the shot's id. The manifest snapshots the
-        // inputs the render consumes — the shot's selected motion-prompt + anchor-frame
-        // image versions (the references ARE the snapshot) + the value-snapshot
-        // duration. The legacy `shots.video*` columns above stay the cached
-        // mirror of whichever version the shot's selection points at.
-        // FK is always live `shots.sceneId`. Packed jobs live-read every
-        // member. Leftover 1-shot tiles must use that same live row —
-        // `input.sceneId` is only a packing key on the storyboard path
-        // (analysis ULID) and will 404 if used as the segment FK. Generate
-        // Motion / batch generate already pin live `shots.sceneId`.
-        const renderSceneId = shot.sceneId ?? input.sceneId ?? null;
-        let openedVideoVersionId: string | null = null;
-        let manifest: VideoManifest | null = null;
-        if (input.sequenceId) {
-          const sequenceId = input.sequenceId;
-          if (!renderSceneId) {
-            throw new WorkflowValidationError(
-              `Shot ${input.shotId} has no scene; cannot open a video render version`
-            );
+    const { shotDeleted, videoVersionId, sceneId, manifest, renderSegmentId } =
+      await step.do(
+        'set-generating-status',
+        async (): Promise<{
+          shotDeleted: boolean;
+          videoVersionId: string | null;
+          sceneId: string | null;
+          renderSegmentId: string | null;
+          // The opened version's manifest, so a content-checker rescue (#1373)
+          // can repoint it at the softened prompt version. Absent on a run that
+          // cached this step before #1373.
+          manifest?: VideoManifest | null;
+        }> => {
+          if (!input.shotId) {
+            return {
+              shotDeleted: false,
+              videoVersionId: null,
+              sceneId: null,
+              renderSegmentId: null,
+            };
           }
-          // Resolve (materializing on first use) the shot's render segment —
-          // per-shot rendering is the degenerate one-shot segment. A packed
-          // in-clip job (#1510) assigns every covered shot to one shared
-          // segment so playback is one clip, not a stitch of copies.
-          const covered = input.coveredShots;
-          const liveMembers =
-            covered && covered.length > 1
-              ? await scopedDb.liveRead.shots.getByIds(
-                  covered.map((member) => member.shotId)
-                )
-              : [shot];
-          // A final lands on the draft's own segment (#1756) — a packed
-          // draft's members must not be re-segmented one by one.
-          const renderSegmentId =
-            input.finalFromDraft?.renderSegmentId ??
-            (liveMembers.length > 1
-              ? await scopedDb.renderSegments.ensureForShots(
-                  liveMembers.map((member) => ({
-                    id: member.id,
-                    sceneId: member.sceneId ?? renderSceneId,
+
+          const shot = await scopedDb.liveRead.shots.getById(input.shotId);
+
+          if (!shot) {
+            logger.info(
+              `[MotionWorkflow:cf] Shot ${input.shotId} was deleted, skipping workflow`
+            );
+            return {
+              shotDeleted: true,
+              videoVersionId: null,
+              sceneId: null,
+              renderSegmentId: null,
+            };
+          }
+
+          // The clips this render consumes are recorded ONCE, as the manifest's
+          // `audioClipIds` below (#1786) — never stamped onto the prompt row.
+
+          // A run queued before #1786 still carries the edit for the run to
+          // write (see PreClickEditPayload); nothing else holds the typed text.
+          const preClickEditId = input.userEditProvenance
+            ? (
+                await scopedDb.shotPromptVersions.write({
+                  shotId: input.shotId,
+                  promptType: 'motion',
+                  text: input.userEditText ?? input.prompt,
+                  audio: input.priorMotion?.audio ?? null,
+                  source: 'user-edit',
+                  usesStartFrame: !input.referenceOnly,
+                  inputHash: input.userEditProvenance.inputHash,
+                  analysisModel: input.userEditProvenance.analysisModel,
+                  createdBy: input.userId,
+                })
+              ).id
+            : null;
+          const renderedPromptVersionId =
+            preClickEditId ?? input.motionPromptVersionId ?? null;
+
+          // Open an append-only `video_variants` *version* for this render (#990,
+          // replaces the retired `shot_variants` video slice). It is keyed by
+          // (renderSegmentId, model); per-shot rendering is the degenerate
+          // one-shot segment whose id is the shot's id. The manifest snapshots the
+          // inputs the render consumes — the shot's selected motion-prompt + anchor-frame
+          // image versions (the references ARE the snapshot) + the value-snapshot
+          // duration. The legacy `shots.video*` columns above stay the cached
+          // mirror of whichever version the shot's selection points at.
+          // FK is always live `shots.sceneId`. Packed jobs live-read every
+          // member. Leftover 1-shot tiles must use that same live row —
+          // `input.sceneId` is only a packing key on the storyboard path
+          // (analysis ULID) and will 404 if used as the segment FK. Generate
+          // Motion / batch generate already pin live `shots.sceneId`.
+          const renderSceneId = shot.sceneId ?? input.sceneId ?? null;
+          let openedVideoVersionId: string | null = null;
+          let openedRenderSegmentId: string | null = null;
+          let manifest: VideoManifest | null = null;
+          if (input.sequenceId) {
+            const sequenceId = input.sequenceId;
+            if (!renderSceneId) {
+              throw new WorkflowValidationError(
+                `Shot ${input.shotId} has no scene; cannot open a video render version`
+              );
+            }
+            // Resolve (materializing on first use) the shot's render segment —
+            // per-shot rendering is the degenerate one-shot segment. A packed
+            // in-clip job (#1510) assigns every covered shot to one shared
+            // segment so playback is one clip, not a stitch of copies.
+            const covered = input.coveredShots;
+            const liveMembers =
+              covered && covered.length > 1
+                ? await scopedDb.liveRead.shots.getByIds(
+                    covered.map((member) => member.shotId)
+                  )
+                : [shot];
+            // A final lands on the draft's own segment (#1756) — a packed
+            // draft's members must not be re-segmented one by one.
+            const renderSegmentId =
+              input.finalFromDraft?.renderSegmentId ??
+              (liveMembers.length > 1
+                ? await scopedDb.renderSegments.ensureForShots(
+                    liveMembers.map((member) => ({
+                      id: member.id,
+                      sceneId: member.sceneId ?? renderSceneId,
+                      sequenceId,
+                      renderSegmentId: member.renderSegmentId,
+                    }))
+                  )
+                : await scopedDb.renderSegments.ensureForShot({
+                    id: shot.id,
+                    sceneId: renderSceneId,
                     sequenceId,
-                    renderSegmentId: member.renderSegmentId,
-                  }))
-                )
-              : await scopedDb.renderSegments.ensureForShot({
-                  id: shot.id,
-                  sceneId: renderSceneId,
-                  sequenceId,
-                  renderSegmentId: shot.renderSegmentId,
-                }));
-          // Both version ids are pinned at the trigger. There is deliberately no
-          // live fallback for the frame: re-reading the anchor's pointer would
-          // name whatever is selected NOW, and a concurrent select/upscale makes
-          // that a different still than the one this clip rendered from (the
-          // render consumes `input.imageUrl`, snapshotted at the trigger). A
-          // payload without it records null provenance, as pre-#1067 rows do.
-          //
-          // Only the references that rode on the wire are stamped — the same
-          // question billing asks below. A model with no reference slot got
-          // descriptions, so a sheet re-select cannot stale its clip.
-          const sentReferenceKeys = referenceKeysFrom(
-            bindableReferences(
-              getMotionReferenceEndpoint(model),
-              referenceImages ?? [],
-              Boolean(input.imageUrl)
-            )
-          );
-          // The lines the prompt quoted (#1784). Only an audio-capable model
-          // splices them in, so any other model stamps null.
-          const quotedDialogueKey = (
-            dialogue: Parameters<typeof dialogueLinesKey>[0]
-          ) =>
-            videoModelSupportsAudio(model) ? dialogueLinesKey(dialogue) : null;
-          const coveredEntries =
-            covered && covered.length > 1
-              ? covered.map((member) => ({
-                  shotId: member.shotId,
-                  motionPromptVersionId:
-                    member.shotId === input.shotId
-                      ? (preClickEditId ?? member.motionPromptVersionId ?? null)
-                      : (member.motionPromptVersionId ?? null),
-                  frameVersionId: member.frameVersionId ?? null,
-                  usesStartFrame: !member.referenceOnly,
-                  durationMs: Math.round((member.duration ?? 3) * 1000),
-                  audioClipIds: (member.audioClips ?? []).map(
-                    (clip) => clip.id
-                  ),
-                  audioSourceKey: audioSourceKeyFromVoicedLines(
-                    // The top-level lines are the whole packed conversation.
-                    // Every manifest entry, including the lead shot, must
-                    // match that member's own live dialogue key (#1720).
-                    member.voicedLines ?? []
-                  ),
-                  dialogueKey: quotedDialogueKey(member.motionPrompt?.dialogue),
-                  // One clip, one request: every covered shot was sent the
-                  // same references.
-                  referenceKeys: sentReferenceKeys,
-                }))
-              : [
-                  {
-                    shotId: input.shotId,
-                    // No selection-pointer fallback: a payload without the field
-                    // records null provenance rather than whatever is selected now.
-                    motionPromptVersionId: renderedPromptVersionId,
-                    frameVersionId: input.frameVersionId ?? null,
-                    // Provenance stamp: the mode this render ran in, independent
-                    // of the null-`frameVersionId` encoding above.
-                    usesStartFrame: !input.referenceOnly,
-                    durationMs: duration * 1000,
-                    audioClipIds: audioClips.map((clip) => clip.id),
-                    audioSourceKey:
-                      audioSourceKeyFromVoicedLines(authoredLines),
-                    dialogueKey: quotedDialogueKey(
-                      input.motionPrompt?.dialogue
+                    renderSegmentId: shot.renderSegmentId,
+                  }));
+            // Both version ids are pinned at the trigger. There is deliberately no
+            // live fallback for the frame: re-reading the anchor's pointer would
+            // name whatever is selected NOW, and a concurrent select/upscale makes
+            // that a different still than the one this clip rendered from (the
+            // render consumes `input.imageUrl`, snapshotted at the trigger). A
+            // payload without it records null provenance, as pre-#1067 rows do.
+            //
+            // Only the references that rode on the wire are stamped — the same
+            // question billing asks below. A model with no reference slot got
+            // descriptions, so a sheet re-select cannot stale its clip.
+            const sentReferenceKeys = referenceKeysFrom(
+              bindableReferences(
+                getMotionReferenceEndpoint(model),
+                referenceImages ?? [],
+                Boolean(input.imageUrl)
+              )
+            );
+            // The lines the prompt quoted (#1784). Only an audio-capable model
+            // splices them in, so any other model stamps null.
+            const quotedDialogueKey = (
+              dialogue: Parameters<typeof dialogueLinesKey>[0]
+            ) =>
+              videoModelSupportsAudio(model)
+                ? dialogueLinesKey(dialogue)
+                : null;
+            const coveredEntries =
+              covered && covered.length > 1
+                ? covered.map((member) => ({
+                    shotId: member.shotId,
+                    motionPromptVersionId:
+                      member.shotId === input.shotId
+                        ? (preClickEditId ??
+                          member.motionPromptVersionId ??
+                          null)
+                        : (member.motionPromptVersionId ?? null),
+                    frameVersionId: member.frameVersionId ?? null,
+                    usesStartFrame: !member.referenceOnly,
+                    durationMs: Math.round((member.duration ?? 3) * 1000),
+                    audioClipIds: (member.audioClips ?? []).map(
+                      (clip) => clip.id
                     ),
+                    audioSourceKey: audioSourceKeyFromVoicedLines(
+                      // The top-level lines are the whole packed conversation.
+                      // Every manifest entry, including the lead shot, must
+                      // match that member's own live dialogue key (#1720).
+                      member.voicedLines ?? []
+                    ),
+                    dialogueKey: quotedDialogueKey(
+                      member.motionPrompt?.dialogue
+                    ),
+                    // One clip, one request: every covered shot was sent the
+                    // same references.
                     referenceKeys: sentReferenceKeys,
-                  },
-                ];
-          // A final reuses the draft's manifest verbatim (#1756): same
-          // inputs, same hash, so it is exactly as stale as the draft.
-          manifest =
-            input.finalFromDraft?.manifest ??
-            buildVideoManifest(coveredEntries);
-          const inputHash = await computeVideoManifestInputHash(
-            manifest,
-            model
-          );
-          if (inputHash == null && !input.variantOnly) {
-            logger.warn(
-              `[MotionWorkflow:cf] Shot ${input.shotId} primary render is missing pinned frameVersionId/motionPromptVersionId; storing a null hash so the clip is unknown-not-stale rather than born Stale (#1380)`
+                  }))
+                : [
+                    {
+                      shotId: input.shotId,
+                      // No selection-pointer fallback: a payload without the field
+                      // records null provenance rather than whatever is selected now.
+                      motionPromptVersionId: renderedPromptVersionId,
+                      frameVersionId: input.frameVersionId ?? null,
+                      // Provenance stamp: the mode this render ran in, independent
+                      // of the null-`frameVersionId` encoding above.
+                      usesStartFrame: !input.referenceOnly,
+                      durationMs: duration * 1000,
+                      audioClipIds: audioClips.map((clip) => clip.id),
+                      audioSourceKey:
+                        audioSourceKeyFromVoicedLines(authoredLines),
+                      dialogueKey: quotedDialogueKey(
+                        input.motionPrompt?.dialogue
+                      ),
+                      referenceKeys: sentReferenceKeys,
+                    },
+                  ];
+            // A final reuses the draft's manifest verbatim (#1756): same
+            // inputs, same hash, so it is exactly as stale as the draft.
+            manifest =
+              input.finalFromDraft?.manifest ??
+              buildVideoManifest(coveredEntries);
+            const inputHash = await computeVideoManifestInputHash(
+              manifest,
+              model
             );
-          }
-          const version = await scopedDb.videoVariants.appendVersion({
-            renderSegmentId,
-            sequenceId: input.sequenceId,
-            model,
-            resolution: renderedResolution,
-            manifest,
-            inputHash,
-            status: 'generating',
-            workflowRunId,
-            isPrimary: !input.variantOnly,
-          });
-          openedVideoVersionId = version.id;
-          // Primary motion claims auto-promote; last kickoff wins (#1070).
-          if (!input.variantOnly) {
-            await scopedDb.renderSegments.setPendingPromoteVersionId(
+            if (inputHash == null && !input.variantOnly) {
+              logger.warn(
+                `[MotionWorkflow:cf] Shot ${input.shotId} primary render is missing pinned frameVersionId/motionPromptVersionId; storing a null hash so the clip is unknown-not-stale rather than born Stale (#1380)`
+              );
+            }
+            const version = await scopedDb.videoVariants.appendVersion({
               renderSegmentId,
-              version.id
+              sequenceId: input.sequenceId,
+              model,
+              resolution: renderedResolution,
+              manifest,
+              inputHash,
+              status: 'generating',
+              workflowRunId,
+              isPrimary: !input.variantOnly,
+            });
+            openedVideoVersionId = version.id;
+            openedRenderSegmentId = renderSegmentId;
+            // Primary motion claims auto-promote; last kickoff wins (#1070).
+            if (!input.variantOnly) {
+              await scopedDb.renderSegments.setPendingPromoteVersionId(
+                renderSegmentId,
+                version.id
+              );
+            }
+          }
+
+          try {
+            await getGenerationChannel(input.sequenceId).emit(
+              'generation.video:progress',
+              {
+                shotId: input.shotId,
+                status: 'generating',
+                model,
+                // Variant-only (#547): don't flip the primary shot to
+                // "generating" in cache — this run only fills a variant version.
+                variantOnly: input.variantOnly,
+              }
+            );
+          } catch (emitError) {
+            logger.error(
+              `[MotionWorkflow:cf] Failed to emit generation.video:progress for shot ${input.shotId}:`,
+              {
+                err: emitError,
+              }
             );
           }
+          return {
+            shotDeleted: false,
+            videoVersionId: openedVideoVersionId,
+            sceneId: renderSceneId,
+            manifest,
+            renderSegmentId: openedRenderSegmentId,
+          };
         }
-
-        try {
-          await getGenerationChannel(input.sequenceId).emit(
-            'generation.video:progress',
-            {
-              shotId: input.shotId,
-              status: 'generating',
-              model,
-              // Variant-only (#547): don't flip the primary shot to
-              // "generating" in cache — this run only fills a variant version.
-              variantOnly: input.variantOnly,
-            }
-          );
-        } catch (emitError) {
-          logger.error(
-            `[MotionWorkflow:cf] Failed to emit generation.video:progress for shot ${input.shotId}:`,
-            {
-              err: emitError,
-            }
-          );
-        }
-        return {
-          shotDeleted: false,
-          videoVersionId: openedVideoVersionId,
-          sceneId: renderSceneId,
-          manifest,
-        };
-      }
-    );
+      );
 
     if (shotDeleted) {
       return { videoUrl: '', duration: 0 };
@@ -1597,12 +1625,17 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       });
     }
 
+    let motionFinalized:
+      | 'completed'
+      | 'shot-deleted'
+      | 'cancelled'
+      | 'skipped' = 'skipped';
     if (shotId && storageResult) {
       // Step 4: Finalize the render — flip the `video_variants` version to
       // `completed` and (for a primary render) repoint the shot's selection,
       // mirroring `shots.video*` + the render segment's selection pointer (#990,
       // see motion-workflow-persist).
-      await step.do('update-shot', async () => {
+      motionFinalized = await step.do('update-shot', async () => {
         if (!videoVersionId || !sceneId || !input.sequenceId) {
           // No open version (shotId present without the sequence-scoped
           // dual-write) — nothing to finalize. The set-generating guard makes
@@ -1610,7 +1643,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           logger.warn(
             `[MotionWorkflow:cf] No video version to finalize for shot ${shotId}; skipping`
           );
-          return;
+          return 'skipped' as const;
         }
         const outcome = await persistMotionCompletion({
           scopedDb,
@@ -1649,6 +1682,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             `[MotionWorkflow:cf] version ${videoVersionId} was cancelled mid-render; discarding result`
           );
         }
+        return outcome.status;
       });
 
       // Provenance (#1180). Recorded even when the shot was deleted mid-render:
@@ -1679,6 +1713,100 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             referenceImageCount: input.imageUrl ? 1 : 0,
           });
         });
+      }
+
+      // Models that cannot take the dialogue file (Kling, Omni Flash, Grok)
+      // get sync-3 as the next phase of this run. A failure here leaves the
+      // clip that just landed; the lip-sync version records its own error.
+      const lipsync =
+        motionFinalized === 'completed' && input.sequenceId
+          ? planMotionLipsync({
+              model: activeModel,
+              draftPreview: Boolean(input.draft) && !input.finalFromDraft,
+              variantOnly: Boolean(input.variantOnly),
+              shotId,
+              renderSegmentId,
+              videoUrl: storageResult.url,
+              resolution: renderedResolution,
+              manifest: manifest ?? null,
+              clips: wireClips,
+              shotDurationMs: Math.round(duration * 1000),
+            })
+          : null;
+      if (lipsync && input.sequenceId) {
+        const sequenceId = input.sequenceId;
+        if (!input.sequenceTitle) {
+          throw new WorkflowValidationError(
+            'sequenceTitle is required to lip-sync this clip'
+          );
+        }
+        const sequenceTitle = input.sequenceTitle;
+        // The child records its own failure. Rethrowing would make onFailure
+        // append a failed motion row over the clip that already completed.
+        try {
+          await spawnAndAwaitChild<
+            LipsyncWorkflowInput,
+            { videoUrl: string | null }
+          >(step, {
+            binding: this.env.LIPSYNC_WORKFLOW,
+            parentBindingName: 'MOTION_WORKFLOW',
+            parentInstanceId: event.instanceId,
+            childId: `lipsync:${sequenceId}:${shotId}`,
+            childPayload: {
+              userId: input.userId,
+              organizationId: input.organizationId,
+              sequenceId,
+              shotId,
+              sceneId: sceneId ?? input.sceneId ?? null,
+              renderSegmentId: lipsync.renderSegmentId,
+              videoUrl: lipsync.videoUrl,
+              audioUrl: lipsync.audioUrl,
+              manifest: lipsync.manifest,
+              durationSeconds: lipsync.durationSeconds,
+              resolution: lipsync.resolution,
+              videoModel: activeModel,
+              sequenceTitle,
+              sceneTitle: input.sceneTitle,
+              reservationId: input.reservationId,
+            },
+            spawnStepName: 'spawn-lipsync',
+            awaitStepName: 'await-lipsync',
+            timeout: '30 minutes',
+          });
+        } catch (error) {
+          logger.error(
+            `[MotionWorkflow:cf] Lip-sync failed for shot ${shotId}`,
+            { err: error }
+          );
+          // A child that ran recorded its own failed version. One that never
+          // started (binding, spawn, await budget) left nothing, so record it.
+          if (!isChildFailureError(error)) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            await step.do('record-lipsync-spawn-failure', async () => {
+              await scopedDb.videoVariants.appendVersion({
+                renderSegmentId: lipsync.renderSegmentId,
+                sequenceId,
+                model: activeModel,
+                source: 'lipsync',
+                manifest: [],
+                status: 'failed',
+                error: `Lip-sync did not start: ${message}`,
+                workflowRunId,
+                isPrimary: true,
+              });
+              await getGenerationChannel(sequenceId).emit(
+                'generation.video:progress',
+                {
+                  shotId,
+                  status: 'failed',
+                  model: activeModel,
+                  error: `Lip-sync did not start: ${message}`,
+                }
+              );
+            });
+          }
+        }
       }
     }
 

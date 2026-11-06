@@ -721,6 +721,13 @@ clip's promote. The TTS model follows the voice
 (`eleven_v3` for an ElevenLabs voice, `seed-audio-1.0` for a Seed voice,
 #1765), so it moves only when the voice does.
 
+A lip-sync (#2263) is its own video version (`source: 'lipsync'`) under the
+model that rendered the clip. It copies the source manifest and rewrites only
+that shot's `audioSourceKey` and `audioClipIds`. The key is stamped, so the
+null-audio shortcut for a model without audio input does not apply: a later
+voice or take is audio drift, and a prompt, still, reference or duration
+change is still picture drift. The underlying render row is untouched.
+
 `dialogueKey` (#1784) is every line the render prompt quoted, voiced or not,
 with its bound voice token (`dialogueLinesKey`). `audioSourceKey` sees voiced
 lines only, and is null on a model without dialogue-audio input, yet every

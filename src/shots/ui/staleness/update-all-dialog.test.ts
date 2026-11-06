@@ -159,4 +159,26 @@ describe('previewLevels', () => {
       { depth: 'video', label: 'Videos for shots 2 & 3' },
     ]);
   });
+
+  it('names a lip-sync apart from a re-render (#2263)', () => {
+    expect(
+      previewLevels(
+        {
+          ...preview,
+          musicPrompt: false,
+          videoShotIds: ['a', 'b'],
+          lipsyncShotIds: ['b'],
+        },
+        numbers,
+        false
+      )
+    ).toEqual([
+      {
+        depth: 'prompts',
+        label: 'Image prompts for shots 2 & 3 · Motion prompts for shot 3',
+      },
+      { depth: 'images', label: 'Images for shots 2 & 3' },
+      { depth: 'video', label: 'Videos for shot 2 · Lip-sync for shot 3' },
+    ]);
+  });
 });

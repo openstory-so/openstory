@@ -124,6 +124,10 @@ export const videoVariants = snakeCase.table(
       .references(() => sequences.id, { onDelete: 'cascade' }),
 
     model: text({ length: 100 }).notNull(),
+    // How this version was made (#2263). `lipsync` is a post-process of a
+    // finished clip; null is a render or an upload. No SQL default: a default
+    // would rebuild the table.
+    source: text().$type<'lipsync'>(),
     // Resolution tier this version was asked for (#1449). Null on rows written
     // before the tier existed. Stamped, not derived: the sequence default can
     // change after a render, and a 4K re-roll has to stay legible next to the
