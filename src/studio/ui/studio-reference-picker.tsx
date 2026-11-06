@@ -572,13 +572,20 @@ export function StudioReferencePicker({
             ) : source === 'audio' ? (
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted-foreground">
-                  <span>
-                    {limited
-                      ? `Up to ${slots.audio} more. Seedance: 15 seconds combined. `
-                      : null}
-                    Each clip becomes <span className="font-mono">@Audio1</span>
-                    , <span className="font-mono">@Audio2</span>… in the prompt.
-                  </span>
+                  {limited ? (
+                    <span>
+                      Up to {slots.audio} more. Seedance: 15 seconds combined.
+                      Each clip becomes{' '}
+                      <span className="font-mono">@Audio1</span>,{' '}
+                      <span className="font-mono">@Audio2</span>… in the prompt.
+                    </span>
+                  ) : (
+                    <span>
+                      Each clip becomes{' '}
+                      <span className="font-mono">@Audio1</span>,{' '}
+                      <span className="font-mono">@Audio2</span>… in the prompt.
+                    </span>
+                  )}
                 </p>
                 <Button
                   type="button"
