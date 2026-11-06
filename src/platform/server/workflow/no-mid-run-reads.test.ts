@@ -248,6 +248,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Idempotency and adoption: only a voiced shot whose working-set clip no longer matches its lines adopts the new recording, so a replayed run re-bills nothing and an untouched shot keeps its section (#1657).',
     },
   ],
+  'dialogue-upload-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs key, resolved inside the step that transcribes the uploaded recording (#2264).',
+    },
+  ],
   'dialogue-take-workflow.ts': [
     {
       read: 'resolveKey',

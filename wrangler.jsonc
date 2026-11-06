@@ -198,6 +198,11 @@
       "class_name": "DialogueTakeWorkflow",
     },
     {
+      "name": "dialogue-upload-workflow",
+      "binding": "DIALOGUE_UPLOAD_WORKFLOW",
+      "class_name": "DialogueUploadWorkflow",
+    },
+    {
       "name": "location-sheet-workflow",
       "binding": "LOCATION_SHEET_WORKFLOW",
       "class_name": "LocationSheetWorkflow",
@@ -495,6 +500,11 @@
           "name": "dialogue-take-workflow",
           "binding": "DIALOGUE_TAKE_WORKFLOW",
           "class_name": "DialogueTakeWorkflow",
+        },
+        {
+          "name": "dialogue-upload-workflow",
+          "binding": "DIALOGUE_UPLOAD_WORKFLOW",
+          "class_name": "DialogueUploadWorkflow",
         },
         {
           "name": "location-sheet-workflow",
@@ -804,6 +814,11 @@
           "name": "dialogue-take-workflow",
           "binding": "DIALOGUE_TAKE_WORKFLOW",
           "class_name": "DialogueTakeWorkflow",
+        },
+        {
+          "name": "dialogue-upload-workflow",
+          "binding": "DIALOGUE_UPLOAD_WORKFLOW",
+          "class_name": "DialogueUploadWorkflow",
         },
         {
           "name": "location-sheet-workflow",

@@ -45,7 +45,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { AlertTriangle, Pencil, Play, Square } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   LineTakeButton,
@@ -59,6 +59,12 @@ import { segmentKeys } from './use-segments';
 import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
+import { encodeWav } from '@/cast/ui/element/normalize-element-file';
+import {
+  presignSceneDialogueUploadFn,
+  uploadSceneDialogueFn,
+} from '@/shots/media-upload.fn';
+import { putToR2 } from '@/ui/upload';
 
 /**
  * Everything that reads a shot's lines, after they moved (a restore or an
@@ -329,6 +335,80 @@ export const RegenerateSceneDialogueButton: React.FC<{
     </Button>
   );
 };
+
+/**
+ * A recording of the scene's whole conversation becomes its dialogue (#2264).
+ * Any audio the browser can decode is sent as a 16-bit mono WAV, the one
+ * format the server cuts.
+ */
+export const UploadSceneDialogueButton: React.FC<{
+  sequenceId: string;
+  sceneId: string;
+  /** The scene's shots: their readings show "Generating…" once it starts. */
+  shotIds: readonly string[];
+  label: string;
+}> = ({ sequenceId, sceneId, shotIds, label }) => {
+  const queryClient = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const wav = await monoWav(file);
+      const signed = await presignSceneDialogueUploadFn({
+        data: { sequenceId, filename: wav.name },
+      });
+      await putToR2(signed.uploadUrl, wav, signed.contentType);
+      return uploadSceneDialogueFn({
+        data: { sequenceId, sceneId, publicUrl: signed.publicUrl },
+      });
+    },
+    onSuccess: () =>
+      invalidateRecordingStarted(queryClient, sequenceId, shotIds),
+    onError: (error: Error) =>
+      toast.error('Recording not used', { description: error.message }),
+  });
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        aria-label={`Recording for ${label}`}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) upload.mutate(file);
+        }}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={shotIds.length === 0 || upload.isPending}
+        aria-label={`Upload a recording of ${label}`}
+        onClick={() => input.current?.click()}
+      >
+        {upload.isPending ? 'Uploading…' : 'Upload recording'}
+      </Button>
+    </>
+  );
+};
+
+/** The file as 16-bit mono PCM at 48 kHz, whatever it was. */
+async function monoWav(file: File): Promise<File> {
+  const decoder = new OfflineAudioContext(1, 1, 48_000);
+  const buffer = await decoder.decodeAudioData(await file.arrayBuffer());
+  const mono = new Float32Array(buffer.length);
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const channel = buffer.getChannelData(c);
+    for (let i = 0; i < mono.length; i++) {
+      mono[i] = (mono[i] ?? 0) + (channel[i] ?? 0) / buffer.numberOfChannels;
+    }
+  }
+  const stem = file.name.replace(/\.[^.]+$/, '');
+  return new File([encodeWav([mono], buffer.sampleRate)], `${stem}.wav`, {
+    type: 'audio/wav',
+  });
+}
 
 /** Select value for a line nobody could attribute (an empty `character`). */
 const NO_SPEAKER = '__none__';

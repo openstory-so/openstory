@@ -18,7 +18,11 @@ import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Sequence, ShotDialogueClaim } from '@/platform/server/db/schema';
+import type {
+  Sequence,
+  Shot,
+  ShotDialogueClaim,
+} from '@/platform/server/db/schema';
 import {
   castVoiceIds,
   speechVoicesMoved,
@@ -300,17 +304,15 @@ export async function discardShotDialogueSection(
 }
 
 /**
- * Record a shot's voiced lines again (`regenerateShotDialogueFn`): the whole
- * scene's conversation is spoken in one call, and this shot adopts the new
- * reading even if its clip still matches. It lands through a claim like any
- * other speech. `scope: 'scene'` forces every voiced shot of the shot's scene
- * to adopt, so the scene is one take again.
+ * The scene of `anchorShotId` as one recording job (`sceneDialogueJobs`):
+ * its voiced turns in speaking order, and the resolver that said them.
  */
-export async function regenerateShotDialogue(
-  context: DialogueEditContext,
-  scope: 'shot' | 'scene'
-): Promise<{ workflowRunId: string }> {
-  const { scopedDb, shot, sequence, user } = context;
+export async function loadSceneDialogueJob(
+  scopedDb: ScopedDb,
+  sequence: Pick<Sequence, 'id'>,
+  anchorShotId: string,
+  shotSecondsOf: (shot: Shot) => number | undefined
+) {
   const [shots, characters, versions, sceneContext] = await Promise.all([
     scopedDb.shots.listBySequence(sequence.id),
     scopedDb.characters.list(sequence.id),
@@ -322,19 +324,18 @@ export async function regenerateShotDialogue(
     await scopedDb.shotPromptVersions.getSelectedMotionByShots(
       shots.map((row) => row.id)
     );
-  const model = safeImageToVideoModel(sequence.videoModel);
-  const [job] = sceneDialogueJobs({
-    needing: [shot],
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: new Map(
+      versions.map((version) => [version.shotId, version.lines])
+    ),
     shots,
-    dialogueOf: shotDialogueResolver({
-      linesByShotId: new Map(
-        versions.map((version) => [version.shotId, version.lines])
-      ),
-      shots,
-      legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
-      scriptDialogueOf: (sceneId) =>
-        sceneContext.get(sceneId)?.script?.dialogue,
-    }),
+    legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+    scriptDialogueOf: (sceneId) => sceneContext.get(sceneId)?.script?.dialogue,
+  });
+  const [job] = sceneDialogueJobs({
+    needing: [{ id: anchorShotId }],
+    shots,
+    dialogueOf,
     characters,
     versionIdByShotId: new Map(
       versions.map((version) => [version.shotId, version.id])
@@ -345,13 +346,35 @@ export async function regenerateShotDialogue(
       shots
     ),
     shotSecondsOf: (shotId) => {
-      if (scope === 'shot' && shotId !== shot.id) return undefined;
       const row = shots.find((candidate) => candidate.id === shotId);
-      return row
-        ? resolveShotDuration({ durationMs: row.durationMs, model })
-        : undefined;
+      return row ? shotSecondsOf(row) : undefined;
     },
   });
+  return { job, shots, dialogueOf };
+}
+
+/**
+ * Record a shot's voiced lines again (`regenerateShotDialogueFn`): the whole
+ * scene's conversation is spoken in one call, and this shot adopts the new
+ * reading even if its clip still matches. It lands through a claim like any
+ * other speech. `scope: 'scene'` forces every voiced shot of the shot's scene
+ * to adopt, so the scene is one take again.
+ */
+export async function regenerateShotDialogue(
+  context: DialogueEditContext,
+  scope: 'shot' | 'scene'
+): Promise<{ workflowRunId: string }> {
+  const { scopedDb, shot, sequence, user } = context;
+  const model = safeImageToVideoModel(sequence.videoModel);
+  const { job } = await loadSceneDialogueJob(
+    scopedDb,
+    sequence,
+    shot.id,
+    (row) =>
+      scope === 'shot' && row.id !== shot.id
+        ? undefined
+        : resolveShotDuration({ durationMs: row.durationMs, model })
+  );
   const speaking = job ? voicedShotIds(job.voiced) : [];
   const adopting =
     scope === 'scene' ? speaking : speaking.filter((id) => id === shot.id);
