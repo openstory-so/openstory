@@ -70,6 +70,7 @@ describe('collectDialogueResults', () => {
     expect(result.failures).toEqual([
       { name: 'shot-b', reason: 'elevenlabs 429' },
     ]);
+    expect(result.reasonByShotId).toEqual({ 'shot-b': 'elevenlabs 429' });
   });
 });
 

@@ -51,21 +51,26 @@ export function collectDialogueResults(
 ): {
   clipsByShotId: Record<string, MotionAudioClip[]>;
   failures: Array<{ name: string; reason: string }>;
+  reasonByShotId: Record<string, string>;
 } {
   const failures: { name: string; reason: string }[] = [];
   const clipsByShotId: Record<string, MotionAudioClip[]> = {};
+  const reasonByShotId: Record<string, string> = {};
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === 'rejected') {
       const reason = outcome.reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
       failures.push({
         name: scenes[index]?.voiced[0]?.shotId ?? `index ${index}`,
-        reason: reason instanceof Error ? reason.message : String(reason),
+        reason: message,
       });
+      for (const line of scenes[index]?.voiced ?? [])
+        reasonByShotId[line.shotId] = message;
       continue;
     }
     Object.assign(clipsByShotId, outcome.value);
   }
-  return { clipsByShotId, failures };
+  return { clipsByShotId, failures, reasonByShotId };
 }
 
 /**
@@ -147,12 +152,15 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
       })
     );
 
-    const { clipsByShotId, failures } = collectDialogueResults(settled, scenes);
+    const { clipsByShotId, failures, reasonByShotId } = collectDialogueResults(
+      settled,
+      scenes
+    );
     for (const failure of failures) {
       logger.warn(
         `[DialogueAudioWorkflow:cf] Scene starting at shot ${failure.name} not recorded; downstream motion will be blocked for shots without a matching take: ${failure.reason}`
       );
     }
-    return { clipsByShotId };
+    return { clipsByShotId, reasonByShotId };
   }
 }

@@ -637,6 +637,11 @@ export interface DialogueUploadWorkflowInput extends UserWorkflowContext {
 
 export interface DialogueAudioWorkflowResult {
   clipsByShotId: Record<string, MotionAudioClip[]>;
+  /**
+   * Why a voiced shot has no clip, for every shot of a scene that did not
+   * record (#2269). Absent only from a child started before this field.
+   */
+  reasonByShotId?: Record<string, string>;
 }
 
 /**

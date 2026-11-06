@@ -219,6 +219,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'POOL-CAPACITY',
       why: 'ACR asset slots are per BytePlus ACCOUNT and shared by every organization (#1361), so occupancy at the trigger says nothing about occupancy at the fan-out — a frozen count would evict slots another organization leased in between.',
     },
+    {
+      read: 'shots.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'A dialogue-blocked shot gets a failed video version (#2269), which hangs off a render segment; whether the shot has one is live, as a packing since the trigger may have given it a shared segment that ensureForShot must not repoint.',
+    },
   ],
   'cast-records.ts': [
     {
