@@ -40,6 +40,16 @@ export const zQueueStatus = z.object({
  * (the standard model remains 480p/720p only).
  */
 export const zGrokImagineVideoV15ImageToVideoInput = z.object({
+  enable_safety_checker: z.boolean().register(z.globalRegistry, {
+    description: 'Authorized callers may set false to request relaxed screening.'
+  }).optional().default(true),
+  image_url: z.union([
+    z.string(),
+    z.string()
+  ]),
+  duration: z.int().gte(1).lte(15).register(z.globalRegistry, {
+    description: 'Video duration in seconds.'
+  }).optional().default(6),
   resolution: z.enum([
     '480p',
     '720p',
@@ -49,17 +59,7 @@ export const zGrokImagineVideoV15ImageToVideoInput = z.object({
   }).optional().default('720p'),
   prompt: z.string().max(4096).register(z.globalRegistry, {
     description: 'Text description of desired changes or motion in the video.'
-  }),
-  image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
-  enable_safety_checker: z.boolean().register(z.globalRegistry, {
-    description: 'Authorized callers may set false to request relaxed screening.'
-  }).optional().default(true),
-  duration: z.int().gte(1).lte(15).register(z.globalRegistry, {
-    description: 'Video duration in seconds.'
-  }).optional().default(6)
+  })
 }).register(z.globalRegistry, {
   description: '``grok-imagine-video-1.5`` image-to-video (no ``aspect_ratio``).\n\nWidens ``resolution`` to add the 1080p tier supported by the 1.5 model\n(the standard model remains 480p/720p only).'
 });
@@ -68,15 +68,22 @@ export const zGrokImagineVideoV15ImageToVideoInput = z.object({
  * VideoFile
  */
 export const zVideoFile = z.object({
-  file_name: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
   height: z.union([
     z.int(),
     z.unknown()
   ]).optional(),
+  file_size: z.union([
+    z.int(),
+    z.unknown()
+  ]).optional(),
+  url: z.string().register(z.globalRegistry, {
+    description: 'The URL where the file can be downloaded from.'
+  }),
   duration: z.union([
+    z.number(),
+    z.unknown()
+  ]).optional(),
+  fps: z.union([
     z.number(),
     z.unknown()
   ]).optional(),
@@ -84,19 +91,12 @@ export const zVideoFile = z.object({
     z.string(),
     z.unknown()
   ]).optional(),
-  fps: z.union([
-    z.number(),
-    z.unknown()
-  ]).optional(),
-  url: z.string().register(z.globalRegistry, {
-    description: 'The URL where the file can be downloaded from.'
-  }),
-  file_size: z.union([
-    z.int(),
-    z.unknown()
-  ]).optional(),
   num_frames: z.union([
     z.int(),
+    z.unknown()
+  ]).optional(),
+  file_name: z.union([
+    z.string(),
     z.unknown()
   ]).optional(),
   width: z.union([
@@ -113,9 +113,9 @@ export const zGrokImagineVideoV15ImageToVideoOutput = z.object({
 });
 
 /**
- * Omni11FlashImageToVideoInput
+ * Omni12FlashImageToVideoInput
  */
-export const zGeminiOmni11FlashImageToVideoInput = z.object({
+export const zGeminiOmniFlashV12ImageToVideoInput = z.object({
   resolution: z.enum([
     '360p',
     '720p',
@@ -127,10 +127,9 @@ export const zGeminiOmni11FlashImageToVideoInput = z.object({
   aspect_ratio: z.enum(['16:9', '9:16']).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video.'
   }).optional().default('16:9'),
-  image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
+  duration: z.int().gte(3).lte(15).register(z.globalRegistry, {
+    description: 'The duration of the generated video, in seconds. At most 10 seconds when an end image is provided.'
+  }).optional().default(8),
   end_image_url: z.union([
     z.string(),
     z.unknown()
@@ -138,9 +137,10 @@ export const zGeminiOmni11FlashImageToVideoInput = z.object({
   prompt: z.string().max(20000).register(z.globalRegistry, {
     description: 'The text prompt describing how the first image should be animated or interpolated into the optional end image.'
   }),
-  duration: z.int().gte(3).lte(10).register(z.globalRegistry, {
-    description: 'The duration of the generated video, in seconds.'
-  }).optional().default(8)
+  image_url: z.union([
+    z.string(),
+    z.string()
+  ])
 });
 
 /**
@@ -167,7 +167,7 @@ export const zFile = z.object({
 /**
  * VideoOutput
  */
-export const zGeminiOmni11FlashImageToVideoOutput = z.object({
+export const zGeminiOmniFlashV12ImageToVideoOutput = z.object({
   video: zFile
 });
 
@@ -176,6 +176,28 @@ export const zGeminiOmni11FlashImageToVideoOutput = z.object({
  */
 export const zKlingVideoV3ProImageToVideoOutput = z.object({
   video: zFile
+});
+
+/**
+ * KlingV3ComboElementInput
+ */
+export const zKlingV3ComboElementInput = z.object({
+  frontal_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  voice_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  reference_image_urls: z.union([
+    z.array(z.string()),
+    z.unknown()
+  ]).optional(),
+  video_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
 });
 
 /**
@@ -207,50 +229,25 @@ export const zKlingV3MultiPromptElement = z.object({
 });
 
 /**
- * KlingV3ComboElementInput
- */
-export const zKlingV3ComboElementInput = z.object({
-  video_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  frontal_image_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  reference_image_urls: z.union([
-    z.array(z.string()),
-    z.unknown()
-  ]).optional(),
-  voice_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional()
-});
-
-/**
  * ImageToVideoV3ProRequest
  */
 export const zKlingVideoV3ProImageToVideoInput = z.object({
-  start_image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.'
-  }).optional().default(true),
   prompt: z.union([
     z.string().max(2500),
+    z.unknown()
+  ]).optional(),
+  negative_prompt: z.string().max(2500).optional().default('blur, distort, and low quality'),
+  elements: z.union([
+    z.array(zKlingV3ComboElementInput),
     z.unknown()
   ]).optional(),
   multi_prompt: z.union([
     z.array(zKlingV3MultiPromptElement),
     z.unknown()
   ]).optional(),
-  negative_prompt: z.string().max(2500).optional().default('blur, distort, and low quality'),
-  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
-    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
-  }).optional().default('customize'),
+  cfg_scale: z.number().gte(0).lte(1).register(z.globalRegistry, {
+    description: '\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt.\n        '
+  }).optional().default(0.5),
   duration: z.enum([
     '3',
     '4',
@@ -272,16 +269,19 @@ export const zKlingVideoV3ProImageToVideoInput = z.object({
     z.string(),
     z.unknown()
   ]).optional(),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.'
+  }).optional().default(true),
+  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
+    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
+  }).optional().default('customize'),
   enable_safety_checker: z.boolean().register(z.globalRegistry, {
     description: 'Disabling safety checks requires account authorization; unauthorized requests are always checked.'
   }).optional().default(true),
-  elements: z.union([
-    z.array(zKlingV3ComboElementInput),
-    z.unknown()
-  ]).optional(),
-  cfg_scale: z.number().gte(0).lte(1).register(z.globalRegistry, {
-    description: '\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt.\n        '
-  }).optional().default(0.5)
+  start_image_url: z.union([
+    z.string(),
+    z.string()
+  ])
 });
 
 /**
@@ -309,9 +309,6 @@ export const zKlingV4Shot = z.object({
  * The output aspect ratio follows the input frames.
  */
 export const zV4ImageToVideoInput = z.object({
-  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
-    description: 'Output resolution.'
-  }).optional().default('1080p'),
   prompt: z.union([
     z.string().max(26000),
     z.unknown()
@@ -320,17 +317,24 @@ export const zV4ImageToVideoInput = z.object({
     z.string(),
     z.unknown()
   ]).optional(),
-  start_image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
+  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
+    description: 'Video duration in seconds (3-30).'
+  }).optional().default(5),
   multi_prompt: z.union([
     z.array(zKlingV4Shot).min(1),
     z.unknown()
   ]).optional(),
-  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
-    description: 'Video duration in seconds (3-30).'
-  }).optional().default(5)
+  middle_image_urls: z.union([
+    z.array(z.string()).max(8),
+    z.unknown()
+  ]).optional(),
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p'),
+  start_image_url: z.union([
+    z.string(),
+    z.string()
+  ])
 }).register(z.globalRegistry, {
   description: 'The output aspect ratio follows the input frames.'
 });
@@ -339,23 +343,11 @@ export const zV4ImageToVideoInput = z.object({
  * TurboImageToVideoHailuo03Input
  */
 export const zH3MaxImageToVideoInput = z.object({
+  sync_mode: z.boolean().register(z.globalRegistry, {
+    description: 'Return the generated video as base64 instead of a CDN URL.'
+  }).optional().default(false),
   seed: z.union([
     z.int(),
-    z.unknown()
-  ]).optional(),
-  end_image_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  resolution: z.enum([
-    '480P',
-    '768P',
-    '1080P'
-  ]).register(z.globalRegistry, {
-    description: 'The native generation resolution, or 1080P latent refinement from a native 768P source.'
-  }).optional().default('768P'),
-  target_audio_url: z.union([
-    z.string().min(1).regex(/\S/),
     z.unknown()
   ]).optional(),
   enable_safety_checker: z.boolean().register(z.globalRegistry, {
@@ -364,9 +356,10 @@ export const zH3MaxImageToVideoInput = z.object({
   prompt: z.string().min(1).max(50000).register(z.globalRegistry, {
     description: 'Text prompt for video generation'
   }),
-  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
-    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested. Use at least 2 s with target_audio_url.'
-  }).optional().default(5),
+  target_audio_url: z.union([
+    z.string().min(1).regex(/\S/),
+    z.unknown()
+  ]).optional(),
   image_url: z.union([
     z.string(),
     z.unknown()
@@ -374,20 +367,31 @@ export const zH3MaxImageToVideoInput = z.object({
   prompt_expansion_mode: z.string().register(z.globalRegistry, {
     description: 'How much effort to spend rewriting the prompt before generation. \'disabled\' skips prompt expansion. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.'
   }).default('balanced'),
-  sync_mode: z.boolean().register(z.globalRegistry, {
-    description: 'Return the generated video as base64 instead of a CDN URL.'
-  }).optional().default(false)
+  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
+    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested. Use at least 2 s with target_audio_url.'
+  }).optional().default(5),
+  resolution: z.enum([
+    '480P',
+    '768P',
+    '1080P'
+  ]).register(z.globalRegistry, {
+    description: 'The native generation resolution, or 1080P latent refinement from a native 768P source.'
+  }).optional().default('768P'),
+  end_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
 });
 
 /**
  * TurboImageToVideoHailuo03Output
  */
 export const zH3MaxImageToVideoOutput = z.object({
-  video: zFile,
   timings: z.union([
     z.record(z.string(), z.number()),
     z.unknown()
   ]).optional(),
+  video: zFile,
   expanded_prompt: z.union([
     z.string(),
     z.unknown()
@@ -398,23 +402,16 @@ export const zH3MaxImageToVideoOutput = z.object({
  * Seedance2I2VInput
  */
 export const zSeedance20EnterpriseV2ImageToVideoInput = z.object({
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
   prompt: z.string().register(z.globalRegistry, {
     description: 'The text prompt describing the desired motion and action for the video.'
   }),
-  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
-    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
-  }).optional().default('standard'),
-  end_image_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto'),
   duration: z.enum([
     'auto',
     '4',
@@ -432,6 +429,13 @@ export const zSeedance20EnterpriseV2ImageToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
+  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
+    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+  }).optional().default('standard'),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
   aspect_ratio: z.enum([
     'auto',
     '21:9',
@@ -443,6 +447,17 @@ export const zSeedance20EnterpriseV2ImageToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to infer from the input image.'
   }).optional().default('auto'),
+  end_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  image_url: z.union([
+    z.string(),
+    z.string()
+  ]),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
   resolution: z.enum([
     '480p',
     '720p',
@@ -450,44 +465,23 @@ export const zSeedance20EnterpriseV2ImageToVideoInput = z.object({
     '4k'
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.'
-  }).optional().default('720p'),
-  image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  }).optional().default('720p')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20EnterpriseV2ImageToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  video: zFile
 });
 
 /**
  * Seedance2I2VInput
  */
 export const zSeedance25ImageToVideoInput = z.object({
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto'),
   duration: z.enum([
     'auto',
     '4',
@@ -520,28 +514,6 @@ export const zSeedance25ImageToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
-    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
-  }).optional().default('standard'),
-  end_image_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  draft: z.boolean().register(z.globalRegistry, {
-    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within seven days.'
-  }).optional().default(false),
-  image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
-  prompt: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
   aspect_ratio: z.string().register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video. Always "auto" for image-to-video'
   }).optional().default('auto'),
@@ -551,37 +523,90 @@ export const zSeedance25ImageToVideoInput = z.object({
     '1080p'
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.'
-  }).optional().default('720p')
-});
-
-/**
- * Seedance2VideoOutput
- */
-export const zSeedance25ImageToVideoOutput = z.object({
-  draft_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  video: zFile,
-  seed: z.int().register(z.globalRegistry, {
-    description: 'The seed used for generation.'
-  })
-});
-
-/**
- * Seedance2I2VMiniInput
- */
-export const zSeedance20MiniImageToVideoInput = z.object({
-  end_user_id: z.union([
+  }).optional().default('720p'),
+  end_image_url: z.union([
     z.string(),
     z.unknown()
   ]).optional(),
   generate_audio: z.boolean().register(z.globalRegistry, {
     description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
   }).optional().default(true),
+  prompt: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
+    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+  }).optional().default('standard'),
+  draft: z.boolean().register(z.globalRegistry, {
+    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within 14 days.'
+  }).optional().default(false),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto'),
+  image_url: z.union([
+    z.string(),
+    z.string()
+  ])
+});
+
+/**
+ * Seedance2VideoOutput
+ */
+export const zSeedance25ImageToVideoOutput = z.object({
+  video: zFile,
+  seed: z.int().register(z.globalRegistry, {
+    description: 'The seed used for generation.'
+  }),
+  draft_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
+});
+
+/**
+ * Seedance2I2VMiniInput
+ */
+export const zSeedance20MiniImageToVideoInput = z.object({
   prompt: z.string().register(z.globalRegistry, {
     description: 'The text prompt describing the desired motion and action for the video.'
   }),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto'),
+  duration: z.enum([
+    'auto',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
+    '13',
+    '14',
+    '15'
+  ]).register(z.globalRegistry, {
+    description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
+  }).optional().default('auto'),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
   aspect_ratio: z.enum([
     'auto',
     '21:9',
@@ -597,77 +622,45 @@ export const zSeedance20MiniImageToVideoInput = z.object({
     z.string(),
     z.unknown()
   ]).optional(),
-  duration: z.enum([
-    'auto',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-    '11',
-    '12',
-    '13',
-    '14',
-    '15'
-  ]).register(z.globalRegistry, {
-    description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
-  }).optional().default('auto'),
-  resolution: z.enum(['480p', '720p']).register(z.globalRegistry, {
-    description: 'Video resolution - 480p for faster generation, 720p for balance.'
-  }).optional().default('720p'),
   image_url: z.union([
     z.string(),
     z.string()
   ]),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
+  resolution: z.enum(['480p', '720p']).register(z.globalRegistry, {
+    description: 'Video resolution - 480p for faster generation, 720p for balance.'
+  }).optional().default('720p')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20MiniImageToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  video: zFile
 });
 
 /**
  * Seedance2R2VInput
  */
 export const zSeedance20EnterpriseV2ReferenceToVideoInput = z.object({
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
   prompt: z.string().register(z.globalRegistry, {
     description: 'The text prompt used to generate the video.'
   }),
-  aspect_ratio: z.enum([
-    'auto',
-    '21:9',
-    '16:9',
-    '4:3',
-    '1:1',
-    '3:4',
-    '9:16'
-  ]).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
-  }).optional().default('auto'),
-  video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.'
+  audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file. At least one reference image or video is required.'
   }).optional(),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto'),
   duration: z.enum([
     'auto',
     '4',
@@ -685,12 +678,33 @@ export const zSeedance20EnterpriseV2ReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file. At least one reference image or video is required.'
+  image_urls: z.array(z.string()).max(9).register(z.globalRegistry, {
+    description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.'
   }).optional(),
   bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
     description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
   }).optional().default('standard'),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  aspect_ratio: z.enum([
+    'auto',
+    '21:9',
+    '16:9',
+    '4:3',
+    '1:1',
+    '3:4',
+    '9:16'
+  ]).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
+  }).optional().default('auto'),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
+  video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.'
+  }).optional(),
   resolution: z.enum([
     '480p',
     '720p',
@@ -698,56 +712,32 @@ export const zSeedance20EnterpriseV2ReferenceToVideoInput = z.object({
     '4k'
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.'
-  }).optional().default('720p'),
-  image_urls: z.array(z.string()).max(9).register(z.globalRegistry, {
-    description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.'
-  }).optional(),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  }).optional().default('720p')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20EnterpriseV2ReferenceToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  video: zFile
 });
 
 /**
  * Seedance2T2VInput
  */
 export const zSeedance20EnterpriseV2TextToVideoInput = z.object({
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
   prompt: z.string().register(z.globalRegistry, {
     description: 'The text prompt used to generate the video'
   }),
-  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
-    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
-  }).optional().default('standard'),
-  aspect_ratio: z.enum([
+  codec: z.enum([
     'auto',
-    '21:9',
-    '16:9',
-    '4:3',
-    '1:1',
-    '3:4',
-    '9:16'
+    'H264',
+    'H265'
   ]).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
   }).optional().default('auto'),
   duration: z.enum([
     'auto',
@@ -766,6 +756,27 @@ export const zSeedance20EnterpriseV2TextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
+  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
+    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+  }).optional().default('standard'),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  aspect_ratio: z.enum([
+    'auto',
+    '21:9',
+    '16:9',
+    '4:3',
+    '1:1',
+    '3:4',
+    '9:16'
+  ]).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
+  }).optional().default('auto'),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
   resolution: z.enum([
     '480p',
     '720p',
@@ -773,43 +784,23 @@ export const zSeedance20EnterpriseV2TextToVideoInput = z.object({
     '4k'
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.'
-  }).optional().default('720p'),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  }).optional().default('720p')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20EnterpriseV2TextToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  video: zFile
 });
 
 /**
  * Seedance2R2VInput
  */
 export const zSeedance25ReferenceToVideoInput = z.object({
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
-  audio_urls: z.array(z.string()).register(z.globalRegistry, {
-    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 10 files. Each file must be 1.8 to 30.2 seconds and no larger than 15 MB; combined duration must not exceed 30.2 seconds.'
-  }).optional(),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto'),
   duration: z.enum([
     'auto',
     '4',
@@ -842,22 +833,21 @@ export const zSeedance25ReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  video_urls: z.array(z.string()).register(z.globalRegistry, {
-    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.'
-  }).optional(),
+  aspect_ratio: z.enum([
+    'auto',
+    '21:9',
+    '16:9',
+    '4:3',
+    '1:1',
+    '3:4',
+    '9:16'
+  ]).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
+  }).optional().default('auto'),
   end_user_id: z.union([
     z.string(),
     z.unknown()
   ]).optional(),
-  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
-    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
-  }).optional().default('standard'),
-  image_urls: z.array(z.string()).register(z.globalRegistry, {
-    description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.'
-  }).optional(),
-  draft: z.boolean().register(z.globalRegistry, {
-    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within seven days.'
-  }).optional().default(false),
   task: z.enum([
     'auto',
     'reference',
@@ -866,10 +856,9 @@ export const zSeedance25ReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The type of video generation task. Reference uses the supplied media as guidance. Editing modifies a reference video and automatically coerces aspect_ratio and duration to auto. Extension continues a reference video and automatically coerces aspect_ratio to auto. Auto leaves the task type unset so the model decides it from the prompt and references.'
   }).optional().default('reference'),
-  prompt: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
+  image_urls: z.array(z.string()).register(z.globalRegistry, {
+    description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.'
+  }).optional(),
   resolution: z.enum([
     '480p',
     '720p',
@@ -877,51 +866,56 @@ export const zSeedance25ReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.'
   }).optional().default('720p'),
-  aspect_ratio: z.enum([
-    'auto',
-    '21:9',
-    '16:9',
-    '4:3',
-    '1:1',
-    '3:4',
-    '9:16'
-  ]).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
-  }).optional().default('auto'),
-  seed: z.union([
-    z.int(),
-    z.unknown()
-  ]).optional()
-});
-
-/**
- * Seedance2VideoOutput
- */
-export const zSeedance25ReferenceToVideoOutput = z.object({
-  draft_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  video: zFile,
-  seed: z.int().register(z.globalRegistry, {
-    description: 'The seed used for generation.'
-  })
-});
-
-/**
- * Seedance2T2VInput
- */
-export const zSeedance25TextToVideoInput = z.object({
   generate_audio: z.boolean().register(z.globalRegistry, {
     description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
   }).optional().default(true),
+  prompt: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
+    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+  }).optional().default('standard'),
+  video_urls: z.array(z.string()).register(z.globalRegistry, {
+    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.'
+  }).optional(),
+  audio_urls: z.array(z.string()).register(z.globalRegistry, {
+    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 10 files. Each file must be 1.8 to 30.2 seconds and no larger than 15 MB; combined duration must not exceed 30.2 seconds.'
+  }).optional(),
+  seed: z.union([
+    z.int(),
+    z.unknown()
+  ]).optional(),
+  draft: z.boolean().register(z.globalRegistry, {
+    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within 14 days.'
+  }).optional().default(false),
   codec: z.enum([
     'auto',
     'H264',
     'H265'
   ]).register(z.globalRegistry, {
     description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto'),
+  }).optional().default('auto')
+});
+
+/**
+ * Seedance2VideoOutput
+ */
+export const zSeedance25ReferenceToVideoOutput = z.object({
+  video: zFile,
+  seed: z.int().register(z.globalRegistry, {
+    description: 'The seed used for generation.'
+  }),
+  draft_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
+});
+
+/**
+ * Seedance2T2VInput
+ */
+export const zSeedance25TextToVideoInput = z.object({
   duration: z.enum([
     'auto',
     '4',
@@ -954,19 +948,6 @@ export const zSeedance25TextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
-    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
-  }).optional().default('standard'),
-  draft: z.boolean().register(z.globalRegistry, {
-    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within seven days.'
-  }).optional().default(false),
-  prompt: z.string().register(z.globalRegistry, {
-    description: 'The text prompt used to generate the video'
-  }),
   aspect_ratio: z.enum([
     'auto',
     '21:9',
@@ -984,51 +965,63 @@ export const zSeedance25TextToVideoInput = z.object({
     '1080p'
   ]).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.'
-  }).optional().default('720p')
+  }).optional().default('720p'),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
+  prompt: z.string().register(z.globalRegistry, {
+    description: 'The text prompt used to generate the video'
+  }),
+  bitrate_mode: z.enum(['standard', 'high']).register(z.globalRegistry, {
+    description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+  }).optional().default('standard'),
+  draft: z.boolean().register(z.globalRegistry, {
+    description: 'Generate a draft preview at 480p, overriding resolution. Returns a draft_id for completing the draft at 1080p within 14 days.'
+  }).optional().default(false),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance25TextToVideoOutput = z.object({
-  draft_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
   video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  draft_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
 });
 
 /**
  * Seedance2R2VMiniInput
  */
 export const zSeedance20MiniReferenceToVideoInput = z.object({
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
   prompt: z.string().register(z.globalRegistry, {
     description: 'The text prompt used to generate the video.'
   }),
-  aspect_ratio: z.enum([
-    'auto',
-    '21:9',
-    '16:9',
-    '4:3',
-    '1:1',
-    '3:4',
-    '9:16'
-  ]).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
-  }).optional().default('auto'),
-  video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.'
+  audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file. At least one reference image or video is required.'
   }).optional(),
+  codec: z.enum([
+    'auto',
+    'H264',
+    'H265'
+  ]).register(z.globalRegistry, {
+    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
+  }).optional().default('auto'),
   duration: z.enum([
     'auto',
     '4',
@@ -1046,32 +1039,43 @@ export const zSeedance20MiniReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file. At least one reference image or video is required.'
-  }).optional(),
   image_urls: z.array(z.string()).max(9).register(z.globalRegistry, {
     description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.'
   }).optional(),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  aspect_ratio: z.enum([
+    'auto',
+    '21:9',
+    '16:9',
+    '4:3',
+    '1:1',
+    '3:4',
+    '9:16'
+  ]).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
+  }).optional().default('auto'),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
+  video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.'
+  }).optional(),
   resolution: z.enum(['480p', '720p']).register(z.globalRegistry, {
     description: 'Video resolution - 480p for faster generation, 720p for balance.'
-  }).optional().default('720p'),
-  codec: z.enum([
-    'auto',
-    'H264',
-    'H265'
-  ]).register(z.globalRegistry, {
-    description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  }).optional().default('720p')
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20MiniReferenceToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
+  }),
+  video: zFile
 });
 
 /**
@@ -1089,10 +1093,9 @@ export const zSeedance20MiniTextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.'
   }).optional().default('auto'),
-  end_user_id: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+  }).optional().default(true),
   duration: z.enum([
     'auto',
     '4',
@@ -1110,74 +1113,75 @@ export const zSeedance20MiniTextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.'
   }).optional().default('auto'),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
-  }).optional().default(true),
-  resolution: z.enum(['480p', '720p']).register(z.globalRegistry, {
-    description: 'Video resolution - 480p for faster generation, 720p for balance.'
-  }).optional().default('720p'),
-  prompt: z.string().register(z.globalRegistry, {
-    description: 'The text prompt used to generate the video'
-  }),
   codec: z.enum([
     'auto',
     'H264',
     'H265'
   ]).register(z.globalRegistry, {
     description: '\'auto\' retains default video codec behaviour; \'H264\' uses H.264; \'H265\' uses H.265.'
-  }).optional().default('auto')
+  }).optional().default('auto'),
+  prompt: z.string().register(z.globalRegistry, {
+    description: 'The text prompt used to generate the video'
+  }),
+  resolution: z.enum(['480p', '720p']).register(z.globalRegistry, {
+    description: 'Video resolution - 480p for faster generation, 720p for balance.'
+  }).optional().default('720p'),
+  end_user_id: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional()
 });
 
 /**
  * Seedance2VideoOutput
  */
 export const zSeedance20MiniTextToVideoOutput = z.object({
-  video: zFile,
   seed: z.int().register(z.globalRegistry, {
     description: 'The seed used for generation.'
-  })
-});
-
-/**
- * Omni11FlashReferenceToVideoInput
- */
-export const zGeminiOmni11FlashReferenceToVideoInput = z.object({
-  resolution: z.enum([
-    '360p',
-    '720p',
-    '1080p',
-    '4k'
-  ]).register(z.globalRegistry, {
-    description: 'The resolution of the generated video.'
-  }).optional().default('720p'),
-  aspect_ratio: z.enum(['16:9', '9:16']).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video.'
-  }).optional().default('16:9'),
-  prompt: z.string().max(20000).register(z.globalRegistry, {
-    description: 'The text prompt describing the video. Reference media is sent in list order before the prompt.'
   }),
-  image_urls: z.array(z.string()).max(10).register(z.globalRegistry, {
-    description: 'URLs of reference images to incorporate into the video.'
-  }).optional(),
-  reference_video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'URLs of up to three reference videos. Each video must be at most ten seconds long.'
-  }).optional(),
-  duration: z.int().gte(3).lte(10).register(z.globalRegistry, {
-    description: 'The duration of the generated video, in seconds.'
-  }).optional().default(8)
-});
-
-/**
- * VideoOutput
- */
-export const zGeminiOmni11FlashReferenceToVideoOutput = z.object({
   video: zFile
 });
 
 /**
- * Omni11FlashTextToVideoInput
+ * Omni12FlashReferenceToVideoInput
  */
-export const zGeminiOmni11FlashInput = z.object({
+export const zGeminiOmniFlashV12ReferenceToVideoInput = z.object({
+  resolution: z.enum([
+    '360p',
+    '720p',
+    '1080p',
+    '4k'
+  ]).register(z.globalRegistry, {
+    description: 'The resolution of the generated video.'
+  }).optional().default('720p'),
+  reference_video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'URLs of up to three reference videos. Each video must be at most 15 seconds long.'
+  }).optional(),
+  duration: z.int().gte(3).lte(15).register(z.globalRegistry, {
+    description: 'The duration of the generated video, in seconds.'
+  }).optional().default(8),
+  aspect_ratio: z.enum(['16:9', '9:16']).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video.'
+  }).optional().default('16:9'),
+  image_urls: z.array(z.string()).max(10).register(z.globalRegistry, {
+    description: 'URLs of up to ten reference images to incorporate.'
+  }).optional(),
+  prompt: z.string().max(20000).register(z.globalRegistry, {
+    description: 'The text prompt describing the video. Reference media is sent in list order before the prompt.'
+  })
+});
+
+/**
+ * VideoOutput
+ */
+export const zGeminiOmniFlashV12ReferenceToVideoOutput = z.object({
+  video: zFile
+});
+
+/**
+ * Omni12FlashTextToVideoInput
+ */
+export const zGeminiOmniFlashV12TextToVideoInput = z.object({
   resolution: z.enum([
     '360p',
     '720p',
@@ -1189,18 +1193,18 @@ export const zGeminiOmni11FlashInput = z.object({
   aspect_ratio: z.enum(['16:9', '9:16']).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video.'
   }).optional().default('16:9'),
+  duration: z.int().gte(3).lte(15).register(z.globalRegistry, {
+    description: 'The duration of the generated video, in seconds.'
+  }).optional().default(8),
   prompt: z.string().max(20000).register(z.globalRegistry, {
     description: 'The text prompt describing the video you want to generate.'
-  }),
-  duration: z.int().gte(3).lte(10).register(z.globalRegistry, {
-    description: 'The duration of the generated video, in seconds.'
-  }).optional().default(8)
+  })
 });
 
 /**
  * VideoOutput
  */
-export const zGeminiOmni11FlashOutput = z.object({
+export const zGeminiOmniFlashV12TextToVideoOutput = z.object({
   video: zFile
 });
 
@@ -1208,22 +1212,20 @@ export const zGeminiOmni11FlashOutput = z.object({
  * O3ProReferenceVideoI2VInput
  */
 export const zKlingVideoO3ProReferenceToVideoInput = z.object({
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate native audio for the video.'
-  }).optional().default(false),
-  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
-    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
-  }).optional().default('customize'),
-  end_image_url: z.union([
-    z.string(),
+  prompt: z.union([
+    z.string().max(2500),
+    z.unknown()
+  ]).optional(),
+  image_urls: z.union([
+    z.array(z.string()),
+    z.unknown()
+  ]).optional(),
+  elements: z.union([
+    z.array(zKlingV3ComboElementInput),
     z.unknown()
   ]).optional(),
   multi_prompt: z.union([
     z.array(zKlingV3MultiPromptElement),
-    z.unknown()
-  ]).optional(),
-  prompt: z.union([
-    z.string().max(2500),
     z.unknown()
   ]).optional(),
   duration: z.enum([
@@ -1250,17 +1252,19 @@ export const zKlingVideoO3ProReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video frame.'
   }).optional().default('16:9'),
-  image_urls: z.union([
-    z.array(z.string()),
+  end_image_url: z.union([
+    z.string(),
     z.unknown()
   ]).optional(),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate native audio for the video.'
+  }).optional().default(false),
+  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
+    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
+  }).optional().default('customize'),
   enable_safety_checker: z.boolean().register(z.globalRegistry, {
     description: 'Disabling safety checks requires account authorization; unauthorized requests are always checked.'
   }).optional().default(true),
-  elements: z.union([
-    z.array(zKlingV3ComboElementInput),
-    z.unknown()
-  ]).optional(),
   start_image_url: z.union([
     z.string(),
     z.unknown()
@@ -1278,9 +1282,6 @@ export const zKlingVideoO3ProReferenceToVideoOutput = z.object({
  * O3ProTextToVideoInput
  */
 export const zKlingVideoO3ProTextToVideoInput = z.object({
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate native audio for the video.'
-  }).optional().default(false),
   aspect_ratio: z.enum([
     '16:9',
     '9:16',
@@ -1288,20 +1289,9 @@ export const zKlingVideoO3ProTextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Aspect ratio of the generated video.'
   }).optional().default('16:9'),
-  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
-    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
-  }).optional().default('customize'),
-  multi_prompt: z.union([
-    z.array(zKlingV3MultiPromptElement),
-    z.unknown()
-  ]).optional(),
-  enable_safety_checker: z.boolean().register(z.globalRegistry, {
-    description: 'Disabling safety checks requires account authorization; unauthorized requests are always checked.'
-  }).optional().default(true),
-  prompt: z.union([
-    z.string().max(2500),
-    z.unknown()
-  ]).optional(),
+  generate_audio: z.boolean().register(z.globalRegistry, {
+    description: 'Whether to generate native audio for the video.'
+  }).optional().default(false),
   duration: z.enum([
     '3',
     '4',
@@ -1318,7 +1308,21 @@ export const zKlingVideoO3ProTextToVideoInput = z.object({
     '15'
   ]).register(z.globalRegistry, {
     description: 'Video duration in seconds (3-15s).'
-  }).optional().default('5')
+  }).optional().default('5'),
+  multi_prompt: z.union([
+    z.array(zKlingV3MultiPromptElement),
+    z.unknown()
+  ]).optional(),
+  prompt: z.union([
+    z.string().max(2500),
+    z.unknown()
+  ]).optional(),
+  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
+    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
+  }).optional().default('customize'),
+  enable_safety_checker: z.boolean().register(z.globalRegistry, {
+    description: 'Disabling safety checks requires account authorization; unauthorized requests are always checked.'
+  }).optional().default(true)
 });
 
 /**
@@ -1343,11 +1347,11 @@ export const zV4ReferenceToVideoOutput = z.object({
  * KlingV4Element
  */
 export const zKlingV4Element = z.object({
-  video_url: z.union([
+  frontal_image_url: z.union([
     z.string(),
     z.unknown()
   ]).optional(),
-  frontal_image_url: z.union([
+  voice_id: z.union([
     z.string(),
     z.unknown()
   ]).optional(),
@@ -1355,7 +1359,7 @@ export const zKlingV4Element = z.object({
     z.array(z.string()).max(3),
     z.unknown()
   ]).optional(),
-  voice_id: z.union([
+  video_url: z.union([
     z.string(),
     z.unknown()
   ]).optional()
@@ -1365,12 +1369,16 @@ export const zKlingV4Element = z.object({
  * ReferenceToVideoInput
  */
 export const zV4ReferenceToVideoInput = z.object({
-  video_urls: z.union([
-    z.array(z.string()).max(5),
-    z.unknown()
-  ]).optional(),
   prompt: z.union([
     z.string().max(26000),
+    z.unknown()
+  ]).optional(),
+  image_urls: z.union([
+    z.array(z.string()).max(10),
+    z.unknown()
+  ]).optional(),
+  elements: z.union([
+    z.array(zKlingV4Element).max(7),
     z.unknown()
   ]).optional(),
   multi_prompt: z.union([
@@ -1380,9 +1388,22 @@ export const zV4ReferenceToVideoInput = z.object({
   duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
     description: 'Video duration in seconds (3-30).'
   }).optional().default(5),
-  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
-    description: 'Output resolution.'
-  }).optional().default('1080p'),
+  middle_image_urls: z.union([
+    z.array(z.string()).max(8),
+    z.unknown()
+  ]).optional(),
+  end_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  voice_ids: z.union([
+    z.array(z.string()).max(3),
+    z.unknown()
+  ]).optional(),
+  video_urls: z.union([
+    z.array(z.string()).max(5),
+    z.unknown()
+  ]).optional(),
   aspect_ratio: z.enum([
     'auto',
     '16:9',
@@ -1392,16 +1413,11 @@ export const zV4ReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Aspect ratio of the generated video. \'auto\' adapts it to the references.'
   }).optional().default('16:9'),
-  image_urls: z.union([
-    z.array(z.string()).max(10),
-    z.unknown()
-  ]).optional(),
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p'),
   start_image_url: z.union([
     z.string(),
-    z.unknown()
-  ]).optional(),
-  elements: z.union([
-    z.array(zKlingV4Element).max(7),
     z.unknown()
   ]).optional()
 });
@@ -1410,9 +1426,10 @@ export const zV4ReferenceToVideoInput = z.object({
  * TextToVideoInput
  */
 export const zV4TextToVideoInput = z.object({
-  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
-    description: 'Output resolution.'
-  }).optional().default('1080p'),
+  prompt: z.union([
+    z.string().max(26000),
+    z.unknown()
+  ]).optional(),
   aspect_ratio: z.enum([
     '16:9',
     '9:16',
@@ -1421,17 +1438,16 @@ export const zV4TextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'Aspect ratio of the generated video.'
   }).optional().default('16:9'),
-  prompt: z.union([
-    z.string().max(26000),
-    z.unknown()
-  ]).optional(),
+  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
+    description: 'Video duration in seconds (3-30).'
+  }).optional().default(5),
   multi_prompt: z.union([
     z.array(zKlingV4Shot).min(1),
     z.unknown()
   ]).optional(),
-  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
-    description: 'Video duration in seconds (3-30).'
-  }).optional().default(5)
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p')
 });
 
 /**
@@ -1445,14 +1461,14 @@ export const zV4TextToVideoOutput = z.object({
  * TurboReferenceToVideoHailuo03Output
  */
 export const zH3MaxReferenceToVideoOutput = z.object({
-  video: zFile,
+  seed: z.int().register(z.globalRegistry, {
+    description: 'Base seed for reproducing the generation.'
+  }),
   timings: z.union([
     z.record(z.string(), z.number()),
     z.unknown()
   ]).optional(),
-  seed: z.int().register(z.globalRegistry, {
-    description: 'Base seed for reproducing the generation.'
-  }),
+  video: zFile,
   reference_tokens: z.union([
     z.int(),
     z.unknown()
@@ -1469,15 +1485,15 @@ export const zH3MaxReferenceToVideoOutput = z.object({
  * One ordered Ref2VA media condition.
  */
 export const zReferenceCondition = z.object({
+  url: z.string().min(1).register(z.globalRegistry, {
+    description: 'URL of the reference media.'
+  }),
   type: z.enum([
     'image',
     'video',
     'audio'
   ]).register(z.globalRegistry, {
     description: 'Reference modality. Cross-modality list order is semantic.'
-  }),
-  url: z.string().min(1).register(z.globalRegistry, {
-    description: 'URL of the reference media.'
   })
 }).register(z.globalRegistry, {
   description: 'One ordered Ref2VA media condition.'
@@ -1487,43 +1503,13 @@ export const zReferenceCondition = z.object({
  * TurboReferenceToVideoHailuo03Input
  */
 export const zH3MaxReferenceToVideoInput = z.object({
-  middle_frame_time: z.union([
-    z.number(),
-    z.unknown()
-  ]).optional(),
-  end_image_url: z.union([
-    z.string().min(1),
-    z.unknown()
-  ]).optional(),
-  reference_audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Images, videos, and audio can be provided individually or together. Reference images, videos, and audio clips must add up to at most 12 files.'
-  }).optional(),
-  resolution: z.enum([
-    '480P',
-    '768P',
-    '1080P'
-  ]).register(z.globalRegistry, {
-    description: 'The native generation resolution, or 1080P latent refinement from a native 768P source.'
-  }).optional().default('768P'),
-  reference_video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
-    description: 'URLs of motion/reference video clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Video 1, Video 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.'
-  }).optional(),
   enable_safety_checker: z.boolean().register(z.globalRegistry, {
     description: 'If set to true, the safety checker will be enabled.'
   }).optional().default(true),
-  seed: z.union([
-    z.int(),
+  target_audio_url: z.union([
+    z.string().min(1).regex(/\S/),
     z.unknown()
   ]).optional(),
-  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
-    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested.'
-  }).optional().default(5),
-  reference_conditions: z.array(zReferenceCondition).max(12).register(z.globalRegistry, {
-    description: 'Ordered reference list; cross-modality order is semantic and is preserved end-to-end. Do not combine with reference_*_urls.'
-  }).optional(),
-  sync_mode: z.boolean().register(z.globalRegistry, {
-    description: 'Return the generated video as base64 instead of a CDN URL.'
-  }).optional().default(false),
   aspect_ratio: z.enum([
     'adaptive',
     '21:9',
@@ -1535,23 +1521,57 @@ export const zH3MaxReferenceToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The aspect ratio of the generated video.'
   }).optional().default('adaptive'),
-  middle_image_url: z.union([
+  resolution: z.enum([
+    '480P',
+    '768P',
+    '1080P'
+  ]).register(z.globalRegistry, {
+    description: 'The native generation resolution, or 1080P latent refinement from a native 768P source.'
+  }).optional().default('768P'),
+  prompt_expansion_mode: z.string().register(z.globalRegistry, {
+    description: 'How much effort to spend rewriting the prompt before generation. \'disabled\' skips prompt expansion. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.'
+  }).default('balanced'),
+  reference_audio_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Images, videos, and audio can be provided individually or together. Reference images, videos, and audio clips must add up to at most 12 files.'
+  }).optional(),
+  image_url: z.union([
     z.string().min(1),
     z.unknown()
   ]).optional(),
   prompt: z.string().min(1).max(50000).register(z.globalRegistry, {
     description: 'Text prompt for video generation. Refer to reference assets by their modality and order in the reference lists: Image 1, Image 2, Video 1, Audio 1, and so on.'
   }),
-  reference_image_urls: z.array(z.string()).max(9).register(z.globalRegistry, {
-    description: 'URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.'
-  }).optional(),
-  image_url: z.union([
+  sync_mode: z.boolean().register(z.globalRegistry, {
+    description: 'Return the generated video as base64 instead of a CDN URL.'
+  }).optional().default(false),
+  middle_image_url: z.union([
     z.string().min(1),
     z.unknown()
   ]).optional(),
-  prompt_expansion_mode: z.string().register(z.globalRegistry, {
-    description: 'How much effort to spend rewriting the prompt before generation. \'disabled\' skips prompt expansion. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.'
-  }).default('balanced')
+  seed: z.union([
+    z.int(),
+    z.unknown()
+  ]).optional(),
+  middle_frame_time: z.union([
+    z.number(),
+    z.unknown()
+  ]).optional(),
+  reference_video_urls: z.array(z.string()).max(3).register(z.globalRegistry, {
+    description: 'URLs of motion/reference video clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Video 1, Video 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.'
+  }).optional(),
+  reference_image_urls: z.array(z.string()).max(9).register(z.globalRegistry, {
+    description: 'URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.'
+  }).optional(),
+  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
+    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested. Use at least 2 s with target_audio_url.'
+  }).optional().default(5),
+  reference_conditions: z.array(zReferenceCondition).max(12).register(z.globalRegistry, {
+    description: 'Ordered reference list; cross-modality order is semantic and is preserved end-to-end. Do not combine with reference_*_urls.'
+  }).optional(),
+  end_image_url: z.union([
+    z.string().min(1),
+    z.unknown()
+  ]).optional()
 });
 
 /**
@@ -1560,6 +1580,9 @@ export const zH3MaxReferenceToVideoInput = z.object({
  * Public H3 Max input; Max Turbo keeps the shared Turbo input contract.
  */
 export const zH3MaxTextToVideoInput = z.object({
+  sync_mode: z.boolean().register(z.globalRegistry, {
+    description: 'Return the generated video as base64 instead of a CDN URL.'
+  }).optional().default(false),
   seed: z.union([
     z.int(),
     z.unknown()
@@ -1567,6 +1590,16 @@ export const zH3MaxTextToVideoInput = z.object({
   enable_safety_checker: z.boolean().register(z.globalRegistry, {
     description: 'If set to true, the safety checker will be enabled.'
   }).optional().default(true),
+  aspect_ratio: z.enum([
+    '21:9',
+    '16:9',
+    '4:3',
+    '1:1',
+    '3:4',
+    '9:16'
+  ]).register(z.globalRegistry, {
+    description: 'The aspect ratio of the generated video.'
+  }).optional().default('16:9'),
   target_audio_url: z.union([
     z.string().min(1).regex(/\S/),
     z.unknown()
@@ -1578,28 +1611,15 @@ export const zH3MaxTextToVideoInput = z.object({
   ]).register(z.globalRegistry, {
     description: 'The native generation resolution, or 1080P latent refinement from a native 768P source.'
   }).optional().default('768P'),
-  aspect_ratio: z.enum([
-    '21:9',
-    '16:9',
-    '4:3',
-    '1:1',
-    '3:4',
-    '9:16'
-  ]).register(z.globalRegistry, {
-    description: 'The aspect ratio of the generated video.'
-  }).optional().default('16:9'),
-  prompt: z.string().min(1).max(50000).register(z.globalRegistry, {
-    description: 'Text prompt for video generation'
-  }),
-  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
-    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested. Use at least 2 s with target_audio_url.'
-  }).optional().default(5),
   prompt_expansion_mode: z.string().register(z.globalRegistry, {
     description: 'How much effort to spend rewriting the prompt before generation. \'disabled\' skips prompt expansion. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.'
   }).default('balanced'),
-  sync_mode: z.boolean().register(z.globalRegistry, {
-    description: 'Return the generated video as base64 instead of a CDN URL.'
-  }).optional().default(false)
+  duration: z.number().gte(0.92).lte(15).register(z.globalRegistry, {
+    description: 'Video length in seconds. The output can run up to about 0.7 s longer than requested. Use at least 2 s with target_audio_url.'
+  }).optional().default(5),
+  prompt: z.string().min(1).max(50000).register(z.globalRegistry, {
+    description: 'Text prompt for video generation'
+  })
 }).register(z.globalRegistry, {
   description: 'Public H3 Max input; Max Turbo keeps the shared Turbo input contract.'
 });
@@ -1608,11 +1628,11 @@ export const zH3MaxTextToVideoInput = z.object({
  * TurboTextToVideoHailuo03Output
  */
 export const zH3MaxTextToVideoOutput = z.object({
-  video: zFile,
   timings: z.union([
     z.record(z.string(), z.number()),
     z.unknown()
   ]).optional(),
+  video: zFile,
   expanded_prompt: z.union([
     z.string(),
     z.unknown()
@@ -1671,13 +1691,13 @@ export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdPath = z.o
  */
 export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponse = zGrokImagineVideoV15ImageToVideoOutput;
 
-export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdStatusPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
 });
 
-export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdStatusQuery = z.object({
+export const zGetGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdStatusQuery = z.object({
   logs: z.number().register(z.globalRegistry, {
     description: 'Whether to include logs (`1`) in the response or not (`0`).'
   }).optional()
@@ -1686,9 +1706,9 @@ export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdStatusQuer
 /**
  * The request status.
  */
-export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
+export const zGetGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
 
-export const zPutFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdCancelPath = z.object({
+export const zPutGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdCancelPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -1697,7 +1717,7 @@ export const zPutFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdCancelPath
 /**
  * The request was cancelled.
  */
-export const zPutFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdCancelResponse = z.object({
+export const zPutGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdCancelResponse = z.object({
   success: z.boolean().register(z.globalRegistry, {
     description: 'Whether the request was cancelled successfully.'
   }).optional()
@@ -1705,14 +1725,14 @@ export const zPutFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdCancelResp
   description: 'The request was cancelled.'
 });
 
-export const zPostFalAiGeminiOmni11FlashImageToVideoBody = zGeminiOmni11FlashImageToVideoInput;
+export const zPostGoogleGeminiOmniFlashV12ImageToVideoBody = zGeminiOmniFlashV12ImageToVideoInput;
 
 /**
  * The request status.
  */
-export const zPostFalAiGeminiOmni11FlashImageToVideoResponse = zQueueStatus;
+export const zPostGoogleGeminiOmniFlashV12ImageToVideoResponse = zQueueStatus;
 
-export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -1721,7 +1741,7 @@ export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdPath = z.o
 /**
  * Result of the request.
  */
-export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponse = zGeminiOmni11FlashImageToVideoOutput;
+export const zGetGoogleGeminiOmniFlashV12ImageToVideoRequestsByRequestIdResponse = zGeminiOmniFlashV12ImageToVideoOutput;
 
 export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
@@ -2347,13 +2367,13 @@ export const zGetBytedanceSeedance20MiniTextToVideoRequestsByRequestIdPath = z.o
  */
 export const zGetBytedanceSeedance20MiniTextToVideoRequestsByRequestIdResponse = zSeedance20MiniTextToVideoOutput;
 
-export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdStatusPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
 });
 
-export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdStatusQuery = z.object({
+export const zGetGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdStatusQuery = z.object({
   logs: z.number().register(z.globalRegistry, {
     description: 'Whether to include logs (`1`) in the response or not (`0`).'
   }).optional()
@@ -2362,9 +2382,9 @@ export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdStatus
 /**
  * The request status.
  */
-export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
+export const zGetGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
 
-export const zPutFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdCancelPath = z.object({
+export const zPutGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdCancelPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -2373,7 +2393,7 @@ export const zPutFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdCancel
 /**
  * The request was cancelled.
  */
-export const zPutFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdCancelResponse = z.object({
+export const zPutGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdCancelResponse = z.object({
   success: z.boolean().register(z.globalRegistry, {
     description: 'Whether the request was cancelled successfully.'
   }).optional()
@@ -2381,14 +2401,14 @@ export const zPutFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdCancel
   description: 'The request was cancelled.'
 });
 
-export const zPostFalAiGeminiOmni11FlashReferenceToVideoBody = zGeminiOmni11FlashReferenceToVideoInput;
+export const zPostGoogleGeminiOmniFlashV12ReferenceToVideoBody = zGeminiOmniFlashV12ReferenceToVideoInput;
 
 /**
  * The request status.
  */
-export const zPostFalAiGeminiOmni11FlashReferenceToVideoResponse = zQueueStatus;
+export const zPostGoogleGeminiOmniFlashV12ReferenceToVideoResponse = zQueueStatus;
 
-export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -2397,15 +2417,15 @@ export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdPath =
 /**
  * Result of the request.
  */
-export const zGetFalAiGeminiOmni11FlashReferenceToVideoRequestsByRequestIdResponse = zGeminiOmni11FlashReferenceToVideoOutput;
+export const zGetGoogleGeminiOmniFlashV12ReferenceToVideoRequestsByRequestIdResponse = zGeminiOmniFlashV12ReferenceToVideoOutput;
 
-export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdStatusPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
 });
 
-export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdStatusQuery = z.object({
+export const zGetGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdStatusQuery = z.object({
   logs: z.number().register(z.globalRegistry, {
     description: 'Whether to include logs (`1`) in the response or not (`0`).'
   }).optional()
@@ -2414,9 +2434,9 @@ export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdStatusQuery = z.object
 /**
  * The request status.
  */
-export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdStatusResponse = zQueueStatus;
+export const zGetGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
 
-export const zPutFalAiGeminiOmni11FlashRequestsByRequestIdCancelPath = z.object({
+export const zPutGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdCancelPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -2425,7 +2445,7 @@ export const zPutFalAiGeminiOmni11FlashRequestsByRequestIdCancelPath = z.object(
 /**
  * The request was cancelled.
  */
-export const zPutFalAiGeminiOmni11FlashRequestsByRequestIdCancelResponse = z.object({
+export const zPutGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdCancelResponse = z.object({
   success: z.boolean().register(z.globalRegistry, {
     description: 'Whether the request was cancelled successfully.'
   }).optional()
@@ -2433,14 +2453,14 @@ export const zPutFalAiGeminiOmni11FlashRequestsByRequestIdCancelResponse = z.obj
   description: 'The request was cancelled.'
 });
 
-export const zPostFalAiGeminiOmni11FlashBody = zGeminiOmni11FlashInput;
+export const zPostGoogleGeminiOmniFlashV12TextToVideoBody = zGeminiOmniFlashV12TextToVideoInput;
 
 /**
  * The request status.
  */
-export const zPostFalAiGeminiOmni11FlashResponse = zQueueStatus;
+export const zPostGoogleGeminiOmniFlashV12TextToVideoResponse = zQueueStatus;
 
-export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdPath = z.object({
+export const zGetGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -2449,7 +2469,7 @@ export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdPath = z.object({
 /**
  * Result of the request.
  */
-export const zGetFalAiGeminiOmni11FlashRequestsByRequestIdResponse = zGeminiOmni11FlashOutput;
+export const zGetGoogleGeminiOmniFlashV12TextToVideoRequestsByRequestIdResponse = zGeminiOmniFlashV12TextToVideoOutput;
 
 export const zGetFalAiKlingVideoO3ProReferenceToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {

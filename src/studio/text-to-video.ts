@@ -36,7 +36,7 @@ import {
 
 const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   grok_imagine_video_1_5: 'xai/grok-imagine-video/v1.5/text-to-video',
-  gemini_omni_flash: 'fal-ai/gemini-omni-1.1-flash',
+  gemini_omni_flash: 'google/gemini-omni-flash/v1.2/text-to-video',
   kling_v3_pro: 'fal-ai/kling-video/v3/pro/text-to-video',
   kling_v4: 'kling/v4/text-to-video',
   minimax_h3_max: 'minimax/h3-max/text-to-video',
@@ -51,7 +51,7 @@ const RANGE = (min: number, max: number): readonly number[] =>
 /** Seconds the T2V sibling accepts. Empty = duration is not a request field. */
 const STUDIO_VIDEO_DURATIONS = {
   grok_imagine_video_1_5: RANGE(1, 15),
-  gemini_omni_flash: RANGE(3, 10),
+  gemini_omni_flash: RANGE(3, 15),
   kling_v3_pro: RANGE(3, 15),
   kling_v4: RANGE(3, 30),
   minimax_h3_max: RANGE(5, 15),
@@ -178,7 +178,7 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxAudio: 0,
   },
   gemini_omni_flash: {
-    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+    endpointId: 'google/gemini-omni-flash/v1.2/reference-to-video',
     imageField: 'image_urls',
     // Google numbers references from zero.
     imageTag: (n) => `<IMAGE_REF_${n - 1}>`,

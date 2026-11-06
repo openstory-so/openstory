@@ -98,16 +98,19 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
     unit: 'seconds',
     unitPriceUsd: 0.14,
   },
-  // fal 1.1 bills per second by resolution: 360p $0.03, 720p $0.10 (schema
-  // default), 1080p $0.15, 4K $0.30. Seed the default 720p advertised rate.
-  'fal-ai/gemini-omni-1.1-flash/image-to-video': {
+  // fal 1.2 bills per second by resolution: 360p $0.0273, 720p $0.0819 (schema
+  // default), 1080p $0.1229, 4K $0.2457 (llms.txt, 2026-11-06). Seed 720p.
+  'google/gemini-omni-flash/v1.2/image-to-video': {
     unit: 'seconds',
-    unitPriceUsd: 0.1,
+    unitPriceUsd: 0.0819,
   },
-  'fal-ai/gemini-omni-1.1-flash': { unit: 'seconds', unitPriceUsd: 0.1 },
-  'fal-ai/gemini-omni-1.1-flash/reference-to-video': {
+  'google/gemini-omni-flash/v1.2/text-to-video': {
     unit: 'seconds',
-    unitPriceUsd: 0.1,
+    unitPriceUsd: 0.0819,
+  },
+  'google/gemini-omni-flash/v1.2/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.0819,
   },
   'fal-ai/kling-video/v3/pro/image-to-video': {
     unit: 'seconds',

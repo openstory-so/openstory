@@ -39,7 +39,7 @@ export function nativeGeminiTextModel(
  * content (or pinned via `generation_config.video_config.task`), unlike fal
  * where each task is its own endpoint.
  */
-export const NATIVE_GEMINI_VIDEO_MODEL = 'gemini-omni-1.1-flash';
+export const NATIVE_GEMINI_VIDEO_MODEL = 'gemini-omni-1.2-flash';
 
 export function isNativeGeminiVideoModel(model: ImageToVideoModel): boolean {
   return model === 'gemini_omni_flash';
@@ -141,17 +141,18 @@ const TEXT_RATES: Record<
 };
 
 /**
- * Omni Flash bills video output as tokens: a fixed 5,792 tokens per second of
- * 720p video at the video-output rate of $17.50 per 1M tokens (≈$0.101/s).
- * Input (text / image / video / audio) is $1.50 per 1M tokens. Published
- * rates, ai.google.dev/gemini-api/docs/pricing, read 2026-09-04.
+ * Omni Flash 1.2 bills video output as tokens: 5,792 tokens per second of
+ * 720p video at $12 per 1M tokens (≈$0.07/s; 1.1 was $17.50, ≈$0.101/s).
+ * Rate from the @tanstack/ai-gemini 1.2.0 model-meta, read 2026-11-06; the
+ * Google pricing page was not reachable to confirm. Input (text / image /
+ * video / audio) is carried over from 1.1 at $1.50 per 1M tokens.
  *
  * The adapter surfaces video-output tokens as `usage.completionTokens`. Text
  * / thinking output ($9/1M) is not split out of that field, so it is priced
  * at the video rate when present.
  */
 const OMNI_VIDEO_TOKENS_PER_SECOND = 5_792;
-const OMNI_VIDEO_USD_PER_1M_TOKENS = 17.5;
+const OMNI_VIDEO_USD_PER_1M_TOKENS = 12;
 const OMNI_VIDEO_INPUT_USD_PER_1M_TOKENS = 1.5;
 
 /** Standard-tier token rates for the /pricing page; undefined when the

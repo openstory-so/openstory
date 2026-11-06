@@ -34,7 +34,7 @@ describe('studioVideoEndpointId', () => {
     );
     expect(ids).toEqual([
       'xai/grok-imagine-video/v1.5/text-to-video',
-      'fal-ai/gemini-omni-1.1-flash',
+      'google/gemini-omni-flash/v1.2/text-to-video',
       'fal-ai/kling-video/v3/pro/text-to-video',
       'kling/v4/text-to-video',
       'minimax/h3-max/text-to-video',
@@ -49,7 +49,7 @@ describe('studioVideoEndpointId', () => {
         ...ids,
         'xai/grok-imagine-video/v1.5/reference-to-video',
         'fal-ai/kling-video/o3/pro/reference-to-video',
-        'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+        'google/gemini-omni-flash/v1.2/reference-to-video',
         'minimax/h3-max/reference-to-video',
       ])
     );
@@ -185,10 +185,10 @@ describe('buildStudioVideoInput', () => {
 });
 
 describe('snapStudioVideoDuration', () => {
-  it('snaps H3 Max to 5–15 and Omni Flash to 3–10', () => {
+  it('snaps H3 Max to 5–15 and Omni Flash to 3–15', () => {
     expect(snapStudioVideoDuration(4, 'minimax_h3_max')).toBe(5);
     expect(snapStudioVideoDuration(2, 'gemini_omni_flash')).toBe(3);
-    expect(snapStudioVideoDuration(12, 'gemini_omni_flash')).toBe(10);
+    expect(snapStudioVideoDuration(20, 'gemini_omni_flash')).toBe(15);
   });
 });
 

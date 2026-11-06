@@ -14,7 +14,7 @@ import { tiersForTokens, type Resolution } from '@/models/resolutions';
 /** Allowed clip lengths in seconds, sorted. Empty = duration is not a field. */
 export const MOTION_DURATION_GRID = {
   grok_imagine_video_1_5: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-  gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
+  gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   kling_v3_pro: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   kling_v4: [
     3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,

@@ -7,16 +7,16 @@ import {
 } from './resolve-shot-duration';
 
 // kling_v3_pro accepts integer seconds 1..15 (one entry per integer).
-// gemini_omni_flash accepts only 3..10 — useful for asserting snap behavior.
+// gemini_omni_flash accepts only 3..15 — useful for asserting snap behavior.
 
 describe('resolveShotDuration', () => {
   it('uses explicit duration when present, snapped to the model', () => {
     const result = resolveShotDuration({
-      explicit: 12,
+      explicit: 20,
       durationMs: 3000,
       model: 'gemini_omni_flash',
     });
-    expect(result).toBe(10);
+    expect(result).toBe(15);
   });
 
   it('falls back to durationMs/1000 when explicit is undefined', () => {
@@ -30,16 +30,16 @@ describe('resolveShotDuration', () => {
   it('falls back to a valid model duration when nothing is stored', () => {
     const result = resolveShotDuration({ model: 'gemini_omni_flash' });
     expect(result).toBeGreaterThanOrEqual(3);
-    expect(result).toBeLessThanOrEqual(10);
+    expect(result).toBeLessThanOrEqual(15);
   });
 
   it('snaps onto the model duration set even when the source was valid for a different model', () => {
-    // 12s is valid for kling_v3_pro but not for gemini_omni_flash
+    // 20s is valid for seedance_v2_5 but not for gemini_omni_flash
     const result = resolveShotDuration({
-      durationMs: 12000,
+      durationMs: 20000,
       model: 'gemini_omni_flash',
     });
-    expect(result).toBe(10);
+    expect(result).toBe(15);
   });
 });
 
