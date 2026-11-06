@@ -96,6 +96,7 @@ export { SheetPortraitWorkflow } from '@/cast/server/workflows/sheet-portrait-wo
 export { ElementSheetWorkflow } from '@/cast/server/workflows/element-sheet-workflow';
 export { MusicWorkflow } from '@/audio/server/workflows/music-workflow';
 export { MotionWorkflow } from '@/motion/server/workflows/motion-workflow';
+export { LipsyncWorkflow } from '@/motion/server/workflows/lipsync-workflow';
 export { MotionBatchWorkflow } from '@/motion/server/workflows/motion-batch-workflow';
 export { CharacterSheetWorkflow } from '@/cast/server/workflows/character-sheet-workflow';
 export { CharacterVoiceWorkflow } from '@/cast/server/workflows/character-voice-workflow';

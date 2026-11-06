@@ -33,6 +33,7 @@ import {
   studioVideoRefLimit,
   studioVideoSupportsAudio,
 } from '@/studio/text-to-video';
+import { startLipsync } from '@/motion/server/lipsync-shot';
 import {
   cancelVideoRender,
   generateShotMotion,
@@ -350,6 +351,21 @@ const generateShotVideoTool = openstoryTool({
       data: result,
       summary: `Started the clip (${result.packedShotIds.length} shot${result.packedShotIds.length === 1 ? '' : 's'}).`,
     };
+  },
+});
+
+const lipsyncShotTool = openstoryTool({
+  name: 'lipsync_shot',
+  description:
+    'Lip-sync a finished clip to its current dialogue (uses credits, about $0.67 for 5 seconds) without re-rendering the picture. Refused when the shot has no completed clip, no dialogue audio, more than one dialogue file, a packed multi-shot clip, or a video already generating. Lands a new video version; a later line or voice edit marks it out of date.',
+  scope: 'generate',
+  annotations: paid,
+  inputSchema: shotInput,
+  outputSchema: runResult,
+  run: async (input, { scopedDb, userId }) => {
+    const context = await shotEdit(scopedDb, userId, input);
+    const result = await startLipsync(context);
+    return { data: result, summary: 'Started lip-sync.' };
   },
 });
 
@@ -840,6 +856,7 @@ export const generationUploadTools = [
   generateShotImageVariantsTool,
   selectShotImageVariantTool,
   generateShotVideoTool,
+  lipsyncShotTool,
   cancelVideoRenderTool,
   renderShotAtQualityTool,
   renderSequenceDraftsAtQualityTool,

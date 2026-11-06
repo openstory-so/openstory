@@ -6,6 +6,7 @@ import {
   groupShotsBySegment,
   groupShotsForSceneList,
   isSelectedVersionStale,
+  selectedVersionDrift,
   type SegmentShotInput,
   type SegmentVersionInput,
   type SequenceSegment,
@@ -283,17 +284,23 @@ const NO_LOADED = {
 const motion = new Map([['shot-1', 'mp-1']]);
 const frame = new Map([['shot-1', 'fv-1']]);
 /** Staleness of `v` against shot-1's pointers, with only the given live maps bound. */
+const liveInputs = (live: Partial<LiveShotInputs> = {}): LiveShotInputs => ({
+  ...NO_LOADED,
+  audioClipIdsByShot: new Map(),
+  durationMsByShot: new Map(),
+  audioSecondsByShot: new Map(),
+  ...live,
+});
+
 const stale = (
   v: SegmentVersionInput | undefined,
   live: Partial<LiveShotInputs> = {}
-) =>
-  isSelectedVersionStale(v, motion, frame, {
-    ...NO_LOADED,
-    audioClipIdsByShot: new Map(),
-    durationMsByShot: new Map(),
-    audioSecondsByShot: new Map(),
-    ...live,
-  });
+) => isSelectedVersionStale(v, motion, frame, liveInputs(live));
+
+const drift = (
+  v: SegmentVersionInput | undefined,
+  live: Partial<LiveShotInputs> = {}
+) => selectedVersionDrift(v, motion, frame, liveInputs(live));
 
 describe('isSelectedVersionStale', () => {
   it('is false with no selection', () => {
@@ -321,6 +328,7 @@ describe('isSelectedVersionStale', () => {
       },
     ]);
     const audio = new Map([['shot-1', 'voice-other\tStay down.\t\televen_v3']]);
+    expect(drift(v, { audioSourceKeyByShot: audio })).toBe('audio');
     expect(stale(v, { audioSourceKeyByShot: audio })).toBe(true);
     expect(
       stale(v, {
@@ -445,6 +453,44 @@ describe('isSelectedVersionStale', () => {
     expect(
       stale(v, { audioSourceKeyByShot: new Map([['shot-1', 'changed-key']]) })
     ).toBe(true);
+  });
+
+  it('treats a lip-sync whose audio moved as audio drift, and a prompt change as picture (#2263)', () => {
+    const synced = version('v1', 'seg', 'sync-lipsync-3', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3',
+        audioClipIds: ['section-1'],
+      },
+    ]);
+    const clips = { audioClipIdsByShot: new Map([['shot-1', ['section-1']]]) };
+    const moved = {
+      ...clips,
+      audioSourceKeyByShot: new Map([
+        ['shot-1', 'voice-other\tStay down.\t\televen_v3'],
+      ]),
+    };
+    expect(drift(synced, moved)).toBe('audio');
+    expect(stale(synced, moved)).toBe(true);
+    expect(
+      drift(synced, {
+        ...clips,
+        audioSourceKeyByShot: new Map([
+          ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
+        ]),
+      })
+    ).toBe('current');
+    const reprompted = version('v2', 'seg', 'sync-lipsync-3', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-0',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3',
+      },
+    ]);
+    expect(drift(reprompted, moved)).toBe('picture');
   });
 
   it('is stale when a shot repointed its frame or motion prompt', () => {

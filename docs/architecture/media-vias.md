@@ -173,3 +173,16 @@ organization fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`). An organizatio
 an LLMTR key chose that gateway, so it outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
 is public and answers 200 for a bogus key — so validation is a 1-token
 completion on a $0 model and requires `response.ok`.
+
+## Sync lipsync (#2263)
+
+Post-process a finished clip. Endpoint `fal-ai/sync-lipsync/v3`, price card
+id `sync-lipsync-3` at $8 per minute of the source video until `model_pricing`
+carries the fal row. `sync_mode` is `cut_off`: the dialogue section already
+fits the shot. The new `video_variants` row has `source: 'lipsync'` and the
+`audioSourceKey` it was synced to. A later line or voice edit marks that
+version out of date. The render it was made from stays selected until the
+lip-sync promotes. One video plus one dialogue file; a packed multi-shot
+clip is refused. Update all takes this path when the clip's only drift is
+audio. Native fal spend, same as other fal jobs: an organization fal key
+skips the credit check.

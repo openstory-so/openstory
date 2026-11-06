@@ -12,7 +12,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution, Resolution } from '@/models/resolutions';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   CharacterMinimal,
@@ -637,6 +637,24 @@ export interface DialogueUploadWorkflowInput extends UserWorkflowContext {
 
 export interface DialogueAudioWorkflowResult {
   clipsByShotId: Record<string, MotionAudioClip[]>;
+}
+
+/**
+ * Lip-sync one finished clip to its dialogue section (#2263). Every input
+ * is snapshotted at the trigger. The child does not re-read the selection.
+ */
+export interface LipsyncWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shotId: string;
+  sceneId: string | null;
+  renderSegmentId: string;
+  videoUrl: string;
+  audioUrl: string;
+  manifest: VideoManifest;
+  durationSeconds: number;
+  resolution: RenderedResolution | null;
+  sequenceTitle: string;
+  sceneTitle?: string;
 }
 
 /**

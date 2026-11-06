@@ -255,6 +255,7 @@ describe('tools/list and whoami', () => {
       'openstory.generate_shot_image_variants',
       'openstory.select_shot_image_variant',
       'openstory.generate_shot_video',
+      'openstory.lipsync_shot',
       'openstory.cancel_video_render',
       'openstory.render_shot_at_quality',
       'openstory.render_sequence_drafts_at_quality',
@@ -375,6 +376,7 @@ describe('tools/list and whoami', () => {
       'openstory.generate_shot_image_variants',
       'openstory.select_shot_image_variant',
       'openstory.generate_shot_video',
+      'openstory.lipsync_shot',
       'openstory.cancel_video_render',
       'openstory.render_shot_at_quality',
       'openstory.render_sequence_drafts_at_quality',
@@ -844,6 +846,7 @@ describe('generation and upload tool authorization (#1979)', () => {
     ['generate_shot_image_variants', { sequenceId, shotId }],
     ['select_shot_image_variant', { sequenceId, shotId, variantIndex: 0 }],
     ['generate_shot_video', { sequenceId, shotId }],
+    ['lipsync_shot', { sequenceId, shotId }],
     ['render_shot_at_quality', { sequenceId, shotId }],
     ['render_sequence_drafts_at_quality', { sequenceId }],
     [

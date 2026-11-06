@@ -70,6 +70,7 @@ import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { estimateLipsyncCost, planLipsync } from '@/motion/lipsync';
 import { addMicros } from '@/billing/money';
 import {
   matchingDialogueClips,
@@ -138,6 +139,7 @@ import type {
   ShotVariantWorkflowInput,
   DialogueAudioWorkflowInput,
   DialogueAudioWorkflowResult,
+  LipsyncWorkflowInput,
   MotionWorkflowInput,
   MotionWorkflowResult,
   MusicPromptWorkflowInput,
@@ -997,6 +999,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
      * duration, credits preflight.
      */
     const preparedVideos = new Map<string, MotionRenderShot>();
+    type PreparedLipsync = Omit<
+      LipsyncWorkflowInput,
+      'userId' | 'organizationId' | 'reservationId' | 'ownsReservation'
+    >;
+    const preparedLipsync = new Map<string, PreparedLipsync>();
     const prepareVideo = async (
       target: PlanTarget,
       claims: ShotClaims,
@@ -1015,6 +1022,53 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               `Shot ${target.shotId} disappeared mid-update`,
               'WorkflowValidationError'
             );
+          }
+
+          // Audio-only drift on a single-shot clip (#2263). A picture or
+          // prompt change falls through and re-renders. A clip already
+          // generating is left alone.
+          if (
+            target.lipsyncVideo &&
+            promptedMotionVersionId == null &&
+            !target.regenImage
+          ) {
+            const [selectedVideo, segmentVersions] = await Promise.all([
+              scopedDb.liveRead.videoVariants.getSelectedByShot(shot.id),
+              shot.renderSegmentId
+                ? scopedDb.liveRead.videoVariants.listBySegment(
+                    shot.renderSegmentId
+                  )
+                : Promise.resolve([]),
+            ]);
+            const planned = planLipsync({
+              shotId: shot.id,
+              renderSegmentId: shot.renderSegmentId,
+              selected: selectedVideo,
+              generating: segmentVersions.some(
+                (version) => version.status === 'generating'
+              ),
+              clips: target.regenDialogue
+                ? (speechClipsByShotId[target.shotId] ?? null)
+                : (speechClipsByShotId[target.shotId] ?? shot.audioClips),
+              shotDurationMs: shot.durationMs,
+            });
+            if (planned.ok) {
+              const payload: PreparedLipsync = {
+                sequenceId,
+                shotId: shot.id,
+                sceneId: shot.sceneId,
+                renderSegmentId: planned.plan.renderSegmentId,
+                videoUrl: planned.plan.videoUrl,
+                audioUrl: planned.plan.audioUrl,
+                manifest: planned.plan.manifest,
+                durationSeconds: planned.plan.durationSeconds,
+                resolution: selectedVideo?.resolution ?? null,
+                sequenceTitle: sequenceSnapshot.title,
+                sceneTitle: target.motionRender.sceneTitle,
+              };
+              return JSON.stringify({ kind: 'lipsync' as const, payload });
+            }
+            if (planned.reason === 'generating') return null;
           }
 
           // The still (#1067): this run's own render when the image stage
@@ -1262,9 +1316,20 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         );
         return;
       }
+      const parsed: unknown = JSON.parse(motionInputJson);
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        'kind' in parsed &&
+        parsed.kind === 'lipsync' &&
+        'payload' in parsed
+      ) {
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
+        preparedLipsync.set(target.shotId, parsed.payload as PreparedLipsync);
+        return;
+      }
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-      const motionInput = JSON.parse(motionInputJson) as MotionRenderShot;
-      preparedVideos.set(target.shotId, motionInput);
+      preparedVideos.set(target.shotId, parsed as MotionRenderShot);
     };
 
     /**
@@ -2004,6 +2069,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     const heldSegments = new Set(
       plan.targets.flatMap((target) =>
         target.regenVideo &&
+        !preparedLipsync.has(target.shotId) &&
         target.motionRender.renderSegmentId &&
         (!preparedVideos.has(target.shotId) ||
           target.motionRender.siblingShotIds?.some(
@@ -2123,6 +2189,45 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           for (const member of input.coveredShots ?? [{ shotId }]) {
             failures.push(toFailure(member.shotId, 'video', error));
           }
+        }
+      })
+    );
+    await Promise.all(
+      plan.targets.map(async (target) => {
+        const payload = preparedLipsync.get(target.shotId);
+        if (!payload) return;
+        try {
+          await step.do(`preflight-lipsync-${target.shotId}`, async () => {
+            await requireCredits(
+              scopedDb.liveRead,
+              estimateLipsyncCost(payload.durationSeconds),
+              {
+                errorMessage: 'Insufficient credits for lip-sync',
+                reservationId: input.reservationId,
+              }
+            );
+          });
+          await spawnAndAwaitChild<
+            LipsyncWorkflowInput,
+            { videoUrl: string | null }
+          >(step, {
+            binding: this.env.LIPSYNC_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `lipsync:${sequenceId}:${target.shotId}`,
+            childPayload: {
+              ...payload,
+              userId,
+              organizationId,
+              reservationId: input.reservationId,
+            },
+            spawnStepName: `spawn-lipsync-${target.shotId}`,
+            awaitStepName: `await-lipsync-${target.shotId}`,
+            timeout: '30 minutes',
+          });
+          counters.videos += 1;
+        } catch (error) {
+          failures.push(toFailure(target.shotId, 'video', error));
         }
       })
     );
