@@ -317,7 +317,7 @@ describe('createRangedReader poisoned browser cache (#2258)', () => {
       );
       const done = run(reader);
       await vi.runAllTimersAsync();
-      await expect(done).resolves.not.toThrow();
+      await done;
     } finally {
       vi.useRealTimers();
     }
