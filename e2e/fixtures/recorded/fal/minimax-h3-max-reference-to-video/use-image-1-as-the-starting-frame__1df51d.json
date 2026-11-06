@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 tears open the coral lipstick carton while ignoring the vibrating phone.. Camera: smooth push-in\n\noverall_soundscape: phone vibration, faint bathroom ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 twists the lipstick bullet upward and turns it in the sunlight.. Camera: gradual push-in\n\noverall_soundscape: subtle click and twist of the lipstick tube. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 tears open the coral lipstick carton while ignoring the vibrating phone.. Camera: smooth push-in\n\noverall_soundscape: phone vibration, faint bathroom ambience. No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 twists the lipstick bullet upward and turns it in the sunlight.. Camera: gradual push-in\n\noverall_soundscape: subtle click and twist of the lipstick tube. No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.\nnon_diegetic_music: N/A",
         "model": "minimax/h3-max/reference-to-video"
       },
       "response": {

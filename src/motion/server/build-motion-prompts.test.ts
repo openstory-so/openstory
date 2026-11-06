@@ -325,7 +325,7 @@ describe('buildMotionShotPrompt', () => {
         });
 
         expect(result).toBe(
-          `${fullPromptText}\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts.`
+          `${fullPromptText}\n\nNo BGM, no music, no dialogue. Generate only environmental sounds and action sounds. Single continuous shot, no cuts.`
         );
       });
     }
@@ -444,7 +444,9 @@ describe('buildMotionShotPrompt', () => {
       });
 
       expect(result).not.toContain('<d>');
-      expect(result).toContain('overall_soundscape: No BGM, no music.');
+      expect(result).toContain(
+        'overall_soundscape: No BGM, no music, no dialogue.'
+      );
       expect(result).toContain('non_diegetic_music: N/A');
     });
   });

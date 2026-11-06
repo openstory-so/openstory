@@ -45,6 +45,14 @@ import {
 const NO_MUSIC_DIRECTION =
   'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.';
 
+/** Same direction for a shot with no lines: a dialogue whitelist invites invented speech. */
+const NO_MUSIC_NO_DIALOGUE_DIRECTION =
+  'No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.';
+
+function noMusicDirection(hasDialogue: boolean): string {
+  return hasDialogue ? NO_MUSIC_DIRECTION : NO_MUSIC_NO_DIALOGUE_DIRECTION;
+}
+
 /** Audio "off" for a model that always renders sound (Kling 4). */
 const SILENT_SOUNDSCAPE = 'Silent. No dialogue, no sound effects, no music.';
 
@@ -337,6 +345,11 @@ export function buildPackedMotionPrompt({
     characterTags,
     model,
     generateAudio,
+    hasDialogue: shots.some(
+      (shot) =>
+        shot.motionPrompt?.dialogue?.presence &&
+        shot.motionPrompt.dialogue.lines.length > 0
+    ),
   });
   if (model === 'kling_v3_pro' || model === 'kling_v4') {
     // Kling rejects `prompt` + `multi_prompt` together, so the header has to
@@ -391,6 +404,7 @@ function formatPackedHeader(input: {
   characterTags: readonly string[];
   model: ImageToVideoModel;
   generateAudio?: boolean;
+  hasDialogue: boolean;
 }): string {
   const parts: string[] = [];
   const env = formatPackedEnvironment(input.scene);
@@ -402,7 +416,7 @@ function formatPackedHeader(input: {
   } else if (input.model === 'kling_v4' && input.generateAudio === false) {
     parts.push(SILENT_SOUNDSCAPE);
   } else {
-    parts.push(NO_MUSIC_DIRECTION);
+    parts.push(noMusicDirection(input.hasDialogue));
     if (input.model === 'minimax_h3_max') {
       parts.push('non_diegetic_music: N/A');
     }
@@ -504,8 +518,8 @@ function buildKlingPrompt(
   } else {
     parts.push(
       ambientParts.length > 0
-        ? `Ambient sounds: ${ambientParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-        : NO_MUSIC_DIRECTION
+        ? `Ambient sounds: ${ambientParts.join('. ')}. ${noMusicDirection(Boolean(dialogue))}`
+        : noMusicDirection(Boolean(dialogue))
     );
   }
 
@@ -597,7 +611,7 @@ function buildSeedancePrompt(
   // Constraint words, which the ByteDance guide asks for at the end of the
   // prompt. Seedance invents edits otherwise, conflicting with
   // one-scene-one-take — omit that pin when the clip is a packed multi-shot.
-  const guards = [NO_MUSIC_DIRECTION];
+  const guards = [noMusicDirection(Boolean(dialogue))];
   if (singleTake) {
     guards.push('Single continuous shot, no cuts.');
   }
@@ -662,7 +676,7 @@ function buildMinimaxH3Prompt(
     }
     return parts.join('\n\n');
   }
-  soundscape.push(NO_MUSIC_DIRECTION);
+  soundscape.push(noMusicDirection(Boolean(dialogue)));
   parts.push(
     `overall_soundscape: ${soundscape.join(' ')}\nnon_diegetic_music: N/A`
   );
@@ -748,8 +762,8 @@ function buildVeoPrompt(
   }
   parts.push(
     audioParts.length > 0
-      ? `Audio: ${audioParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-      : `Audio: ${NO_MUSIC_DIRECTION}`
+      ? `Audio: ${audioParts.join('. ')}. ${noMusicDirection(Boolean(dialogue))}`
+      : `Audio: ${noMusicDirection(Boolean(dialogue))}`
   );
 
   return parts.join('\n\n');
