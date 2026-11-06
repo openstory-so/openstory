@@ -250,7 +250,11 @@ async function saveFolder(body: SequenceAssetsBody): Promise<string> {
       continue;
     }
     if (!asset.url) continue;
-    const response = await fetch(asset.url, { credentials: 'same-origin' });
+    // no-store: a `<video>`'s cached copy may lack CORS headers (#2258).
+    const response = await fetch(asset.url, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
     if (!response.ok || !response.body) {
       throw new Error(
         `Could not download ${asset.relativePath} (${response.status})`

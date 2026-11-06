@@ -23,6 +23,10 @@ const MAX_AHEAD_BLOCKS = 32; // 2 MiB
  */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
+const PROBE_TIMEOUT_MS = 5000;
+/** A retry skips the browser cache: a `<video>`'s no-CORS copy can poison it (#2258). */
+const cacheFor = (attempt: number): RequestCache =>
+  attempt === 0 ? 'default' : 'reload';
 
 type FetchFn = typeof fetch;
 
@@ -46,30 +50,77 @@ export function createRangedReader(
   /** Aborts the `fetchAll` in flight; `drop()` fires it. */
   let downloadAbort = new AbortController();
 
+  /**
+   * A bare `TypeError` ("Failed to fetch") names neither the file nor the
+   * cause (#2258). A CORS probe that loads means the file is there and the
+   * connection failed; failing that, a no-cors probe that loads means the
+   * server answered without CORS headers.
+   */
+  async function explain(
+    error: unknown,
+    signal: AbortSignal
+  ): Promise<unknown> {
+    if (!(error instanceof TypeError)) return error;
+    const probe = new AbortController();
+    const send = (init: RequestInit) =>
+      fetchFn(url, {
+        ...init,
+        signal: AbortSignal.any([
+          signal,
+          probe.signal,
+          AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        ]),
+      }).then(
+        (response) => response,
+        () => null
+      );
+    const cors = await send({
+      headers: { Range: 'bytes=0-0' },
+      cache: 'reload',
+    });
+    const cause = cors
+      ? cors.ok
+        ? 'connection dropped'
+        : `HTTP ${cors.status}`
+      : (await send({ mode: 'no-cors' }))
+        ? 'no CORS headers'
+        : 'network error';
+    probe.abort(); // the headers are all a probe needs
+    return new Error(`${error.message}: ${url} (${cause})`, { cause: error });
+  }
+
   async function fetchRange(first: number, last: number): Promise<void> {
     const start = first * BLOCK;
     const end =
       size === null ? (last + 1) * BLOCK : Math.min(size, (last + 1) * BLOCK);
     let response: Response | null = null;
+    let total = 0;
     for (let attempt = 0; ; attempt++) {
       try {
         response = await fetchFn(url, {
           headers: { Range: `bytes=${start}-${end - 1}` },
+          cache: cacheFor(attempt),
           signal: abort.signal,
         });
         if (response.status !== 206) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }
+        // Hidden when a cached copy lacks Access-Control-Expose-Headers (#2258).
+        const range = /\/(\d+)$/.exec(
+          response.headers.get('Content-Range') ?? ''
+        );
+        if (!range) throw new Error(`No readable Content-Range for ${url}`);
+        total = Number(range[1]);
         break;
       } catch (error) {
         const delay = RETRY_DELAYS_MS[attempt];
-        if (abort.signal.aborted || delay === undefined) throw error;
+        if (abort.signal.aborted) throw error;
+        if (delay === undefined) throw await explain(error, abort.signal);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-    const total = /\/(\d+)$/.exec(response.headers.get('Content-Range') ?? '');
     const bytes = new Uint8Array(await response.arrayBuffer());
-    size ??= total ? Number(total[1]) : start + bytes.byteLength;
+    size ??= total;
     for (let b = first; b * BLOCK < start + bytes.byteLength; b++) {
       const from = (b - first) * BLOCK;
       blocks.delete(b); // re-insert: Map order is the LRU order
@@ -97,11 +148,13 @@ export function createRangedReader(
     first: number,
     total: number,
     waiters: Map<number, Waiter>,
-    signal: AbortSignal
+    signal: AbortSignal,
+    cache: RequestCache
   ): Promise<void> {
     const last = Math.ceil(total / BLOCK) - 1;
     const response = await fetchFn(url, {
       headers: { Range: `bytes=${first * BLOCK}-${total - 1}` },
+      cache,
       signal,
     });
     if (response.status !== 206 || response.body === null) {
@@ -166,11 +219,12 @@ export function createRangedReader(
         while (first <= last && blocks.has(first)) first++;
         if (first > last) return;
         try {
-          await streamFrom(first, total, waiters, signal);
+          await streamFrom(first, total, waiters, signal, cacheFor(attempt));
           return;
         } catch (error) {
           const delay = RETRY_DELAYS_MS[attempt];
-          if (signal.aborted || delay === undefined) throw error;
+          if (signal.aborted) throw error;
+          if (delay === undefined) throw await explain(error, signal);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -180,7 +234,7 @@ export function createRangedReader(
     }
   }
 
-  /** The bytes [start, end) from cached blocks, or null if one is missing. */ /** The bytes [start, end) from cached blocks, or null if one is missing. */
+  /** The bytes [start, end) from cached blocks, or null if one is missing. */
   function copyOut(
     start: number,
     end: number,

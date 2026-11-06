@@ -64,7 +64,12 @@ function parseHtmlImageSources(raw: string): string[] {
 
 async function fetchAsImageFile(url: string): Promise<File | null> {
   try {
-    const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    // no-store: an `<img>`'s cached copy may lack CORS headers (#2258).
+    const response = await fetch(url, {
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+    });
     if (!response.ok) {
       logger.warn('fetch returned non-ok status', {
         url,

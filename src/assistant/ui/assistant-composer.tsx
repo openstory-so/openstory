@@ -252,7 +252,8 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
         },
       ]);
       if (reference.kind === 'image') {
-        void fetch(reference.url)
+        // no-store: an `<img>`'s cached copy may lack CORS headers (#2258).
+        void fetch(reference.url, { cache: 'no-store' })
           .then((response) => response.blob())
           .then(imagePreview)
           .then(

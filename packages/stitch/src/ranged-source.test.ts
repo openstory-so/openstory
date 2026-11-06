@@ -218,3 +218,133 @@ describe('createRangedReader whole-file download (#2124)', () => {
     expect(ranges.length).toBe(before + 1);
   });
 });
+
+describe('createRangedReader failure reason (#2258)', () => {
+  const url = 'https://storage.example/clip.mp4';
+  type Probe = 'loads' | 'missing' | 'no-cors only' | 'unreachable';
+  /** Every real read fails; the probes answer as `probe` says. */
+  const failing =
+    (probe: Probe) => async (_u: RequestInfo | URL, init?: RequestInit) => {
+      const range = new Headers(init?.headers).get('range');
+      if (range === 'bytes=0-0' && probe === 'loads')
+        return new Response('x', { status: 206 });
+      if (range === 'bytes=0-0' && probe === 'missing')
+        return new Response(null, { status: 404 });
+      if (init?.mode === 'no-cors' && probe === 'no-cors only')
+        return new Response(null);
+      throw new TypeError('Failed to fetch');
+    };
+
+  it.each([
+    ['loads', 'connection dropped'],
+    ['missing', 'HTTP 404'],
+    ['no-cors only', 'no CORS headers'],
+    ['unreachable', 'network error'],
+  ] as const)(
+    'names the url and the cause (probe %s)',
+    async (probe, cause) => {
+      vi.useFakeTimers();
+      try {
+        const reader = createRangedReader(url, failing(probe));
+        const read = reader.read(0, 10);
+        const settled = expect(read).rejects.toThrow(
+          `Failed to fetch: ${url} (${cause})`
+        );
+        await vi.runAllTimersAsync();
+        await settled;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it('a stream that drops after CORS headers is a dropped connection, not CORS', async () => {
+    vi.useFakeTimers();
+    try {
+      const size = 1 * MB;
+      const server = fakeServer(size);
+      const fetchFn: typeof server.fetchFn = async (u, init) => {
+        const range = new Headers(init?.headers).get('range') ?? '';
+        if (!range.endsWith(`-${size - 1}`)) return server.fetchFn(u, init);
+        const stream = new ReadableStream<Uint8Array>({
+          pull: (controller) =>
+            controller.error(new TypeError('Failed to fetch')),
+        });
+        return new Response(stream, {
+          status: 206,
+          headers: { 'Content-Range': `bytes 0-${size - 1}/${size}` },
+        });
+      };
+      const reader = createRangedReader(url, fetchFn);
+      await reader.getSize();
+      const settled = expect(reader.fetchAll()).rejects.toThrow(
+        `Failed to fetch: ${url} (connection dropped)`
+      );
+      await vi.runAllTimersAsync();
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('createRangedReader poisoned browser cache (#2258)', () => {
+  /** The cached copy has no CORS headers; only a fetch past the cache loads. */
+  function poisoned(size: number) {
+    const server = fakeServer(size);
+    const fetchFn: typeof server.fetchFn = async (u, init) => {
+      if (init?.cache !== 'reload') throw new TypeError('Failed to fetch');
+      return server.fetchFn(u, init);
+    };
+    return fetchFn;
+  }
+
+  it.each([
+    [
+      'a range read',
+      (r: ReturnType<typeof createRangedReader>) => r.read(0, 10),
+    ],
+    [
+      'a whole-file download',
+      (r: ReturnType<typeof createRangedReader>) => r.fetchAll(),
+    ],
+  ])('%s retries past the browser cache', async (_name, run) => {
+    vi.useFakeTimers();
+    try {
+      const reader = createRangedReader(
+        'https://storage.example/clip.mp4',
+        poisoned(1 * MB)
+      );
+      const done = run(reader);
+      await vi.runAllTimersAsync();
+      await done;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('createRangedReader hidden Content-Range (#2258)', () => {
+  it('retries past the cache instead of guessing the size', async () => {
+    vi.useFakeTimers();
+    try {
+      const size = 1 * MB;
+      const server = fakeServer(size);
+      const fetchFn: typeof server.fetchFn = async (u, init) => {
+        const response = await server.fetchFn(u, init);
+        if (init?.cache === 'reload') return response;
+        // A cached copy without Access-Control-Expose-Headers.
+        return new Response(response.body, { status: 206 });
+      };
+      const reader = createRangedReader(
+        'https://storage.example/clip.mp4',
+        fetchFn
+      );
+      const got = reader.getSize();
+      await vi.runAllTimersAsync();
+      expect(await got).toBe(size);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
