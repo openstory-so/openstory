@@ -127,7 +127,6 @@ describe('planMotionLipsync', () => {
     clips: [clip],
     shotDurationMs: 5000,
     draftPreview: false,
-    packed: false,
     variantOnly: false,
   };
 
@@ -150,16 +149,46 @@ describe('planMotionLipsync', () => {
     }
   });
 
-  it('skips a draft, a packed clip and a variant-only take', () => {
+  it('syncs a packed clip against its one dialogue file', () => {
+    const second = { ...entry, shotId: 'shot-2', durationMs: 3000 };
+    const planned = planMotionLipsync({
+      ...finished,
+      model: 'kling_v4',
+      manifest: [entry, second],
+      clips: [
+        {
+          ...clip,
+          id: 'section-1+section-2',
+          durationSeconds: 8,
+          sourceKey: undefined,
+        },
+      ],
+    });
+    expect(planned?.audioUrl).toBe(clip.url);
+    expect(planned?.durationSeconds).toBe(8);
+    expect(planned?.manifest).toHaveLength(2);
+    expect(planned?.manifest[0]?.audioClipIds).toEqual(entry.audioClipIds);
+    expect(planned?.manifest[1]?.audioSourceKey).toBe(second.audioSourceKey);
+  });
+
+  it('skips a packed clip that did not collapse to one dialogue file', () => {
+    expect(
+      planMotionLipsync({
+        ...finished,
+        model: 'kling_v4',
+        manifest: [entry, { ...entry, shotId: 'shot-2' }],
+        clips: [clip, { ...clip, id: 'other', url: 'https://cdn.test/b.mp3' }],
+      })
+    ).toBeNull();
+  });
+
+  it('skips a draft and a variant-only take', () => {
     expect(
       planMotionLipsync({
         ...finished,
         model: 'kling_v4',
         draftPreview: true,
       })
-    ).toBeNull();
-    expect(
-      planMotionLipsync({ ...finished, model: 'kling_v4', packed: true })
     ).toBeNull();
     expect(
       planMotionLipsync({ ...finished, model: 'kling_v4', variantOnly: true })

@@ -204,14 +204,14 @@ export function planLipsync<T extends LipsyncEntry>(input: {
 
 /**
  * The motion phase. Kling, Omni Flash and Grok cannot take the dialogue
- * file, so a finished single-shot clip is synced after the render. Seedance
- * and MiniMax already uploaded that file, so they are never synced. A packed
- * clip and a variant-only take are left as rendered.
+ * file, so the finished clip is synced after the render. A packed clip is
+ * one video and one spanning dialogue file, and that pair is what sync-3
+ * gets. Seedance and MiniMax already uploaded that file, so they are never
+ * synced. A variant-only take is left as rendered.
  */
 export function planMotionLipsync<T extends LipsyncEntry>(input: {
   model: ImageToVideoModel;
   draftPreview: boolean;
-  packed: boolean;
   variantOnly: boolean;
   shotId: string;
   renderSegmentId: string | null;
@@ -222,8 +222,50 @@ export function planMotionLipsync<T extends LipsyncEntry>(input: {
   shotDurationMs: number | null;
 }): LipsyncPlan<T> | null {
   if (modelTakesDialogueAudio(input.model)) return null;
-  if (input.draftPreview || input.packed || input.variantOnly) return null;
-  if (!input.videoUrl || !input.manifest) return null;
+  if (input.draftPreview || input.variantOnly) return null;
+  if (!input.videoUrl || !input.manifest || input.manifest.length === 0) {
+    return null;
+  }
+  const clips = (input.clips ?? []).filter((clip) => clip.url);
+  const urls = new Set(clips.map((clip) => clip.url));
+  if (input.manifest.length > 1) {
+    const audioUrl = clips[0]?.url;
+    if (!audioUrl || urls.size !== 1) return null;
+    const coveredMs = input.manifest.reduce(
+      (sum, entry) =>
+        sum +
+        (positiveSeconds(
+          entry.durationMs == null ? null : entry.durationMs / 1000
+        ) ?? 0) *
+          1000,
+      0
+    );
+    const durationSeconds =
+      positiveSeconds(coveredMs / 1000) ??
+      positiveSeconds(clips[0]?.durationSeconds) ??
+      positiveSeconds(
+        input.shotDurationMs == null ? null : input.shotDurationMs / 1000
+      ) ??
+      FALLBACK_DURATION_SECONDS;
+    const sourceKey =
+      clips[0]?.sourceKey ??
+      input.manifest
+        .map((entry) => entry.audioSourceKey)
+        .filter((key): key is string => Boolean(key))
+        .join('\n');
+    if (!sourceKey || !input.renderSegmentId) return null;
+    return {
+      renderSegmentId: input.renderSegmentId,
+      videoUrl: input.videoUrl,
+      audioUrl,
+      clipIds: clips.map((clip) => clip.id),
+      sourceKey,
+      manifest: input.manifest.map((entry) => ({ ...entry })),
+      durationSeconds,
+      resolution: input.resolution,
+      cost: estimateLipsyncCost(durationSeconds),
+    };
+  }
   const planned = planLipsync({
     shotId: input.shotId,
     renderSegmentId: input.renderSegmentId,
@@ -234,7 +276,7 @@ export function planMotionLipsync<T extends LipsyncEntry>(input: {
       manifest: input.manifest,
     },
     generating: false,
-    clips: input.clips,
+    clips,
     shotDurationMs: input.shotDurationMs,
   });
   return planned.ok ? planned.plan : null;

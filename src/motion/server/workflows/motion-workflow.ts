@@ -256,6 +256,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
     const audioClips: MotionAudioClip[] = input.audioClips ?? [];
+    let wireClips: MotionAudioClip[] = audioClips;
     // The words the bound audio actually SAYS (#1651): a dialogue-stage section
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
@@ -294,7 +295,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
       // A packed clip sends one longer section of the recording, not each member's
       // overlapping section (#1794). The members keep their own clips.
-      const wireClips = packedClip
+      wireClips = packedClip
         ? await step.do('cut-spanning-section', () =>
             cutSpanningSection(audioClips, {
               organizationId: input.organizationId,
@@ -1721,14 +1722,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           ? planMotionLipsync({
               model: activeModel,
               draftPreview: Boolean(input.draft) && !input.finalFromDraft,
-              packed: (input.coveredShots?.length ?? 0) > 1,
               variantOnly: Boolean(input.variantOnly),
               shotId,
               renderSegmentId,
               videoUrl: storageResult.url,
               resolution: renderedResolution,
               manifest: manifest ?? null,
-              clips: audioClips,
+              clips: wireClips,
               shotDurationMs: Math.round(duration * 1000),
             })
           : null;
