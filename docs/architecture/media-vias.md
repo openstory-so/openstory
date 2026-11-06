@@ -186,7 +186,9 @@ lip-sync promotes. One video plus one dialogue file. A packed clip is
 already that pair: the spanning section of the scene's speech, the same
 file Seedance and MiniMax send with the render. Kling, Omni Flash and Grok
 Imagine never receive it as a reference. The motion trigger still
-snapshots the file, motion promotes the unsynced clip, then sync-3 appends
+snapshots the file. The regenerate price and its credit hold include
+the sync-3 amount ($8 per minute of the quoted clip) when that run will
+lip-sync. Motion promotes the unsynced clip, then sync-3 appends
 a `source: 'lipsync'` version and promotes that. Seedance and MiniMax are
 never synced, draft or final. Update all still takes this path when a single-shot clip's only
 drift is audio. Native fal spend, same as other fal jobs: an

@@ -9,7 +9,7 @@
  * Client-safe: the cost estimate and the server gate share this module.
  */
 
-import { usdToMicros, type Microdollars } from '@/billing/money';
+import { micros, usdToMicros, type Microdollars } from '@/billing/money';
 import type { ImageToVideoModel } from '@/models/models';
 import type { RenderedResolution } from '@/models/resolutions';
 import { modelTakesDialogueAudio } from '@/motion/dialogue-tts';
@@ -35,6 +35,23 @@ export function estimateLipsyncCost(durationSeconds: number): Microdollars {
       ? durationSeconds
       : FALLBACK_DURATION_SECONDS;
   return usdToMicros((seconds / 60) * LIPSYNC_USD_PER_MINUTE);
+}
+
+/**
+ * What to add to a motion quote before the clip exists. Same gate as
+ * `planMotionLipsync`: models that upload dialogue, drafts, and silent
+ * shots stay at zero. The duration is the one the video quote already uses.
+ */
+export function estimateMotionLipsyncCost(input: {
+  model: ImageToVideoModel;
+  draft: boolean;
+  durationSeconds: number;
+  speaks: boolean;
+}): Microdollars {
+  if (!input.speaks || input.draft || modelTakesDialogueAudio(input.model)) {
+    return micros(0);
+  }
+  return estimateLipsyncCost(input.durationSeconds);
 }
 
 export function lipsyncFalInput(

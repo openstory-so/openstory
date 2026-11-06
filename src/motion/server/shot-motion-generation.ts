@@ -42,6 +42,7 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
+import { estimateMotionLipsyncCost } from '@/motion/lipsync';
 import {
   matchingDialogueClips,
   voicedDialogueLines,
@@ -409,19 +410,34 @@ export async function generateShotMotion(
     references: referenceImages,
   });
   const holdSeconds = Math.max(duration, editSeconds ?? 0);
+  const speaks = covered.some(
+    (member) =>
+      voicedDialogueLines(
+        member.shotId === shot.id ? shotDialogue : dialogueOf(member),
+        voiceCharacters
+      ).length > 0
+  );
   const reservationId = await reserveRunCredits(
     context.scopedDb,
     addMicros(
-      gateEstimate(
-        estimateVideoCost(model, holdSeconds, {
-          pricing: await getEffectiveFalPricing(),
-          resolution: sequence.resolution,
-          hasReferenceImages: referenceImages.length > 0,
-          referenceOnly: firstReferenceOnly,
-        }),
-        { model, operation: 'motion' }
+      addMicros(
+        gateEstimate(
+          estimateVideoCost(model, holdSeconds, {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+            hasReferenceImages: referenceImages.length > 0,
+            referenceOnly: firstReferenceOnly,
+          }),
+          { model, operation: 'motion' }
+        ),
+        estimateTtsCost(ttsChars)
       ),
-      estimateTtsCost(ttsChars)
+      estimateMotionLipsyncCost({
+        model,
+        draft,
+        durationSeconds: holdSeconds,
+        speaks,
+      })
     ),
     {
       errorMessage: 'Insufficient credits for motion generation',

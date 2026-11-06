@@ -3,6 +3,7 @@ import { usdToMicros } from '@/billing/money';
 import {
   LIPSYNC_SYNC_MODE,
   estimateLipsyncCost,
+  estimateMotionLipsyncCost,
   lipsyncFalInput,
   lipsyncManifest,
   planLipsync,
@@ -32,6 +33,46 @@ describe('estimateLipsyncCost', () => {
   it('prices sync-3 at $8 per minute of the clip', () => {
     expect(estimateLipsyncCost(5)).toBe(usdToMicros((5 / 60) * 8));
     expect(estimateLipsyncCost(0)).toBe(usdToMicros((5 / 60) * 8));
+  });
+});
+
+describe('estimateMotionLipsyncCost', () => {
+  it('adds sync-3 for a speaking clip the model cannot take audio for', () => {
+    expect(
+      estimateMotionLipsyncCost({
+        model: 'gemini_omni_flash',
+        draft: false,
+        durationSeconds: 10,
+        speaks: true,
+      })
+    ).toBe(estimateLipsyncCost(10));
+  });
+
+  it('stays zero when the model uploads the file, the shot is silent, or it is a draft', () => {
+    const base = {
+      draft: false,
+      durationSeconds: 10,
+      speaks: true,
+    };
+    expect(estimateMotionLipsyncCost({ ...base, model: 'seedance_v2_5' })).toBe(
+      0
+    );
+    expect(
+      estimateMotionLipsyncCost({
+        model: 'kling_v4',
+        draft: false,
+        durationSeconds: 10,
+        speaks: false,
+      })
+    ).toBe(0);
+    expect(
+      estimateMotionLipsyncCost({
+        model: 'grok_imagine_video_1_5',
+        draft: true,
+        durationSeconds: 10,
+        speaks: true,
+      })
+    ).toBe(0);
   });
 });
 
