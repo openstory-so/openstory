@@ -627,6 +627,8 @@ export interface DialogueUploadWorkflowInput extends UserWorkflowContext {
   voiced: SceneVoicedLine[];
   /** shot id → the `shot_dialogue_versions` row spoken (absent = derived). */
   dialogueVersionIdByShotId: Record<string, string>;
+  /** shot id → its 1-based place in the scene, as errors name it. */
+  sceneShotNumberByShotId: Record<string, number>;
   /** Provider per-file floor (H3 Max 2s). */
   minDurationSeconds: number;
   /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */

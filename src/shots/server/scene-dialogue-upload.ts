@@ -135,6 +135,9 @@ export async function uploadSceneDialogue(
       storageKey,
       voiced: job.voiced,
       dialogueVersionIdByShotId: job.dialogueVersionIdByShotId,
+      sceneShotNumberByShotId: Object.fromEntries(
+        sceneShots.map((shot, at) => [shot.id, at + 1])
+      ),
       minDurationSeconds: dialogueAudioMinSeconds([model]),
       maxDurationSeconds: dialogueAudioMaxSeconds([model]),
     };

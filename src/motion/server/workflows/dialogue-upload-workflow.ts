@@ -123,9 +123,9 @@ export class DialogueUploadWorkflow extends OpenStoryWorkflowEntrypoint<Dialogue
           input.minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
         );
         if (fileSeconds > limitSeconds) {
-          const shotNumber = shotIds.indexOf(window.shotId) + 1;
+          const shotNumber = input.sceneShotNumberByShotId[window.shotId];
           throw new NonRetryableError(
-            `In this recording, speaking shot ${shotNumber} of the scene runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Split its lines across more shots, or pick a video model that takes longer audio.`
+            `In this recording, shot ${shotNumber} of the scene runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Split its lines across more shots, or pick a video model that takes longer audio.`
           );
         }
       }
@@ -189,7 +189,15 @@ export class DialogueUploadWorkflow extends OpenStoryWorkflowEntrypoint<Dialogue
               spokenLines: null,
               dialogueVersionId:
                 input.dialogueVersionIdByShotId[window.shotId] ?? null,
-              adopt: claimId && audioClips ? { claimId, audioClips } : null,
+              // Every speaking shot was claimed and cut above; a gap is a bug.
+              adopt: (() => {
+                if (!claimId || !audioClips) {
+                  throw new NonRetryableError(
+                    `Shot ${window.shotId} has no claim or no cut audio`
+                  );
+                }
+                return { claimId, audioClips };
+              })(),
             };
           }),
         });
