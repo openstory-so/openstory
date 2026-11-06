@@ -183,16 +183,17 @@ export const SCRIPT_ANALYSIS_MODELS = [
     hidden: true,
   },
   {
-    id: 'openai/gpt-5.6-terra',
-    name: 'GPT-5.6 Terra',
+    id: 'openai/gpt-6.1-terra',
+    name: 'GPT-6.1 Terra',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Arena 1466 (gpt-5.6-terra-xhigh).
+    // Bumped from GPT-5.6 Terra (Arena 1466, gpt-5.6-terra-xhigh); re-rank on
+    // next LMArena snapshot.
     qualityRank: 13,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'GPT-5.6 mid tier, between Sol and Luna',
+    description: 'GPT-6.1 mid tier, between Sol and Luna',
   },
   {
     id: 'deepseek/deepseek-v4-pro-0813',
