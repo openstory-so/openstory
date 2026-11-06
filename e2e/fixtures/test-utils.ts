@@ -293,3 +293,48 @@ export async function waitForHydration(
     { timeout: HYDRATION_TIMEOUT }
   );
 }
+
+/** Fails unless the middle of `target` shows a picture on screen, not a black frame. */
+export async function expectPictureOnScreen(
+  page: Page,
+  target: Locator,
+  label: string,
+  timeout = 15_000
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const box = await target.boundingBox();
+        if (!box) return 0;
+        // The middle 60% skips the controls bar and the corner badges.
+        const png = await page.screenshot({
+          clip: {
+            x: box.x + box.width * 0.2,
+            y: box.y + box.height * 0.2,
+            width: box.width * 0.6,
+            height: box.height * 0.6,
+          },
+        });
+        return page.evaluate(async (data) => {
+          const img = new Image();
+          img.src = `data:image/png;base64,${data}`;
+          await img.decode();
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return 0;
+          ctx.drawImage(img, 0, 0);
+          const px = ctx.getImageData(0, 0, img.width, img.height).data;
+          let lit = 0;
+          for (let i = 0; i < px.length; i += 4) {
+            const [r = 0, g = 0, b = 0] = px.subarray(i, i + 3);
+            if (0.299 * r + 0.587 * g + 0.114 * b > 24) lit++;
+          }
+          return lit / (px.length / 4);
+        }, png.toString('base64'));
+      },
+      { timeout, message: `${label}: a picture on screen, not black` }
+    )
+    .toBeGreaterThan(0.1);
+}
