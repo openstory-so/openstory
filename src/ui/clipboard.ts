@@ -67,7 +67,8 @@ export async function copyImageToClipboard(url: string): Promise<boolean> {
 }
 
 async function loadPngBlob(url: string): Promise<Blob> {
-  const response = await fetch(url);
+  // no-store: an `<img>`'s cached copy may lack CORS headers (#2258).
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Failed to fetch image (${response.status})`);
   }
