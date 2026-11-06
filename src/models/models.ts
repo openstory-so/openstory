@@ -62,7 +62,9 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // wrote here was wrong — the live API's number is 4096.
     maxPromptLength: 4096,
     enforcesPromptLimit: true,
-    supportsAudio: false,
+    // The clip has an audio track. There is no generate_audio field; silence
+    // is asked for in the prompt, the same way as Kling 4 and MiniMax H3.
+    supportsAudio: true,
     // One take per clip — packing would invent in-clip cuts Grok cannot follow.
     supportsInClipMultiShot: false,
     performance: { estimatedGenerationTime: 33, quality: 'best' as const },
@@ -74,10 +76,9 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 3,
     // Always generates synchronized audio (dialogue, ambience, score). Neither
-    // the fal schema nor the Interactions API expose a generate_audio toggle
-    // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
-    // and the scene-editor SFX checkbox stays hidden.
-    supportsAudio: false,
+    // the fal schema nor the Interactions API expose a generate_audio toggle,
+    // so silence is asked for in the prompt, the same way as Kling 4.
+    supportsAudio: true,
     // Defaults to multi-shot; a 1-shot segment pins "single unbroken scene".
     supportsInClipMultiShot: true,
     // fal's schema declares 20000 and rejects past it (#1754).

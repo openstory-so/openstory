@@ -100,9 +100,10 @@ type AssembleOptions = {
 /**
  * Assemble a model-specific motion prompt from structured data.
  *
- * The LLM's `fullPrompt` provides the rich narrative base. For audio-capable
- * models, we append dialogue lines and audio direction in the format each
- * model handles best. Non-audio models get `fullPrompt` as-is.
+ * The LLM's `fullPrompt` provides the rich narrative base. Every model that
+ * outputs audio gets the dialogue lines and the audio direction in the
+ * format it handles. A model with no `generate_audio` field is silenced in
+ * that prompt.
  */
 export function buildMotionShotPrompt({
   motionPrompt,
@@ -120,13 +121,8 @@ export function buildMotionShotPrompt({
 
   let assembled: string;
 
-  // Non-audio models: fullPrompt is already great, no enrichment needed
   if (!supportsAudio) {
     assembled = fullPrompt;
-    // Omni Flash defaults to multi-shot; pin a oner only on a 1-shot segment.
-    if (singleTake && model === 'gemini_omni_flash') {
-      assembled = `${fullPrompt}\n\nSingle unbroken scene.`;
-    }
   } else {
     // Audio-capable models: enrich fullPrompt with dialogue + audio sections.
     // Stored rows and UI overrides may still be null; the LLM schema uses
@@ -172,6 +168,25 @@ export function buildMotionShotPrompt({
         );
         break;
       case 'Google':
+      case 'SpaceXAI':
+        // No generate_audio field. Off is the prompt, as with Kling 4.
+        if (generateAudio === false) {
+          assembled = omitSharedConstraints
+            ? fullPrompt
+            : `${fullPrompt}\n\n${SILENT_SOUNDSCAPE}`;
+        } else {
+          assembled = buildVeoPrompt(
+            fullPrompt,
+            dialogueData,
+            audioData,
+            omitSharedConstraints
+          );
+        }
+        // Omni Flash defaults to multi-shot; pin a oner only on a 1-shot segment.
+        if (singleTake && model === 'gemini_omni_flash') {
+          assembled = `${assembled}\n\nSingle unbroken scene.`;
+        }
+        break;
       default:
         assembled = buildVeoPrompt(
           fullPrompt,

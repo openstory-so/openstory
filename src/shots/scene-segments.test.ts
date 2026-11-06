@@ -384,8 +384,8 @@ describe('isSelectedVersionStale', () => {
     expect(
       stale(v, { dialogueKeyByShot: new Map([['shot-1', stamped]]) })
     ).toBe(false);
-    // A model without audio never quoted a line: it stamps null and stays
-    // fresh whatever the lines say.
+    // Grok quotes the lines. A clip stamped before that, with a null key,
+    // is stale once the lines exist.
     const silent = version('v1', 'seg', 'grok_imagine_video_1_5', [
       {
         shotId: 'shot-1',
@@ -394,7 +394,7 @@ describe('isSelectedVersionStale', () => {
         dialogueKey: null,
       },
     ]);
-    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(false);
+    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(true);
     // A clip from before #1784 has no key: unknown, never stale.
     const legacy = version('v1', 'seg', 'kling_v3_pro', [
       {
