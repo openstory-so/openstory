@@ -219,6 +219,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'POOL-CAPACITY',
       why: 'ACR asset slots are per BytePlus ACCOUNT and shared by every organization (#1361), so occupancy at the trigger says nothing about occupancy at the fan-out — a frozen count would evict slots another organization leased in between.',
     },
+    {
+      read: 'shots.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'A dialogue-blocked shot gets a failed video version (#2269), which hangs off a render segment; whether the shot has one is live, as a packing since the trigger may have given it a shared segment that ensureForShot must not repoint.',
+    },
   ],
   'cast-records.ts': [
     {
@@ -246,6 +251,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'shots.getByIds',
       bucket: 'EXISTENCE-GUARD',
       why: 'Idempotency and adoption: only a voiced shot whose working-set clip no longer matches its lines adopts the new recording, so a replayed run re-bills nothing and an untouched shot keeps its section (#1657).',
+    },
+  ],
+  'dialogue-upload-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs key, resolved inside the step that transcribes the uploaded recording (#2264).',
     },
   ],
   'dialogue-take-workflow.ts': [
@@ -324,6 +336,28 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'framePromptVersions.getByIdForFrame',
       bucket: 'CLAIM-BY-ID',
       why: 'The prompt version this run rendered from, named by the trigger snapshot — copied onto the softened row so staleness keeps the same upstream hash.',
+    },
+  ],
+  'lipsync-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The fal key, resolved inside the step that submits and the step that charges. BYOK is pinned on the check-credits result.',
+    },
+    {
+      read: 'shots.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'A shot deleted mid-run stands down without a failed row or a charge.',
+    },
+    {
+      read: 'renderSegments.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'On failure, the pending-promote pointer is cleared only while this run still holds it.',
+    },
+    {
+      read: 'videoVariants.getById',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The pending-promote claim, read back to confirm THIS run owns it before clearing it.',
     },
   ],
   'llm-call-helper.ts': [

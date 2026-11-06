@@ -56,6 +56,14 @@ Theatre Download/Copy and the public API both `POST /api/v1/sequences/$id/export
 - Uniform AVC transmuxes; mixed-res/codec is decode→letterbox→re-encode. Production and PR previews run `standard-4`.
 - **Local:** `bun dev:all` runs `dev:bunny` and sets `VIDEO_EXPORT_DEV_URL`. Plain `bun dev` and e2e have no renderer — Download/Copy toast rather than encoding in the tab. Container details: `containers/video-export/README.md`.
 
+### Uploaded audio (#2265)
+
+`POST /transcode-audio` on the same container reads an audio file (M4A, OGG, FLAC, and anything else mediabunny can decode) and answers 16-bit PCM WAV at 48 kHz, one channel. `storeUpload` calls it for element, studio and music whenever the file is not MP3 or WAV, and streams the WAV into R2. The source and the WAV do not sit in the Worker. Inline base64 is already in the isolate (8 MB cap); the WAV still streams out. `planAudioUpload` treats `dialogue` the same way (#2264): WAV until a container is up, then M4A, OGG and FLAC become WAV too.
+
+The browser still re-encodes element files before the presigned PUT (`normalizeElementFile`). That path keeps the file's channel count. The container averages channels to one.
+
+Plain `bun dev` and e2e have no container. Element and studio M4A, OGG and FLAC stay refused with the current message (`audio-upload-plan.test.ts`). Music still stores M4A and OGG as themselves there, and still refuses FLAC. `bun dev:all` points the call at `bun dev:bunny`. A stitch file is not transcoded: the player plays M4A and OGG.
+
 ### Shared stitches (#2127)
 
 A cut made with the stitch CLI can be watched by anyone without the CLI. `stitch bundle <dir> …` writes a folder: the player page, `cut.json`, and every file under `media/<n>.<ext>` (a URL is downloaded, so a signed URL is snapshotted). The page reads `cut.json` and the media relative to itself (`base: './'`), so the folder plays from any static host and sub-path. `stitch share …` uploads the same bundle to OpenStory and prints a link.

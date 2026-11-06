@@ -31,11 +31,17 @@ import {
   useUndiscardCharacterSheetVariant,
 } from '@/cast/ui/use-character-sheet-variants';
 import {
+  CharacterReplaceConfirm,
+  CharacterReplacePicker,
+} from '@/cast/ui/character-replace-dialog';
+import type { OrganizationCharacter } from '@/cast/server/db/characters';
+import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
   useCharacter,
   useCharacterSheetStaleness,
   useRegenerateCharacterSheet,
+  useReplaceSequenceCharacter,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
 import { castChannelId } from '@/cast/cast-channel';
@@ -132,9 +138,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const selectVersion = useSelectCharacterSheetVersion();
   const navigate = useNavigate();
   const softDelete = useSoftDeleteSequenceCharacter();
+  const replaceCharacter = useReplaceSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
   const clearPhoto = useClearCharacterReferencePhoto();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isReplaceConfirmOpen, setIsReplaceConfirmOpen] = useState(false);
+  const [replacement, setReplacement] = useState<OrganizationCharacter | null>(
+    null
+  );
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
   // 60s undo toast. The undo closure survives this component's unmount —
@@ -785,6 +797,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsRemoveConfirmOpen(false);
+                setIsPickerOpen(true);
+              }}
+            >
+              Replace
+            </Button>
             <AlertDialogAction
               disabled={softDelete.isPending}
               onClick={() => handleRemove(character.name)}
@@ -794,6 +816,56 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {sequenceId !== null && (
+        <CharacterReplacePicker
+          open={isPickerOpen}
+          onOpenChange={setIsPickerOpen}
+          excludeCharacterId={characterId}
+          onSelect={(picked) => {
+            setReplacement(picked);
+            setIsReplaceConfirmOpen(true);
+          }}
+        />
+      )}
+      {sequenceId !== null && replacement && (
+        <CharacterReplaceConfirm
+          open={isReplaceConfirmOpen}
+          onOpenChange={setIsReplaceConfirmOpen}
+          characterName={character.name}
+          withCharacterName={replacement.name}
+          alreadyCast={replacement.sequences.some(
+            (sequence) => sequence.id === sequenceId
+          )}
+          isLoading={replaceCharacter.isPending}
+          onConfirm={() => {
+            const withCharacter = replacement;
+            replaceCharacter.mutate(
+              {
+                sequenceId,
+                characterId,
+                withCharacterId: withCharacter.id,
+              },
+              {
+                onSuccess: (staying) => {
+                  setIsReplaceConfirmOpen(false);
+                  toast(
+                    `Replaced ${character.name} with ${withCharacter.name}`
+                  );
+                  void navigate({
+                    to: '/sequences/$id/cast/$characterId',
+                    params: { id: sequenceId, characterId: staying.id },
+                  });
+                },
+                onError: (replaceError) =>
+                  toast.error('Failed to replace character', {
+                    description: errorMessage(replaceError),
+                  }),
+              }
+            );
+          }}
+        />
+      )}
 
       {compareVariant && (
         <SheetComparisonDialog

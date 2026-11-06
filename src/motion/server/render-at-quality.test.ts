@@ -70,6 +70,7 @@ function makeVersion(extra: Partial<VideoVariant> = {}): VideoVariant {
     error: null,
     isPrimary: true,
     inputHash: null,
+    source: null,
     discardedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

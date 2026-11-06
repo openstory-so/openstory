@@ -365,7 +365,7 @@ export type {
 
 // Sequence cast (#2017)
 export { sequenceCast };
-export type { SequenceCastRow } from './sequence-cast';
+export type { CastScriptAlias, SequenceCastRow } from './sequence-cast';
 
 export {
   CHARACTER_BIBLE_FIELDS,

@@ -61,6 +61,7 @@ import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import {
   DIALOGUE_CLIP_TOKEN,
   dialogueTtsToken,
+  modelTakesDialogueAudio,
   voicedDialogueLines,
   withVoicedLineTokens,
 } from '@/motion/dialogue-tts';
@@ -133,6 +134,12 @@ export type ShotPromptPreview = {
    * must not run — peeling a member would leave it on the old segment.
    */
   packedPromptOverflow: boolean;
+  /**
+   * This render will lip-sync after the clip lands: the model cannot take
+   * the dialogue file, and a covered shot has a voiced line. Draft is the
+   * button's own flag, so it is not folded in here.
+   */
+  motionLipsync: boolean;
 };
 
 /** One scene-sibling the packed motion request will cover (#1510). */
@@ -434,6 +441,13 @@ export function buildShotPromptPreview(input: {
       : null,
     packedDurationMs: isPacked ? motionDurationMs : null,
     packedPromptOverflow,
+    motionLipsync:
+      !modelTakesDialogueAudio(input.videoModel) &&
+      (isPacked ? packedMembers : [{ motionPrompt: input.motionPrompt }]).some(
+        (member) =>
+          voicedDialogueLines(member.motionPrompt?.dialogue, input.characters)
+            .length > 0
+      ),
     packedLimitWarning: packedLimitWarning(
       input.videoModel,
       packedMembers.map((member) => member.shotNumber),

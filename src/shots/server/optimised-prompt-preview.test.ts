@@ -150,6 +150,7 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedDurationMs).toBeNull();
     expect(result.packedLimitWarning).toBeNull();
     expect(result.packedPromptOverflow).toBe(false);
+    expect(result.motionLipsync).toBe(false);
   });
 
   it('packs Seedance 2.5 siblings into the in-clip request the model receives', () => {

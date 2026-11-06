@@ -34,6 +34,7 @@ import {
   getTestShot,
 } from '../fixtures/sequence.fixture';
 import {
+  expectPictureOnScreen,
   fillScriptEditor,
   openComposerReference,
   pinRecordedPipelineSettings,
@@ -482,10 +483,14 @@ SUPER:  CORAL.  OUT NOW.
           }
         )
         .toBe(true);
-      await expect(
-        theatrePlayer.getByRole('button', { name: 'Play' })
-      ).toBeVisible();
       await expect(page.getByText(/Loading scene \d+ of/)).toHaveCount(0);
+      await expect(page.getByTestId('player-loading')).toHaveCount(0);
+      // Ready is not enough: a canvas that never draws plays black.
+      await theatrePlayer.getByRole('button', { name: 'Play' }).click();
+      await expect(
+        theatrePlayer.getByRole('button', { name: 'Pause' })
+      ).toBeVisible();
+      await expectPictureOnScreen(page, theatrePlayer, 'theatre playback');
 
       // 14. Thin DB sanity tail: a UI bug that silently hides a player
       //     mustn't make the test pass green. We've already proved every

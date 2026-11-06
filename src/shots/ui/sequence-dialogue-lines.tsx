@@ -21,6 +21,7 @@ import {
   DialogueLineRows,
   PlayDialogueButton,
   RegenerateSceneDialogueButton,
+  UploadSceneDialogueButton,
   recordableLines,
   unclearLines,
   useDialoguePlayer,
@@ -183,6 +184,14 @@ export const SequenceDialogueLines: React.FC<{
                 <span className="text-sm font-medium">{group.title}</span>
               )}
               <div className="flex shrink-0 items-center gap-1">
+                {isScene ? (
+                  <UploadSceneDialogueButton
+                    sequenceId={sequenceId}
+                    sceneId={group.sceneId}
+                    shotIds={group.shots.map((shot) => shot.id)}
+                    label={group.title}
+                  />
+                ) : null}
                 {isScene ? (
                   <RegenerateSceneDialogueButton
                     sequenceId={sequenceId}

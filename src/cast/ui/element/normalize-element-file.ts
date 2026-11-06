@@ -10,7 +10,8 @@
  *
  * WAV rather than MP3 because encoding PCM is a header and a copy — no codec
  * to ship — and a 30-second reference is about 6 MB, under Seedance's 15 MB
- * per-file cap.
+ * per-file cap. A server upload takes the same detour in the video-export
+ * container (`POST /transcode-audio`), which writes one channel.
  */
 
 import { elementKindFromFile } from '@/cast/element-kind';

@@ -15,7 +15,8 @@
  *
  * `getContainer(env.VIDEO_EXPORT_CONTAINER, exportId)` routes a per-export
  * instance, then `.fetch('/export', …)` proxies to the container's HTTP server
- * (see `containers/video-export/src/server.ts`).
+ * (see `containers/video-export/src/server.ts`). Uploaded audio uses the same
+ * server at `POST /transcode-audio` on one shared instance (`audio-transcode`).
  */
 
 import { Container } from '@cloudflare/containers';

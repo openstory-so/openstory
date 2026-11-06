@@ -21,7 +21,7 @@ env:
   E2E_EMAIL_FROM: e2e@example.com
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
@@ -91,8 +91,39 @@ jobs:
       - name: Check dead code (knip)
         run: bun dead-code
 
+  unit-shard:
+    name: unit (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      - name: Install dependencies
+        run: bun install
+
       - name: Run tests
-        run: bun run test
+        run: bun run test --shard=${{ matrix.shard }}/4
+
+  # The required `test` check: green only when the checks and every unit shard are.
+  test:
+    runs-on: ubuntu-latest
+    needs: [checks, unit-shard]
+    if: always()
+    steps:
+      - name: Checks and all shards passed
+        run: test "${{ needs.checks.result }}" = success && test "${{ needs.unit-shard.result }}" = success
 
   build-e2e:
     runs-on: ubuntu-latest
@@ -128,9 +159,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  e2e:
+  e2e-shard:
+    name: e2e (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     needs: build-e2e
+    # Sharded so the suite stays under five minutes as it grows (#2243).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,6 +218,12 @@ jobs:
           OPENROUTER_BASE_URL=http://localhost:4010
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
+          ARK_API_KEY=test-mock-key
+          ARK_BASE_URL=http://localhost:4010/api/v3
+          BYTEPLUS_ACCESS_KEY=test-mock-key
+          BYTEPLUS_SECRET_KEY=test-mock-secret
+          BYTEPLUS_OPENAPI_HOST=http://localhost:4012
+          BYTEPLUS_ASSET_SLOTS=3
           ELEVENLABS_API_KEY=test-mock-key
           ELEVENLABS_BASE_URL=http://localhost:4010
           FAL_KEY=test-mock-key
@@ -188,6 +231,7 @@ jobs:
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
           EMAIL_FROM=$E2E_EMAIL_FROM
           E2E_TEST=true
+          ADMIN_EMAILS=e2e-admin@e2e.test
           VITE_APP_URL=http://localhost:3001
           EOF
           # Mirror at project root for the non-built (vite dev) path.
@@ -207,7 +251,7 @@ jobs:
             > .wrangler/deploy/config.json
 
       - name: Run E2E tests
-        run: bun run test:e2e
+        run: bun run test:e2e --shard=${{ matrix.shard }}/4
         env:
           E2E_TEST: 'true'
           E2E_BUILT: 'true'
@@ -230,6 +274,15 @@ jobs:
           OPENROUTER_KEY: test-mock-key
           OPENROUTER_BASE_URL: http://localhost:4010
           EMAIL_FROM: ${{ env.E2E_EMAIL_FROM }}
+
+  # The required `e2e` check: green only when every shard is.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: e2e-shard
+    if: always()
+    steps:
+      - name: All shards passed
+        run: test "${{ needs.e2e-shard.result }}" = success
 
   e2e-full-pipeline:
     runs-on: ubuntu-latest
@@ -278,6 +331,12 @@ jobs:
           OPENROUTER_BASE_URL=http://localhost:4010
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
+          ARK_API_KEY=test-mock-key
+          ARK_BASE_URL=http://localhost:4010/api/v3
+          BYTEPLUS_ACCESS_KEY=test-mock-key
+          BYTEPLUS_SECRET_KEY=test-mock-secret
+          BYTEPLUS_OPENAPI_HOST=http://localhost:4012
+          BYTEPLUS_ASSET_SLOTS=3
           ELEVENLABS_API_KEY=test-mock-key
           ELEVENLABS_BASE_URL=http://localhost:4010
           FAL_KEY=test-mock-key
@@ -286,6 +345,7 @@ jobs:
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
           EMAIL_FROM=$E2E_EMAIL_FROM
           E2E_TEST=true
+          ADMIN_EMAILS=e2e-admin@e2e.test
           E2E_FULL_PIPELINE=true
           VITE_APP_URL=http://localhost:3001
           EOF

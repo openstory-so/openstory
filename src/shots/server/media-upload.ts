@@ -74,6 +74,13 @@ import {
 import { generateId } from '@/platform/id';
 import { organizationUserUploadStoragePath } from '@/cast/server/organization-user-upload';
 import type { PortraitAttestation } from '@/cast/upload-rights';
+import {
+  planAudioUpload,
+  type AudioUploadPlan,
+  type AudioUploadUse,
+} from '@/shots/server/audio-upload-plan';
+import { isServerExportAvailable } from '@/sequences/server/server-export-available';
+import { transcodeAudioUpload } from '@/sequences/server/transcode-audio';
 
 const logger = getLogger(['openstory', 'shots', 'media-upload']);
 
@@ -111,7 +118,7 @@ export function assertSingleShotSegmentForVideoUpload(
   }
 }
 
-function requireUploadedStoragePath(
+export function requireUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
   organizationId: string
@@ -835,6 +842,7 @@ export const UPLOAD_USES = [
   'shot_image',
   'shot_video',
   'music',
+  'dialogue',
   'character_sheet',
   'location_sheet',
   'element',
@@ -848,56 +856,13 @@ export type StoreTarget =
   | { use: UploadUse }
   | { use: 'stitch'; stitchId: string };
 
-/** Media type → stored extension, for every type any use accepts. */
-const UPLOAD_MEDIA_TYPES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'video/mp4': 'mp4',
-  'video/webm': 'webm',
-  'video/quicktime': 'mov',
-  'audio/mpeg': 'mp3',
-  'audio/mp3': 'mp3',
-  'audio/wav': 'wav',
-  'audio/x-wav': 'wav',
-  'audio/wave': 'wav',
-  'audio/ogg': 'ogg',
-  'audio/mp4': 'm4a',
-  'audio/x-m4a': 'm4a',
-};
-
-/**
- * Extensions per use: the editor's upload surfaces (`UPLOAD_EXTENSIONS`).
- * Elements take MP3/WAV and MP4/MOV only — the browser re-encodes M4A/OGG to
- * WAV first, which a server upload cannot, and WebM is refused by the models
- * (#1559).
- */
-const ELEMENT_EXTENSIONS = [
-  ...UPLOAD_EXTENSIONS.image,
-  'mp3',
-  'wav',
-  'mp4',
-  'mov',
-];
-const USE_EXTENSIONS: Record<StoreUse, readonly string[]> = {
-  shot_image: UPLOAD_EXTENSIONS.image,
-  character_sheet: UPLOAD_EXTENSIONS.image,
-  location_sheet: UPLOAD_EXTENSIONS.image,
-  shot_video: UPLOAD_EXTENSIONS.video,
-  music: UPLOAD_EXTENSIONS.audio,
-  element: ELEMENT_EXTENSIONS,
-  // A Studio reference, start/end frame or clip; the same types as elements.
-  studio: ELEMENT_EXTENSIONS,
-  // Anything the stitch player plays.
-  stitch: [
-    ...UPLOAD_EXTENSIONS.image,
-    ...UPLOAD_EXTENSIONS.video,
-    ...UPLOAD_EXTENSIONS.audio,
-  ],
-};
-
 const IMAGE_EXTENSIONS = new Set<string>(UPLOAD_EXTENSIONS.image);
+
+/** `StoreUse` stays inside the plan's union, including the future `dialogue` use. */
+function uploadPlan(use: StoreUse, mediaType: string): AudioUploadPlan {
+  const audioUse: AudioUploadUse = use;
+  return planAudioUpload(audioUse, mediaType, isServerExportAvailable());
+}
 
 /** Inline bytes ride in the tool call's JSON, so they stay small. */
 export const MAX_INLINE_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -954,6 +919,11 @@ function uploadTarget(
         bucket: STORAGE_BUCKETS.AUDIO,
         path: `${inSequence}/music/${id}.${ext}`,
       };
+    case 'dialogue':
+      return {
+        bucket: STORAGE_BUCKETS.AUDIO,
+        path: `${inSequence}/dialogue-uploads/${id}.${ext}`,
+      };
     case 'character_sheet':
       return {
         bucket: STORAGE_BUCKETS.CHARACTERS,
@@ -973,17 +943,38 @@ function uploadTarget(
   }
 }
 
-function extensionFor(use: StoreUse, mediaType: string): string {
-  const ext = UPLOAD_MEDIA_TYPES[mediaType];
-  if (!ext || !USE_EXTENSIONS[use].includes(ext)) {
-    throw new ValidationError(
-      `A ${use} upload must be ${USE_EXTENSIONS[use].join(', ')}; got ${mediaType || 'no type'}.`
-    );
-  }
-  return ext;
-}
-
 export type UploadSource = { url: string } | { data: string; mimeType: string };
+
+/**
+ * Stream a non-MP3/WAV file through the container and store the WAV. The
+ * source stream is the container request body; the WAV stream is the R2 body.
+ */
+async function storeTranscodedWav(
+  target: StoreTarget,
+  organizationId: string,
+  sequenceId: string | null,
+  source: {
+    body: ReadableStream<Uint8Array>;
+    byteLength: number;
+    contentType: string;
+  }
+): Promise<{ url: string; mediaType: string; bytes: number }> {
+  const wav = await transcodeAudioUpload(source);
+  const { bucket, path } = uploadTarget(
+    target,
+    organizationId,
+    sequenceId,
+    'wav'
+  );
+  const result = await uploadResponse(wav.response, bucket, path, {
+    contentType: 'audio/wav',
+  });
+  return {
+    url: result.publicUrl,
+    mediaType: 'audio/wav',
+    bytes: wav.byteLength,
+  };
+}
 
 /**
  * Store an agent's file for `use` in this sequence (or the organization's Studio) and
@@ -1018,7 +1009,7 @@ export async function storeUpload(
 
   if ('data' in source) {
     const mediaType = source.mimeType.trim().toLowerCase();
-    const ext = extensionFor(use, mediaType);
+    const plan = uploadPlan(use, mediaType);
     let bytes: Uint8Array;
     try {
       bytes = base64ToBytes(source.data);
@@ -1033,22 +1024,36 @@ export async function storeUpload(
         'Inline data is over 8 MB; host the file and send its url instead.'
       );
     }
-    const { bucket, path } = uploadTarget(
-      args,
-      organizationId,
-      args.sequenceId,
-      ext
-    );
-    const result = await uploadFile(bucket, path, bytes, {
-      contentType: mediaType,
-    });
-    stored = { url: result.publicUrl, mediaType, bytes: bytes.byteLength };
+    if (plan.transcode) {
+      // Inline bytes are already in the isolate (the 8 MB cap). The WAV is not.
+      stored = await storeTranscodedWav(args, organizationId, args.sequenceId, {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+        byteLength: bytes.byteLength,
+        contentType: mediaType,
+      });
+    } else {
+      const { bucket, path } = uploadTarget(
+        args,
+        organizationId,
+        args.sequenceId,
+        plan.extension
+      );
+      const result = await uploadFile(bucket, path, bytes, {
+        contentType: mediaType,
+      });
+      stored = { url: result.publicUrl, mediaType, bytes: bytes.byteLength };
+    }
   } else {
     const res = await openSafeUrl(source.url, 'Upload');
     const mediaType = responseContentType(res);
-    let ext: string;
+    let plan: AudioUploadPlan;
     try {
-      ext = extensionFor(use, mediaType);
+      plan = uploadPlan(use, mediaType);
     } catch (error) {
       void res.body?.cancel();
       throw error;
@@ -1063,7 +1068,7 @@ export async function storeUpload(
         'The host did not say how large the file is (no Content-Length); host it somewhere that does.'
       );
     }
-    const isImage = IMAGE_EXTENSIONS.has(ext);
+    const isImage = IMAGE_EXTENSIONS.has(plan.extension);
     const cap = isImage ? MAX_URL_IMAGE_BYTES : MAX_URL_MEDIA_BYTES;
     if (declared > cap) {
       void res.body?.cancel();
@@ -1071,28 +1076,39 @@ export async function storeUpload(
         `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
       );
     }
-    const { bucket, path } = uploadTarget(
-      args,
-      organizationId,
-      args.sequenceId,
-      ext
-    );
-    if (isImage) {
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.byteLength > cap) {
-        throw new ValidationError(
-          `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
-        );
+    if (plan.transcode) {
+      if (!res.body) {
+        throw new ValidationError('The audio file was empty.');
       }
-      const result = await uploadFile(bucket, path, bytes, {
+      stored = await storeTranscodedWav(args, organizationId, args.sequenceId, {
+        body: res.body,
+        byteLength: declared,
         contentType: mediaType,
       });
-      stored = { url: result.publicUrl, mediaType, bytes: bytes.byteLength };
     } else {
-      const result = await uploadResponse(res, bucket, path, {
-        contentType: mediaType,
-      });
-      stored = { url: result.publicUrl, mediaType, bytes: declared };
+      const { bucket, path } = uploadTarget(
+        args,
+        organizationId,
+        args.sequenceId,
+        plan.extension
+      );
+      if (isImage) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.byteLength > cap) {
+          throw new ValidationError(
+            `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
+          );
+        }
+        const result = await uploadFile(bucket, path, bytes, {
+          contentType: mediaType,
+        });
+        stored = { url: result.publicUrl, mediaType, bytes: bytes.byteLength };
+      } else {
+        const result = await uploadResponse(res, bucket, path, {
+          contentType: mediaType,
+        });
+        stored = { url: result.publicUrl, mediaType, bytes: declared };
+      }
     }
   }
 

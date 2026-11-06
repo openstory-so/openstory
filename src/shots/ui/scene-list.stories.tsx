@@ -129,6 +129,7 @@ const psVersion = (id: string, model: string): SegmentVideoVersion => ({
   model,
   resolution: null,
   draftTaskId: null,
+  source: null,
   status: 'completed',
   url: PS_VIDEO_URL,
   createdAt: PS_FIXED_DATE,
@@ -493,7 +494,10 @@ const withPlan =
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    queryClient.setQueryData(generationPlanKeys.detail(PS_SEQ), plan);
+    queryClient.setQueryData(generationPlanKeys.detail(PS_SEQ), {
+      units: plan,
+      speakerConflicts: [],
+    });
     return (
       <QueryClientProvider client={queryClient}>
         <Story />

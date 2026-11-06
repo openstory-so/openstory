@@ -1,0 +1,37 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "video",
+        "userMessage": "@Image1 turns to the camera and smiles.\n[media: reference_image:85cf7499b42d]",
+        "model": "dreamina-seedance-2-5-260628"
+      },
+      "response": {
+        "json": {
+          "model": "dreamina-seedance-2-5-260628",
+          "status": "succeeded",
+          "content": {
+            "video_url": "https://assets.openstory.so/e2e/6acd62badeb5879cd6d444aff95b75094d9ad35e720c1528ae37c8191343dd3d.mp4"
+          },
+          "usage": {
+            "completion_tokens": 38830,
+            "total_tokens": 38830
+          },
+          "created_at": 1793853225,
+          "updated_at": 1793853289,
+          "seed": 44762,
+          "resolution": "480p",
+          "ratio": "16:9",
+          "duration": 4,
+          "framespersecond": 24,
+          "service_tier": "default",
+          "execution_expires_after": 172800,
+          "generate_audio": true,
+          "draft": true,
+          "priority": 0,
+          "output_format": "mp4"
+        }
+      }
+    }
+  ]
+}

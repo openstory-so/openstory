@@ -265,7 +265,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
       ['derived', spec?.id],
     ]);
   }
-  const units = await computeGenerationPlan(scopedDb, sequenceId);
+  const { units } = await computeGenerationPlan(scopedDb, sequenceId);
   expect(
     units.filter((u) => u.kind.startsWith('prompt:')).map((u) => u.state)
   ).toEqual(['done', 'done', 'done', 'done']);
@@ -298,7 +298,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     locationMatches: [],
     existingElements: [],
   });
-  const edited = await computeGenerationPlan(scopedDb, sequenceId);
+  const { units: edited } = await computeGenerationPlan(scopedDb, sequenceId);
   expect(
     edited
       .filter((u) => u.kind.startsWith('prompt:'))
@@ -315,7 +315,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     existingElements: [],
   });
   expect(
-    (await computeGenerationPlan(scopedDb, sequenceId))
+    (await computeGenerationPlan(scopedDb, sequenceId)).units
       .filter((u) => u.kind.startsWith('prompt:'))
       .every((u) => u.state === 'done')
   ).toBe(true);
@@ -328,7 +328,10 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
       },
     })
     .where(eq(styles.id, styleId));
-  const changedStyle = await computeGenerationPlan(scopedDb, sequenceId);
+  const { units: changedStyle } = await computeGenerationPlan(
+    scopedDb,
+    sequenceId
+  );
   expect(
     changedStyle
       .filter((u) => u.kind.startsWith('prompt:'))

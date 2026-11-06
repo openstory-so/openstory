@@ -30,6 +30,15 @@ Responds with the MP4 bytes (`content-type: video/mp4`) and an `x-export-meta`
 header (URI-encoded JSON `{ durationSeconds, reEncoded, resolutionsLabel }`).
 `GET /ping` → `200 ok` (the Container liveness endpoint).
 
+`POST /transcode-audio` — raw audio bytes, `Content-Length` required, at most
+500 MB. Responds with 16-bit PCM WAV, 48 kHz, one channel
+(`content-type: audio/wav`, `content-length` set). A file with no audio track,
+or a format mediabunny cannot read, is `400` `{ "error": "..." }`. The Worker
+(`src/sequences/server/transcode-audio.ts`) streams the request in and the WAV
+out to R2. `storeUpload` calls this for element, studio and music files that
+are not already MP3 or WAV (#2265). Plain `bun dev` and e2e have no container,
+so those uploads stay refused.
+
 **The container never touches the database.** The Worker-side
 `SequenceExportWorkflow` does all DB access, resolves absolute media URLs, calls
 this service, and streams the result into R2.

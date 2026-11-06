@@ -25,7 +25,11 @@ import {
   type ImageToVideoModel,
 } from '@/models/models';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
-import { isElementVoiceToken } from '@/motion/dialogue-tts';
+import {
+  DIALOGUE_CLIP_TOKEN,
+  isElementVoiceToken,
+  modelTakesDialogueAudio,
+} from '@/motion/dialogue-tts';
 import { seedanceEditClipLines } from '@/motion/seedance-edit';
 
 type ReferenceKind = 'image' | 'video' | 'audio';
@@ -249,6 +253,16 @@ export function unusableReferenceLines(
     const problem = referenceProblem(model, ref);
     const kind = ref.kind ?? 'image';
     if (!problem || kind === 'image') continue;
+    // The dialogue file is not a reference on these models. Sync-3 applies
+    // it after the clip, so it is not a reason to switch models.
+    if (
+      problem.reason === 'unsupported' &&
+      kind === 'audio' &&
+      ref.token === DIALOGUE_CLIP_TOKEN &&
+      !modelTakesDialogueAudio(model)
+    ) {
+      continue;
+    }
     const noun = kind === 'video' ? 'clip' : 'audio file';
     const token = ref.token ?? `this ${noun}`;
     const others = modelsAcceptingReference(ref);

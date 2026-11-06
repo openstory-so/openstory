@@ -35,7 +35,7 @@ describe('buildBytePlusImageRequest', () => {
   it('drops the 720p tier to the 1K pixel size', () => {
     expect(
       buildBytePlusImageRequest({ ...base, resolution: '720p' }).size
-    ).toBe('1024x576');
+    ).toBe('1280x720');
   });
 
   it('snaps 4K to the 2K pixel size — Pro has no 4K token', () => {

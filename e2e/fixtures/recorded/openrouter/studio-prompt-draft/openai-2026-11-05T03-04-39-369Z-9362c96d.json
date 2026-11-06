@@ -1,0 +1,49 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Nothing is attached and nothing has been written. Invent the idea: pick a specific subject, place and moment you find interesting — an unexpected one, not the first cliché that comes to mind.\nWrite the prompt now.",
+        "model": "anthropic/claude-sonnet-5.5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "A retired lighthouse keeper's cat dozes on a rusted bicycle seat inside a flooded Venetian laundromat at dawn, rows of washing machines half submerged in shallow turquoise water. Low-angle wide shot, soft pink light spilling through porthole doors, floating socks drifting past, shimmering reflections on tiled walls. Dreamlike cinematic photography, muted pastel palette, fine film grain.",
+        "usage": {
+          "prompt_tokens": 138,
+          "completion_tokens": 145,
+          "total_tokens": 283,
+          "cost": 0.001726,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.001726,
+            "upstream_inference_prompt_cost": 0.000276,
+            "upstream_inference_completions_cost": 0.00145
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1221,
+        "interChunkDelaysMs": [
+          323, 5, 0, 0, 0, 1, 0, 0, 0, 250, 0, 0, 99, 1, 0, 0, 0, 0, 0, 0, 21,
+          278, 0, 0, 50, 2, 0, 0, 1, 0, 257, 0, 0, 0, 0, 0, 312, 20, 0, 0, 6, 0
+        ],
+        "totalDurationMs": 2847
+      },
+      "metadata": {
+        "systemHash": "4cb589de"
+      }
+    }
+  ]
+}

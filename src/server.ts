@@ -96,11 +96,13 @@ export { SheetPortraitWorkflow } from '@/cast/server/workflows/sheet-portrait-wo
 export { ElementSheetWorkflow } from '@/cast/server/workflows/element-sheet-workflow';
 export { MusicWorkflow } from '@/audio/server/workflows/music-workflow';
 export { MotionWorkflow } from '@/motion/server/workflows/motion-workflow';
+export { LipsyncWorkflow } from '@/motion/server/workflows/lipsync-workflow';
 export { MotionBatchWorkflow } from '@/motion/server/workflows/motion-batch-workflow';
 export { CharacterSheetWorkflow } from '@/cast/server/workflows/character-sheet-workflow';
 export { CharacterVoiceWorkflow } from '@/cast/server/workflows/character-voice-workflow';
 export { DialogueAudioWorkflow } from '@/motion/server/workflows/dialogue-audio-workflow';
 export { DialogueTakeWorkflow } from '@/motion/server/workflows/dialogue-take-workflow';
+export { DialogueUploadWorkflow } from '@/motion/server/workflows/dialogue-upload-workflow';
 export { LocationSheetWorkflow } from '@/cast/server/workflows/location-sheet-workflow';
 export { ShotVariantWorkflow } from '@/stills/server/workflows/shot-variant-workflow';
 export { UpscaleShotVariantWorkflow } from '@/stills/server/workflows/upscale-shot-variant-workflow';

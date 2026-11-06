@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { micros } from '@/billing/money';
+import { micros, usdToMicros } from '@/billing/money';
 import { asStub } from '@/test/as-stub';
 
 const { estimateImageCost, estimateVideoCost, estimateAudioCost } = vi.hoisted(
@@ -135,6 +135,28 @@ describe('buildUpdateStalePreview', () => {
     expect(preview.costByLevel.video).toBe(
       1_000_000 + estimateTtsCost(ttsCharacterCount(sceneC))
     );
+  });
+
+  it('prices a lip-sync from the sync-3 card, not the video model (#2263)', () => {
+    estimateVideoCost.mockClear();
+    estimateVideoCost.mockReturnValue(micros(500_000));
+    const preview = buildUpdateStalePreview(
+      plan([
+        target({
+          shotId: 'a',
+          regenVideo: true,
+          lipsyncVideo: true,
+          durationMs: 5000,
+        }),
+        target({ shotId: 'b', regenVideo: true, durationMs: 5000 }),
+      ]),
+      {},
+      null
+    );
+    expect(preview.lipsyncShotIds).toEqual(['a']);
+    expect(preview.videoShotIds).toEqual(['a', 'b']);
+    expect(estimateVideoCost).toHaveBeenCalledTimes(1);
+    expect(preview.costByLevel.video).toBe(500_000 + usdToMicros((5 / 60) * 8));
   });
 
   it('unknown pricing yields null, never an invented number', () => {

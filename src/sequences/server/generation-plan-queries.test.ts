@@ -209,7 +209,7 @@ describe('sheet verdicts (#2082)', () => {
     const verdicts = async () => {
       const plan = await computeGenerationPlan(scopedDb, sequence.id);
       const unit = (kind: string, id: string) =>
-        plan.find((u) => u.kind === kind && u.id === id)?.state;
+        plan.units.find((u) => u.kind === kind && u.id === id)?.state;
       return {
         character: {
           plan: unit('sheet:character', character.lookId),

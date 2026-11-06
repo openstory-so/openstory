@@ -45,6 +45,7 @@ function videoVariant(overrides: Partial<VideoVariant> = {}): VideoVariant {
     generatedAt: new Date('2026-06-01T00:00:00Z'),
     error: null,
     inputHash: 'hash-1',
+    source: null,
     discardedAt: null,
     draftTaskId: null,
     createdAt: new Date('2026-06-01T00:00:00Z'),

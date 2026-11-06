@@ -19,16 +19,18 @@ export type SequenceElementKind = (typeof ELEMENT_KINDS)[number];
  * Extensions we accept for the two non-image kinds. Images are sniffed by
  * prefix.
  *
- * M4A and OGG are accepted but never STORED as such: the upload re-encodes
- * them to WAV (`normalizeElementFile`), since every model that documents its
- * formats takes only MP3 or WAV. Video has no such conversion, so it is MP4 or
- * MOV only — WebM was accepted until #1559 and then rejected by the model.
+ * M4A, OGG and FLAC are accepted but never STORED as such: the browser upload
+ * re-encodes them to WAV (`normalizeElementFile`), and a server upload does
+ * the same in the video-export container (#2265). Every model that documents
+ * its formats takes only MP3 or WAV. Video has no such conversion, so it is
+ * MP4 or MOV only — WebM was accepted until #1559 and then rejected by the model.
  */
 const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   mp3: 'audio',
   wav: 'audio',
   m4a: 'audio',
   ogg: 'audio',
+  flac: 'audio',
   mp4: 'video',
   mov: 'video',
 };
@@ -36,15 +38,17 @@ const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
 /**
  * `accept` for every element file input.
  *
- * DERIVED from the extension table above rather than spelled out: the two
- * drifted apart once already — `NON_IMAGE_EXTENSIONS` took `.m4a`, `.ogg` and
- * `.webm` while this string did not, so the picker silently refused a file
- * that paste and drag-and-drop both accepted, and that the server stores
- * happily. A list that can disagree with the parser will.
+ * Audio is `audio/*`: the browser re-encodes whatever it can play, so naming
+ * each extension both missed files and disagreed with the parser. Video stays
+ * an extension list — there is no conversion, and WebM was accepted until
+ * #1559 and then rejected by the model.
  */
 export const ELEMENT_UPLOAD_ACCEPT = [
   'image/*',
-  ...Object.keys(NON_IMAGE_EXTENSIONS).map((ext) => `.${ext}`),
+  'audio/*',
+  ...Object.entries(NON_IMAGE_EXTENSIONS)
+    .filter(([, kind]) => kind === 'video')
+    .map(([ext]) => `.${ext}`),
 ].join(',');
 
 const IMAGE_EXTENSIONS = new Set([

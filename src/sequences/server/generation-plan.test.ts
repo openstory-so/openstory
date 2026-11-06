@@ -17,6 +17,8 @@ let sceneLooks: Record<string, string> | null = null;
 let galaRemoved = false;
 /** Status of the anchor's newest primary `frame_variants` row (#1942). */
 let primaryImageStatus: string | null = null;
+/** Lines the shot's dialogue read returns. Empty keeps presence off. */
+let dialogueLines: { character: string; line: string }[] = [];
 
 vi.doMock('@/shots/server/shot-staleness', () => ({
   UNTRACKED_STALENESS: {},
@@ -54,7 +56,12 @@ vi.doMock('@/shots/server/shot-staleness', () => ({
       liveVisualClaimsByFrame: new Map(),
       liveImageClaimsByFrame: new Map(),
       liveMotionClaimsByShot: new Map(),
-      dialogueOf: () => ({ dialogue: { presence: false, lines: [] } }),
+      dialogueOf: () => ({
+        dialogue: {
+          presence: dialogueLines.length > 0,
+          lines: dialogueLines,
+        },
+      }),
     })
   ),
   // The bible edit moved the prompt's hash; the still's own hash still holds.
@@ -217,7 +224,9 @@ describe('computeGenerationPlan', () => {
       undefined,
       { ignoreOwnProcessing: ownProcessing }
     );
-    return Object.fromEntries(plan.map((u) => [`${u.kind}:${u.id}`, u.state]));
+    return Object.fromEntries(
+      plan.units.map((u) => [`${u.kind}:${u.id}`, u.state])
+    );
   };
 
   it('a hand-added pending character owes a sheet and stales the stills that name it', async () => {
@@ -312,6 +321,68 @@ describe('computeGenerationPlan', () => {
       }),
       'seq-1'
     );
-    expect(plan).toEqual([]);
+    expect(plan).toEqual({ units: [], speakerConflicts: [] });
+  });
+
+  it('reports a speaker-name conflict and skips the line (#2257)', async () => {
+    dialogueLines = [
+      { character: 'SARAH', line: 'Hello.' },
+      { character: 'SARAH', line: 'Again.' },
+    ];
+    try {
+      const plan = await computeGenerationPlan(
+        asScopedDb({
+          sequences: {
+            getById: () =>
+              Promise.resolve({
+                id: 'seq-1',
+                status: 'completed',
+                generateStartFrames: true,
+                generateVoices: true,
+                includeMusic: false,
+                generationStopAt: 'dialogue',
+                musicPrompt: null,
+                musicUrl: null,
+                musicStatus: 'pending',
+              }),
+          },
+          shots: {
+            listBySequence: () =>
+              Promise.resolve([{ id: 's1', sceneId: null, audioClips: null }]),
+          },
+          characters: {
+            list: () =>
+              Promise.resolve([
+                character('chen', 'Sarah Chen', null),
+                character('mother', "Sarah's Mother", null),
+              ]),
+          },
+          locations: {
+            list: () => Promise.resolve([]),
+            listPhotosByLocationIds: () => Promise.resolve([]),
+          },
+          characterSheetVariants: { getByIds: () => Promise.resolve([]) },
+          locationSheetVariants: { getByIds: () => Promise.resolve([]) },
+          frameVariants: {
+            getSelectedByFrameIds: () =>
+              Promise.resolve(
+                new Map([['f1', { url: 'https://x/still.jpg' }]])
+              ),
+            getPrimaryByFrameIds: () => Promise.resolve(new Map()),
+          },
+          shotDialogue: {
+            listShotIdsWithLiveClaim: () => Promise.resolve(new Set()),
+          },
+        }),
+        'seq-1'
+      );
+      expect(plan.speakerConflicts).toEqual([
+        '"SARAH" could be Sarah Chen or Sarah\'s Mother. Use the full name so dialogue knows who speaks.',
+      ]);
+      expect(plan.units.some((unit) => unit.kind === 'voice')).toBe(false);
+      expect(plan.units.some((unit) => unit.kind === 'dialogue')).toBe(false);
+    } finally {
+      dialogueLines = [];
+    }
   });
 });

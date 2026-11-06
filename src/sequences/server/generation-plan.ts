@@ -18,7 +18,7 @@ import {
 } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import type { StyleConfig } from '@/look/style-config';
-import { NotFoundError } from '@/platform/errors';
+import { ConflictError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
@@ -30,6 +30,12 @@ import {
   type PlanShot,
   type PlanUnit,
 } from '@/sequences/generation-plan';
+
+/** The plan the footer reads. A speaker conflict is a line on it, not a throw. */
+export type GenerationPlan = {
+  units: PlanUnit[];
+  speakerConflicts: string[];
+};
 import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { loadShotMediaStates } from '@/shots/server/shot-media-staleness';
 import {
@@ -79,7 +85,7 @@ export async function computeGenerationPlan(
     ignoreOwnProcessing?: boolean;
     sequenceOverrides?: FreshPlanSequenceOverrides;
   }
-): Promise<PlanUnit[]> {
+): Promise<GenerationPlan> {
   const [row, shots] = await Promise.all([
     scopedDb.sequences.getById(sequenceId),
     scopedDb.shots.listBySequence(sequenceId),
@@ -94,12 +100,12 @@ export async function computeGenerationPlan(
     status: options?.ignoreOwnProcessing ? ('completed' as const) : row.status,
   };
   // Script is the root, not a unit: nothing to plan until it made shots.
-  if (shots.length === 0) return [];
-  const units = planUnits(
-    await loadPlanInput(scopedDb, sequence, shots),
-    sequenceId
-  );
-  return units;
+  if (shots.length === 0) return { units: [], speakerConflicts: [] };
+  const loaded = await loadPlanInput(scopedDb, sequence, shots);
+  return {
+    units: planUnits(loaded, sequenceId),
+    speakerConflicts: loaded.speakerConflicts,
+  };
 }
 
 async function loadPlanInput(
@@ -177,6 +183,8 @@ async function loadPlanInput(
 
   const planShots: PlanShot[] = [];
   const speakers = new Set<string>();
+  const speakerConflicts: string[] = [];
+  const seenConflicts = new Set<string>();
   for (const shot of shots) {
     const frame = anchorsByShot.get(shot.id);
     const { scene } = resolveSceneForShot(shot, sceneContext);
@@ -210,7 +218,18 @@ async function loadPlanInput(
     if (dialogue.dialogue.presence) {
       for (const line of dialogue.dialogue.lines) {
         if (line.voiceToken || !line.line.trim()) continue;
-        const character = matchSpeaker(line.character, characters);
+        // A plan reports a name clash. Recording the line still throws.
+        let character: (typeof characters)[number] | undefined;
+        try {
+          character = matchSpeaker(line.character, characters);
+        } catch (error) {
+          if (!(error instanceof ConflictError)) throw error;
+          if (!seenConflicts.has(error.message)) {
+            seenConflicts.add(error.message);
+            speakerConflicts.push(error.message);
+          }
+          continue;
+        }
         if (character && usesVoice(character, sequence)) {
           speakerIds.add(character.id);
           speakers.add(character.id);
@@ -311,6 +330,7 @@ async function loadPlanInput(
         }),
       })),
     shots: planShots,
+    speakerConflicts,
     // The Music switch (`includeMusic`): off, the sequence owes no music.
     music: music && {
       prompt: artifactVerdict({

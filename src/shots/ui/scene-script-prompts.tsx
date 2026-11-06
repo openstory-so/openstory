@@ -102,6 +102,8 @@ import {
   estimateImageCost,
   estimateVideoCost,
 } from '@/billing/cost-estimation';
+import { addMicros } from '@/billing/money';
+import { estimateMotionLipsyncCost } from '@/motion/lipsync';
 import { DEFAULT_ASPECT_RATIO, type AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import { getStorageDomainFn } from '@/platform/storage-config.fn';
@@ -1237,7 +1239,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     const referenceOnly = !usesStartFrame(shot, {
       generateStartFrames: sequenceGeneratesStartFrames,
     });
-    return estimateVideoCost(regenMotionModel, duration, {
+    const video = estimateVideoCost(regenMotionModel, duration, {
       pricing: falPricing,
       resolution: regenAsDraft ? DRAFT_RESOLUTION : resolution,
       // Unknown (preview failed or pending) falls back to the mode's default
@@ -1245,6 +1247,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       hasReferenceImages: promptPreview?.motionHasReferenceImages,
       referenceOnly,
     });
+    if (video == null) return null;
+    return addMicros(
+      video,
+      estimateMotionLipsyncCost({
+        model: regenMotionModel,
+        draft: regenAsDraft,
+        durationSeconds: duration,
+        speaks: promptPreview?.motionLipsync === true,
+      })
+    );
   }, [
     falPricing,
     pricingPending,
@@ -1254,6 +1266,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     resolution,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
+    promptPreview?.motionLipsync,
     promptPreview?.packedDurationMs,
   ]);
   // The final of an approved draft is always 1080p (#1756).

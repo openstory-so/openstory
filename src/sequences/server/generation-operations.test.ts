@@ -50,7 +50,10 @@ vi.doMock('@/shots/server/update-stale-plan', () => ({
   computePlan,
 }));
 vi.doMock('@/sequences/server/generation-plan', () => ({
-  computeGenerationPlan: vi.fn(async () => []),
+  computeGenerationPlan: vi.fn(async () => ({
+    units: [],
+    speakerConflicts: [],
+  })),
 }));
 vi.doMock('@/shots/server/update-stale-preview', () => ({
   buildUpdateStalePreview: () => ({ costByLevel: { images: 2_500_000 } }),

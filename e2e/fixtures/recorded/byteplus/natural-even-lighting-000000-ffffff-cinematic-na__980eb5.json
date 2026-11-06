@@ -1,0 +1,37 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "video",
+        "userMessage": "Natural, even lighting. #000000, #FFFFFF. Cinematic, Natural.\n\n@Image1 looks up as the door bell rings; slow push in.\n\nNo BGM, no music, no dialogue. Generate only environmental sounds and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n[media: reference_image:0860495f8c68]",
+        "model": "dreamina-seedance-2-5-260628"
+      },
+      "response": {
+        "json": {
+          "model": "dreamina-seedance-2-5-260628",
+          "status": "succeeded",
+          "content": {
+            "video_url": "https://assets.openstory.so/e2e/b4e086c0d74ea661c769a7fab3cb748e4ab184a7a2bb0dfd767d1eb25d6c6818.mp4"
+          },
+          "usage": {
+            "completion_tokens": 38830,
+            "total_tokens": 38830
+          },
+          "created_at": 1793948344,
+          "updated_at": 1793948410,
+          "seed": 15238,
+          "resolution": "480p",
+          "ratio": "16:9",
+          "duration": 4,
+          "framespersecond": 24,
+          "service_tier": "default",
+          "execution_expires_after": 172800,
+          "generate_audio": true,
+          "draft": true,
+          "priority": 0,
+          "output_format": "mp4"
+        }
+      }
+    }
+  ]
+}

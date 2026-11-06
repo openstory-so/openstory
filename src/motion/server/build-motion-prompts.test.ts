@@ -325,7 +325,7 @@ describe('buildMotionShotPrompt', () => {
         });
 
         expect(result).toBe(
-          `${fullPromptText}\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts.`
+          `${fullPromptText}\n\nNo BGM, no music, no dialogue. Generate only environmental sounds and action sounds. Single continuous shot, no cuts.`
         );
       });
     }
@@ -335,26 +335,45 @@ describe('buildMotionShotPrompt', () => {
   // Non-audio models (Grok)
   // ---------------------------------------------------------------------------
 
-  describe('Grok Imagine Video 1.5 (no audio)', () => {
+  describe('Grok Imagine Video 1.5 (audio, no API switch)', () => {
     const model = 'grok_imagine_video_1_5';
 
-    it('returns fullPrompt for non-audio model', () => {
+    it('puts the spoken lines in the prompt', () => {
       const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
 
-      expect(result).toBe(fullPromptText);
+      expect(result).toContain(
+        'Sarah says in a firm commanding voice, "We need to reconsider the entire approach."'
+      );
+      expect(result).toContain('James says in a soft resigned voice');
+    });
+
+    it('asks for silence in the prompt when audio is off', () => {
+      const result = buildMotionShotPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+        generateAudio: false,
+      });
+
+      expect(result).toBe(
+        `${fullPromptText}\n\nSilent. No dialogue, no sound effects, no music.`
+      );
+      expect(result).not.toContain('We need to reconsider');
     });
   });
 
   describe('Gemini Omni Flash (oner pin)', () => {
-    it('pins a 1-shot clip as a single unbroken scene', () => {
+    it('pins a 1-shot clip as a single unbroken scene and speaks the lines', () => {
       const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model: 'gemini_omni_flash',
       });
-      expect(result).toBe(`${fullPromptText}\n\nSingle unbroken scene.`);
+      expect(result).toContain(
+        'Sarah says in a firm commanding voice, "We need to reconsider the entire approach."'
+      );
+      expect(result).toContain('Single unbroken scene.');
     });
 
     it('does not pin a packed multi-shot', () => {
@@ -363,7 +382,10 @@ describe('buildMotionShotPrompt', () => {
         model: 'gemini_omni_flash',
         singleTake: false,
       });
-      expect(result).toBe(fullPromptText);
+      expect(result).toContain(
+        'Sarah says in a firm commanding voice, "We need to reconsider the entire approach."'
+      );
+      expect(result).not.toContain('Single unbroken scene.');
     });
   });
 
@@ -422,7 +444,9 @@ describe('buildMotionShotPrompt', () => {
       });
 
       expect(result).not.toContain('<d>');
-      expect(result).toContain('overall_soundscape: No BGM, no music.');
+      expect(result).toContain(
+        'overall_soundscape: No BGM, no music, no dialogue.'
+      );
       expect(result).toContain('non_diegetic_music: N/A');
     });
   });
@@ -500,13 +524,14 @@ describe('buildMotionShotPrompt', () => {
       );
     });
 
-    it('never adds a no-music direction to a model that generates no audio', () => {
+    it('asks Grok for dialogue and ambience, and no score', () => {
       const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model: 'grok_imagine_video_1_5',
       });
 
-      expect(result).not.toContain('No BGM');
+      expect(result).toContain('No BGM');
+      expect(result).toContain('quiet office hum');
     });
   });
 

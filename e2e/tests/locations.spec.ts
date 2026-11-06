@@ -4,7 +4,7 @@
  * its page.
  */
 
-import { test, expect } from 'playwright/test';
+import { test, expect } from '../fixtures/base';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
 import {

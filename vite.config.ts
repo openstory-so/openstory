@@ -213,6 +213,45 @@ function envIcons(): Plugin {
   };
 }
 
+/**
+ * Istanbul-instruments server code for `bun test:e2e:coverage` (#2243).
+ * Browser code is measured with V8 coverage in the Playwright fixture instead.
+ */
+function e2eServerCoverage(): Plugin {
+  const srcDir = resolve(import.meta.dirname, 'src') + '/';
+  return {
+    name: 'e2e-server-coverage',
+    enforce: 'post',
+    applyToEnvironment: (env) => env.name === 'ssr',
+    async transform(code, id) {
+      const file = id.split('?')[0] ?? '';
+      if (
+        !file.startsWith(srcDir) ||
+        !/\.[cm]?[jt]sx?$/.test(file) ||
+        /\.(test|stories)\.[jt]sx?$/.test(file)
+      ) {
+        return null;
+      }
+      const { createInstrumenter } = await import('istanbul-lib-instrument');
+      const instrumenter = createInstrumenter({
+        esModules: true,
+        compact: true,
+        produceSourceMap: true,
+        // workerd has no eval, so no `new Function('return this')`.
+        coverageGlobalScope: 'globalThis',
+        coverageGlobalScopeFunc: false,
+      });
+      const inputMap = this.getCombinedSourcemap();
+      const out = instrumenter.instrumentSync(code, file, {
+        ...inputMap,
+        version: String(inputMap.version),
+      });
+      const map = instrumenter.lastSourceMap();
+      return { code: out, map: { ...map, version: Number(map.version) } };
+    },
+  };
+}
+
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
@@ -273,6 +312,7 @@ export default defineConfig({
     reflectMetadataPolyfill(),
     latin1ServerChunks(),
     tailwindcss(),
+    process.env.E2E_COVERAGE === 'true' && e2eServerCoverage(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       // Named tunnel only — `tunnel: true` is a Quick Tunnel that auto-starts

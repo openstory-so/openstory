@@ -70,7 +70,7 @@ export type ShotDialogueReading = {
    * `context`: spoken while generating another shot, never adopted here.
    * `mic`: a line performed by the user, in the speaker's voice (#1802).
    */
-  source: 'generated' | 'context' | 'mic';
+  source: 'generated' | 'context' | 'mic' | 'upload';
   selected: boolean;
   fromSeconds: number;
   toSeconds: number;
@@ -136,6 +136,7 @@ const ReadingRow: React.FC<{
     formatElementDuration(reading.toSeconds - reading.fromSeconds),
     reading.source === 'context' ? 'Generated with another shot' : null,
     reading.source === 'mic' ? 'Your take' : null,
+    reading.source === 'upload' ? 'Your recording' : null,
     reading.unclearLineCount > 0
       ? `${reading.unclearLineCount} ${reading.unclearLineCount === 1 ? 'line' : 'lines'} may not be said clearly`
       : null,

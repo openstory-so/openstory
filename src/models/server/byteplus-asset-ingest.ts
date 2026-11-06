@@ -6,6 +6,7 @@
 
 import {
   ensureExternallyFetchableUrl,
+  replayAppUrl,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 
@@ -23,5 +24,6 @@ export async function toArkFetchableUrl(
 ): Promise<string> {
   if (storedUrl.startsWith('asset://')) return storedUrl;
   const publicUrl = await ensureExternallyFetchableUrl(storedUrl, falApiKey);
-  return isHttpUrl(publicUrl) ? publicUrl : toDataOrCdnUrl(storedUrl);
+  if (isHttpUrl(publicUrl)) return publicUrl;
+  return replayAppUrl(publicUrl) ?? toDataOrCdnUrl(storedUrl);
 }

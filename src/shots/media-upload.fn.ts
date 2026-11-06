@@ -53,6 +53,7 @@ import {
   setShotVideoFromUpload,
 } from '@/shots/server/media-upload';
 import { generateId } from '@/platform/id';
+import { uploadSceneDialogue } from '@/shots/server/scene-dialogue-upload';
 
 /**
  * Extension for an upload, rejecting anything outside the surface's allow-list.
@@ -134,6 +135,23 @@ export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
     return signedUpload(
       STORAGE_BUCKETS.AUDIO,
       `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/music/${generateId()}`,
+      data.filename,
+      'audio'
+    );
+  });
+
+/** A scene's recording (#2264); the browser sends it as a 16-bit WAV. */
+export const presignSceneDialogueUploadFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({ sequenceId: ulidSchema, filename: z.string().min(1) })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return signedUpload(
+      STORAGE_BUCKETS.AUDIO,
+      `${organizationKeyPrefix(context.organizationId)}/sequences/${context.sequence.id}/dialogue-uploads/${generateId()}`,
       data.filename,
       'audio'
     );
@@ -301,3 +319,17 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([castAccessMiddleware])
   .validator(zodValidator(setLocationSheetInput))
   .handler(({ context, data }) => setLocationSheetFromUpload(context, data));
+
+/** Make an uploaded recording the scene's dialogue (#2264). */
+export const uploadSceneDialogueFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        sceneId: ulidSchema,
+        publicUrl: mediaUrlSchema,
+      })
+    )
+  )
+  .handler(({ context, data }) => uploadSceneDialogue(context, data));

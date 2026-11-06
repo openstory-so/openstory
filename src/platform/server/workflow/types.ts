@@ -12,7 +12,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution, Resolution } from '@/models/resolutions';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   CharacterMinimal,
@@ -614,8 +614,54 @@ export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
   maxDurationSeconds: number;
 }
 
+/**
+ * A recording of a scene's whole conversation becomes its dialogue (#2264).
+ * The scene's voiced lines are snapshotted at the click; the run finds each
+ * in the recording and gives every speaking shot its section.
+ */
+export interface DialogueUploadWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  /** `<bucket>/<path>` of the uploaded PCM WAV. */
+  storageKey: string;
+  /** The scene's voiced turns in speaking order. Every line of the scene is voiced. */
+  voiced: SceneVoicedLine[];
+  /** shot id → the `shot_dialogue_versions` row spoken (absent = derived). */
+  dialogueVersionIdByShotId: Record<string, string>;
+  /** shot id → its 1-based place in the scene, as errors name it. */
+  sceneShotNumberByShotId: Record<string, number>;
+  /** Provider per-file floor (H3 Max 2s). */
+  minDurationSeconds: number;
+  /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
+  maxDurationSeconds: number;
+}
+
 export interface DialogueAudioWorkflowResult {
   clipsByShotId: Record<string, MotionAudioClip[]>;
+  /**
+   * Why a voiced shot has no clip, for every shot of a scene that did not
+   * record (#2269). Absent only from a child started before this field.
+   */
+  reasonByShotId?: Record<string, string>;
+}
+
+/**
+ * Lip-sync one finished clip to its dialogue section (#2263). Every input
+ * is snapshotted at the trigger. The child does not re-read the selection.
+ */
+export interface LipsyncWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shotId: string;
+  sceneId: string | null;
+  renderSegmentId: string;
+  videoUrl: string;
+  audioUrl: string;
+  manifest: VideoManifest;
+  durationSeconds: number;
+  resolution: RenderedResolution | null;
+  /** The video model that rendered the clip. The lip-sync row keeps it. */
+  videoModel: ImageToVideoModel;
+  sequenceTitle: string;
+  sceneTitle?: string;
 }
 
 /**

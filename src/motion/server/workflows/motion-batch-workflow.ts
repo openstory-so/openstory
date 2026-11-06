@@ -19,7 +19,10 @@ import {
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
 import { arkStillsToRegister } from '@/motion/server/motion-generation';
-import { isNativeBytePlusVideoModel } from '@/models/models';
+import {
+  DEFAULT_VIDEO_MODEL,
+  isNativeBytePlusVideoModel,
+} from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 
@@ -30,8 +33,10 @@ import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import {
   attachSpeechClips,
+  buildMotionJobs,
   missingDialogueAudioShotIds,
 } from './motion-batch-jobs';
+import { persistMotionFailure } from './motion-workflow-persist';
 import type {
   BatchMotionMusicWorkflowInput,
   DialogueAudioWorkflowInput,
@@ -114,9 +119,45 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // Step 0b: record dialogue ONCE PER SCENE (#1657). The parent must not
     // fan out motion until every voiced shot has a matching take; a failed or
     // partial scene speech blocks the batch below.
-    const shots = await this.recordScenesOnce(input, step, parentInstanceId);
+    const { shots, reasonByShotId } = await this.recordScenesOnce(
+      input,
+      step,
+      parentInstanceId
+    );
     const missingDialogueShotIds = missingDialogueAudioShotIds(shots);
     if (missingDialogueShotIds.length > 0) {
+      // The throw below only reaches the page as a channel event (#2269). A
+      // terminal failed version per blocked shot puts the reason on its card;
+      // without one the shot reads 'pending' forever.
+      if (sequenceId) {
+        await step.do('record-dialogue-blocked', async () => {
+          const jobs = buildMotionJobs(shots, input.videoModels);
+          for (const shotId of missingDialogueShotIds) {
+            // The failed row hangs off a segment; a shot never rendered has
+            // none yet. Live, as the snapshot may predate a packing.
+            const live = await scopedDb.liveRead.shots.getById(shotId);
+            if (live && !live.renderSegmentId) {
+              await scopedDb.renderSegments.ensureForShot({
+                id: shotId,
+                sceneId: live.sceneId,
+                sequenceId,
+                renderSegmentId: null,
+              });
+            }
+            await persistMotionFailure({
+              scopedDb,
+              shotId,
+              model:
+                jobs.find((job) => job.shot.shotId === shotId)?.model ??
+                DEFAULT_VIDEO_MODEL,
+              error: `Dialogue audio was not generated: ${reasonByShotId[shotId] ?? 'no take matched the lines'}`,
+              workflowRunId: parentInstanceId,
+              emit: (channelEvent, payload) =>
+                getGenerationChannel(sequenceId).emit(channelEvent, payload),
+            });
+          }
+        });
+      }
       throw new WorkflowValidationError(
         `Dialogue audio was not generated for shot${missingDialogueShotIds.length === 1 ? '' : 's'} ${missingDialogueShotIds.join(', ')}; motion is blocked.`
       );
@@ -275,11 +316,14 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     input: BatchMotionMusicWorkflowInput,
     step: WorkflowStep,
     parentInstanceId: string
-  ): Promise<BatchMotionMusicWorkflowInput['shots']> {
+  ): Promise<{
+    shots: BatchMotionMusicWorkflowInput['shots'];
+    reasonByShotId: Record<string, string>;
+  }> {
     const speech = input.dialogueSpeech ?? input.dialogueRecording;
     const sequenceId = input.sequenceId;
     if (!speech || speech.scenes.length === 0 || !sequenceId) {
-      return input.shots;
+      return { shots: input.shots, reasonByShotId: {} };
     }
 
     const result = await spawnAndAwaitChild<
@@ -305,7 +349,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       timeout: '60 minutes',
     });
 
-    return attachSpeechClips(input.shots, result.clipsByShotId);
+    return {
+      shots: attachSpeechClips(input.shots, result.clipsByShotId),
+      reasonByShotId: result.reasonByShotId ?? {},
+    };
   }
 
   private async awaitBytePlusPoolAdmission(

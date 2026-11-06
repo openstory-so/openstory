@@ -70,6 +70,10 @@ const ELEVENLABS_FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/elevenlabs'
 );
+const BYTEPLUS_FIXTURE_DIR = resolve(
+  import.meta.dirname,
+  '../fixtures/recorded/byteplus'
+);
 // aimock's recorder writes flat into a single directory; we point it here and
 // `sortStagingFixtures()` (run on shutdown) classifies each new file by its
 // provider-key prefix (`openai-…` vs `fal-…` vs `elevenlabs-…`) and moves it
@@ -93,12 +97,17 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Extract a complete character bible', 'script-bibles'],
   ['Cover each scene.', 'script-shot-list'],
   ["Rewrite this shot's spec.", 'shot-spec-rewrite'],
+  [
+    'Rewrite this motion prompt so a video model will accept it.',
+    'motion-soften',
+  ],
   ['Match the following library locations', 'location-match'],
   ['Generate the visual prompt for the starting frame', 'visual-prompts'],
   ['Generate the motion prompt for this scene', 'motion-prompts'],
   ['Classify music design for each scene', 'music-design'],
   ['Uploaded filename:', 'element-vision'],
   ['Analyze this talent reference', 'talent-vision'],
+  ['Nothing is attached and nothing has been written.', 'studio-prompt-draft'],
 ];
 
 // Diagnostic dump for unmatched requests — written on shutdown so we can diff
@@ -361,6 +370,23 @@ function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
 }
 
 /**
+ * Seedance keys carry a digest of each media URL, and an `asset://` id is new
+ * on every run, so any 12-hex digest matches.
+ */
+function tolerateMediaDigests(fixtures: Fixture[]): Fixture[] {
+  for (const fixture of fixtures) {
+    const message = fixture.match.userMessage;
+    if (typeof message !== 'string') continue;
+    const pattern = message
+      .split(/\b[0-9a-f]{12}(?=[,\]])/)
+      .map(escapeRegex)
+      .join('[0-9a-f]{12}');
+    fixture.match.userMessage = new RegExp(`^${pattern}$`);
+  }
+  return fixtures;
+}
+
+/**
  * xAI's `/v1/images/edits` takes `application/json` (the Grok adapter posts
  * `{ model, prompt, image | images }`), but aimock's built-in edits handler
  * only parses OpenAI's multipart form and 400s a JSON body with
@@ -377,6 +403,25 @@ function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
  *   `{ match: { endpoint: 'image' }, response: { image } }` shape the
  *   recorder uses for generations.
  */
+/**
+ * ElevenLabs Voice Library browse (`GET /v1/shared-voices`), which aimock does
+ * not route: one real page, trimmed, for any query. Refresh it by saving a
+ * live response over the fixture.
+ */
+function sharedVoicesMount(): Mountable {
+  const body = readFileSync(
+    resolve(import.meta.dirname, '../fixtures/elevenlabs-shared-voices.json')
+  );
+  return {
+    handleRequest(req, res) {
+      if (req.method !== 'GET') return Promise.resolve(false);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(body);
+      return Promise.resolve(true);
+    },
+  };
+}
+
 function xaiJsonImageEditsMount(): Mountable {
   return {
     async handleRequest(req, res) {
@@ -500,6 +545,7 @@ export async function startAimockServer(): Promise<string> {
         providers: {
           openai: 'https://openrouter.ai/api/v1',
           elevenlabs: 'https://api.elevenlabs.io',
+          byteplus: 'https://ark.ap-southeast.bytepluses.com',
         },
         fixturePath: RECORD_STAGING_DIR,
         // Reasoning models (e.g. Grok 4.5 + structured output under concurrent
@@ -508,6 +554,8 @@ export async function startAimockServer(): Promise<string> {
         // recorded stream — recordings for the slowest calls are silently
         // dropped (CopilotKit/aimock#197, shipped in >=1.35.0).
         bodyTimeoutMs: 120_000,
+        // A Seedream still takes longer than aimock's 30s default.
+        upstreamTimeoutMs: 300_000,
       },
     }),
   });
@@ -545,6 +593,14 @@ export async function startAimockServer(): Promise<string> {
     mockServer.addFixtures(loadFixturesRecursive(ELEVENLABS_FIXTURE_DIR));
   }
 
+  // BytePlus Ark (Seedance tasks, Seedream images on `/api/v3`).
+  if (existsSync(BYTEPLUS_FIXTURE_DIR)) {
+    mockServer.addFixtures(
+      tolerateMediaDigests(loadFixturesRecursive(BYTEPLUS_FIXTURE_DIR))
+    );
+  }
+
+  mockServer.mount('/v1/shared-voices', sharedVoicesMount());
   const url = await mockServer.start();
   // Replay only: a STRICT 503 is otherwise retried by workflows, so the
   // spec keeps running. Kill Playwright on the first miss instead.
@@ -713,7 +769,7 @@ function fixtureContentHash(userMessage: string): string {
 // can't get a hash-free name because nothing in its body is a stable key.
 function stableBaseName(
   userMessage: string,
-  kind: 'openrouter' | 'fal' | 'elevenlabs'
+  kind: 'openrouter' | 'fal' | 'elevenlabs' | 'byteplus'
 ): string {
   const sceneId = /\bscene_(\d+)\b/.exec(userMessage)?.[0];
 
@@ -723,7 +779,7 @@ function stableBaseName(
     return sceneId ?? '';
   }
 
-  // fal / elevenlabs: lead with the scene id when present, then a slug of the
+  // fal / elevenlabs / byteplus: lead with the scene id when present, then a slug of the
   // first line of the prompt, then a short content hash to disambiguate.
   const firstLine = userMessage.split('\n', 1)[0] ?? '';
   const lead = slugify(firstLine);
@@ -838,6 +894,12 @@ function sortStagingFixtures(): void {
     if (name.startsWith('elevenlabs-')) {
       const base = stableBaseName(userMessage, 'elevenlabs');
       moveToStableName(src, ELEVENLABS_FIXTURE_DIR, base, userMessage);
+      sorted++;
+      continue;
+    }
+    if (name.startsWith('byteplus-')) {
+      const base = stableBaseName(userMessage, 'byteplus');
+      moveToStableName(src, BYTEPLUS_FIXTURE_DIR, base, userMessage);
       sorted++;
       continue;
     }

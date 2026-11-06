@@ -335,7 +335,9 @@ changing the area, and update it in the same PR.**
 - **Server-side export** — `docs/architecture/public-api-internals.md`. No
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).
-  Plain `bun dev` and e2e have no renderer. The theatre does not use the
+  Plain `bun dev` and e2e have no renderer. The same container transcodes
+  uploaded M4A, OGG and FLAC to WAV (#2265); without it the server upload
+  path keeps refusing them. The theatre does not use the
   export: it always stitches the clips in the tab, loading each as the
   playhead reaches it (#1845). The HLS playlist and its ingest remux are
   gone — a whole clip must never sit in Worker memory, and a fragmented MP4
@@ -382,6 +384,7 @@ Read the via's doc before touching it, and update it in the same PR:
 - **LLMTR gateway** — `docs/architecture/media-vias.md`. Organization BYOK only. A registry id absent from `LLMTR_TEXT_MODELS` is not routable — never guess a neighbour slug, never send the LLMTR key to OpenRouter, and send native wire names, not OpenRouter plugins.
 - **LLMTR must not block model upgrades.** Missing support, an unreachable catalog, or unverified LLMTR pricing is not a reason to delay an upgrade or keep its PR in draft. Put unsupported or unverified ids in `LLMTR_UNMAPPED_MODEL_IDS` so existing OpenRouter/fal resolution handles them; add LLMTR mappings and rates only after verification. Keep LLMTR last in Settings → API Keys, below OpenRouter.
 - **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth. Pre-flight estimates read the stored modelschemas rate card on that row (#1605); a refusal stays null and never copies a sibling endpoint's price.
+- **Lip-sync (#2263)** — `docs/architecture/media-vias.md` (Sync lipsync). A finished clip plus its dialogue section through `fal-ai/sync-lipsync/v3` (`sync-lipsync-3`, `source: 'lipsync'`). Motion runs it after the clip when the model cannot take an audio upload (Kling, Omni Flash, Grok), including a packed clip against its one spanning dialogue file. Update all lip-syncs when only the audio moved on a single-shot clip.
 
 **Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it.
 

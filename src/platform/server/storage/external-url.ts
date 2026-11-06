@@ -89,6 +89,13 @@ export async function ensureExternallyFetchableUrl(
   return fal.storage.upload(file);
 }
 
+/** E2E replay only: the app's own absolute URL for a stored file (the Ark fake fetches nothing). */
+export function replayAppUrl(url: string): string | null {
+  const appUrl = getEnv().VITE_APP_URL;
+  if (!isReplayMode() || !appUrl || !url.startsWith('/')) return null;
+  return new URL(url, appUrl).href;
+}
+
 export async function ensureExternallyFetchableUrls(
   urls: string[],
   falApiKey?: string

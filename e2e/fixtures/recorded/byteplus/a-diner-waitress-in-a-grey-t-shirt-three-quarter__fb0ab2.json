@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A diner waitress in a grey t-shirt, three-quarter view.",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/8e7286e48b34f294d71920e5b7badec7149fb4619b3657e85bb24ea41b767d63.jpeg"
+        }
+      }
+    }
+  ]
+}

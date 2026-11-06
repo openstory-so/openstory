@@ -25,6 +25,7 @@ import {
   updateCharacterLook,
   createLocation,
   deleteCharacter,
+  replaceCharacter,
   deleteElement,
   deleteLocation,
   discardCharacterSheetVersion,
@@ -232,6 +233,36 @@ const updateCharacterTool = openstoryTool({
     return {
       data: { characterId: character.id },
       summary: `Updated character ${character.name}.`,
+    };
+  },
+});
+
+const replaceCharacterTool = openstoryTool({
+  name: 'replace_character',
+  description:
+    'Re-point this sequence slot at another organization character. That character sheet, looks and voice are what the slot uses. Nothing is copied. When that character is already in this cast, this slot is dropped and its script id, name and tag are remembered on the one that stays. Scenes are not rewritten. Prompts go stale. No generation starts.',
+  scope: 'sequences:write',
+  annotations: destructive,
+  inputSchema: characterInput.extend({
+    withCharacterId: characterId.describe(
+      'The organization character the slot uses instead.'
+    ),
+  }),
+  outputSchema: characterResult,
+  run: async (input, { scopedDb, userId }) => {
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const replaced = await replaceCharacter(
+      scopedDb,
+      { userId },
+      sequence.id,
+      input.characterId,
+      input.withCharacterId
+    );
+    return {
+      data: { characterId: replaced.id },
+      summary: `Replaced the character with ${replaced.name}.`,
     };
   },
 });
@@ -1079,6 +1110,7 @@ export const castMusicTools = [
   addCharacterToSequenceTool,
   updateCharacterTool,
   deleteCharacterTool,
+  replaceCharacterTool,
   restoreCharacterTool,
   setCharacterVoiceEnabledTool,
   selectCharacterVoiceVersionTool,

@@ -14,6 +14,7 @@ import {
   attachLibraryCharacter,
   createCharacter,
   deleteCharacter,
+  replaceCharacter,
   requireCharacter,
   restoreCharacter,
   selectCharacterVoiceVersion,
@@ -191,6 +192,26 @@ const characterIdInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
 });
+
+/** Point this sequence's slot at another organization character (#2249). */
+export const replaceSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        withCharacterId: ulidSchema,
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return await replaceCharacter(
+      context.scopedDb,
+      { userId: context.user.id },
+      data.sequenceId,
+      data.characterId,
+      data.withCharacterId
+    );
+  });
 
 /**
  * Soft-remove a character (undoable; toast Undo calls the restore fn). Scene

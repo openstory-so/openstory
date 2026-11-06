@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Camera: smooth truck\n\noverall_soundscape: lipstick click, quick footsteps, phone vibration. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 descends two flights and turns her chin toward her reflection in the wired-glass window.. Camera: smooth pan\n\noverall_soundscape: stairwell footfalls, distant city ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Camera: smooth truck\n\noverall_soundscape: lipstick click, quick footsteps, phone vibration. No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 descends two flights and turns her chin toward her reflection in the wired-glass window.. Camera: smooth pan\n\noverall_soundscape: stairwell footfalls, distant city ambience. No BGM, no music, no dialogue. Generate only environmental sounds and action sounds.\nnon_diegetic_music: N/A",
         "model": "minimax/h3-max/reference-to-video"
       },
       "response": {

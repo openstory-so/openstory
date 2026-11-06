@@ -43,17 +43,20 @@ const STOP_TOKENS = new Set([
   'st',
 ]);
 
-// ponytail: a shared first name still matches ("Sarah" / "Sarah's Mother");
-// per-cue disambiguation is the upgrade path if that bills in practice.
 // NFKC folds full-width Latin ("ＳＡＲＡＨ") onto ASCII; the split keeps every
-// script's letters, digits and combining marks (#1609).
+// script's letters, digits and combining marks (#1609). A digit stays even
+// at one character: it is the name in "Newsreader 3" (#2257).
 const normalizeName = (name: string): string =>
   name.normalize('NFKC').toLowerCase().trim();
 
 const nameTokens = (name: string): string[] =>
   normalizeName(name)
     .split(/[^\p{L}\p{N}\p{M}]+/u)
-    .filter((token) => token.length >= 2 && !STOP_TOKENS.has(token));
+    .filter(
+      (token) =>
+        !STOP_TOKENS.has(token) &&
+        (token.length >= 2 || /^\p{N}+$/u.test(token))
+    );
 
 /** Whole normalized names are equal — how a one-character name ("李") matches. */
 const sameName = (cue: string, name: string): boolean => {
@@ -61,16 +64,27 @@ const sameName = (cue: string, name: string): boolean => {
   return a !== '' && a === normalizeName(name);
 };
 
-const sharesToken = (cue: string, name: string): boolean => {
-  const tokens = nameTokens(name);
-  return nameTokens(cue).some((token) => tokens.includes(token));
+/**
+ * One side's tokens sit inside the other's. "Sarah" matches "Sarah Chen";
+ * "Newsreader 3" does not match "Newsreader 1" (#2257).
+ */
+const nestedName = (cue: string, name: string): boolean => {
+  const cueTokens = nameTokens(cue);
+  const nameToks = nameTokens(name);
+  if (cueTokens.length === 0 || nameToks.length === 0) return false;
+  const cueSet = new Set(cueTokens);
+  const nameSet = new Set(nameToks);
+  return (
+    cueTokens.every((token) => nameSet.has(token)) ||
+    nameToks.every((token) => cueSet.has(token))
+  );
 };
 
 /**
  * Bible ids of the characters with a dialogue line in the analysed scenes.
  * Speaker cues are the LLM's spelling of the name ("SARAH"), the bible's is
- * the full one ("Detective Sarah Chen"), so they match on a shared name
- * token rather than exact text. The lines come from the shot-list call
+ * the full one ("Detective Sarah Chen"), so they match when one name's
+ * tokens sit inside the other's. The lines come from the shot-list call
  * (#1585), which sees the cast list and is told to spell speakers as it
  * does, to speak narration through the voice-only entry, and to leave the
  * speaker empty ONLY for a voice nobody could attribute — so a blank cue
@@ -92,7 +106,7 @@ export function speakingCharacterIds(
     .filter((character) =>
       cues.some(
         (cue) =>
-          sameName(cue, character.name) || sharesToken(cue, character.name)
+          sameName(cue, character.name) || nestedName(cue, character.name)
       )
     )
     .map((character) => character.characterId);
@@ -104,20 +118,31 @@ export function speakingCharacterIds(
  * Blank cues are narration: they match only when exactly one voice-only
  * character is in the list (the usual narrator). Matching everyone would
  * synthesise the same line in every voice. A whole-name match wins over a
- * shared token ("Sarah" over "Sarah's Mother"), whatever the cast order.
+ * nested one ("Sarah" over "Sarah's Mother"), whatever the cast order.
+ * A nested match needs one name's tokens inside the other's (#2257).
  * Two cast characters with the cue's name (#2050) are refused, not
  * guessed between: a line has no id to say which one speaks.
  */
-export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
-  speaker: string,
-  characters: readonly T[]
-): T | undefined {
+export function matchSpeaker<
+  T extends {
+    name: string;
+    voiceOnly?: boolean;
+    scriptName?: string | null;
+    aliases?: readonly { name: string }[];
+  },
+>(speaker: string, characters: readonly T[]): T | undefined {
   if (speaker.trim() === '') {
     const narrators = characters.filter((character) => character.voiceOnly);
     return narrators.length === 1 ? narrators[0] : undefined;
   }
+  const named = (character: T) =>
+    [
+      character.name,
+      character.scriptName,
+      ...(character.aliases ?? []).map((alias) => alias.name),
+    ].filter((name): name is string => Boolean(name));
   const whole = characters.filter((character) =>
-    sameName(speaker, character.name)
+    named(character).some((name) => sameName(speaker, name))
   );
   if (whole.length > 1) {
     throw new ConflictError(
@@ -126,7 +151,7 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
   }
   if (whole[0]) return whole[0];
   const partial = characters.filter((character) =>
-    sharesToken(speaker, character.name)
+    nestedName(speaker, character.name)
   );
   if (partial.length > 1) {
     throw new ConflictError(
@@ -544,7 +569,14 @@ export function speakersWithoutVoice<
   const out: T[] = [];
   for (const line of lines) {
     if (line.voiceToken || !line.line.trim()) continue;
-    const speaker = matchSpeaker(line.character, characters);
+    // A conflict is a report for the plan, not a crash of the shot panel.
+    let speaker: T | undefined;
+    try {
+      speaker = matchSpeaker(line.character, characters);
+    } catch (error) {
+      if (!(error instanceof ConflictError)) throw error;
+      continue;
+    }
     if (!speaker || speaker.voiceId || out.includes(speaker)) continue;
     out.push(speaker);
   }

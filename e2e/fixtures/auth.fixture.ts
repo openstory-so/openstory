@@ -12,7 +12,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { test as base, expect, type Page } from 'playwright/test';
+import type { Page } from 'playwright/test';
+import { test as base, expect } from './base';
 import { z } from 'zod';
 import { pinRecordedPipelineSettings } from './test-utils';
 
@@ -49,16 +50,16 @@ function getStoredUserInfo(): TestUser {
  * Create a test user with organization directly in the database
  */
 export async function createTestUser(
-  options: { name?: string } = {}
+  options: { name?: string; admin?: boolean } = {}
 ): Promise<TestUser> {
-  const { name = 'E2E Test User' } = options;
+  const { name = 'E2E Test User', admin = false } = options;
 
   // Create via the guarded test API so all writes go through the single
   // safe Miniflare process (instead of direct getPlatformProxy from this worker).
   const res = await fetch('http://localhost:3020/api/test/user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, admin }),
   });
 
   if (!res.ok) {

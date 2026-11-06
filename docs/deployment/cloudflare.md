@@ -70,6 +70,10 @@ No opt-out flag was added. These are the behavior changes between `2025-11-18` a
 
 `src/platform/server/compatibility-date.test.ts` also checks that `enable_request_signal` is still listed.
 
+## Storage domain headers
+
+The public storage domains (`storage.openstory.so`, and `storage-stg.openstory.so` for PR previews) share a zone Transform Rule (Rules → Transform Rules → Modify Response Header) that sets `Access-Control-Allow-Origin: *`, `Access-Control-Expose-Headers: ETag,Content-Length,Content-Range,Accept-Ranges` and `Vary: Origin, Accept-Encoding` on every response. Without the expose header a cached copy passes CORS but hides `Content-Range`, and the player cannot size the clip. R2 sends CORS headers only when a request carries `Origin`, so a `<video>` without `crossorigin` leaves a copy in the browser cache with none, and Chrome then served that copy to the theatre's CORS fetch (#2258). Each bucket's CORS policy must also expose `Content-Range` (`openstory-storage-stg` did not, so previews could never size a clip). The rule and the policies live only in the dashboard; keep them. A self-hosted storage domain needs the same rule.
+
 ## Build & Deploy
 
 Upstream production (`openstory-so/openstory` → the `openstory` worker) deploys

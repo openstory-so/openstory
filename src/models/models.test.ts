@@ -101,14 +101,10 @@ describe('videoModelSupportsAudio', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
     expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
     expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
+    expect(videoModelSupportsAudio('kling_v4')).toBe(true);
     expect(videoModelSupportsAudio('minimax_h3_max')).toBe(true);
-  });
-
-  it('returns false for models without audio', () => {
-    expect(videoModelSupportsAudio('grok_imagine_video_1_5')).toBe(false);
-    // Omni Flash always emits audio but has no generate_audio API field, so
-    // the scene-editor SFX toggle must stay hidden.
-    expect(videoModelSupportsAudio('gemini_omni_flash')).toBe(false);
+    expect(videoModelSupportsAudio('grok_imagine_video_1_5')).toBe(true);
+    expect(videoModelSupportsAudio('gemini_omni_flash')).toBe(true);
   });
 });
 

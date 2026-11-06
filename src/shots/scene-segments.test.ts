@@ -6,6 +6,7 @@ import {
   groupShotsBySegment,
   groupShotsForSceneList,
   isSelectedVersionStale,
+  selectedVersionDrift,
   type SegmentShotInput,
   type SegmentVersionInput,
   type SequenceSegment,
@@ -254,6 +255,7 @@ const version = (
   model,
   resolution: null,
   draftTaskId: null,
+  source: null,
   status: 'completed',
   url: `https://cdn.test/${id}.mp4`,
   createdAt: new Date('2026-01-01'),
@@ -283,17 +285,23 @@ const NO_LOADED = {
 const motion = new Map([['shot-1', 'mp-1']]);
 const frame = new Map([['shot-1', 'fv-1']]);
 /** Staleness of `v` against shot-1's pointers, with only the given live maps bound. */
+const liveInputs = (live: Partial<LiveShotInputs> = {}): LiveShotInputs => ({
+  ...NO_LOADED,
+  audioClipIdsByShot: new Map(),
+  durationMsByShot: new Map(),
+  audioSecondsByShot: new Map(),
+  ...live,
+});
+
 const stale = (
   v: SegmentVersionInput | undefined,
   live: Partial<LiveShotInputs> = {}
-) =>
-  isSelectedVersionStale(v, motion, frame, {
-    ...NO_LOADED,
-    audioClipIdsByShot: new Map(),
-    durationMsByShot: new Map(),
-    audioSecondsByShot: new Map(),
-    ...live,
-  });
+) => isSelectedVersionStale(v, motion, frame, liveInputs(live));
+
+const drift = (
+  v: SegmentVersionInput | undefined,
+  live: Partial<LiveShotInputs> = {}
+) => selectedVersionDrift(v, motion, frame, liveInputs(live));
 
 describe('isSelectedVersionStale', () => {
   it('is false with no selection', () => {
@@ -321,6 +329,7 @@ describe('isSelectedVersionStale', () => {
       },
     ]);
     const audio = new Map([['shot-1', 'voice-other\tStay down.\t\televen_v3']]);
+    expect(drift(v, { audioSourceKeyByShot: audio })).toBe('audio');
     expect(stale(v, { audioSourceKeyByShot: audio })).toBe(true);
     expect(
       stale(v, {
@@ -376,8 +385,8 @@ describe('isSelectedVersionStale', () => {
     expect(
       stale(v, { dialogueKeyByShot: new Map([['shot-1', stamped]]) })
     ).toBe(false);
-    // A model without audio never quoted a line: it stamps null and stays
-    // fresh whatever the lines say.
+    // Grok quotes the lines. A clip stamped before that, with a null key,
+    // is stale once the lines exist.
     const silent = version('v1', 'seg', 'grok_imagine_video_1_5', [
       {
         shotId: 'shot-1',
@@ -386,7 +395,7 @@ describe('isSelectedVersionStale', () => {
         dialogueKey: null,
       },
     ]);
-    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(false);
+    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(true);
     // A clip from before #1784 has no key: unknown, never stale.
     const legacy = version('v1', 'seg', 'kling_v3_pro', [
       {
@@ -445,6 +454,44 @@ describe('isSelectedVersionStale', () => {
     expect(
       stale(v, { audioSourceKeyByShot: new Map([['shot-1', 'changed-key']]) })
     ).toBe(true);
+  });
+
+  it('treats a lip-sync whose audio moved as audio drift, and a prompt change as picture (#2263)', () => {
+    const synced = version('v1', 'seg', 'kling_v4', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3',
+        audioClipIds: ['section-1'],
+      },
+    ]);
+    const clips = { audioClipIdsByShot: new Map([['shot-1', ['section-1']]]) };
+    const moved = {
+      ...clips,
+      audioSourceKeyByShot: new Map([
+        ['shot-1', 'voice-other\tStay down.\t\televen_v3'],
+      ]),
+    };
+    expect(drift(synced, moved)).toBe('audio');
+    expect(stale(synced, moved)).toBe(true);
+    expect(
+      drift(synced, {
+        ...clips,
+        audioSourceKeyByShot: new Map([
+          ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
+        ]),
+      })
+    ).toBe('current');
+    const reprompted = version('v2', 'seg', 'kling_v4', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-0',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3',
+      },
+    ]);
+    expect(drift(reprompted, moved)).toBe('picture');
   });
 
   it('is stale when a shot repointed its frame or motion prompt', () => {

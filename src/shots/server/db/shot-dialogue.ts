@@ -71,8 +71,8 @@ export type AppendDialogueSpeechInput = {
   characterCount: number;
   /** Null for a speech no workflow made. */
   workflowRunId: string | null;
-  /** What an adopting section is: a generated speech, or a mic take (#1802). */
-  adoptedAs: 'generated' | 'mic';
+  /** What an adopting section is: a generated speech, a mic take (#1802) or an upload (#2264). */
+  adoptedAs: 'generated' | 'mic' | 'upload';
   /** One per shot the call spoke. */
   sections: Array<{
     id: string;
@@ -91,6 +91,12 @@ export type AppendDialogueSpeechInput = {
      */
     adopt: { claimId: string; audioClips: MotionAudioClip[] } | null;
   }>;
+};
+
+const eventSummary: Record<AppendDialogueSpeechInput['adoptedAs'], string> = {
+  generated: 'Recorded dialogue',
+  mic: 'Recorded a line',
+  upload: 'Uploaded dialogue',
 };
 
 /** Same lines, same order, same bindings — nothing to append. */
@@ -688,10 +694,7 @@ export function createShotDialogueMethods(db: Database) {
               kind: 'dialogue.recorded',
               targetType: 'sequence',
               targetId: input.sequenceId,
-              summary:
-                input.adoptedAs === 'mic'
-                  ? 'Recorded a line'
-                  : 'Recorded dialogue',
+              summary: eventSummary[input.adoptedAs],
             })
           : buildEventInsertIfPresent(
               db,
@@ -705,10 +708,7 @@ export function createShotDialogueMethods(db: Database) {
                   adopting.length === 1
                     ? (adopting[0]?.shotId ?? input.sequenceId)
                     : input.sequenceId,
-                summary:
-                  input.adoptedAs === 'mic'
-                    ? 'Recorded a line'
-                    : 'Recorded dialogue',
+                summary: eventSummary[input.adoptedAs],
               },
               shotDialogueClaims,
               and(

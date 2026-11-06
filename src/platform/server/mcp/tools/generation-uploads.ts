@@ -33,6 +33,7 @@ import {
   studioVideoRefLimit,
   studioVideoSupportsAudio,
 } from '@/studio/text-to-video';
+import { startLipsync } from '@/motion/server/lipsync-shot';
 import {
   cancelVideoRender,
   generateShotMotion,
@@ -73,6 +74,7 @@ import {
   selectShotImageVariant,
 } from '@/stills/server/shot-image-generation';
 import { openstoryTool, productionRead } from '../tool-context';
+import { uploadSceneDialogue } from '@/shots/server/scene-dialogue-upload';
 import { shotEdit } from './shot-content-edits';
 
 const writeAnnotations = {
@@ -352,6 +354,21 @@ const generateShotVideoTool = openstoryTool({
   },
 });
 
+const lipsyncShotTool = openstoryTool({
+  name: 'lipsync_shot',
+  description:
+    'Lip-sync a finished clip to its current dialogue (uses credits, about $0.67 for 5 seconds) without re-rendering the picture. Refused when the shot has no completed clip, no dialogue audio, more than one dialogue file, a packed multi-shot clip, or a video already generating. Lands a new video version; a later line or voice edit marks it out of date.',
+  scope: 'generate',
+  annotations: paid,
+  inputSchema: shotInput,
+  outputSchema: runResult,
+  run: async (input, { scopedDb, userId }) => {
+    const context = await shotEdit(scopedDb, userId, input);
+    const result = await startLipsync(context);
+    return { data: result, summary: 'Started lip-sync.' };
+  },
+});
+
 const cancelVideoRenderTool = openstoryTool({
   name: 'cancel_video_render',
   description:
@@ -482,7 +499,7 @@ const selectSequenceModelTool = openstoryTool({
 
 const uploadMediaTool = openstoryTool({
   name: 'upload_media',
-  description: `Upload a file (for example one the user attached in chat) to use in a sequence or the Studio. Send url (a public http(s) link) or data (base64, at most ${MAX_INLINE_UPLOAD_BYTES / 1024 / 1024} MB decoded; larger files need a url) with mimeType. use says what it is for: shot_image, character_sheet, location_sheet (JPEG, PNG, WebP, GIF), shot_video (MP4, WebM, MOV), music (MP3, WAV, OGG, M4A) or element (an image, MP3/WAV or MP4/MOV), or studio (the same types as element; no sequenceId) for a Studio reference, start or end frame. Images, and element or studio clips, are checked for a real person; one who is needs portraitAttestation, the uploader’s confirmation they hold the rights to that likeness. Returns upload, which the set_*_from_upload, element and Studio tools take. Uploading changes nothing in the sequence or the Studio.`,
+  description: `Upload a file (for example one the user attached in chat) to use in a sequence or the Studio. Send url (a public http(s) link) or data (base64, at most ${MAX_INLINE_UPLOAD_BYTES / 1024 / 1024} MB decoded; larger files need a url) with mimeType. use says what it is for: shot_image, character_sheet, location_sheet (JPEG, PNG, WebP, GIF), shot_video (MP4, WebM, MOV), music (MP3 or WAV; M4A, OGG and FLAC are stored as WAV), dialogue (a WAV of a scene's whole conversation; M4A, OGG and FLAC are stored as WAV) or element (an image, MP3/WAV, M4A/OGG/FLAC stored as WAV, or MP4/MOV), or studio (the same types as element; no sequenceId) for a Studio reference, start or end frame. M4A, OGG and FLAC are re-encoded to 16-bit 48 kHz mono WAV. Images, and element or studio clips, are checked for a real person; one who is needs portraitAttestation, the uploader’s confirmation they hold the rights to that likeness. Returns upload, which the set_*_from_upload, element and Studio tools take. Uploading changes nothing in the sequence or the Studio.`,
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z
@@ -639,6 +656,30 @@ const setMusicFromUploadTool = openstoryTool({
       data: { variantId: result.variantId },
       summary: 'Set the music.',
     };
+  },
+});
+
+const setSceneDialogueFromUploadTool = openstoryTool({
+  name: 'set_scene_dialogue_from_upload',
+  description:
+    'Make an uploaded recording (upload_media use dialogue: a 16-bit PCM WAV, at most 25 MB) of a scene’s whole conversation its dialogue (spends credits on transcription). Each line is found in the recording and every speaking shot gets its section, replacing the generated voice for this scene only. Every line in the scene needs a voice. Refused while a shot in the scene is recording. The run fails, naming the line, when a line is not in the recording, and when a shot’s section is too long for the video model. Poll list_shot_dialogue for the readings.',
+  scope: 'generate',
+  annotations: paid,
+  inputSchema: z.strictObject({
+    sequenceId,
+    sceneId: ulidSchema.describe('Scene ID (list_scenes).'),
+    upload: uploadRef,
+  }),
+  outputSchema: z.object({ workflowRunId: z.string() }),
+  run: async (input, { scopedDb, userId }) => {
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const result = await uploadSceneDialogue(
+      { scopedDb, sequence, user: { id: userId } },
+      { sceneId: input.sceneId, publicUrl: storedUpload(input.upload) }
+    );
+    return { data: result, summary: 'Placing the recording on the scene.' };
   },
 });
 
@@ -815,6 +856,7 @@ export const generationUploadTools = [
   generateShotImageVariantsTool,
   selectShotImageVariantTool,
   generateShotVideoTool,
+  lipsyncShotTool,
   cancelVideoRenderTool,
   renderShotAtQualityTool,
   renderSequenceDraftsAtQualityTool,
@@ -824,6 +866,7 @@ export const generationUploadTools = [
   setShotImageFromUploadTool,
   setShotVideoFromUploadTool,
   setMusicFromUploadTool,
+  setSceneDialogueFromUploadTool,
   setCharacterSheetFromUploadTool,
   setLocationSheetFromUploadTool,
   addElementTool,

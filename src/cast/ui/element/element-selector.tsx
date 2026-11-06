@@ -405,7 +405,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
         // no upload and no message is indistinguishable from a broken app.
         if (newFiles.length > 0) {
           toast.error("That file can't be a reference", {
-            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+            description: 'Drop an image, an audio file, or an MP4 or MOV.',
           });
         }
         return;
@@ -717,8 +717,9 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">Upload reference elements</p>
               <p className="text-xs text-muted-foreground">
-                Images, MP3/WAV or MP4/MOV — a logo, a product shot, a dialogue
-                line, a music bed. Type @ in a prompt or script to insert one.
+                Images, audio, or MP4 or MOV — a logo, a product shot, a
+                dialogue line, a music bed. Type @ in a prompt or script to
+                insert one.
               </p>
             </div>
             {currentCount < MAX_SEQUENCE_ELEMENTS && (

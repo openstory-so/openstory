@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkParts } from './take-check';
+import { checkParts, numberWords } from './take-check';
 
 const timed = (text: string, from = 0) =>
   text.split(' ').map((word, i) => ({
@@ -75,6 +75,16 @@ describe('checkParts', () => {
       { start: 4, end: 4.8 },
       { start: 5, end: 6.8 },
     ]);
+  });
+
+  // Scribe wrote the user's counting line as digits and the take was
+  // rejected at 0% heard, three takes in a row (#2269).
+  it('hears a line of numbers written as digits', () => {
+    const line = 'Ten, twenty, thirty, forty, fifty, sixty.';
+    const check = checkParts(timed('10, 20, 30, 40, 50, 60.'), [line]);
+    expect(spansOf(check)).toEqual([{ start: 0, end: 5.8 }]);
+    expect(numberWords('1250')).toBe('one thousand two hundred fifty');
+    expect(numberWords('0')).toBe('zero');
   });
 
   it('names a line that was never said', () => {

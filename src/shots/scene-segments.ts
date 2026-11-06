@@ -44,7 +44,14 @@ import type { ShotView } from './shot-view';
 /** One video render (version) of a segment, trimmed to what the editor shows. */
 export type SegmentVideoVersion = Pick<
   VideoVariant,
-  'id' | 'model' | 'resolution' | 'status' | 'url' | 'createdAt' | 'draftTaskId'
+  | 'id'
+  | 'model'
+  | 'resolution'
+  | 'status'
+  | 'url'
+  | 'createdAt'
+  | 'draftTaskId'
+  | 'source'
 >;
 
 /** A scene's render segment with its video versions + selection. */
@@ -76,6 +83,12 @@ export type SequenceSegment = {
    * changed after the render). `false` when nothing is selected.
    */
   stale: boolean;
+  /**
+   * Why `stale` is set (#2263). `audio` is only the bound dialogue (voice,
+   * take, or clip id). `picture` is anything a re-render has to redo.
+   * Absent on a segment built before the field: treat a stale row as picture.
+   */
+  drift?: SelectedVersionDrift;
 };
 
 /**
@@ -296,6 +309,7 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
     url: v.url,
     createdAt: v.createdAt,
     draftTaskId: v.draftTaskId,
+    source: v.source,
   };
 }
 
@@ -313,19 +327,29 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
  */
 const NO_REFERENCES: ReadonlySet<string> = new Set();
 
-export function isSelectedVersionStale(
+/** `audio`: only the bound dialogue moved. `picture`: re-render. */
+export type SelectedVersionDrift = 'current' | 'audio' | 'picture';
+
+/**
+ * Same comparisons as {@link isSelectedVersionStale}, split so Update all
+ * can lip-sync a clip whose picture still matches (#2263). Unknown
+ * provenance (both version ids null) stays current. A voiceless render
+ * model still ignores a null `audioSourceKey`.
+ */
+export function selectedVersionDrift(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
   currentFrameByShot: ReadonlyMap<string, string | null>,
   live: LiveShotInputs
-): boolean {
-  if (!selected) return false;
-  return selected.manifest.some((entry, index) => {
+): SelectedVersionDrift {
+  if (!selected) return 'current';
+  let audio = false;
+  for (const [index, entry] of selected.manifest.entries()) {
     // Both ids null = unknown provenance (pre-#1380 storyboard clips, or a
     // trigger that forgot to pin). Same contract as a legacy null hash:
     // unknown is not stale, so a regression cannot mark every clip Stale.
     if (entry.motionPromptVersionId == null && entry.frameVersionId == null) {
-      return false;
+      continue;
     }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
@@ -338,21 +362,40 @@ export function isSelectedVersionStale(
       !modelTakesDialogueAudio(selected.model)
         ? null
         : (live.audioSourceKeyByShot.get(entry.shotId) ?? null);
-    return (
+    const picture =
       entry.motionPromptVersionId !== currentMotion ||
       entry.frameVersionId !== currentFrame ||
-      ((entry.audioSourceKey ?? null) !== currentAudio &&
-        !legacyPackedAudioMatches(selected, index, live)) ||
-      audioClipsMoved(entry, live) ||
       dialogueMoved(entry, selected.model, currentMotion, live) ||
       referenceKeysMoved(
         entry.referenceKeys,
         live.referenceIdentity,
         live.referencedEntitiesByShot.get(entry.shotId) ?? NO_REFERENCES
       ) ||
-      durationMoved(entry, selected.model, live, selected.manifest.length > 1)
-    );
-  });
+      durationMoved(entry, selected.model, live, selected.manifest.length > 1);
+    if (picture) return 'picture';
+    const audioMoved =
+      ((entry.audioSourceKey ?? null) !== currentAudio &&
+        !legacyPackedAudioMatches(selected, index, live)) ||
+      audioClipsMoved(entry, live);
+    if (audioMoved) audio = true;
+  }
+  return audio ? 'audio' : 'current';
+}
+
+export function isSelectedVersionStale(
+  selected: SegmentVersionInput | undefined,
+  currentMotionByShot: ReadonlyMap<string, string | null>,
+  currentFrameByShot: ReadonlyMap<string, string | null>,
+  live: LiveShotInputs
+): boolean {
+  return (
+    selectedVersionDrift(
+      selected,
+      currentMotionByShot,
+      currentFrameByShot,
+      live
+    ) !== 'current'
+  );
 }
 
 /**
@@ -536,6 +579,12 @@ export function assembleSequenceSegments(input: {
         ? segVersions.find((v) => v.id === segment.selectedVideoVersionId)
         : undefined;
     const newest = segVersions[segVersions.length - 1];
+    const drift = selectedVersionDrift(
+      selected,
+      currentMotionByShot,
+      currentFrameByShot,
+      live
+    );
     return {
       id: segment.id,
       sceneId: segment.sceneId,
@@ -544,12 +593,8 @@ export function assembleSequenceSegments(input: {
       selectedVersion: selected ? toVersion(selected) : null,
       versions: segVersions.map(toVersion),
       model: selected?.model ?? newest?.model ?? null,
-      stale: isSelectedVersionStale(
-        selected,
-        currentMotionByShot,
-        currentFrameByShot,
-        live
-      ),
+      stale: drift !== 'current',
+      drift,
     };
   });
 }
