@@ -54,8 +54,9 @@ describe('generation-gate wiring', () => {
     const files = [
       ...globSync('src/**/*.fn.ts'),
       ...globSync('src/**/server/**/*.ts', {
+        // Node glob passes the directory as `…/workflows` (no trailing slash).
         exclude: (path) =>
-          path.includes('/workflows/') || path.endsWith('.test.ts'),
+          path.includes('/workflows') || path.endsWith('.test.ts'),
       }),
     ].filter((file) => !NOT_REQUEST_PATH.has(file));
     for (const file of files) {
