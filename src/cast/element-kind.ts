@@ -19,7 +19,7 @@ export type SequenceElementKind = (typeof ELEMENT_KINDS)[number];
  * Extensions we accept for the two non-image kinds. Images are sniffed by
  * prefix.
  *
- * M4A and OGG are accepted but never STORED as such: the browser upload
+ * M4A, OGG and FLAC are accepted but never STORED as such: the browser upload
  * re-encodes them to WAV (`normalizeElementFile`), and a server upload does
  * the same in the video-export container (#2265). Every model that documents
  * its formats takes only MP3 or WAV. Video has no such conversion, so it is
@@ -30,9 +30,27 @@ const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   wav: 'audio',
   m4a: 'audio',
   ogg: 'audio',
+  flac: 'audio',
   mp4: 'video',
   mov: 'video',
 };
+
+/** Audio the element, Studio and music pickers name and accept. */
+export const AUDIO_UPLOAD_FORMATS = 'MP3, WAV, M4A, OGG or FLAC';
+
+const AUDIO_ACCEPT_TYPES: Record<string, readonly string[]> = {
+  mp3: ['audio/mpeg'],
+  wav: ['audio/wav'],
+  m4a: ['audio/mp4', 'audio/x-m4a'],
+  ogg: ['audio/ogg'],
+  flac: ['audio/flac', 'audio/x-flac'],
+};
+
+/** `accept` for an audio-only file input. Derived from the table above. */
+export const AUDIO_UPLOAD_ACCEPT = Object.entries(NON_IMAGE_EXTENSIONS)
+  .filter(([, kind]) => kind === 'audio')
+  .flatMap(([ext]) => [...(AUDIO_ACCEPT_TYPES[ext] ?? []), `.${ext}`])
+  .join(',');
 
 /**
  * `accept` for every element file input.

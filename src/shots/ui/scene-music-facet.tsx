@@ -1,3 +1,4 @@
+import { AUDIO_UPLOAD_ACCEPT, AUDIO_UPLOAD_FORMATS } from '@/cast/element-kind';
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { MusicView, MusicViewSkeleton } from '@/audio/ui/music-view';
 import { UploadMediaButton } from './upload-media-button';
@@ -486,28 +487,33 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
       />
       {/* User score inject (#1108) — an uploaded track lands in the
           user-upload primary slot; generated alternates stay switchable. */}
-      <div className="flex flex-wrap justify-center gap-2">
-        <AskAssistantButton context={[]} />
-        <UploadMediaButton
-          label="Upload Audio"
-          pendingLabel="Uploading…"
-          accept="audio/*"
-          isPending={uploadMusic.isPending}
-          disabled={generating}
-          onFile={(file) =>
-            uploadMusic.mutate(
-              { file, sequenceId },
-              {
-                onSuccess: () => toast.success('Music track uploaded'),
-                onError: (error) =>
-                  toast.error('Music upload failed', {
-                    description:
-                      error instanceof Error ? error.message : 'Unknown error',
-                  }),
-              }
-            )
-          }
-        />
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-wrap justify-center gap-2">
+          <AskAssistantButton context={[]} />
+          <UploadMediaButton
+            label="Upload Audio"
+            pendingLabel="Uploading…"
+            accept={AUDIO_UPLOAD_ACCEPT}
+            isPending={uploadMusic.isPending}
+            disabled={generating}
+            onFile={(file) =>
+              uploadMusic.mutate(
+                { file, sequenceId },
+                {
+                  onSuccess: () => toast.success('Music track uploaded'),
+                  onError: (error) =>
+                    toast.error('Music upload failed', {
+                      description:
+                        error instanceof Error
+                          ? error.message
+                          : 'Unknown error',
+                    }),
+                }
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{AUDIO_UPLOAD_FORMATS}</p>
       </div>
     </div>
   );

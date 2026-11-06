@@ -16,6 +16,7 @@ import {
 } from '@/cast/ui/use-sequence-elements';
 import type { SequenceElement } from '@/platform/server/db/schema';
 import {
+  AUDIO_UPLOAD_FORMATS,
   ELEMENT_UPLOAD_ACCEPT,
   elementKindFromFile,
 } from '@/cast/element-kind';
@@ -67,7 +68,7 @@ const AddElementButton: React.FC<{
       if (usable.length === 0) {
         if (files.length > 0) {
           toast.error("That file can't be a reference", {
-            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+            description: `Drop an image, ${AUDIO_UPLOAD_FORMATS}, or an MP4 or MOV.`,
           });
         }
         return;
@@ -133,8 +134,9 @@ const AddElementButton: React.FC<{
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">Upload a reference</p>
           <p className="text-xs text-muted-foreground">
-            Images, MP3/WAV or MP4/MOV — a logo, a product shot, a dialogue
-            line, a music bed, a move to copy. Type @ to insert one.
+            Images, {AUDIO_UPLOAD_FORMATS}, or MP4 or MOV — a logo, a product
+            shot, a dialogue line, a music bed, a move to copy. Type @ to insert
+            one.
           </p>
           <div
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- dropzone cannot be a <button> because it contains a nested <Button>
