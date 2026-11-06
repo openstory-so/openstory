@@ -114,7 +114,8 @@ export async function startBytePlusAssetsMock(): Promise<void> {
           error: { code: 'NotFound', message: `${req.method} ${url.pathname}` },
         });
       } catch (error) {
-        send(500, { error: { code: 'MockError', message: String(error) } });
+        console.error('[byteplus-assets-mock]', error);
+        send(500, { error: { code: 'MockError', message: 'mock failed' } });
       }
     });
   });
