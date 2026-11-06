@@ -93,10 +93,11 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     promptPerMillionTokens: 0.075,
     completionPerMillionTokens: 0.25,
   },
-  'openai/gpt-5.6-terra': {
-    name: 'OpenAI: GPT-5.6 Terra',
-    promptPerMillionTokens: 2,
-    completionPerMillionTokens: 12,
+  // Hand-edited 2026-11-05 from OpenRouter /api/v1/models (base tier, under 272K prompt).
+  'openai/gpt-6.1-terra': {
+    name: 'OpenAI: GPT-6.1 Terra',
+    promptPerMillionTokens: 1,
+    completionPerMillionTokens: 5,
     webSearchPerQuery: 0.01,
   },
   'deepseek/deepseek-v4-pro-0813': {

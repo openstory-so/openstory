@@ -51,6 +51,7 @@ export const LLMTR_UNMAPPED_MODEL_IDS = [
   'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
   'openai/gpt-6.1-sol', // LLMTR support and pricing not yet verified.
   'openai/gpt-6-luna', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6.1-terra', // LLMTR support and pricing not yet verified.
   'x-ai/grok-4.7', // LLMTR support and pricing not yet verified.
   'anthropic/claude-sonnet-5.5', // LLMTR support and pricing not yet verified.
   'google/gemini-4-argon', // LLMTR support and pricing not yet verified.
@@ -83,7 +84,6 @@ export const LLMTR_TEXT_MODELS = {
   'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
   'google/gemini-3-flash-preview': 'google/gemini-3-flash-preview',
   'z-ai/glm-5.3-flash': 'zai/glm-5.3-flash',
-  'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
@@ -177,7 +177,6 @@ const LLMTR_TEXT_RATES: Record<
   'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
   'google/gemini-3-flash-preview': { input: 0.5, output: 3 },
   'zai/glm-5.3-flash': { input: 0.075, output: 0.25 },
-  'openai/gpt-5.6-terra': { input: 2, output: 12 },
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
