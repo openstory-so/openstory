@@ -93,8 +93,10 @@ line` in order.
   transcribed with Scribe and each line is found in what was heard. Lines
   are compared as letters, not words, so however a transcript spells a line
   ("before you rent" for "BeforeYouRent", "all right" for "alright", "B.Y.R."
-  for "BYR") it is the same string; the script is aligned against the
-  transcript in order, and a line is found when half its letters are.
+  for "BYR", "10, 20" for "ten, twenty") it is the same string: digits are
+  read aloud (`numberWords`) before comparing, as a line that is all numbers
+  was heard at 0% (#2269); the script is aligned against the transcript in
+  order, and a line is found when half its letters are.
   Speech before the script is cut off (the first shot's range starts at the
   script); speech between lines belongs to neither. Invented words are not
   checked for — the user regenerates a reading they do not like. A take

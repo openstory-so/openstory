@@ -4,9 +4,10 @@
  * Seed returns one file for the whole script, so the take is transcribed and
  * each line is found in what was heard. Lines are compared as LETTERS, not
  * words: a transcript writes "before you rent" for "BeforeYouRent", "all
- * right" for "alright", "B.Y.R." for "BYR", and letters make those the same
- * string. What still differs ("15" for "fifteen", "rights" for "rates") is a
- * few letters in a line, so a line is found when most of its letters are.
+ * right" for "alright", "B.Y.R." for "BYR", "15" for "fifteen", and letters
+ * (with digits read aloud) make those the same string. What still differs
+ * ("rights" for "rates") is a few letters in a line, so a line is found when
+ * most of its letters are.
  *
  * The script is aligned against the transcript in order, with free text
  * before and after it: whatever Seed says before the script is cut off, and
@@ -36,8 +37,47 @@ const DROP = 10;
 const SKIP_OPEN = 20;
 const SKIP_EXTEND = 1;
 
+const ONES =
+  'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split(
+    ' '
+  );
+const TENS = 'twenty thirty forty fifty sixty seventy eighty ninety'.split(' ');
+
+/** 0 to 999 in words; the rest of the list below carries the scale. */
+const smallWords = (n: number): string => {
+  if (n === 0) return '';
+  if (n < 20) return ONES[n] ?? '';
+  if (n < 100)
+    return `${TENS[Math.floor(n / 10) - 2]} ${smallWords(n % 10)}`.trim();
+  return `${ONES[Math.floor(n / 100)]} hundred ${smallWords(n % 100)}`.trim();
+};
+
+/**
+ * A number as it is read aloud, so "10, 20, 30" and "ten, twenty, thirty"
+ * are the same letters (#2269). A transcript writes digits for a line the
+ * script spells out, and vice versa; a line that is all numbers would
+ * otherwise be heard at 0%. Years and the like come out a few letters off
+ * ("two thousand twenty six" for "twenty twenty six"), which the score allows.
+ */
+export const numberWords = (digits: string): string => {
+  let n = Number(digits);
+  if (!Number.isSafeInteger(n)) return digits;
+  if (n === 0) return 'zero';
+  const parts: string[] = [];
+  for (const scale of ['', 'thousand', 'million', 'billion', 'trillion']) {
+    const chunk = n % 1000;
+    if (chunk > 0) parts.unshift(`${smallWords(chunk)} ${scale}`.trim());
+    n = Math.floor(n / 1000);
+    if (n === 0) break;
+  }
+  return parts.join(' ');
+};
+
 const letters = (text: string): string =>
-  text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  text
+    .toLowerCase()
+    .replace(/\d+/g, (digits) => ` ${numberWords(digits)} `)
+    .replace(/[^a-z]/g, '');
 
 type Span = { start: number; end: number };
 
