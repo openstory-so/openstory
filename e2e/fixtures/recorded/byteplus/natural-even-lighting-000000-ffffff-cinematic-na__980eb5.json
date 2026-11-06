@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "video",
-        "userMessage": "Natural, even lighting. #000000, #FFFFFF. Cinematic, Natural.\n\n@Image1 looks up as a short, plain doorbell ding sounds off-screen. The only audio is quiet room tone and the single ding, with no music and no melody. Slow push in on her face.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n[media: reference_image:c558680101f4]",
+        "userMessage": "Natural, even lighting. #000000, #FFFFFF. Cinematic, Natural.\n\n@Image1 looks up as the door bell rings; slow push in.\n\nNo BGM, no music, no dialogue. Generate only environmental sounds and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n[media: reference_image:0860495f8c68]",
         "model": "dreamina-seedance-2-5-260628"
       },
       "response": {
@@ -11,15 +11,15 @@
           "model": "dreamina-seedance-2-5-260628",
           "status": "succeeded",
           "content": {
-            "video_url": "https://assets.openstory.so/e2e/2f0384940ce49e9aefbab98926272fe0cfd09b43ece9d9ad3fa7df18428b7460.mp4"
+            "video_url": "https://assets.openstory.so/e2e/b4e086c0d74ea661c769a7fab3cb748e4ab184a7a2bb0dfd767d1eb25d6c6818.mp4"
           },
           "usage": {
             "completion_tokens": 38830,
             "total_tokens": 38830
           },
-          "created_at": 1793853727,
-          "updated_at": 1793853788,
-          "seed": 35641,
+          "created_at": 1793948344,
+          "updated_at": 1793948410,
+          "seed": 15238,
           "resolution": "480p",
           "ratio": "16:9",
           "duration": 4,
