@@ -414,6 +414,9 @@ export type UpdateStalePlan = {
     name: string;
     voiceId: string;
     voiceOnly: boolean;
+    /** Set when Replace pointed the slot at someone else. */
+    scriptName?: string | null;
+    aliases?: readonly { name: string }[];
   }[];
   /**
    * Scenes to record ONCE before any video renders (#1657): every scene with
@@ -695,7 +698,15 @@ export async function computePlan(args: {
       ? pendingVoiceId(row.id)
       : row.voiceId;
     return voiceId
-      ? [{ name: row.name, voiceId, voiceOnly: row.voiceOnly }]
+      ? [
+          {
+            name: row.name,
+            voiceId,
+            voiceOnly: row.voiceOnly,
+            scriptName: row.scriptName,
+            aliases: row.aliases,
+          },
+        ]
       : [];
   });
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));

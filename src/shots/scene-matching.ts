@@ -15,7 +15,39 @@ import { dressForScene, type SceneLookPicks } from '@/cast/character-looks';
 type CharacterMatchInput = Pick<
   CharacterMinimal,
   'name' | 'characterId' | 'consistencyTag'
->;
+> & {
+  /** The name this slot had before Replace pointed it at someone else. */
+  scriptName?: string | null;
+  /** Script ids folded into this slot, each with the name scenes use. */
+  aliases?: readonly {
+    name: string;
+    characterId: string;
+    consistencyTag: string | null;
+  }[];
+};
+
+type MatchIdentity = {
+  name: string;
+  characterId: string;
+  consistencyTag: string | null;
+};
+
+/** The character, plus the script name and aliases Replace left on the slot. */
+function identitiesOf(character: CharacterMatchInput): MatchIdentity[] {
+  const self: MatchIdentity = {
+    name: character.name,
+    characterId: character.characterId,
+    consistencyTag: character.consistencyTag,
+  };
+  const extra: MatchIdentity[] = [];
+  if (character.scriptName && character.scriptName !== character.name) {
+    extra.push({ ...self, name: character.scriptName });
+  }
+  for (const alias of character.aliases ?? []) {
+    extra.push(alias);
+  }
+  return [self, ...extra];
+}
 
 // Tokenizes any cased/spaced/punctuated form into a set of snake_case-style
 // word tokens, so `"Subject (Anonymous)"` and `"anonymous_subject_..."`
@@ -41,16 +73,24 @@ function isSubset(needle: string[], haystack: Set<string>): boolean {
  * `"Subject (Anonymous)"` matches `"anonymous_subject_tattooed_..."`,
  * and `"jack"` no longer accidentally matches `"jacket_of_doom"`.
  *
- * `name` is the authoritative match key (stable across recast and what
- * the LLM is told to emit). `characterId` and `consistencyTag` are
- * fallbacks for legacy shots whose tags pre-date the prompt fix.
+ * `name` is the authoritative match key (what the LLM is told to emit).
+ * A replaced slot also matches its script name and aliases. `characterId`
+ * and `consistencyTag` are fallbacks for legacy shots.
  */
 export function matchCharacterToShotTags(
   character: CharacterMatchInput,
   characterTags: string[]
 ): boolean {
   if (characterTags.length === 0) return false;
+  return identitiesOf(character).some((identity) =>
+    identityMatchesTags(identity, characterTags)
+  );
+}
 
+function identityMatchesTags(
+  character: MatchIdentity,
+  characterTags: string[]
+): boolean {
   const nameTokens = tokenize(character.name);
   const idTokens = tokenize(character.characterId);
   const consistencyTokens = character.consistencyTag
@@ -138,13 +178,15 @@ export function characterMentionedInPrompt(
   prompt: string
 ): boolean {
   if (!prompt.trim()) return false;
-  const nameUpper = character.name.toUpperCase();
-  if (nameUpper.length > 0 && tagMatchesText(nameUpper, prompt, true)) {
-    return true;
-  }
-  if (tagMatchesText(character.characterId, prompt)) return true;
-  const slug = consistencyTagSlug(character.consistencyTag);
-  return slug != null && tagMatchesText(slug, prompt);
+  return identitiesOf(character).some((identity) => {
+    const nameUpper = identity.name.toUpperCase();
+    if (nameUpper.length > 0 && tagMatchesText(nameUpper, prompt, true)) {
+      return true;
+    }
+    if (tagMatchesText(identity.characterId, prompt)) return true;
+    const slug = consistencyTagSlug(identity.consistencyTag);
+    return slug != null && tagMatchesText(slug, prompt);
+  });
 }
 
 /**

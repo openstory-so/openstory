@@ -9,6 +9,7 @@ import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
+import type { CastScriptAlias } from './sequence-cast';
 import { organization } from './organization';
 
 const SHEET_STATUSES = [
@@ -197,6 +198,10 @@ export type CharacterCast = CharacterLink & {
   selectedBibleVersionId: string;
   /** The character's current voice version; null when it has no voice. */
   selectedVoiceVersionId: string | null;
+  /** The name scenes already use, when Replace pointed this slot elsewhere. */
+  scriptName?: string | null;
+  /** Script ids this slot also answers as. Absent on a read from no sequence. */
+  aliases?: CastScriptAlias[];
 };
 
 /**

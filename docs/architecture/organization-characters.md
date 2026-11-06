@@ -321,6 +321,19 @@ the script then names her like any cast member.
   carries a cast id with another name, or a cast character's name under a
   new id, fails the run with a plain message ("Run it again"). The prompt
   says a script character with a cast character's name IS that character.
+  The prompt text is unchanged. A name one letter away is a second
+  character. The writer replaces or removes them.
+- **Replace** (`replace_character`, the remove confirm on the cast tab and
+  the character page) points the slot at another organization character.
+  The slot keeps its script id, and the tag and name scenes already use
+  (`scriptConsistencyTag`, `scriptName`). The other character's sheet,
+  looks and voice are what those scenes read. Nothing is copied and no
+  line is rewritten. Shots go stale by derivation. When that character is
+  already in the sequence, this slot is dropped and its script id, name
+  and tag are remembered on the one that stays (`aliases`). Remove still
+  only soft-removes, and Restore does not undo a Replace. `isPerson` and
+  the likeness ledger are not written. The screenplay on `sequences.script`
+  is not rewritten. No generation starts.
 - **Plain names, where two characters share one.** Analysis may make two
   "Sarah"s, and a hand-made one may sit beside an analysed one. Look picks
   are keyed on the character's tag (a NEW entry whose tag is in use gets a

@@ -355,6 +355,35 @@ describe('matchCharactersToShotImage', () => {
   });
 });
 
+describe('replaced cast identities', () => {
+  it('matches the script name and a folded alias', () => {
+    const repointed = {
+      name: 'Ada',
+      characterId: 'char_marloe',
+      consistencyTag: 'marloe',
+      scriptName: 'Marloe',
+    };
+    expect(matchCharacterToShotTags(repointed, ['marloe'])).toBe(true);
+    expect(characterMentionedInPrompt(repointed, 'MARLOE walks in.')).toBe(
+      true
+    );
+    const folded = {
+      name: 'Marlow',
+      characterId: 'char_marlow',
+      consistencyTag: 'marlow',
+      aliases: [
+        {
+          characterId: 'char_marloe',
+          name: 'Marloe',
+          consistencyTag: 'marloe',
+        },
+      ],
+    };
+    expect(matchCharacterToShotTags(folded, ['marloe'])).toBe(true);
+    expect(characterMentionedInPrompt(folded, 'MARLOE walks in.')).toBe(true);
+  });
+});
+
 describe('characterMentionedInPrompt', () => {
   it('requires the ALL-CAPS name, not title case', () => {
     const scarlett = makeCharacter({

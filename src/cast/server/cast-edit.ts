@@ -390,6 +390,25 @@ export async function deleteCharacter(
   return { characterId, name: existing.name, deletedAt };
 }
 
+/**
+ * Point this sequence's slot at another organization character (#2249).
+ * The character that stays is the one the slot reads after the write.
+ */
+export async function replaceCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  withCharacterId: string
+) {
+  return await scopedDb.characters.replace(
+    sequenceId,
+    characterId,
+    withCharacterId,
+    { actorId: actor.userId }
+  );
+}
+
 export async function restoreCharacter(
   scopedDb: ScopedDb,
   actor: Actor,

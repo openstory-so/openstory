@@ -123,16 +123,26 @@ export function speakingCharacterIds(
  * Two cast characters with the cue's name (#2050) are refused, not
  * guessed between: a line has no id to say which one speaks.
  */
-export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
-  speaker: string,
-  characters: readonly T[]
-): T | undefined {
+export function matchSpeaker<
+  T extends {
+    name: string;
+    voiceOnly?: boolean;
+    scriptName?: string | null;
+    aliases?: readonly { name: string }[];
+  },
+>(speaker: string, characters: readonly T[]): T | undefined {
   if (speaker.trim() === '') {
     const narrators = characters.filter((character) => character.voiceOnly);
     return narrators.length === 1 ? narrators[0] : undefined;
   }
+  const named = (character: T) =>
+    [
+      character.name,
+      character.scriptName,
+      ...(character.aliases ?? []).map((alias) => alias.name),
+    ].filter((name): name is string => Boolean(name));
   const whole = characters.filter((character) =>
-    sameName(speaker, character.name)
+    named(character).some((name) => sameName(speaker, name))
   );
   if (whole.length > 1) {
     throw new ConflictError(

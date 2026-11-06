@@ -150,6 +150,19 @@ describe('matchSpeaker', () => {
   it('an unknown one-character cue matches nobody, narrator or not', () => {
     expect(matchSpeaker('X', cast)).toBeUndefined();
   });
+  it('does not guess a name one letter away', () => {
+    expect(matchSpeaker('Marloe', [{ name: 'Marlow' }])).toBeUndefined();
+  });
+  it('matches a script name or alias left by Replace', () => {
+    expect(
+      matchSpeaker('Marloe', [{ name: 'Ada', scriptName: 'Marloe' }])?.name
+    ).toBe('Ada');
+    expect(
+      matchSpeaker('Marloe', [
+        { name: 'Marlow', aliases: [{ name: 'Marloe' }] },
+      ])?.name
+    ).toBe('Marlow');
+  });
   it('prefers the whole name over a shared token, whatever the order', () => {
     const family = [
       { name: "Sarah's Mother", voiceOnly: false },
