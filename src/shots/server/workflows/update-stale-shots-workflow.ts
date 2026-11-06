@@ -70,7 +70,11 @@ import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
-import { estimateLipsyncCost, planLipsync } from '@/motion/lipsync';
+import {
+  estimateLipsyncCost,
+  lipsyncVersionModel,
+  planLipsync,
+} from '@/motion/lipsync';
 import { addMicros } from '@/billing/money';
 import {
   matchingDialogueClips,
@@ -1051,7 +1055,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 : (speechClipsByShotId[target.shotId] ?? shot.audioClips),
               shotDurationMs: shot.durationMs,
             });
+            const videoModel = lipsyncVersionModel(
+              selectedVideo?.model,
+              segmentVersions
+            );
             if (planned.ok) {
+              if (!videoModel) {
+                throw new NonRetryableError(
+                  `Shot ${shot.id} has no video model to keep`,
+                  'WorkflowValidationError'
+                );
+              }
               const payload: PreparedLipsync = {
                 sequenceId,
                 shotId: shot.id,
@@ -1062,6 +1076,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 manifest: planned.plan.manifest,
                 durationSeconds: planned.plan.durationSeconds,
                 resolution: selectedVideo?.resolution ?? null,
+                videoModel,
                 sequenceTitle: sequenceSnapshot.title,
                 sceneTitle: target.motionRender.sceneTitle,
               };

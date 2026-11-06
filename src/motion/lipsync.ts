@@ -10,13 +10,15 @@
  */
 
 import { micros, usdToMicros, type Microdollars } from '@/billing/money';
-import type { ImageToVideoModel } from '@/models/models';
+import {
+  isValidImageToVideoModel,
+  type ImageToVideoModel,
+} from '@/models/models';
 import type { RenderedResolution } from '@/models/resolutions';
 import { modelTakesDialogueAudio } from '@/motion/dialogue-tts';
 
-/** Catalog id stamped on the version. Not an image-to-video model, so the
- * voiceless-model audio shortcut does not apply and a later voice edit
- * marks this version stale. */
+/** Price-card id for sync-3. The version row keeps the video model that
+ * rendered the clip; this id is not a video model. */
 export const LIPSYNC_MODEL_ID = 'sync-lipsync-3';
 
 export const LIPSYNC_FAL_ENDPOINT = 'fal-ai/sync-lipsync/v3';
@@ -42,6 +44,22 @@ export function estimateLipsyncCost(durationSeconds: number): Microdollars {
  * `planMotionLipsync`: models that upload dialogue, drafts, and silent
  * shots stay at zero. The duration is the one the video quote already uses.
  */
+/**
+ * The video model a lip-sync version should keep. The selected row when it
+ * is a real video model, otherwise the newest render on the segment.
+ */
+export function lipsyncVersionModel(
+  selected: string | null | undefined,
+  versions: readonly { model: string }[]
+): ImageToVideoModel | null {
+  if (isValidImageToVideoModel(selected)) return selected;
+  for (let index = versions.length - 1; index >= 0; index -= 1) {
+    const model = versions[index]?.model;
+    if (isValidImageToVideoModel(model)) return model;
+  }
+  return null;
+}
+
 export function estimateMotionLipsyncCost(input: {
   model: ImageToVideoModel;
   draft: boolean;

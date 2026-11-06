@@ -8,6 +8,7 @@
 import { requireCredits } from '@/billing/server/preflight';
 import {
   LIPSYNC_REFUSAL,
+  lipsyncVersionModel,
   planLipsync,
   type LipsyncRefusal,
 } from '@/motion/lipsync';
@@ -42,6 +43,10 @@ export async function startLipsync(
     shotDurationMs: shot.durationMs,
   });
   if (!planned.ok) throw refusalError(planned.reason);
+  const videoModel = lipsyncVersionModel(selected?.model, versions);
+  if (!videoModel) {
+    throw new ValidationError('This clip has no video model to keep.');
+  }
 
   await requireCredits(scopedDb, planned.plan.cost, {
     errorMessage: 'Insufficient credits for lip-sync',
@@ -59,6 +64,7 @@ export async function startLipsync(
     manifest: planned.plan.manifest,
     durationSeconds: planned.plan.durationSeconds,
     resolution: selected?.resolution ?? null,
+    videoModel,
     sequenceTitle: sequence.title,
     sceneTitle: scene?.metadata?.title,
   };

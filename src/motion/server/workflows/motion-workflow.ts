@@ -1763,6 +1763,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               manifest: lipsync.manifest,
               durationSeconds: lipsync.durationSeconds,
               resolution: lipsync.resolution,
+              videoModel: activeModel,
               sequenceTitle,
               sceneTitle: input.sceneTitle,
               reservationId: input.reservationId,

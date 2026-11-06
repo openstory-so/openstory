@@ -653,6 +653,8 @@ export interface LipsyncWorkflowInput extends UserWorkflowContext {
   manifest: VideoManifest;
   durationSeconds: number;
   resolution: RenderedResolution | null;
+  /** The video model that rendered the clip. The lip-sync row keeps it. */
+  videoModel: ImageToVideoModel;
   sequenceTitle: string;
   sceneTitle?: string;
 }

@@ -4,6 +4,7 @@ import {
   LIPSYNC_SYNC_MODE,
   estimateLipsyncCost,
   estimateMotionLipsyncCost,
+  lipsyncVersionModel,
   lipsyncFalInput,
   lipsyncManifest,
   planLipsync,
@@ -33,6 +34,27 @@ describe('estimateLipsyncCost', () => {
   it('prices sync-3 at $8 per minute of the clip', () => {
     expect(estimateLipsyncCost(5)).toBe(usdToMicros((5 / 60) * 8));
     expect(estimateLipsyncCost(0)).toBe(usdToMicros((5 / 60) * 8));
+  });
+});
+
+describe('lipsyncVersionModel', () => {
+  it('keeps the selected render model', () => {
+    expect(
+      lipsyncVersionModel('gemini_omni_flash', [
+        { model: 'kling_v4' },
+        { model: 'sync-lipsync-3' },
+      ])
+    ).toBe('gemini_omni_flash');
+  });
+
+  it('uses the newest real video model when the selected row is a lip-sync', () => {
+    expect(
+      lipsyncVersionModel('sync-lipsync-3', [
+        { model: 'kling_v4' },
+        { model: 'gemini_omni_flash' },
+        { model: 'sync-lipsync-3' },
+      ])
+    ).toBe('gemini_omni_flash');
   });
 });
 

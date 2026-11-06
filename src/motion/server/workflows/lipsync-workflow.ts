@@ -4,8 +4,9 @@
  * The trigger snapshots the selected video URL, the dialogue file, and a
  * manifest that keeps the source render's picture pointers and restamps
  * this shot's audio. This run opens its own video version (`source:
- * 'lipsync'`, model `sync-lipsync-3`) and promotes it through the same
- * claim as a render. The underlying render row is left alone.
+ * 'lipsync'`) under the video model that rendered the clip, and promotes
+ * it through the same claim as a render. The underlying render row is
+ * left alone.
  *
  *   1. check-credits — the $8/min card. BYOK fal skips the balance check.
  *   2. set-generating — append the claim row. A deleted shot stops here.
@@ -22,6 +23,7 @@ import {
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import { isValidImageToVideoModel } from '@/models/models';
 import { isFalValidationError } from '@/studio/server/workflows/asset-generation-workflow';
 import {
   LIPSYNC_FAL_ENDPOINT,
@@ -77,6 +79,7 @@ function providerVideoUrl(data: unknown): string | null {
 async function persistLipsyncFailure(opts: {
   scopedDb: WorkflowScopedDb;
   shotId: string;
+  videoModel: string | undefined;
   error: string;
   workflowRunId: string;
 }): Promise<void> {
@@ -102,11 +105,15 @@ async function persistLipsyncFailure(opts: {
     workflowRunId,
     error
   );
-  if (marked === 0 && shot?.renderSegmentId) {
+  if (
+    marked === 0 &&
+    shot?.renderSegmentId &&
+    isValidImageToVideoModel(opts.videoModel)
+  ) {
     await scopedDb.videoVariants.appendVersion({
       renderSegmentId: shot.renderSegmentId,
       sequenceId: shot.sequenceId,
-      model: LIPSYNC_MODEL_ID,
+      model: opts.videoModel,
       source: 'lipsync',
       manifest: [],
       status: 'failed',
@@ -122,7 +129,9 @@ async function persistLipsyncFailure(opts: {
       {
         shotId,
         status: 'failed',
-        model: LIPSYNC_MODEL_ID,
+        ...(isValidImageToVideoModel(opts.videoModel)
+          ? { model: opts.videoModel }
+          : {}),
         error,
       }
     );
@@ -142,6 +151,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
     await persistLipsyncFailure({
       scopedDb: failure.scopedDb,
       shotId: failure.event.payload.shotId,
+      videoModel: failure.event.payload.videoModel,
       error: failure.error,
       workflowRunId: failure.event.instanceId,
     });
@@ -154,6 +164,13 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
   ): Promise<{ videoUrl: string | null }> {
     const input = event.payload;
     const workflowRunId = event.instanceId;
+    if (!isValidImageToVideoModel(input.videoModel)) {
+      throw new NonRetryableError(
+        'videoModel is required to lip-sync this clip',
+        'WorkflowValidationError'
+      );
+    }
+    const videoModel = input.videoModel;
     const cost = estimateLipsyncCost(input.durationSeconds);
 
     const { usedOwnKey } = await step.do('check-credits', async () => {
@@ -175,13 +192,13 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
         if (!shot) return { shotDeleted: true, videoVersionId: null };
         const inputHash = await computeVideoManifestInputHash(
           input.manifest,
-          LIPSYNC_MODEL_ID
+          videoModel
         );
         const version: VideoVariant =
           await scopedDb.videoVariants.appendVersion({
             renderSegmentId: input.renderSegmentId,
             sequenceId: input.sequenceId,
-            model: LIPSYNC_MODEL_ID,
+            model: videoModel,
             source: 'lipsync',
             resolution: input.resolution ?? undefined,
             manifest: input.manifest,
@@ -200,7 +217,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
             {
               shotId: input.shotId,
               status: 'generating',
-              model: LIPSYNC_MODEL_ID,
+              model: videoModel,
             }
           );
         } catch (emitError) {
@@ -312,7 +329,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
         summary: 'Lip-synced the clip',
         data: {
           versionId: videoVersionId,
-          model: LIPSYNC_MODEL_ID,
+          model: videoModel,
           sceneId: input.sceneId,
         },
       });
@@ -344,7 +361,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
             shotId: input.shotId,
             status: 'completed',
             videoUrl: stored.url,
-            model: LIPSYNC_MODEL_ID,
+            model: videoModel,
             ...(promoted ? {} : { variantOnly: true }),
           }
         );
