@@ -81,12 +81,12 @@ export function rewriteFalUrl(
 
 function installFetchProxy(proxyUrl: string): void {
   const base = globalThis.fetch.bind(globalThis);
-  globalThis.fetch = (async (input, init) => {
+  const proxied: typeof fetch = async (input, init) => {
     const raw =
       typeof input === 'string'
         ? input
         : input instanceof URL
-          ? input.toString()
+          ? input.href
           : input.url;
     const rewritten = rewriteFalUrl(raw, proxyUrl);
     if (!rewritten) return base(input, init);
@@ -99,7 +99,8 @@ function installFetchProxy(proxyUrl: string): void {
       return base(new Request(rewritten.url, input), nextInit);
     }
     return base(rewritten.url, nextInit);
-  }) as typeof fetch;
+  };
+  globalThis.fetch = proxied;
 }
 
 export function configureFalProxyFromEnv(): void {

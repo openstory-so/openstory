@@ -29,7 +29,12 @@ describe('rewriteFalUrl', () => {
     vi.stubEnv('FAL_PROXY_URL', 'http://localhost:4010/fal');
     const seen: { url: string; host: string | null }[] = [];
     const base = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
       const headers = new Headers(init?.headers);
       seen.push({ url, host: headers.get('x-fal-target-host') });
       return new Response('{}', { status: 200 });
