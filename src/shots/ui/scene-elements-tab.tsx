@@ -67,7 +67,7 @@ const AddElementButton: React.FC<{
       if (usable.length === 0) {
         if (files.length > 0) {
           toast.error("That file can't be a reference", {
-            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+            description: 'Drop an image, an audio file, or an MP4 or MOV.',
           });
         }
         return;
@@ -133,7 +133,7 @@ const AddElementButton: React.FC<{
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">Upload a reference</p>
           <p className="text-xs text-muted-foreground">
-            Images, MP3/WAV or MP4/MOV — a logo, a product shot, a dialogue
+            Images, audio, or MP4 or MOV — a logo, a product shot, a dialogue
             line, a music bed, a move to copy. Type @ to insert one.
           </p>
           <div

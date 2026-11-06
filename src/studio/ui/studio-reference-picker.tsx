@@ -474,7 +474,7 @@ export function StudioReferencePicker({
 
   const accept =
     source === 'audio'
-      ? 'audio/mpeg,audio/wav,.mp3,.wav'
+      ? 'audio/*'
       : [
           'image/*',
           ...(slots.video > 0
@@ -574,13 +574,16 @@ export function StudioReferencePicker({
                 <p className="text-sm text-muted-foreground">
                   {limited ? (
                     <span>
-                      MP3 or WAV, up to {slots.audio} more. Seedance: 15 seconds
-                      combined. Each clip becomes{' '}
+                      Up to {slots.audio} more. Each clip becomes{' '}
                       <span className="font-mono">@Audio1</span>,{' '}
                       <span className="font-mono">@Audio2</span>… in the prompt.
                     </span>
                   ) : (
-                    <span>MP3 or WAV.</span>
+                    <span>
+                      Each clip becomes{' '}
+                      <span className="font-mono">@Audio1</span>,{' '}
+                      <span className="font-mono">@Audio2</span>… in the prompt.
+                    </span>
                   )}
                 </p>
                 <Button

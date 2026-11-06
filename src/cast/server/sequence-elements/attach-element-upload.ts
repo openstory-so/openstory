@@ -246,7 +246,7 @@ export function elementKindOrThrow(filename: string) {
   const kind = elementKindFromFilename(filename);
   if (!kind) {
     throw new ValidationError(
-      `Unsupported element file "${filename}" — use an image, MP3/WAV, or MP4/MOV.`
+      `Unsupported element file "${filename}" - use an image, an audio file, or an MP4 or MOV.`
     );
   }
   return kind;

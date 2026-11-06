@@ -28,6 +28,7 @@ import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
+import { normalizeElementFile } from '@/cast/ui/element/normalize-element-file';
 import { putToR2, snapshotFile } from '@/ui/upload';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { fitImageFileToAspectRatio } from '@/ui/fit-image-aspect';
@@ -339,6 +340,15 @@ export function useUploadLocationReference() {
   });
 }
 
+/** MP3, WAV, M4A and OGG are stored as themselves. Anything else (FLAC) becomes WAV. */
+const MUSIC_STORED_AS_IS = new Set(['mp3', 'wav', 'ogg', 'm4a']);
+
+async function musicUploadFile(file: File): Promise<File> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (MUSIC_STORED_AS_IS.has(ext)) return file;
+  return normalizeElementFile(file);
+}
+
 /** Upload an audio file as the sequence's score (user-upload primary slot). */
 export function useUploadSequenceMusic() {
   const queryClient = useQueryClient();
@@ -348,14 +358,15 @@ export function useUploadSequenceMusic() {
       sequenceId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await musicUploadFile(input.file);
       const publicUrl = await presignPut(
         presignSequenceMusicUploadFn({
-          data: { sequenceId: input.sequenceId, filename: input.file.name },
+          data: { sequenceId: input.sequenceId, filename: file.name },
         }),
-        input.file,
+        file,
         input.onProgress
       );
-      const durationSeconds = await readMediaDuration(input.file, 'audio');
+      const durationSeconds = await readMediaDuration(file, 'audio');
       return setSequenceMusicFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
