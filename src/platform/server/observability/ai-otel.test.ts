@@ -59,8 +59,8 @@ const mockStartSpan = vi.fn(
 // Overridable per test so the flush-failure path can be driven.
 const mockTraceForceFlush = vi.fn(() => Promise.resolve());
 const mockMeterForceFlush = vi.fn(() => Promise.resolve());
-vi.doMock('@opentelemetry/sdk-trace-base', () => ({
-  BasicTracerProvider: class {
+vi.doMock('@opentelemetry/sdk-trace', () => ({
+  TracerProvider: class {
     getTracer() {
       return { startSpan: mockStartSpan };
     }
@@ -664,6 +664,24 @@ describe('normalizePostHogAiContent', () => {
       {
         role: 'assistant',
         content: [{ type: 'text', text: 'https://cdn.test/video.mp4' }],
+      },
+    ]);
+  });
+
+  it('serialises a structured attribute value as JSON, not [object Object]', async () => {
+    const { normalizePostHogAiContent } = await importAiOtel();
+    const attrs: Attributes = {
+      'gen_ai.output.messages': { tool: 'search', args: { q: 'cats' } },
+    };
+
+    normalizePostHogAiContent(attrs);
+
+    expect(JSON.parse(String(attrs['$ai_output_choices']))).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '{"tool":"search","args":{"q":"cats"}}' },
+        ],
       },
     ]);
   });

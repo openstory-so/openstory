@@ -44,11 +44,11 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
 import {
-  BasicTracerProvider,
+  TracerProvider,
   BatchSpanProcessor,
   type ReadableSpan,
   type SpanProcessor,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/sdk-trace';
 import type { ChatMiddleware, GenerationMiddleware } from '@tanstack/ai';
 import { otelMiddleware } from '@tanstack/ai/middlewares/otel';
 import { createServerOnlyFn } from '@tanstack/react-start';
@@ -111,7 +111,7 @@ type Telemetry = {
   tracer: Tracer;
   meter: Meter;
   mediaDurationHistogram: Histogram;
-  traceProvider: BasicTracerProvider;
+  traceProvider: TracerProvider;
   meterProvider: MeterProvider;
 };
 
@@ -143,16 +143,16 @@ const getAITelemetry = createServerOnlyFn((): Telemetry | null => {
         const origin = new URL(host).origin;
         const headers = { Authorization: `Bearer ${projectToken}` };
 
-        const traceProvider = new BasicTracerProvider({
+        const traceProvider = new TracerProvider({
           resource: resourceFromAttributes({ 'service.name': SERVICE_NAME }),
           spanProcessors: [
             new PostHogAiContentSpanProcessor(
-              new BatchSpanProcessor(
-                new OTLPTraceExporter({
+              new BatchSpanProcessor({
+                exporter: new OTLPTraceExporter({
                   url: `${origin}/i/v0/ai/otel`,
                   headers,
-                })
-              )
+                }),
+              })
             ),
           ],
         });
@@ -324,12 +324,12 @@ function toPostHogMessage(
 }
 
 function asPostHogMessagesJson(
-  raw: AttributeValue | undefined,
+  raw: unknown,
   fallbackRole: 'user' | 'assistant'
 ): string | undefined {
   if (raw == null || raw === '') return undefined;
   if (typeof raw !== 'string') {
-    return postHogMessagesAttribute(String(raw), fallbackRole);
+    return postHogMessagesAttribute(textFromUnknown(raw), fallbackRole);
   }
   const trimmed = raw.trim();
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
