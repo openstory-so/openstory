@@ -56,10 +56,7 @@ export async function generateShotImage(
   const storedVisualPrompt =
     (await context.scopedDb.framePromptVersions.getSelected(frame.id))?.text ??
     null;
-  requireGenerationPrompt(
-    data.prompt,
-    data.prompt === undefined ? storedVisualPrompt : undefined
-  );
+  requireGenerationPrompt(data.prompt, storedVisualPrompt);
 
   // Auto-link any element/cast/location tags the user mentioned in their
   // edited prompt before computing reference attachment, so a freshly-
