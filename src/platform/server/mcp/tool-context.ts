@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { OpenStoryError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import {
+  getSequenceByIdUnscoped,
+  type ScopedDb,
+} from '@/platform/server/db/scoped';
+import { isSystemAdmin } from '@/platform/server/auth/system-admin';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import type { McpCallerIdentity } from './auth';
 import type { OAuthApiScope } from '@/platform/server/auth/oauth-scopes';
@@ -15,7 +19,53 @@ export type ReadToolContext = {
   userId: string;
   /** Recorded on any portrait sign-off a write carries. */
   request: LikenessRequestContext;
+  /**
+   * Set only for a system admin's `osk_` key (#2288). OAuth tokens and the
+   * in-app assistant leave it unset, so another organisation stays not found.
+   */
+  adminSequenceAccess?: (organizationId: string) => ScopedDb;
 };
+
+/**
+ * An `osk_` key whose user is in `ADMIN_EMAILS` may open another
+ * organisation's sequence. An OAuth token never does: a third-party MCP
+ * client would otherwise read every customer's sequences.
+ */
+export function adminSequenceAccessFor(caller: {
+  kind: 'oauth' | 'api_key';
+  email: string;
+  openOrganization: (organizationId: string) => ScopedDb;
+}): ((organizationId: string) => ScopedDb) | undefined {
+  if (caller.kind !== 'api_key' || !isSystemAdmin(caller.email))
+    return undefined;
+  return caller.openOrganization;
+}
+
+function sequenceIdOf(input: unknown): string | undefined {
+  if (typeof input !== 'object' || input === null || !('sequenceId' in input))
+    return undefined;
+  const id = input.sequenceId;
+  return typeof id === 'string' ? id : undefined;
+}
+
+/**
+ * Rebind `ctx.scopedDb` to the organisation that owns `sequenceId` when this
+ * caller is allowed to and the sequence is not in the key's organisation.
+ * A miss stays a miss: the tool's `productionAccess` still throws not found.
+ */
+export async function adoptForeignSequence(
+  ctx: ReadToolContext,
+  input: unknown
+): Promise<void> {
+  const sequenceId = sequenceIdOf(input);
+  const openOrganization = ctx.adminSequenceAccess;
+  if (!sequenceId || !openOrganization) return;
+  const own = await ctx.scopedDb.sequences.getById(sequenceId);
+  if (own) return;
+  const found = await getSequenceByIdUnscoped(sequenceId);
+  if (!found || found.organizationId === ctx.scopedDb.organizationId) return;
+  ctx.scopedDb = openOrganization(found.organizationId);
+}
 
 /**
  * What a tool reads on `ctx.context`. Two callers build it (#2155): MCP
@@ -195,7 +245,9 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
   const written = !spec.annotations.readOnlyHint;
   try {
-    const { data, summary, images } = await spec.run(parsed.data, context());
+    const toolContext = context();
+    await adoptForeignSequence(toolContext, parsed.data);
+    const { data, summary, images } = await spec.run(parsed.data, toolContext);
     const output = spec.outputSchema.safeParse(data);
     if (!output.success && !written) {
       throw new Error(`openstory.${spec.name} output failed its schema`, {

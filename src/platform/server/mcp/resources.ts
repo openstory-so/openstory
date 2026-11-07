@@ -23,7 +23,11 @@ import { getLogger, toErrorPayload } from '@/platform/logger';
 import { OpenStoryError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { overResponseCap, type OpenStoryMcpContext } from './tool-context';
+import {
+  adoptForeignSequence,
+  overResponseCap,
+  type OpenStoryMcpContext,
+} from './tool-context';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
 import { SEQUENCE_CARD_URI } from '@/platform/mcp-views';
 import { SEQUENCE_CARD_HTML } from './ui/sequence-card';
@@ -131,9 +135,10 @@ function buildResourceServer(context: OpenStoryMcpContext) {
       async (uri, variables) => {
         const ids = parseIds(uri, template, variables);
         try {
-          const { scopedDb, origin } = scoped();
+          const ctx = scoped();
+          await adoptForeignSequence(ctx, ids);
           const text = JSON.stringify(
-            await template.read(scopedDb, ids, origin)
+            await template.read(ctx.scopedDb, ids, ctx.origin)
           );
           if (overResponseCap(text)) {
             throw new ProtocolError(
