@@ -17,6 +17,7 @@ import {
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
+import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   Sequence,
@@ -204,6 +205,23 @@ async function recordDialogueEvent(
   }
 }
 
+/** Tells open pages the lines moved; a failed emit must not fail the write. */
+export async function emitLinesMoved(
+  context: Pick<DialogueEditContext, 'shot' | 'sequence'>
+): Promise<void> {
+  try {
+    await getGenerationChannel(context.sequence.id).emit(
+      'generation.shot:updated',
+      { shotId: context.shot.id, updateType: 'dialogue-lines' }
+    );
+  } catch (error) {
+    logger.error('realtime emit failed', {
+      shotId: context.shot.id,
+      err: error,
+    });
+  }
+}
+
 /**
  * Make a reading the shot's current one and put its cut file on the shot —
  * pointer and clip in one batch (`selectSection`). The cut comes first: it is
@@ -256,7 +274,7 @@ export async function selectShotDialogueSection(
  * no other shot. `write` hands back the selected row when nothing moved.
  */
 export async function saveShotDialogue(
-  context: Pick<ShotEditContext, 'scopedDb' | 'shot' | 'user'>,
+  context: DialogueEditContext,
   lines: ShotDialogueLines
 ): Promise<{ versionId: string | null }> {
   const version = await context.scopedDb.shotDialogue.write(
@@ -265,6 +283,7 @@ export async function saveShotDialogue(
     'user-edit',
     { createdBy: context.user.id }
   );
+  await emitLinesMoved(context);
   return { versionId: version?.id ?? null };
 }
 
@@ -285,6 +304,7 @@ export async function selectShotDialogueVersion(
   await recordDialogueEvent(context, 'dialogue.version.selected', {
     versionId: version.id,
   });
+  await emitLinesMoved(context);
   return { versionId: version.id };
 }
 

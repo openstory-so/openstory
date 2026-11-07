@@ -132,7 +132,7 @@ export type ShotStalenessResult = {
   causes: string[];
 };
 
-/** Every artifact unopinionated — the missing-anchor and no-scene cases. */
+/** Every artifact unopinionated — no comparison was possible. */
 export const UNTRACKED_STALENESS: ShotStalenessResult = {
   thumbnail: 'untracked',
   visualPrompt: 'untracked',
@@ -145,6 +145,15 @@ export const UNTRACKED_STALENESS: ShotStalenessResult = {
     spec: null,
   },
   causes: [],
+};
+
+/** Every artifact uncheckable — the shot's compare failed (#2293). */
+export const UNKNOWN_STALENESS: ShotStalenessResult = {
+  ...UNTRACKED_STALENESS,
+  thumbnail: 'unknown',
+  visualPrompt: 'unknown',
+  motionPrompt: 'unknown',
+  spec: 'unknown',
 };
 
 /** Every artifact deferred — the sequence is mid-run (#1121). */

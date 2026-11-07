@@ -128,6 +128,7 @@ export const realtimeSchema = {
         'visual-prompt',
         'motion-prompt',
         'dialogue-audio',
+        'dialogue-lines',
         'audio-design',
         'music-design',
       ]),
