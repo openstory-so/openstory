@@ -68,21 +68,41 @@ export type ContinueFlags = {
 
 /** The continue footer's quote: the plan's work up to the stop, priced per unit. */
 export function useGenerationSliceEstimate(
-  args: ContinueFlags & {
-    sequenceId: string;
-    enabled: boolean;
-    /**
-     * The units the footer offers. Keyed on so the quote moves with the
-     * plan — a sheet finishing elsewhere changes the price, not the switches.
-     */
-    workKey: string;
-  }
+  args: ContinueFlags &
+    SequenceModels & {
+      sequenceId: string;
+      enabled: boolean;
+      /**
+       * The units the footer offers. Keyed on so the quote moves with the
+       * plan — a sheet finishing elsewhere changes the price, not the switches.
+       */
+      workKey: string;
+    }
 ): Microdollars | null | undefined {
   const { sequenceId, enabled, workKey, ...flags } = args;
   const { data } = useQuery({
-    queryKey: [...sequenceKeys.generationSlice(sequenceId, flags), workKey],
+    queryKey: [
+      ...sequenceKeys.generationSlice(sequenceId, flags),
+      flags.imageModel,
+      flags.videoModel,
+      flags.musicModel,
+      flags.resolution,
+      workKey,
+    ],
     queryFn: () =>
-      estimateGenerationSliceFn({ data: { sequenceId, ...flags } }),
+      estimateGenerationSliceFn({
+        data: {
+          sequenceId,
+          stopAt: flags.stopAt,
+          generateStartFrames: flags.generateStartFrames,
+          generateVoices: flags.generateVoices,
+          draftMotion: flags.draftMotion,
+          imageModel: flags.imageModel,
+          videoModel: flags.videoModel,
+          musicModel: flags.musicModel,
+          resolution: flags.resolution,
+        },
+      }),
     enabled,
     staleTime: 60_000,
   });
@@ -389,8 +409,8 @@ export type SequenceModels = Partial<
 /**
  * Persist the sequence's model defaults. Work not yet made inherits them,
  * Sequence settings shows them, and the footer pickers seed from them.
- * Optimistic so the inspector and the badges move with the click; the plan
- * and the continue quote are re-asked once the pick has saved.
+ * Optimistic so the inspector and the badges move with the click. The
+ * continue quote is keyed on these picks, so it refetches with the click.
  */
 export function useSetSequenceModels(sequenceId: string) {
   const queryClient = useQueryClient();

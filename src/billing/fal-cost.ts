@@ -11,7 +11,9 @@
  * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then the
  * stored modelschemas rate card evaluated against the request we are about
  * to send, then fal's historical typical units (and the unit formula for
- * endpoints that have no card yet), then **null**. A card that refuses
+ * endpoints that have no card yet), then **null**. A card that lists the
+ * named resolution outranks the median, because that median mixes tiers.
+ * A resolution the card does not list keeps the median. A card that refuses
  * returns null — it does not fall through to a sibling price or a $1 stub.
  * Billing never reads the card. Callers gate conservatively / display
  * nothing for null.
@@ -285,13 +287,25 @@ function knownLevers(params: FalCostEstimateParams): {
   return { request, usage };
 }
 
-/** The median mixes every tier, so a card that prices the asked tier wins. */
+/**
+ * The median mixes every tier, so it loses when the card lists this
+ * resolution. Case-folded: we send `4k`, cards list `4K`. A stills `720p`
+ * against a `1K`/`2K` card is not a listed tier and keeps the median.
+ */
 function cardPricesKnownResolution(
   card: RateCard,
   params: FalCostEstimateParams
 ): boolean {
-  const known = knownLevers(params).request.resolution != null;
-  return known && cardParams(card).request.includes('resolution');
+  const asked = knownLevers(params).request.resolution;
+  if (typeof asked !== 'string') return false;
+  const folded = asked.toLowerCase();
+  return Object.values(card.inputs).some(
+    (input) =>
+      input.param === 'resolution' &&
+      input.kind === 'enum' &&
+      input.bound !== 'usage' &&
+      input.values.some((option) => option.toLowerCase() === folded)
+  );
 }
 
 /**
@@ -342,8 +356,8 @@ export function estimateFalCost(
     return null;
   }
 
-  // Observed median outranks the card. A card with no median is the
-  // estimate; a refusal stays null rather than borrowing another price.
+  // The median outranks the card, unless the card lists the named
+  // resolution. A refusal stays null rather than borrowing another price.
   if (
     pricing.rateCard &&
     (trustedObservedUnits(pricing) == null ||

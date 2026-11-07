@@ -757,6 +757,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     generateStartFrames: draftStartFrames,
     generateVoices: voices,
     draftMotion: draftFirst,
+    imageModel: initialImageModel,
+    videoModel,
+    musicModel,
+    resolution: resolution ?? DEFAULT_RESOLUTION,
     enabled: showSteps && offerContinue,
     workKey: continueWork.map((u) => `${u.kind}:${u.id}`).join(','),
   });
