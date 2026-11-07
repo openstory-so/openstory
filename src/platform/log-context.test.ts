@@ -5,6 +5,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFileSync } from 'node:fs';
 import { configureSync, getLogger, withContext } from '@logtape/logtape';
 import type { LogRecord } from '@logtape/logtape';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +22,16 @@ describe('logContextFromHeaders', () => {
       )
     ).toEqual({ posthogSessionId: 'sess-1', posthogDistinctId: 'user-1' });
     expect(logContextFromHeaders(new Headers())).toEqual({});
+  });
+});
+
+describe('server entry', () => {
+  // Without the store, withContext is a silent no-op and every log loses its ids.
+  it('hands configureLogging a contextLocalStorage', () => {
+    const entry = readFileSync('src/instrumentation.ts', 'utf8');
+    expect(entry).toMatch(
+      /configureLogging\(\{\s*contextLocalStorage: new AsyncLocalStorage\(\)/
+    );
   });
 });
 
