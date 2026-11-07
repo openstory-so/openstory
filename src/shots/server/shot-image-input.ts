@@ -103,7 +103,7 @@ export async function prepareShotImageWorkflowInput(args: {
   frame: Frame;
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;
-  /** Selected scene-script extract. Fallback prompt AND fallback element match when no visual prompt exists. */
+  /** Selected scene-script extract. Element match only, never the prompt: it holds the spoken lines (#2291). */
   scriptExtract: string;
   userId: string;
   promptOverride?: string;
@@ -140,7 +140,8 @@ export async function prepareShotImageWorkflowInput(args: {
     refs,
   } = args;
 
-  // Priority: provided > the frame's selected prompt version > scene script.
+  // Priority: provided > the frame's selected prompt version. Never the scene
+  // script: a still model draws its spoken lines as a caption (#2291).
   // The read is SKIPPED when nothing downstream can consume it — the caller
   // supplied the prompt, named the version it came from, and isn't claiming a
   // user edit. Left unconditional it executed on every override path
@@ -157,9 +158,9 @@ export async function prepareShotImageWorkflowInput(args: {
   const selectedPrompt = needsSelectedPrompt
     ? await scopedDb.framePromptVersions.getSelected(frame.id)
     : null;
-  const prompt = promptOverride || selectedPrompt?.text || scriptExtract;
+  const prompt = promptOverride || selectedPrompt?.text || '';
   if (!prompt.trim()) {
-    throw new Error('Shot has no prompt or description to regenerate from');
+    throw new Error('Shot has no visual prompt to render a still from');
   }
 
   // Decided HERE, not in the workflow: whether this is a real edit depends on
