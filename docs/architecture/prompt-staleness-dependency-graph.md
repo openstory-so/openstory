@@ -98,7 +98,8 @@ Two verdicts sit outside that compare, both in `ArtifactStaleness`
 (`shot-staleness.ts`): **`generating`** short-circuits a shot with a run in
 flight (#1121 — the reason a fresh sequence must not be judged mid-run) and
 **`updating`** a shot with a pending Update-all claim (#1085); `unknown` is the
-no-context case.
+no-context case, and what a shot reads when its whole compare throws in a
+batch (#2293) - never `untracked`, which means "no stored hash".
 
 `recompute(now)` reads the **current persisted state** and re-derives the hash.
 Helpers live in [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts). The
