@@ -432,6 +432,20 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       );
     });
 
+    it('a dialogue edit refetches the open prompt preview and the lines', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.shot:updated', {
+        shotId: 'shot-1',
+        updateType: 'dialogue',
+      });
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(['shot-prompt-preview', SEQ]);
+      expect(keys).toContainEqual(shotKeys.list(SEQ));
+      expect(keys).toContainEqual(shotKeys.dialogueVersions('shot-1'));
+      expect(keys).toContainEqual(shotKeys.dialogueSections('shot-1'));
+    });
+
     it.each(['generation.complete', 'generation.failed'])(
       '%s refreshes persisted dialogue even if the per-shot event was missed',
       (eventName) => {

@@ -181,7 +181,11 @@ export function updateQueryCacheFromEvent(
       const promptUpdated =
         updateType === 'visual-prompt' || updateType === 'motion-prompt';
       // Dialogue clips live on the shot and feed the video inspector’s player.
-      if (promptUpdated || updateType === 'dialogue-audio') {
+      if (
+        promptUpdated ||
+        updateType === 'dialogue' ||
+        updateType === 'dialogue-audio'
+      ) {
         debouncedInvalidate(
           queryClient,
           shotKeys.list(sequenceId),
@@ -204,6 +208,34 @@ export function updateQueryCacheFromEvent(
             queryClient,
             segmentKeys.list(sequenceId),
             `segments:${sequenceId}`
+          );
+        }
+        if (shotId && updateType === 'dialogue') {
+          debouncedInvalidate(
+            queryClient,
+            shotKeys.dialogueVersions(shotId),
+            `dialogue-versions:${shotId}`
+          );
+          debouncedInvalidate(
+            queryClient,
+            shotKeys.dialogueSections(shotId),
+            `dialogue-sections:${shotId}`
+          );
+          debouncedInvalidate(
+            queryClient,
+            segmentKeys.list(sequenceId),
+            `segments:${sequenceId}`
+          );
+          debouncedInvalidate(
+            queryClient,
+            [...shotStalenessNamespace],
+            `shot-staleness:${sequenceId}`
+          );
+          // The preview reads the lines live, but its key holds none of them.
+          debouncedInvalidate(
+            queryClient,
+            ['shot-prompt-preview', sequenceId],
+            `shot-prompt-preview:${sequenceId}`
           );
         }
         if (shotId && promptUpdated) {

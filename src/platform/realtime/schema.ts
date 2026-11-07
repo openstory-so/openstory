@@ -127,6 +127,8 @@ export const realtimeSchema = {
       updateType: z.enum([
         'visual-prompt',
         'motion-prompt',
+        // A user edit of a shot's lines or reading (#2294).
+        'dialogue',
         'dialogue-audio',
         'audio-design',
         'music-design',
