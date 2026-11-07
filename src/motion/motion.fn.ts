@@ -169,12 +169,13 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         : [];
     });
     // Server determines eligible shots: still done, video pending/failed/
-    // cancelled, or completed and stale (#2274). 'cancelled' (#1108) belongs here because THIS is the
-    // user-driven batch — a cancel only excludes a shot from AUTO retry
-    // (smart retry, which matches 'failed' alone). The clients compute the
-    // same set optimistically (scenes-view, mobile-scene-drawer); leaving it
-    // out here made them disagree, so a cancelled shot showed an optimistic
-    // spinner the server then silently skipped.
+    // cancelled, or completed and stale (#2274). 'cancelled' (#1108) belongs
+    // here because THIS is the user-driven batch — a cancel only excludes a
+    // shot from AUTO retry (smart retry, which matches 'failed' alone). The
+    // clients compute the same set optimistically (scenes-view,
+    // mobile-scene-drawer); leaving it out here made them disagree, so a
+    // cancelled shot showed an optimistic spinner the server then silently
+    // skipped.
     // Reference-only sequences render no stills, so the still-done half of the
     // filter would exclude every shot; there the video status alone decides.
     // Per shot now, not per sequence: a shot can override the sequence default
