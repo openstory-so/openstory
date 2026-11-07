@@ -235,18 +235,25 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                   />
                 </span>
               )}
-              {(hasVideo || isGeneratingVideo) && (
-                <span
-                  aria-label={
-                    isGeneratingVideo ? 'Generating motion…' : 'Motion ready'
-                  }
-                  className={cn(
-                    'absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-background/60 text-foreground/80',
-                    isGeneratingVideo && 'motion-safe:animate-pulse'
-                  )}
-                >
-                  <Play className="h-2.5 w-2.5 fill-current" />
+              {isGeneratingVideo && clipUrl ? (
+                // A re-render over a clip: the clip stays, the badge says so (#2274).
+                <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm motion-safe:animate-pulse">
+                  Generating…
                 </span>
+              ) : (
+                (hasVideo || isGeneratingVideo) && (
+                  <span
+                    aria-label={
+                      isGeneratingVideo ? 'Generating motion…' : 'Motion ready'
+                    }
+                    className={cn(
+                      'absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-background/60 text-foreground/80',
+                      isGeneratingVideo && 'motion-safe:animate-pulse'
+                    )}
+                  >
+                    <Play className="h-2.5 w-2.5 fill-current" />
+                  </span>
+                )
               )}
             </div>
           </div>

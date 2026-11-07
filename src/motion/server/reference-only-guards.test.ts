@@ -166,14 +166,15 @@ describe('isBatchMotionEligible', () => {
     // imageStatus stays 'pending' forever when the image pass never runs, so
     // the still half of the rule used to exclude every shot — hiding the
     // "Generate all motion" button outright.
-    expect(isBatchMotionEligible(refOnlyShot, true)).toBe(true);
-    expect(isBatchMotionEligible(refOnlyShot, false)).toBe(false);
+    expect(isBatchMotionEligible(refOnlyShot, true, false)).toBe(true);
+    expect(isBatchMotionEligible(refOnlyShot, false, false)).toBe(false);
   });
 
   it('still requires a completed still on the image-to-video path', () => {
     expect(
       isBatchMotionEligible(
         { ...refOnlyShot, imageStatus: 'completed', image: null },
+        false,
         false
       )
     ).toBe(false);
@@ -184,9 +185,27 @@ describe('isBatchMotionEligible', () => {
           imageStatus: 'completed',
           image: { url: 'https://x/a.png' },
         },
+        false,
         false
       )
     ).toBe(true);
+  });
+
+  it('re-renders a completed clip only when it is stale', () => {
+    const rendered = {
+      imageStatus: 'completed' as const,
+      image: { url: 'https://x/a.png' },
+      videoStatus: 'completed' as const,
+    };
+    expect(isBatchMotionEligible(rendered, false, false)).toBe(false);
+    expect(isBatchMotionEligible(rendered, false, true)).toBe(true);
+    expect(
+      isBatchMotionEligible(
+        { ...rendered, videoStatus: 'generating' },
+        false,
+        true
+      )
+    ).toBe(false);
   });
 
   it('reports an in-flight render without a still', () => {

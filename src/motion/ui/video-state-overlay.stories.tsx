@@ -54,6 +54,22 @@ export const HasThumbnail: Story = {
   },
 };
 
+export const RegeneratingClip: Story = {
+  args: {
+    thumbnailUrl: 'https://example.com/image.jpg',
+    hasPlayableVideo: true,
+    videoStatus: 'generating',
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'A new render over an existing clip: the clip stays playable under a Generating… badge.',
+      },
+    },
+  },
+};
+
 export const Failed: Story = {
   args: {
     thumbnailUrl: 'https://example.com/image.jpg',
