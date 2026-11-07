@@ -29,7 +29,11 @@ export type OpenStoryMcpContext = {
   caller: McpCallerIdentity;
   /** The host the request reached; media URLs and view CSP use it. */
   origin: string;
-  scoped: (scope: OAuthApiScope) => ReadToolContext;
+  /** `sequenceId` lets a system admin's `osk_` key reach another organization's sequence. */
+  scoped: (
+    scope: OAuthApiScope,
+    sequenceId?: string
+  ) => ReadToolContext | Promise<ReadToolContext>;
 };
 /** The same object; the name every tool definition is typed with. */
 export type OpenStoryToolContext = OpenStoryMcpContext;
@@ -180,7 +184,7 @@ function unreportedWrite(
 async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>,
   input: unknown,
-  context: () => ReadToolContext
+  context: (input: z.output<I>) => ReadToolContext | Promise<ReadToolContext>
 ): Promise<CallToolResult> {
   // The SDK checks the advertised JSON Schema; refinements, defaults and the
   // discriminated unions it cannot express are checked by zod here. Some
@@ -195,7 +199,10 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
   const written = !spec.annotations.readOnlyHint;
   try {
-    const { data, summary, images } = await spec.run(parsed.data, context());
+    const { data, summary, images } = await spec.run(
+      parsed.data,
+      await context(parsed.data)
+    );
     const output = spec.outputSchema.safeParse(data);
     if (!output.success && !written) {
       throw new Error(`openstory.${spec.name} output failed its schema`, {
@@ -316,6 +323,13 @@ function toolTitle(name: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/** The parsed input's top-level `sequenceId`, if it has one. */
+function sequenceIdOf(input: object): string | undefined {
+  return 'sequenceId' in input && typeof input.sequenceId === 'string'
+    ? input.sequenceId
+    : undefined;
+}
+
 /** One `openstory.*` tool as a `toolDefinition().server()`. */
 export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>
@@ -342,8 +356,8 @@ export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
     // envelope and the JSON text fallback; the typed output is its
     // structuredContent.
     async (input, ctx) => {
-      const result = await runTool(spec, input, () =>
-        ctx.context.scoped(spec.scope)
+      const result = await runTool(spec, input, (parsed) =>
+        ctx.context.scoped(spec.scope, sequenceIdOf(parsed))
       );
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the result is a CallToolResult, passed through as is (see above)
       return result as never;
