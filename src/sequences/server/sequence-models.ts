@@ -37,6 +37,7 @@ import {
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import { buildShotImageWorkflowInput } from '@/stills/server/build-shot-image-input';
+import { derivedStillPrompt } from '@/shots/server/still-prompt';
 import { toShotView, type ShotView } from '@/shots/shot-view';
 import {
   motionPromptFromVersion,
@@ -624,9 +625,10 @@ export async function addModelToSequence(
     const selectedPrompt = anchorFrame
       ? promptByFrameId.get(anchorFrame.id)
       : undefined;
+    const scene = resolveSceneForShot(f, imageSceneContext).scene;
     const input = await buildShotImageWorkflowInput({
       shot: f,
-      scene: resolveSceneForShot(f, imageSceneContext).scene,
+      scene,
       model,
       userId: user.id,
       organizationId: sequence.organizationId,
@@ -636,7 +638,9 @@ export async function addModelToSequence(
       characters,
       locations,
       elements,
-      imagePrompt: selectedPrompt?.text ?? null,
+      imagePrompt:
+        selectedPrompt?.text ??
+        (await derivedStillPrompt(scopedDb, { shotId: f.id, scene, sequence })),
       // Adding a model never repoints the primary — it lands as an alternate
       // variant only. Promote later with "Set". (#547)
       variantOnly: true,

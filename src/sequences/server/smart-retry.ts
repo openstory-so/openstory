@@ -1,4 +1,5 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
+import { derivedStillPrompt } from '@/shots/server/still-prompt';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
@@ -438,7 +439,13 @@ export async function executeSmartRetry(
     for (const shot of failedImageShots) {
       const scene = sceneOf(shot);
       const promptVersion = shot.imagePromptVersion;
-      const prompt = promptVersion?.text || scene?.originalScript.extract;
+      const prompt =
+        promptVersion?.text ||
+        (await derivedStillPrompt(context.scopedDb, {
+          shotId: shot.id,
+          scene: scene ?? null,
+          sequence,
+        }));
 
       if (!prompt) continue;
 
