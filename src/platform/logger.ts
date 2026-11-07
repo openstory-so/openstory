@@ -131,36 +131,6 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
       )
     : redactByPattern(getJsonLinesFormatter(), SECRET_PATTERNS);
 
-  // #1974 test, do not merge: compare how native OTLP export renders each shape.
-  if (!dev) {
-    const text = (r: LogRecord): string =>
-      r.message
-        .map((p, i) =>
-          i % 2 === 0 || typeof p === 'string' ? String(p) : JSON.stringify(p)
-        )
-        .join('');
-    const shapeA: ConsoleFormatter = (r) => [
-      {
-        message: text(r),
-        logger: r.category.join('.'),
-        variant: 'A',
-        ...r.properties,
-      },
-    ];
-    const shapeB: ConsoleFormatter = (r) => [
-      text(r),
-      { logger: r.category.join('.'), variant: 'B', ...r.properties },
-    ];
-    return {
-      consoleA: getConsoleSink({
-        formatter: redactByPattern(shapeA, SECRET_PATTERNS),
-      }),
-      consoleB: getConsoleSink({
-        formatter: redactByPattern(shapeB, SECRET_PATTERNS),
-      }),
-    };
-  }
-
   return { console: getConsoleSink({ formatter }) };
 }
 
