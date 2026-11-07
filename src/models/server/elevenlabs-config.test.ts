@@ -13,6 +13,7 @@ const {
   loadElevenLabsSpeech,
   loadElevenLabsAudio,
   createElevenLabsSdk,
+  retryOnRateLimit,
 } = await import('./elevenlabs-config');
 
 describe('isElevenLabsConfigured', () => {
@@ -228,6 +229,25 @@ describe('ElevenLabs concurrency 429', () => {
     const fetch = stubFetch(serverError);
     expect(await settle(saveVoice())).toHaveProperty('error');
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a voice save refused with 429 every time fails with that 429', async () => {
+    const fetch = stubFetch(concurrencyLimit);
+    const outcome = await settle(saveVoice());
+    expect(outcome).toHaveProperty('error.statusCode', 429);
+    expect(fetch).toHaveBeenCalledTimes(9);
+  });
+
+  it('an abort stops the wait between 429s', async () => {
+    const controller = new AbortController();
+    const call = vi.fn(async () => {
+      throw Object.assign(new Error('busy'), { statusCode: 429 });
+    });
+    const run = retryOnRateLimit(call, controller.signal);
+    await Promise.resolve();
+    controller.abort(new Error('stopped'));
+    await expect(run).rejects.toThrow('stopped');
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('the SDK does not retry a 400', async () => {

@@ -152,12 +152,9 @@ describe('resolveAssignableVoiceId', () => {
         name: 'Narrator · Sam',
       })
     ).resolves.toBe('copy-1');
-    expect(mockShare).toHaveBeenCalledWith(
-      'owner-1',
-      'lib-1',
-      { newName: 'Narrator · Sam' },
-      { maxRetries: 0 }
-    );
+    expect(mockShare).toHaveBeenCalledWith('owner-1', 'lib-1', {
+      newName: 'Narrator · Sam',
+    });
   });
 });
 

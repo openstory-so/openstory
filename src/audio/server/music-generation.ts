@@ -249,6 +249,7 @@ async function callElevenLabsAudio(
     apiKeyInfo.key,
     {
       timeoutInSeconds: adapterConfig.timeoutInSeconds,
+      maxRetries: adapterConfig.maxRetries,
       ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
     }
   );
