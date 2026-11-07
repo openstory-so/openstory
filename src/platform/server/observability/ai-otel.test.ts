@@ -59,8 +59,8 @@ const mockStartSpan = vi.fn(
 // Overridable per test so the flush-failure path can be driven.
 const mockTraceForceFlush = vi.fn(() => Promise.resolve());
 const mockMeterForceFlush = vi.fn(() => Promise.resolve());
-vi.doMock('@opentelemetry/sdk-trace-base', () => ({
-  BasicTracerProvider: class {
+vi.doMock('@opentelemetry/sdk-trace', () => ({
+  TracerProvider: class {
     getTracer() {
       return { startSpan: mockStartSpan };
     }
