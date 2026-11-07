@@ -233,7 +233,12 @@ export const AddModelMenuSection = ({
                     toast.success(
                       r.failed > 0
                         ? `Generating ${name} (${r.count}) — ${r.failed} failed to start`
-                        : `Generating ${name} (${r.count})…`
+                        : `Generating ${name} (${r.count})…`,
+                      r.skipped > 0
+                        ? {
+                            description: `${r.skipped} ${r.skipped === 1 ? 'shot has' : 'shots have'} no image prompt, skipped.`,
+                          }
+                        : undefined
                     ),
                   onError: (e) => toast.error(e.message),
                 }

@@ -41,7 +41,11 @@ import {
 } from '@/shots/scene-matching';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
 import { ValidationError } from '@/platform/errors';
-import { NO_STILL_PROMPT_MESSAGE, derivedStillPrompt } from './still-prompt';
+import {
+  NO_STILL_PROMPT_MESSAGE,
+  derivedStillPrompt,
+  lazySequenceStyle,
+} from './still-prompt';
 
 /** The sequence-scoped rows reference matching needs, resolved once per run. */
 export type ShotImageRefs = Pick<
@@ -162,7 +166,11 @@ export async function prepareShotImageWorkflowInput(args: {
   const prompt =
     promptOverride ||
     selectedPrompt?.text ||
-    (await derivedStillPrompt(scopedDb, { shotId: shot.id, scene, sequence }));
+    (await derivedStillPrompt(scopedDb, {
+      shotId: shot.id,
+      scene,
+      styleConfig: lazySequenceStyle(scopedDb, sequence),
+    }));
   if (!prompt || !prompt.trim()) {
     throw new ValidationError(NO_STILL_PROMPT_MESSAGE);
   }

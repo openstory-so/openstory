@@ -37,7 +37,10 @@ import {
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import { buildShotImageWorkflowInput } from '@/stills/server/build-shot-image-input';
-import { derivedStillPrompt } from '@/shots/server/still-prompt';
+import {
+  derivedStillPrompt,
+  lazySequenceStyle,
+} from '@/shots/server/still-prompt';
 import { toShotView, type ShotView } from '@/shots/shot-view';
 import {
   motionPromptFromVersion,
@@ -90,6 +93,8 @@ export type AddModelResult = {
   model: string;
   count: number;
   failed: number;
+  /** Shots left out: no image prompt and no spec to derive one from. */
+  skipped: number;
 };
 
 /**
@@ -256,6 +261,7 @@ export async function addModelToSequence(
             model,
             count: 1,
             failed: 0,
+            skipped: 0,
           } satisfies AddModelResult;
         }
       );
@@ -573,6 +579,7 @@ export async function addModelToSequence(
         model,
         count: eligible.length,
         failed: 0,
+        skipped: 0,
       } satisfies AddModelResult;
     } catch (error) {
       // No compensating cleanup needed: nothing is pre-written, and a failed
@@ -620,6 +627,9 @@ export async function addModelToSequence(
   const inputs: NonNullable<
     Awaited<ReturnType<typeof buildShotImageWorkflowInput>>
   >[] = [];
+  const styleConfig = lazySequenceStyle(scopedDb, sequence);
+  // Shots with no still prompt and no spec to derive one from (#2291).
+  let skipped = 0;
   for (const f of allShots) {
     const anchorFrame = imageFramesByShotId.get(f.id);
     const selectedPrompt = anchorFrame
@@ -640,7 +650,11 @@ export async function addModelToSequence(
       elements,
       imagePrompt:
         selectedPrompt?.text ??
-        (await derivedStillPrompt(scopedDb, { shotId: f.id, scene, sequence })),
+        (await derivedStillPrompt(scopedDb, {
+          shotId: f.id,
+          scene,
+          styleConfig,
+        })),
       // Adding a model never repoints the primary — it lands as an alternate
       // variant only. Promote later with "Set". (#547)
       variantOnly: true,
@@ -648,12 +662,15 @@ export async function addModelToSequence(
     // The anchor + the prompt version this render is built from, snapshotted
     // here so the workflow stamps the variant with the prompt it actually
     // rendered rather than whatever the pointer says when it runs (#1070).
-    if (input)
-      inputs.push({
-        ...input,
-        frameId: anchorFrame?.id,
-        promptVersionId: selectedPrompt?.id ?? null,
-      });
+    if (!input) {
+      skipped++;
+      continue;
+    }
+    inputs.push({
+      ...input,
+      frameId: anchorFrame?.id,
+      promptVersionId: selectedPrompt?.id ?? null,
+    });
   }
   if (inputs.length === 0) {
     throw new ValidationError('No shots have a prompt to generate from');
@@ -734,6 +751,7 @@ export async function addModelToSequence(
     model,
     count: triggered,
     failed: inputs.length - triggered,
+    skipped,
   } satisfies AddModelResult;
 }
 

@@ -1288,7 +1288,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       toast.success(
         result.retryType === 'full'
           ? 'Continuing generation'
-          : `Retrying: ${result.retriedItems.join(', ')}`
+          : `Retrying: ${result.retriedItems.join(', ')}`,
+        result.skippedShots > 0
+          ? {
+              description: `${result.skippedShots} ${result.skippedShots === 1 ? 'shot has' : 'shots have'} no image prompt, skipped.`,
+            }
+          : undefined
       );
       void queryClient.invalidateQueries({
         queryKey: ['sequence', sequenceId],

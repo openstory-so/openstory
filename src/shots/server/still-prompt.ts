@@ -1,6 +1,16 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
+import type { StyleConfig } from '@/look/style-config';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { type DeriveScene, deriveStillPrompt } from '@/shots/shot-list.derive';
+
+/** The sequence look, loaded once and only when a prompt is derived. */
+export function lazySequenceStyle(
+  scopedDb: Pick<ScopedDb, 'sequences' | 'styles'>,
+  sequence: { id: string; styleConfig?: unknown; styleId?: string | null }
+): () => Promise<StyleConfig> {
+  let style: Promise<StyleConfig> | undefined;
+  return () => (style ??= loadSequenceStyle(scopedDb, sequence));
+}
 
 /**
  * A still prompt for a shot with no selected visual prompt: derived from its
@@ -8,18 +18,21 @@ import { type DeriveScene, deriveStillPrompt } from '@/shots/shot-list.derive';
  * in as captions (#2291). Null when the shot has no spec to derive from.
  */
 export async function derivedStillPrompt(
-  scopedDb: Pick<ScopedDb, 'shotSpecVersions' | 'sequences' | 'styles'>,
+  scopedDb: Pick<ScopedDb, 'shotSpecVersions'>,
   input: {
     shotId: string;
     scene: DeriveScene | null;
-    sequence: { id: string; styleConfig?: unknown; styleId?: string | null };
+    styleConfig: () => Promise<StyleConfig>;
   }
 ): Promise<string | null> {
   if (!input.scene) return null;
   const spec = await scopedDb.shotSpecVersions.getSelected(input.shotId);
   if (!spec) return null;
-  const style = await loadSequenceStyle(scopedDb, input.sequence);
-  const text = deriveStillPrompt(spec.spec, input.scene, style);
+  const text = deriveStillPrompt(
+    spec.spec,
+    input.scene,
+    await input.styleConfig()
+  );
   return text.trim() ? text : null;
 }
 
