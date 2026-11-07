@@ -147,6 +147,15 @@ export const UNTRACKED_STALENESS: ShotStalenessResult = {
   causes: [],
 };
 
+/** Every artifact uncomputable — the compare threw. */
+export const UNKNOWN_STALENESS: ShotStalenessResult = {
+  ...UNTRACKED_STALENESS,
+  thumbnail: 'unknown',
+  visualPrompt: 'unknown',
+  motionPrompt: 'unknown',
+  spec: 'unknown',
+};
+
 /** Every artifact deferred — the sequence is mid-run (#1121). */
 export const GENERATING_STALENESS: ShotStalenessResult = {
   thumbnail: 'generating',

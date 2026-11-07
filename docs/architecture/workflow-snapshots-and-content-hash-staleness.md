@@ -131,7 +131,8 @@ continuity tags — lives on its selected `scene_script_versions` row with the
 script, not on the `scenes` row. Every write appends a row carrying the
 selected script plus the new narrative: a person's edit (`updateNarrative`,
 `'edit'`), a continuity rescan after a prompt or script edit
-(`updateContinuity`, or the same row as the script edit), an element rename
+(`updateContinuity`, or the same row as the script edit; Regenerate Image
+rescans only when its prompt differs from the selected one, #2290), an element rename
 (one `renamed` row with both rewrites), and a hand-added scene (an empty
 script plus its narrative). Scene split writes the narrative into the split
 row with the script, in place like the content. Every scoped scene read joins

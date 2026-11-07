@@ -23,6 +23,7 @@ import type {
 import { dbSceneId } from '@/shots/scene-id';
 import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
+import { shouldRecordUserEdit } from '@/shots/server/workflows/user-edit-predicate';
 import {
   getSceneLocationReferenceImages,
   prepareShotImageWorkflowInput,
@@ -53,21 +54,23 @@ export async function generateShotImage(
   // to render. A missing override falls through to the stored selected
   // prompt so a stale tab matches the button (#1594).
   const storedVisualPrompt =
-    data.prompt === undefined
-      ? ((await context.scopedDb.framePromptVersions.getSelected(frame.id))
-          ?.text ?? null)
-      : undefined;
+    (await context.scopedDb.framePromptVersions.getSelected(frame.id))?.text ??
+    null;
   requireGenerationPrompt(data.prompt, storedVisualPrompt);
 
   // Auto-link any element/cast/location tags the user mentioned in their
   // edited prompt before computing reference attachment, so a freshly-
   // mentioned LOGO gets its reference image attached to THIS regeneration.
-  // updateShotFn does the same rescan, but the UI never calls it — the
-  // regenerate buttons are the only persistence path for prompts today.
+  // An unedited prompt from the editor is no edit: scene tags stay (#2290).
   const userEditedPrompt = data.prompt !== undefined;
   let sceneForInput = resolvedScene;
   const baseContinuity = resolvedScene?.continuity;
-  if (userEditedPrompt && data.prompt && resolvedScene && baseContinuity) {
+  const promptEdited = shouldRecordUserEdit({
+    userEditedPrompt,
+    prompt: data.prompt,
+    currentPrompt: storedVisualPrompt,
+  });
+  if (promptEdited && data.prompt && resolvedScene && baseContinuity) {
     const rescan = await rescanContinuityFromPrompt({
       scopedDb: context.scopedDb,
       sequenceId: sequence.id,

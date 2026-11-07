@@ -98,7 +98,8 @@ Two verdicts sit outside that compare, both in `ArtifactStaleness`
 (`shot-staleness.ts`): **`generating`** short-circuits a shot with a run in
 flight (#1121 — the reason a fresh sequence must not be judged mid-run) and
 **`updating`** a shot with a pending Update-all claim (#1085); `unknown` is the
-no-context case.
+no-context case, and also what a batch read reports for a shot whose compare
+threw (`untracked` would claim the shot has nothing to track).
 
 `recompute(now)` reads the **current persisted state** and re-derives the hash.
 Helpers live in [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts). The
@@ -720,6 +721,11 @@ manifest pins the rewrite, and the rewrite takes the selection only with that
 clip's promote. The TTS model follows the voice
 (`eleven_v3` for an ElevenLabs voice, `seed-audio-1.0` for a Seed voice,
 #1765), so it moves only when the voice does.
+
+Duration is snapped onto the rendering model's grid on both sides (#767).
+An uploaded clip (`user-upload`) has no grid: its stamped `durationMs` is the
+measured file length, which the upload also writes to the shot, so it is
+compared exactly and a retime stales it (#2292).
 
 A lip-sync (#2263) is its own video version (`source: 'lipsync'`) under the
 model that rendered the clip. It copies the source manifest and rewrites only

@@ -13,6 +13,7 @@ import {
   type LiveShotInputs,
 } from './scene-segments';
 import { dialogueLinesKey, shotDialogue } from './shot-dialogue';
+import { USER_UPLOAD_MODEL } from './user-upload-model';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import { asStub } from '@/test/as-stub';
 
@@ -862,5 +863,17 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
         durationMsByShot: new Map([['shot-1', 0]]),
       })
     ).toBe(false);
+  });
+
+  it('compares an uploaded clip duration exactly (#2292)', () => {
+    const v = version('v1', 'seg', USER_UPLOAD_MODEL, [
+      { ...entry, durationMs: 4200 },
+    ]);
+    expect(stale(v, { durationMsByShot: new Map([['shot-1', 4200]]) })).toBe(
+      false
+    );
+    expect(stale(v, { durationMsByShot: new Map([['shot-1', 9000]]) })).toBe(
+      true
+    );
   });
 });

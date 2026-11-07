@@ -12,6 +12,7 @@ import {
   GENERATING_STALENESS,
   loadShotStalenessReads,
   loadShotStalenessRefs,
+  UNKNOWN_STALENESS,
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
@@ -147,7 +148,7 @@ export async function loadStalenessForShots(
           );
           return [
             shot.id,
-            toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+            toWireStaleness(UNKNOWN_STALENESS, media.get(shot.id)),
           ];
         }
       }

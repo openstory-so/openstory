@@ -40,6 +40,7 @@ import type {
 } from '@/platform/server/db/schema';
 import { durationSecondsOf } from './packed-clip-window';
 import type { ShotView } from './shot-view';
+import { USER_UPLOAD_MODEL } from './user-upload-model';
 
 /** One video render (version) of a segment, trimmed to what the editor shows. */
 export type SegmentVideoVersion = Pick<
@@ -471,8 +472,9 @@ function audioClipsMoved(
 
 /**
  * Single-shot durations are snapped to the model's grid and may be raised
- * to cover dialogue audio. Packed members instead store their exact editorial
- * duration; only the whole clip is snapped. Unset durations are not compared.
+ * to cover dialogue audio. Packed members and uploads instead store their
+ * exact editorial duration; only a whole render is snapped. Unset durations
+ * are not compared.
  */
 function durationMoved(
   entry: { shotId: string; durationMs?: number },
@@ -482,10 +484,13 @@ function durationMoved(
 ): boolean {
   if (entry.durationMs === undefined) return false;
   const rawMs = live.durationMsByShot.get(entry.shotId);
-  if (!rawMs || rawMs <= 0 || !isValidImageToVideoModel(model)) return false;
+  if (!rawMs || rawMs <= 0) return false;
   // Packed entries store each member's editorial duration, not a standalone
   // request duration. The model's minimum applies to the whole clip (#1720).
-  if (packed) return entry.durationMs !== Math.round(rawMs);
+  if (packed || model === USER_UPLOAD_MODEL) {
+    return entry.durationMs !== Math.round(rawMs);
+  }
+  if (!isValidImageToVideoModel(model)) return false;
   const snapped = resolveShotDuration({ durationMs: rawMs, model });
   const audioSeconds = live.audioSecondsByShot.get(entry.shotId) ?? 0;
   const raised = raiseShotDurationToCoverAudio(snapped, audioSeconds, model);
