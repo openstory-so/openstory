@@ -556,7 +556,8 @@ test.describe('Editing scenes', () => {
     await openSceneScript(second);
     await page.getByRole('tab', { name: 'Locations' }).click();
     const select = page.getByRole('combobox', { name: 'Scene location' });
-    const current = ((await select.textContent()) ?? '').trim();
+    const value = select.locator('[data-slot="select-value"]');
+    const current = ((await value.textContent()) ?? '').trim();
     await select.click();
     const option = page
       .getByRole('option')
@@ -564,7 +565,7 @@ test.describe('Editing scenes', () => {
       .first();
     const chosen = ((await option.textContent()) ?? '').trim();
     await option.click();
-    await expect(select).toHaveText(chosen);
+    await expect(value).toHaveText(chosen);
     const removeButton = (name: string) =>
       page.getByRole('button', { name: `Remove ${name} from sequence` });
     await expect(removeButton(chosen)).toBeVisible();
