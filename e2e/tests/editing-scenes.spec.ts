@@ -375,15 +375,24 @@ test.describe('Editing scenes', () => {
 
     const panel = await openSceneScript(second);
     const editor = panel.locator('[contenteditable="true"]').first();
-    // Caret to the very end; Meta+End does not move it on macOS.
-    await editor.evaluate((el: HTMLElement) => {
-      el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      getSelection()?.removeAllRanges();
-      getSelection()?.addRange(range);
-    });
+    // Move the caret through the editor; a DOM-set range can be reset by it.
+    const toEnd =
+      process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End';
+    await expect(async () => {
+      await editor.click();
+      await page.keyboard.press(toEnd);
+      expect(
+        await editor.evaluate((el: HTMLElement) => {
+          const sel = getSelection();
+          if (!sel?.rangeCount) return false;
+          // No text after the caret.
+          const rest = document.createRange();
+          rest.setStart(sel.focusNode ?? el, sel.focusOffset);
+          rest.setEnd(el, el.childNodes.length);
+          return rest.toString().trim() === '';
+        })
+      ).toBe(true);
+    }).toPass({ timeout: 10_000 });
     await page.keyboard.press('Enter');
     await page.keyboard.type(ADDED_BEAT);
     await panel.getByRole('button', { name: 'Save', exact: true }).click();
