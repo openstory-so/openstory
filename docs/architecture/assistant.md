@@ -21,6 +21,13 @@ only assistant-side work per tool happens in
   with Allow / Deny. A spend does not ask: the user is inside the app, the
   page shows the generation as it starts, and it can be cancelled there.
   A read never asks. `assistant-tools.test.ts` pins this against the catalog.
+  The server tools are not registered on the client, so an approval reaches
+  the browser as a generic interrupt, not a `tool-approval` one. The card finds
+  it by the tool call id on its binding (`approvalFor` in
+  `src/assistant/ui/approvals.ts`) and answers `{ approved }`. The card shows
+  Allow / Deny only while a matching interrupt is open, disables them while
+  the run resumes, and offers Reload (hydrate again) when none matches. The
+  composer refuses a message while an approval waits: the client throws on one.
 - Tools outside `EAGER_TOOLS` are `lazy`: the model sees the name and the
   first sentence, and discovers a schema when it needs one.
 - The model calls a tool by `chatToolName`: `openstory_get_shot`, the MCP
