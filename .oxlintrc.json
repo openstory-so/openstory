@@ -250,6 +250,7 @@
         "src/platform/server/db/scoped-workflow.ts",
         "src/platform/server/db/scoped/admin.ts",
         "src/platform/server/db/seed-system-templates.ts",
+        "src/platform/server/test/seed.ts",
         "src/platform/server/api-v1/**",
         "src/platform/server/mcp/tools/**",
         "src/platform/ui/realtime/query-cache-updater.ts",
