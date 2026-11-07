@@ -41,7 +41,10 @@ which dispatches `POST /v1/text-to-speech/{voice_id}` (`onElevenLabsTTS`),
 `ELEVENLABS_API_KEY=test-mock-key`; record uses the real key from
 `.env.local` and aimock's `providers.elevenlabs` proxy. Under `E2E_TEST` the
 via stays off unless the base URL is also set, so a laptop key cannot bill
-replay.
+replay. A recording of a 429 or 5xx is dropped and not saved
+(`e2e/mocks/recorded-errors.ts`), so the retry proxies again; replaying one
+would retry it forever. Recorded 4xx stay: the tape relies on
+`voice_limit_reached` answers.
 
 No Voice Design tape exists yet: nothing in the suite turns `generateVoices`
 on, and strict replay refuses all four routes without a fixture (aimock
