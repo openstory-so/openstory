@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 
@@ -13,6 +13,7 @@ const {
   loadElevenLabsSpeech,
   loadElevenLabsAudio,
   createElevenLabsSdk,
+  retryOnRateLimit,
 } = await import('./elevenlabs-config');
 
 describe('isElevenLabsConfigured', () => {
@@ -118,5 +119,141 @@ describe('lazy loaders', () => {
   it('constructs the Voice Design SDK with the e2e base URL', async () => {
     const client = await createElevenLabsSdk('el-test');
     expect(client).toBeDefined();
+  });
+});
+
+// #2295: the plan allows 2 concurrent requests; a third gets this 429.
+describe('ElevenLabs concurrency 429', () => {
+  const concurrencyLimit = () =>
+    Response.json(
+      {
+        detail: {
+          status: 'concurrent_limit_exceeded',
+          message: 'Too many concurrent requests.',
+        },
+      },
+      { status: 429 }
+    );
+  const badRequest = () =>
+    Response.json({ detail: { status: 'invalid_request' } }, { status: 400 });
+  const serverError = () =>
+    Response.json({ detail: { status: 'internal' } }, { status: 500 });
+  const design = () =>
+    Response.json({
+      previews: [
+        {
+          generated_voice_id: 'gv_1',
+          audio_base_64: 'SUQz',
+          media_type: 'audio/mpeg',
+          duration_secs: 1,
+        },
+      ],
+      text: 'hi',
+    });
+  const voice = () =>
+    Response.json({ voice_id: 'v_1', name: 'Narrator', category: 'generated' });
+  const voiceModule = () => import('@/cast/server/voice/elevenlabs-voice');
+
+  beforeEach(async () => {
+    env.ELEVENLABS_BASE_URL = 'http://elevenlabs.test';
+    await voiceModule();
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function settle<T>(promise: Promise<T>) {
+    let outcome: { value: T } | { error: unknown } | undefined;
+    promise.then(
+      (value) => (outcome = { value }),
+      (error: unknown) => (outcome = { error })
+    );
+    while (!outcome) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(60_000);
+    }
+    return outcome;
+  }
+
+  function stubFetch(...replies: Array<() => Response>) {
+    const fetch = vi.fn();
+    for (const reply of replies.slice(0, -1)) {
+      fetch.mockImplementationOnce(async () => reply());
+    }
+    const last = replies.at(-1);
+    if (last) fetch.mockImplementation(async () => last());
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  const designVoice = async () =>
+    (await voiceModule()).designVoicePreviews('el-test', 'A dry narrator.');
+  const saveVoice = async () =>
+    (await voiceModule()).saveDesignedVoice('el-test', {
+      voiceName: 'Narrator',
+      voiceDescription: 'A dry narrator.',
+      generatedVoiceId: 'gv_1',
+    });
+
+  it('Voice Design waits out three 429s', async () => {
+    const fetch = stubFetch(
+      concurrencyLimit,
+      concurrencyLimit,
+      concurrencyLimit,
+      design
+    );
+    expect(await settle(designVoice())).toHaveProperty('value');
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('Voice Design does not retry a 400', async () => {
+    const fetch = stubFetch(badRequest);
+    expect(await settle(designVoice())).toHaveProperty('error');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('the SDK waits out three 429s', async () => {
+    const fetch = stubFetch(
+      concurrencyLimit,
+      concurrencyLimit,
+      concurrencyLimit,
+      voice
+    );
+    expect(await settle(saveVoice())).toEqual({ value: 'v_1' });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('the SDK never resends a create after a 5xx', async () => {
+    const fetch = stubFetch(serverError);
+    expect(await settle(saveVoice())).toHaveProperty('error');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a voice save refused with 429 every time fails with that 429', async () => {
+    const fetch = stubFetch(concurrencyLimit);
+    const outcome = await settle(saveVoice());
+    expect(outcome).toHaveProperty('error.statusCode', 429);
+    expect(fetch).toHaveBeenCalledTimes(9);
+  });
+
+  it('an abort stops the wait between 429s', async () => {
+    const controller = new AbortController();
+    const call = vi.fn(async () => {
+      throw Object.assign(new Error('busy'), { statusCode: 429 });
+    });
+    const run = retryOnRateLimit(call, controller.signal);
+    await Promise.resolve();
+    controller.abort(new Error('stopped'));
+    await expect(run).rejects.toThrow('stopped');
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('the SDK does not retry a 400', async () => {
+    const fetch = stubFetch(badRequest);
+    const client = await createElevenLabsSdk('el-test');
+    expect(await settle(client.voices.get('v_1'))).toHaveProperty('error');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
