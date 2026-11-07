@@ -70,8 +70,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
   gemini_omni_flash: {
-    id: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
-    name: 'Gemini Omni Flash 1.1',
+    id: 'google/gemini-omni-flash/v1.2/image-to-video',
+    name: 'Gemini Omni Flash 1.2',
     vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 3,
@@ -983,10 +983,9 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     audioSeconds: { maxCombined: 15 },
   },
   gemini_omni_flash: {
-    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
-    // fal serves Omni Flash text-to-video from the bare model id; there is no
-    // `/text-to-video` path (the queue answers "Path /text-to-video not found").
-    textToVideoEndpointId: 'fal-ai/gemini-omni-1.1-flash',
+    endpointId: 'google/gemini-omni-flash/v1.2/reference-to-video',
+    // 1.2 has its own `/text-to-video` path (1.1 served it from the bare id).
+    textToVideoEndpointId: 'google/gemini-omni-flash/v1.2/text-to-video',
     // Google numbers references from zero (Omni Flash prompt guide); the API
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,

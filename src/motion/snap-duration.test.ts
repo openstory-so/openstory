@@ -43,13 +43,13 @@ describe('snapDuration', () => {
     expect(snapDurationUp(40, 'seedance_v2_5')).toBe(30);
   });
 
-  it('snaps Omni Flash onto the integer 3–10s grid', () => {
+  it('snaps Omni Flash onto the integer 3–15s grid', () => {
     expect(durationGridForModel('gemini_omni_flash')).toEqual([
-      3, 4, 5, 6, 7, 8, 9, 10,
+      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
     expect(snapDuration(undefined, 'gemini_omni_flash')).toBe(3);
     expect(snapDuration(1, 'gemini_omni_flash')).toBe(3);
-    expect(snapDuration(15, 'gemini_omni_flash')).toBe(10);
+    expect(snapDuration(20, 'gemini_omni_flash')).toBe(15);
     expect(snapDuration(5, 'gemini_omni_flash')).toBe(5);
   });
 });

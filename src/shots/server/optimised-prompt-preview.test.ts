@@ -283,7 +283,7 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedSpanLabel).toBe('Shots 1–2');
     expect(result.packedPromptOverflow).toBe(false);
     expect(result.packedLimitWarning).toContain(
-      "Gemini Omni Flash 1.1's 20000-character prompt limit"
+      "Gemini Omni Flash 1.2's 20000-character prompt limit"
     );
     expect(result.packedLimitWarning).toContain('Shot 3');
     expect(result.assembledMotionPrompt).toContain('INT. HALLWAY - NIGHT');
@@ -333,7 +333,7 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedShotIds).toEqual(['shot-1', 'shot-2']);
     expect(result.packedPromptOverflow).toBe(true);
     expect(result.packedLimitWarning).toContain(
-      "This 2-shot clip's prompt exceeds Gemini Omni Flash 1.1's 20000-character limit"
+      "This 2-shot clip's prompt exceeds Gemini Omni Flash 1.2's 20000-character limit"
     );
     expect(result.packedLimitWarning).toContain(
       'Shorten a shot prompt to generate it as one clip'

@@ -57,7 +57,7 @@ vi.doMock('@tanstack/ai-grok', () => ({
 const mockCreateGeminiVideo = vi.fn(() => ({
   kind: 'video',
   name: 'gemini',
-  model: 'gemini-omni-1.1-flash',
+  model: 'gemini-omni-1.2-flash',
 }));
 vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiVideo: mockCreateGeminiVideo,
@@ -272,7 +272,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-t2v',
-      model: 'gemini-omni-1.1-flash',
+      model: 'gemini-omni-1.2-flash',
     });
 
     const result = await submitStudioVideoJob({
@@ -284,7 +284,7 @@ describe('submitStudioVideoJob', () => {
     });
 
     expect(result.via).toBe('google');
-    expect(result.endpointId).toBe('gemini-omni-1.1-flash');
+    expect(result.endpointId).toBe('gemini-omni-1.2-flash');
     expect(mockCreateGeminiVideo).toHaveBeenCalled();
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -308,7 +308,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-frames',
-      model: 'gemini-omni-1.1-flash',
+      model: 'gemini-omni-1.2-flash',
     });
 
     const result = await submitStudioVideoJob({
@@ -344,7 +344,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-refs',
-      model: 'gemini-omni-1.1-flash',
+      model: 'gemini-omni-1.2-flash',
     });
 
     await submitStudioVideoJob({
@@ -394,7 +394,7 @@ describe('submitStudioVideoJob', () => {
       )
       .mockResolvedValue({
         jobId: 'fal-omni-after-refusal',
-        model: 'fal-ai/gemini-omni-1.1-flash',
+        model: 'google/gemini-omni-flash/v1.2/text-to-video',
       });
 
     try {
@@ -417,7 +417,7 @@ describe('submitStudioVideoJob', () => {
   it('falls back to fal Omni Flash T2V when no Google key exists', async () => {
     mockGenerateVideo.mockResolvedValue({
       jobId: 'fal-omni-t2v',
-      model: 'fal-ai/gemini-omni-1.1-flash',
+      model: 'google/gemini-omni-flash/v1.2/text-to-video',
     });
 
     const result = await submitStudioVideoJob({
@@ -428,8 +428,52 @@ describe('submitStudioVideoJob', () => {
     });
 
     expect(result.via).toBe('fal');
-    expect(result.endpointId).toBe('fal-ai/gemini-omni-1.1-flash');
+    expect(result.endpointId).toBe(
+      'google/gemini-omni-flash/v1.2/text-to-video'
+    );
     expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
+  });
+
+  it('caps fal Omni Flash at 10s when an end frame is sent', async () => {
+    mockGenerateVideo.mockResolvedValue({ jobId: 'fal-omni-frames' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Camera pushes in',
+      model: 'gemini_omni_flash',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      endImageUrl: 'https://example.com/end.jpg',
+      duration: 15,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({
+          duration: 10,
+          end_image_url: 'https://example.com/end.jpg',
+        }),
+      })
+    );
+  });
+
+  it('keeps fal Omni Flash at 15s with no end frame', async () => {
+    mockGenerateVideo.mockResolvedValue({ jobId: 'fal-omni-start' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Camera pushes in',
+      model: 'gemini_omni_flash',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      duration: 15,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({ duration: 15 }),
+      })
+    );
   });
 
   it('falls back to fal Grok T2V when no xAI key exists', async () => {
@@ -845,7 +889,7 @@ describe('pollStudioVideoJob', () => {
     const result = await pollStudioVideoJob({
       jobId: 'google-job',
       via: 'google',
-      endpointId: 'gemini-omni-1.1-flash',
+      endpointId: 'gemini-omni-1.2-flash',
       threadId: 'thread-google',
     });
 
@@ -870,7 +914,7 @@ describe('pollStudioVideoJob under a region block', () => {
       const result = await pollStudioVideoJob({
         jobId: 'google-job',
         via: 'google',
-        endpointId: 'gemini-omni-1.1-flash',
+        endpointId: 'gemini-omni-1.2-flash',
         threadId: 'thread-google',
       });
       expect(result.status).toBe('processing');
@@ -901,13 +945,13 @@ describe('studioVideoCostFromUsage', () => {
     const billing = await studioVideoCostFromUsage(
       {
         via: 'google',
-        endpointId: 'gemini-omni-1.1-flash',
+        endpointId: 'gemini-omni-1.2-flash',
         modelKey: 'gemini_omni_flash',
       },
       { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
     );
-    expect(billing.cost).toBe(506_980);
+    expect(billing.cost).toBe(347_700);
     expect(billing.recordFalUsage).toBe(false);
-    expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
+    expect(billing.endpointId).toBe('gemini-omni-1.2-flash');
   });
 });

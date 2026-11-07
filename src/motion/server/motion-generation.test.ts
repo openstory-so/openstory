@@ -55,7 +55,7 @@ vi.doMock('@tanstack/ai-grok', () => ({
 const mockCreateGeminiVideo = vi.fn(() => ({
   kind: 'video',
   name: 'gemini',
-  model: 'gemini-omni-1.1-flash',
+  model: 'gemini-omni-1.2-flash',
 }));
 vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiVideo: mockCreateGeminiVideo,
@@ -975,7 +975,7 @@ describe('Motion Service', () => {
     it('submits when the clip is inside the ceiling', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'omni-ok',
-        model: 'gemini-omni-1.1-flash',
+        model: 'gemini-omni-1.2-flash',
       });
 
       await submitMotionJob({
@@ -1003,7 +1003,7 @@ describe('Motion Service', () => {
     it('submits a reference whose length was never measured', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'omni-unknown',
-        model: 'gemini-omni-1.1-flash',
+        model: 'gemini-omni-1.2-flash',
       });
 
       await submitMotionJob({
@@ -1169,7 +1169,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-1',
-        model: 'gemini-omni-1.1-flash',
+        model: 'gemini-omni-1.2-flash',
       });
 
       const result = await submitMotionJob({
@@ -1189,7 +1189,7 @@ describe('Motion Service', () => {
     it('falls back to fal for Omni Flash when no Google key exists', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'fal-omni-job',
-        model: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
+        model: 'google/gemini-omni-flash/v1.2/image-to-video',
       });
 
       const result = await submitMotionJob({
@@ -1214,7 +1214,7 @@ describe('Motion Service', () => {
         )
         .mockResolvedValue({
           jobId: 'fal-omni-after-refusal',
-          model: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
+          model: 'google/gemini-omni-flash/v1.2/image-to-video',
         });
 
       try {
@@ -1282,7 +1282,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-frame',
-        model: 'gemini-omni-1.1-flash',
+        model: 'gemini-omni-1.2-flash',
       });
 
       await submitMotionJob({
@@ -1322,7 +1322,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-refs',
-        model: 'gemini-omni-1.1-flash',
+        model: 'gemini-omni-1.2-flash',
       });
 
       await submitMotionJob({
@@ -1516,16 +1516,16 @@ describe('Motion Service', () => {
     });
 
     it('prices Google video-output tokens and skips fal usage sampling', async () => {
-      // 5s of 720p video = 28,960 output tokens @ $17.50/1M = $0.5068
+      // 5s of 720p video = 28,960 output tokens @ $12/1M = $0.34752
       // plus 120 prompt tokens @ $1.50/1M = $0.00018.
       const billing = await motionCostFromUsage(
         'google',
         { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 },
         { modelKey: 'gemini_omni_flash', hasReferenceImages: false }
       );
-      expect(billing.cost).toBe(506_980);
+      expect(billing.cost).toBe(347_700);
       expect(billing.recordFalUsage).toBe(false);
-      expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
+      expect(billing.endpointId).toBe('gemini-omni-1.2-flash');
     });
 
     // The post-run charge re-resolves the row submit used, so the two must

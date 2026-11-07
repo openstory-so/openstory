@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { motionTransform } from './motion-transform';
 
 import {
-  zGeminiOmni11FlashImageToVideoInput,
-  zGeminiOmni11FlashInput,
-  zGeminiOmni11FlashReferenceToVideoInput,
+  zGeminiOmniFlashV12ImageToVideoInput,
+  zGeminiOmniFlashV12ReferenceToVideoInput,
+  zGeminiOmniFlashV12TextToVideoInput,
   zGrokImagineVideoV15ImageToVideoInput,
   zH3MaxImageToVideoInput,
   zH3MaxReferenceToVideoInput,
@@ -31,9 +31,9 @@ import {
 } from '@/motion/server/generated/zod.gen';
 
 import {
-  GeminiOmni11FlashImageToVideoInputSchema,
-  GeminiOmni11FlashInputSchema,
-  GeminiOmni11FlashReferenceToVideoInputSchema,
+  GeminiOmniFlashV12ImageToVideoInputSchema,
+  GeminiOmniFlashV12ReferenceToVideoInputSchema,
+  GeminiOmniFlashV12TextToVideoInputSchema,
   GrokImagineVideoV15ImageToVideoInputSchema,
   H3MaxImageToVideoInputSchema,
   H3MaxReferenceToVideoInputSchema,
@@ -56,9 +56,9 @@ import {
 } from '@/motion/server/generated/schemas.gen';
 
 export type MotionJSONSchema =
-  | typeof GeminiOmni11FlashImageToVideoInputSchema
-  | typeof GeminiOmni11FlashInputSchema
-  | typeof GeminiOmni11FlashReferenceToVideoInputSchema
+  | typeof GeminiOmniFlashV12ImageToVideoInputSchema
+  | typeof GeminiOmniFlashV12ReferenceToVideoInputSchema
+  | typeof GeminiOmniFlashV12TextToVideoInputSchema
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
   | typeof H3MaxImageToVideoInputSchema
   | typeof H3MaxReferenceToVideoInputSchema
@@ -94,15 +94,16 @@ export const MOTION_INPUT_SCHEMAS = {
   'bytedance/seedance-2.5/image-to-video': zSeedance25ImageToVideoInput,
   'bytedance/seedance-2.5/reference-to-video': zSeedance25ReferenceToVideoInput,
   'bytedance/seedance-2.5/text-to-video': zSeedance25TextToVideoInput,
-  'fal-ai/gemini-omni-1.1-flash': zGeminiOmni11FlashInput,
-  'fal-ai/gemini-omni-1.1-flash/image-to-video':
-    zGeminiOmni11FlashImageToVideoInput,
-  'fal-ai/gemini-omni-1.1-flash/reference-to-video':
-    zGeminiOmni11FlashReferenceToVideoInput,
   'fal-ai/kling-video/o3/pro/reference-to-video':
     zKlingVideoO3ProReferenceToVideoInput,
   'fal-ai/kling-video/o3/pro/text-to-video': zKlingVideoO3ProTextToVideoInput,
   'fal-ai/kling-video/v3/pro/image-to-video': zKlingVideoV3ProImageToVideoInput,
+  'google/gemini-omni-flash/v1.2/image-to-video':
+    zGeminiOmniFlashV12ImageToVideoInput,
+  'google/gemini-omni-flash/v1.2/reference-to-video':
+    zGeminiOmniFlashV12ReferenceToVideoInput,
+  'google/gemini-omni-flash/v1.2/text-to-video':
+    zGeminiOmniFlashV12TextToVideoInput,
   'kling/v4/image-to-video': zV4ImageToVideoInput,
   'kling/v4/reference-to-video': zV4ReferenceToVideoInput,
   'kling/v4/text-to-video': zV4TextToVideoInput,
@@ -141,17 +142,18 @@ export const MOTION_JSON_SCHEMAS = {
   'bytedance/seedance-2.5/reference-to-video':
     Seedance25ReferenceToVideoInputSchema,
   'bytedance/seedance-2.5/text-to-video': Seedance25TextToVideoInputSchema,
-  'fal-ai/gemini-omni-1.1-flash': GeminiOmni11FlashInputSchema,
-  'fal-ai/gemini-omni-1.1-flash/image-to-video':
-    GeminiOmni11FlashImageToVideoInputSchema,
-  'fal-ai/gemini-omni-1.1-flash/reference-to-video':
-    GeminiOmni11FlashReferenceToVideoInputSchema,
   'fal-ai/kling-video/o3/pro/reference-to-video':
     KlingVideoO3ProReferenceToVideoInputSchema,
   'fal-ai/kling-video/o3/pro/text-to-video':
     KlingVideoO3ProTextToVideoInputSchema,
   'fal-ai/kling-video/v3/pro/image-to-video':
     KlingVideoV3ProImageToVideoInputSchema,
+  'google/gemini-omni-flash/v1.2/image-to-video':
+    GeminiOmniFlashV12ImageToVideoInputSchema,
+  'google/gemini-omni-flash/v1.2/reference-to-video':
+    GeminiOmniFlashV12ReferenceToVideoInputSchema,
+  'google/gemini-omni-flash/v1.2/text-to-video':
+    GeminiOmniFlashV12TextToVideoInputSchema,
   'kling/v4/image-to-video': V4ImageToVideoInputSchema,
   'kling/v4/reference-to-video': V4ReferenceToVideoInputSchema,
   'kling/v4/text-to-video': V4TextToVideoInputSchema,
@@ -208,18 +210,6 @@ export const MOTION_TRANSFORMS: {
     zSeedance25TextToVideoInput,
     Seedance25TextToVideoInputSchema
   ),
-  'fal-ai/gemini-omni-1.1-flash': motionTransform(
-    zGeminiOmni11FlashInput,
-    GeminiOmni11FlashInputSchema
-  ),
-  'fal-ai/gemini-omni-1.1-flash/image-to-video': motionTransform(
-    zGeminiOmni11FlashImageToVideoInput,
-    GeminiOmni11FlashImageToVideoInputSchema
-  ),
-  'fal-ai/gemini-omni-1.1-flash/reference-to-video': motionTransform(
-    zGeminiOmni11FlashReferenceToVideoInput,
-    GeminiOmni11FlashReferenceToVideoInputSchema
-  ),
   'fal-ai/kling-video/o3/pro/reference-to-video': motionTransform(
     zKlingVideoO3ProReferenceToVideoInput,
     KlingVideoO3ProReferenceToVideoInputSchema
@@ -231,6 +221,18 @@ export const MOTION_TRANSFORMS: {
   'fal-ai/kling-video/v3/pro/image-to-video': motionTransform(
     zKlingVideoV3ProImageToVideoInput,
     KlingVideoV3ProImageToVideoInputSchema
+  ),
+  'google/gemini-omni-flash/v1.2/image-to-video': motionTransform(
+    zGeminiOmniFlashV12ImageToVideoInput,
+    GeminiOmniFlashV12ImageToVideoInputSchema
+  ),
+  'google/gemini-omni-flash/v1.2/reference-to-video': motionTransform(
+    zGeminiOmniFlashV12ReferenceToVideoInput,
+    GeminiOmniFlashV12ReferenceToVideoInputSchema
+  ),
+  'google/gemini-omni-flash/v1.2/text-to-video': motionTransform(
+    zGeminiOmniFlashV12TextToVideoInput,
+    GeminiOmniFlashV12TextToVideoInputSchema
   ),
   'kling/v4/image-to-video': motionTransform(
     zV4ImageToVideoInput,

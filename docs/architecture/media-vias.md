@@ -79,9 +79,9 @@ as `units` at $1 like GPT Image, so it estimates per call from the typical
 units, not from an `ENDPOINT_STRATEGY` entry.
 
 Omni Flash serves image-to-video, reference-to-video, and text-to-video from
-ONE Interactions-API model (`gemini-omni-1.1-flash`): images ride the
+ONE Interactions-API model (`gemini-omni-1.2-flash`): images ride the
 generateVideo prompt as content blocks bound in the prompt text by
-`<IMAGE_REF_n>` tags (0-based; ≤7 images; 3–10s; 16:9/9:16 only), and
+`<IMAGE_REF_n>` tags (0-based; ≤7 images; 3–15s; 16:9/9:16 only), and
 `buildGeminiVideoRequest` pins the task via
 `generation_config.video_config.task` rather than letting the model infer it.
 Native submit MUST request `response_format.delivery: "uri"` (and must NOT
@@ -90,9 +90,10 @@ pass top-level `duration`/`size` to `generateVideo` — the adapter overwrites
 API instead of inlining a multi-MB `data:` URL. Inline bytes miss Cloudflare
 Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
 Google key. Without a Google key the same model runs on fal's
-`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints
-(the bare id is fal's text-to-video route, used when a reference-only shot
-matched nothing).|/reference-to-video]`endpoints.
+`google/gemini-omni-flash/v1.2/{image-to-video,reference-to-video,text-to-video}`
+endpoints (text-to-video is used when a reference-only shot matched nothing).
+fal's image-to-video caps a clip at 10s when `end_image_url` is sent, so
+Studio frames mode clamps to 10s when it has an end frame.|/reference-to-video]`endpoints.
 Data-URI stills must be decomposed to inline base64 on the native path —
 Google won't fetch`data:`as a URI. Chat vision (motion prompts) and
 native image refs must also inline stored stills: Google's`fileData.fileUri`HTTP fetch (CDN / fal URLs) sits on a separate quota

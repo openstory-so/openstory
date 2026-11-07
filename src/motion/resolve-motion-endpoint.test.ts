@@ -122,7 +122,7 @@ describe('resolveMotionEndpoint', () => {
   it('routes Omni Flash to fal reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', true)).toEqual({
       via: 'fal',
-      endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+      endpointId: 'google/gemini-omni-flash/v1.2/reference-to-video',
       references: 'endpoint',
       referenceConfig: MOTION_REFERENCE_ENDPOINTS.gemini_omni_flash,
     });
@@ -139,7 +139,7 @@ describe('resolveMotionEndpoint', () => {
   it('stamps Google-native Omni Flash as via google and marks refs as inline', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', true, 'google')).toEqual({
       via: 'google',
-      endpointId: 'gemini-omni-1.1-flash',
+      endpointId: 'gemini-omni-1.2-flash',
       references: 'inline',
     });
   });
@@ -148,7 +148,7 @@ describe('resolveMotionEndpoint', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', false, 'google')).toEqual(
       {
         via: 'google',
-        endpointId: 'gemini-omni-1.1-flash',
+        endpointId: 'gemini-omni-1.2-flash',
         references: 'none',
       }
     );
@@ -171,7 +171,7 @@ describe('reference-only', () => {
     ['seedance_v2_5', 'bytedance/seedance-2.5/text-to-video'],
     ['kling_v3_pro', 'fal-ai/kling-video/o3/pro/text-to-video'],
     ['minimax_h3_max', 'minimax/h3-max/text-to-video'],
-    ['gemini_omni_flash', 'fal-ai/gemini-omni-1.1-flash'],
+    ['gemini_omni_flash', 'google/gemini-omni-flash/v1.2/text-to-video'],
   ] as const)(
     'routes %s to text-to-video with no matched refs',
     (model, endpointId) => {

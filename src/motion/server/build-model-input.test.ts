@@ -258,7 +258,7 @@ describe('buildModelInput', () => {
       seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
       seedance_v2_mini: Array.from({ length: 12 }, (_, i) => String(i + 4)),
       minimax_h3_max: Array.from({ length: 15 }, (_, i) => i + 1),
-      gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
+      gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {
@@ -588,7 +588,7 @@ describe('buildMotionRequest — reference-only', () => {
     ['seedance_v2', 'bytedance/seedance-2.0/enterprise/v2/text-to-video'],
     ['seedance_v2_5', 'bytedance/seedance-2.5/text-to-video'],
     ['minimax_h3_max', 'minimax/h3-max/text-to-video'],
-    ['gemini_omni_flash', 'fal-ai/gemini-omni-1.1-flash'],
+    ['gemini_omni_flash', 'google/gemini-omni-flash/v1.2/text-to-video'],
   ] as const)(
     'routes %s to text-to-video with no image field when nothing matched',
     (model, expectedEndpoint) => {

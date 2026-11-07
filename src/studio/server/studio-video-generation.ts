@@ -231,7 +231,11 @@ async function buildStudioImageModeInput(
   );
   const urls = await ensureExternallyFetchableUrls(stored, falApiKey);
   const resolution = studioVideoResolution(modelKey, options.resolution);
-  const snapped = snapStudioVideoDuration(options.duration, modelKey);
+  const snapped = endFrameDurationCap(
+    snapStudioVideoDuration(options.duration, modelKey),
+    modelKey,
+    urls.length > 1
+  );
   const duration = studioBillableSeconds(snapped, modelKey);
   const { prompt, ...modelOptions } = applyMotionTransform(endpointId, {
     prompt: options.prompt,
@@ -468,6 +472,16 @@ export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
   /** From `ingestArkAssets` over `arkStillsForStudio` — see `SubmitMotionOptions.arkAssets`. */
   arkAssets: ArkAssetMap;
 };
+
+/** Omni Flash 1.2 takes up to 15 s, but at most 10 s with an end frame. */
+function endFrameDurationCap(
+  duration: StudioDuration,
+  model: ImageToVideoModel,
+  hasEndFrame: boolean
+): StudioDuration {
+  if (model !== 'gemini_omni_flash' || !hasEndFrame) return duration;
+  return typeof duration === 'number' && duration > 10 ? 10 : duration;
+}
 
 export async function submitStudioVideoJob(
   options: SubmitStudioVideoOptions

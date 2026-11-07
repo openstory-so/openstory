@@ -31,7 +31,7 @@ describe('buildPricingCatalog native vias', () => {
       via: 'Google',
       price: 'from $0.03 / image',
     });
-    expect(r['Gemini Omni Flash 1.1']).toMatchObject({ via: 'Google' });
+    expect(r['Gemini Omni Flash 1.2']).toMatchObject({ via: 'Google' });
     expect(r['Seedream 5.0 Pro']).toMatchObject({ via: 'BytePlus' });
     expect(r['Grok 4.7']).toMatchObject({
       via: 'xAI',
