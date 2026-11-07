@@ -7,6 +7,7 @@ import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
+import { shotPromptPreviewShotKey } from '@/shots/ui/shot-prompt-preview-query';
 import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
@@ -214,6 +215,23 @@ export function updateQueryCacheFromEvent(
             promptVariantKeys.shot(promptType, shotId),
             `prompt-variants:${promptType}:${shotId}`
           );
+        }
+      }
+      // Lines moved (an edit or a restore): everything that reads them.
+      if (shotId && updateType === 'dialogue-lines') {
+        for (const [key, debounceKey] of [
+          [shotKeys.list(sequenceId), `shots:${sequenceId}`],
+          [shotKeys.detail(shotId), `shot:${shotId}`],
+          [shotKeys.dialogueVersions(shotId), `dialogue-versions:${shotId}`],
+          [shotKeys.dialogueSections(shotId), `dialogue-sections:${shotId}`],
+          [segmentKeys.list(sequenceId), `segments:${sequenceId}`],
+          [[...shotStalenessNamespace], `shot-staleness:${sequenceId}`],
+          [
+            shotPromptPreviewShotKey(sequenceId, shotId),
+            `shot-prompt-preview:${shotId}`,
+          ],
+        ] as const) {
+          debouncedInvalidate(queryClient, key, debounceKey);
         }
       }
       break;
