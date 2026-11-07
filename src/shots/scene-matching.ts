@@ -334,18 +334,34 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
   /** A shot's own prompt narrows a scene containing several remote rooms. */
   visualPrompt?: string | null
 ): T[] {
+  const tagged = matchLocationsByTag(
+    allLocations,
+    environmentTag,
+    sceneLocation
+  );
+  // The prompt picks among the scene's rooms; it never overrides them (#2289).
   if (visualPrompt?.trim()) {
-    const framed = matchLocationInText(allLocations, visualPrompt);
+    const framed = matchLocationInText(
+      tagged.length > 0 ? tagged : allLocations,
+      visualPrompt
+    );
     if (framed.length > 0) return framed;
   }
-  if (!environmentTag && !sceneLocation) {
-    return sceneText ? matchLocationInText(allLocations, sceneText) : [];
-  }
+  if (tagged.length > 0) return tagged;
+  return sceneText ? matchLocationInText(allLocations, sceneText) : [];
+}
+
+function matchLocationsByTag<T extends LocationMatchInput>(
+  allLocations: T[],
+  environmentTag: string,
+  sceneLocation: string
+): T[] {
+  if (!environmentTag && !sceneLocation) return [];
 
   const envTagLower = environmentTag.toLowerCase();
   const sceneLocLower = sceneLocation.toLowerCase();
 
-  const tagged = allLocations.filter((loc) => {
+  return allLocations.filter((loc) => {
     const consistencyTag = (loc.consistencyTag ?? '').toLowerCase();
     const locName = loc.name.toLowerCase();
     const locId = loc.locationId.toLowerCase();
@@ -368,9 +384,6 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
         (sceneLocLower.length > 0 && term.includes(sceneLocLower))
     );
   });
-
-  if (tagged.length > 0 || !sceneText) return tagged;
-  return matchLocationInText(allLocations, sceneText);
 }
 
 type ElementMatchInput = Pick<SequenceElementMinimal, 'token'>;
@@ -499,8 +512,9 @@ export type ShotPromptView =
  * re-render would be sent. A prompt that names a person, a room or a prop
  * keeps only those; one that names nobody keeps nobody. The scene cast is not
  * inherited. Characters and locations follow the prompt text on both
- * channels. Elements follow it on a still and on a reference-only clip; with a
- * start frame they stay additive, per `matchElementsToMotion`.
+ * channels; a location only from among the scene's tagged rooms. Elements
+ * follow it on a still and on a reference-only clip; with a start frame they
+ * stay additive, per `matchElementsToMotion`.
  *
  * For locations, text falls through to the scene slugline when the prompt
  * names no room, and the scene extract is read only while there is no prompt:

@@ -375,15 +375,24 @@ test.describe('Editing scenes', () => {
 
     const panel = await openSceneScript(second);
     const editor = panel.locator('[contenteditable="true"]').first();
-    // Caret to the very end; Meta+End does not move it on macOS.
-    await editor.evaluate((el: HTMLElement) => {
-      el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      getSelection()?.removeAllRanges();
-      getSelection()?.addRange(range);
-    });
+    // Move the caret through the editor; a DOM-set range can be reset by it.
+    const toEnd =
+      process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End';
+    await expect(async () => {
+      await editor.click();
+      await page.keyboard.press(toEnd);
+      expect(
+        await editor.evaluate((el: HTMLElement) => {
+          const sel = getSelection();
+          if (!sel?.rangeCount) return false;
+          // No text after the caret.
+          const rest = document.createRange();
+          rest.setStart(sel.focusNode ?? el, sel.focusOffset);
+          rest.setEnd(el, el.childNodes.length);
+          return rest.toString().trim() === '';
+        })
+      ).toBe(true);
+    }).toPass({ timeout: 10_000 });
     await page.keyboard.press('Enter');
     await page.keyboard.type(ADDED_BEAT);
     await panel.getByRole('button', { name: 'Save', exact: true }).click();
@@ -541,27 +550,26 @@ test.describe('Editing scenes', () => {
     expect(after.map((r) => r.lines)).toEqual(before.map((r) => r.lines));
   });
 
-  // Bug #2289: the scene Locations tab keeps listing the old location after the Scene location select moves.
-  test.fixme('switching a scene location shows the new location on the scene', async () => {
+  test('switching a scene location shows the new location on the scene', async () => {
     const second = sceneIds[1];
     if (!second) throw new Error('scenes not set up');
     await openSceneScript(second);
-    await page
-      .getByRole('combobox')
-      .first()
-      .selectOption({ label: 'Locations' });
+    await page.getByRole('tab', { name: 'Locations' }).click();
     const select = page.getByRole('combobox', { name: 'Scene location' });
-    const current = (await select.innerText()).trim();
+    const value = select.locator('[data-slot="select-value"]');
+    const current = ((await value.textContent()) ?? '').trim();
     await select.click();
-    await page
+    const option = page
       .getByRole('option')
       .filter({ hasNotText: current })
-      .first()
-      .click();
-    await page.reload();
-    const chosen = (await select.innerText()).trim();
-    expect(chosen).not.toBe(current);
-    await expect(page.getByText(chosen).nth(1)).toBeVisible();
+      .first();
+    const chosen = ((await option.textContent()) ?? '').trim();
+    await option.click();
+    await expect(value).toHaveText(chosen);
+    const removeButton = (name: string) =>
+      page.getByRole('button', { name: `Remove ${name} from sequence` });
+    await expect(removeButton(chosen)).toBeVisible();
+    await expect(removeButton(current)).toHaveCount(0);
   });
 
   test('adding a scene leaves the other shots as they were', async () => {
