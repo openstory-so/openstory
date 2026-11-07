@@ -17,6 +17,7 @@ import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceElementKeys } from '@/cast/ui/use-sequence-elements';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
 import { shotKeys } from '@/shots/ui/use-shots';
+import { shotPromptPreviewShotKey } from '@/shots/ui/shot-prompt-preview-query';
 import type {
   FrameVariant,
   Shot,
@@ -430,6 +431,19 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(keys).not.toContainEqual(
         promptVariantKeys.shot('motion', 'shot-1')
       );
+    });
+
+    it('moved lines refetch the open optimised prompt preview (#2294)', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.shot:updated', {
+        shotId: 'shot-1',
+        updateType: 'dialogue-lines',
+      });
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(shotPromptPreviewShotKey(SEQ, 'shot-1'));
+      expect(keys).toContainEqual(shotKeys.dialogueVersions('shot-1'));
+      expect(keys).toContainEqual(shotKeys.list(SEQ));
     });
 
     it.each(['generation.complete', 'generation.failed'])(

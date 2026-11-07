@@ -40,7 +40,7 @@ const sequence = { id: 'q', status: 'completed' } as unknown as Parameters<
 const shots = [{ id: 's1' }, { id: 's2' }] as unknown as Shot[];
 
 describe('loadStalenessForShots per-shot boundary (#2234)', () => {
-  it('reports a failed shot untracked in a batch', async () => {
+  it('reports a failed shot unknown in a batch', async () => {
     computeShotStaleness.mockRejectedValue(new Error('missing bible'));
     const result = await loadStalenessForShots(
       scopedDb,
@@ -49,6 +49,11 @@ describe('loadStalenessForShots per-shot boundary (#2234)', () => {
       shots
     );
     expect(Object.keys(result)).toEqual(['s1', 's2']);
+    expect(result.s1).toMatchObject({
+      thumbnail: 'unknown',
+      visualPrompt: 'unknown',
+      motionPrompt: 'unknown',
+    });
   });
 
   it('rethrows for a single shot', async () => {

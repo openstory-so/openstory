@@ -12,7 +12,7 @@ import {
   GENERATING_STALENESS,
   loadShotStalenessReads,
   loadShotStalenessRefs,
-  UNTRACKED_STALENESS,
+  UNKNOWN_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
 
@@ -108,15 +108,13 @@ export async function loadStalenessForShots(
       async (shot): Promise<[string, ReturnType<typeof toWireStaleness>]> => {
         const frame = anchorsByShot.get(shot.id);
         if (!frame) {
-          // ensureAnchorFrames guarantees an anchor; if it's somehow absent
-          // we have no image surface to compare, so report the shot
-          // untracked rather than dropping it from the result.
+          // ensureAnchorFrames guarantees an anchor; absent, the shot reads couldn't-check.
           logger.error(
             `loadStalenessForShots: shot ${shot.id} has no anchor frame`
           );
           return [
             shot.id,
-            toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+            toWireStaleness(UNKNOWN_STALENESS, media.get(shot.id)),
           ];
         }
         const { scene } = resolveSceneForShot(shot, scriptBySceneId);
@@ -147,7 +145,7 @@ export async function loadStalenessForShots(
           );
           return [
             shot.id,
-            toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+            toWireStaleness(UNKNOWN_STALENESS, media.get(shot.id)),
           ];
         }
       }

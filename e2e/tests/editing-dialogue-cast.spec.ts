@@ -445,8 +445,7 @@ test.describe('Editing dialogue and cast', () => {
     await expect(block.getByText(words)).toHaveCount(1, { timeout: 30_000 });
   });
 
-  // Bug #2293: after update_location the diner shots' prompts read untracked, not stale.
-  test.fixme('editing a location marks only the scenes there out of date', async () => {
+  test('editing a location marks only the scenes there out of date', async () => {
     await call(request, 'update_location', {
       ...seq(firstId),
       locationId: placeIds['CORNER DINER'],
@@ -454,6 +453,11 @@ test.describe('Editing dialogue and cast', () => {
     });
     const rows = await readShots(firstId);
     for (const row of inScene(rows, sceneIds[0])) {
+      // The blank shot has no prompts, so nothing to go stale (#2293).
+      if (row.id === addedShotId) {
+        expect(row).toMatchObject({ visual: 'untracked', motion: 'untracked' });
+        continue;
+      }
       expect(row, 'diner scene').toMatchObject({
         visual: 'stale',
         motion: 'stale',
