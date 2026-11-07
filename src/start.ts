@@ -1,6 +1,7 @@
 import { createCsrfMiddleware, createStart } from '@tanstack/react-start';
 import {
   d1SessionMiddleware,
+  logContextMiddleware,
   loggerMiddleware,
 } from '@/platform/middleware.fn';
 import { openStoryErrorSerializationAdapter } from '@/platform/errors';
@@ -25,7 +26,11 @@ const csrfMiddleware = createCsrfMiddleware({
 });
 
 export const startInstance = createStart(() => ({
-  requestMiddleware: [csrfMiddleware, d1SessionMiddleware],
+  requestMiddleware: [
+    csrfMiddleware,
+    logContextMiddleware,
+    d1SessionMiddleware,
+  ],
   functionMiddleware: [loggerMiddleware],
   serializationAdapters: [openStoryErrorSerializationAdapter],
 }));

@@ -117,6 +117,9 @@ const ObservabilityProvider: FC<{
         defaults: '2025-05-24',
         capture_exceptions: true,
         before_send: stampReplayUrl,
+        // Same-origin requests carry X-POSTHOG-SESSION-ID / -DISTINCT-ID, which the server stamps on its logs (#2282).
+        tracing_headers:
+          typeof window === 'undefined' ? [] : [window.location.hostname],
         loaded: flushReactErrors,
         debug: false,
         ...(user && {

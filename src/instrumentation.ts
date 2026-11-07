@@ -9,5 +9,6 @@
  */
 
 import { configureLogging } from '@/platform/logger';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
-configureLogging();
+configureLogging({ contextLocalStorage: new AsyncLocalStorage() });
