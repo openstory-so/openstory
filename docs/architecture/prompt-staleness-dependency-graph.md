@@ -159,6 +159,8 @@ flowchart TD
 
 **`prompts.visual`** and **`prompts.motion`** are derived from the shot spec (#1923). The stamp sites are `persist-shot-specs` and Rebuild (`completeDerivedPrompts`). Rewrite shot is the LLM that changes the spec; the text is still derived afterwards. The hash includes the spec's canonical content on `current` digests, so the version id stays provenance. The current motion digest omits the starting-frame URL. Both prompts hash the same narrowed bible (#1732).
 
+A still is never prompted with the scene script (#2291): its spoken lines come back lettered on the image. A shot with no selected visual prompt renders from `derivedStillPrompt` (`src/shots/server/still-prompt.ts`), its spec run through `deriveStillPrompt`, and is refused with no spec. The text is not stored, and a still with no prompt version is untracked, so no digest moves.
+
 > **Ordering detail (inconsistency C below):** the frame-prompt batch and
 > `character-bible-workflow` are still spawned **in parallel** in Phase 3 of
 > [`analyze-script-workflow.ts`](../../src/sequences/server/workflows/analyze-script-workflow.ts)

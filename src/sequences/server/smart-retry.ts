@@ -1,4 +1,8 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
+import {
+  derivedStillPrompt,
+  lazySequenceStyle,
+} from '@/shots/server/still-prompt';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
@@ -331,6 +335,7 @@ export async function executeSmartRetry(
     const fullResult = {
       retryType: 'full' as const,
       retriedItems: ['full storyboard'],
+      skippedShots: 0,
       planned: {
         ...planned,
         retryType: 'full' as const,
@@ -373,6 +378,7 @@ export async function executeSmartRetry(
 
   // Smart retry: only retry failed parts
   const retried: string[] = [];
+  let skippedShots = 0;
 
   // Model identity lives on the version that produced each asset (#1066).
   // Every shot here is in a failed state, so the FAILED attempt's model is the
@@ -435,12 +441,23 @@ export async function executeSmartRetry(
     // Count what we actually trigger — shots skipped below must not be
     // reported as retried (and must not clear the failed flag on their own).
     let triggeredImages = 0;
+    const styleConfig = lazySequenceStyle(context.scopedDb, sequence);
     for (const shot of failedImageShots) {
       const scene = sceneOf(shot);
       const promptVersion = shot.imagePromptVersion;
-      const prompt = promptVersion?.text || scene?.originalScript.extract;
+      const prompt =
+        promptVersion?.text ||
+        (await derivedStillPrompt(context.scopedDb, {
+          shotId: shot.id,
+          scene: scene ?? null,
+          styleConfig,
+        }));
 
-      if (!prompt) continue;
+      // No image prompt and no spec to derive one from (#2291).
+      if (!prompt) {
+        skippedShots++;
+        continue;
+      }
 
       const characterTags = scene?.continuity?.characterTags ?? [];
       const referenceImages = getSceneCharacterReferenceImages(
@@ -805,6 +822,7 @@ export async function executeSmartRetry(
     return {
       retryType: 'smart' as const,
       retriedItems: retried,
+      skippedShots,
       planned,
       creditProviders,
     };
@@ -842,6 +860,7 @@ export async function executeSmartRetry(
   return {
     retryType: 'smart' as const,
     retriedItems: retried,
+    skippedShots,
     planned,
     creditProviders,
   };

@@ -635,11 +635,15 @@ test.describe('Editing shots', () => {
   });
 
   // Bug #2291: the visual prompt carries the spoken line, so Seedream burns it in as a caption.
-  test.fixme('a still prompt does not contain the shot’s spoken line', async () => {
-    await openShot(target);
+  test('a still prompt does not contain the shot’s spoken line', async () => {
+    // The added shot took slot 1, so read the target's number again.
+    const row = byId(await readShots(), target.id);
+    expect(row.lines.length).toBeGreaterThan(0);
+    await openShot(row);
     await page.getByRole('tab', { name: 'Start Frame' }).click();
     const prompt = page.getByRole('tabpanel', { name: 'Start Frame' });
-    for (const line of byId(await readShots(), target.id).lines) {
+    await expect(prompt).toContainText('eye level', { timeout: 15_000 });
+    for (const line of row.lines) {
       await expect(prompt).not.toContainText(line);
     }
   });

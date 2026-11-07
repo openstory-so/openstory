@@ -3,7 +3,7 @@
  * reference-image attachment + per-scene snapshot hash that both the
  * single-shot regenerate (`generateShotImageFn`) and the bulk add-model
  * (`addModelToSequenceFn`, #547) paths need. Extracted so the two callers stay
- * consistent: same prompt fallback chain, same character/location/element
+ * consistent: same prompt chain, same character/location/element
  * matching, same snapshot hash.
  */
 
@@ -85,11 +85,9 @@ export async function buildShotImageWorkflowInput(opts: {
     elements,
   } = opts;
 
-  // Priority: provided > stored frame mirror > description. The frame's
-  // `imagePrompt` is the single source of truth (#713/#989) — the old
-  // `metadata.prompts.visual` fallback is gone (that field was removed).
+  // Never the scene script: its spoken lines render as captions (#2291).
   const scriptExtract = opts.scene?.originalScript.extract ?? '';
-  const prompt = opts.prompt || opts.imagePrompt || scriptExtract;
+  const prompt = opts.prompt || opts.imagePrompt;
   if (!prompt) return null;
 
   const continuity = opts.continuity ?? opts.scene?.continuity;

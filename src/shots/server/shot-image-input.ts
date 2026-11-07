@@ -40,6 +40,12 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { ValidationError } from '@/platform/errors';
+import {
+  NO_STILL_PROMPT_MESSAGE,
+  derivedStillPrompt,
+  lazySequenceStyle,
+} from './still-prompt';
 
 /** The sequence-scoped rows reference matching needs, resolved once per run. */
 export type ShotImageRefs = Pick<
@@ -73,13 +79,13 @@ export function getSceneLocationReferenceImages(
 
 /**
  * Build the `/image` workflow payload for a shot from CURRENT scoped state.
- * Steps: resolve prompt (override > stored anchor-frame mirror > description)
+ * Steps: resolve prompt (override > stored anchor-frame mirror > spec-derived)
  * → match character/location/element references → resolve the model
  * (explicit > last failed attempt > selected version > sequence default) →
  * credits preflight → scene snapshot + input hash (what makes the rendered
  * image participate in staleness tracking).
  *
- * Throws when the shot has no prompt/description, and rethrows the credits
+ * Throws when the shot has no prompt and no spec to derive one from, and rethrows the credits
  * preflight's `InsufficientCreditsError`.
  */
 export async function prepareShotImageWorkflowInput(args: {
@@ -103,7 +109,7 @@ export async function prepareShotImageWorkflowInput(args: {
   frame: Frame;
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;
-  /** Selected scene-script extract. Fallback prompt AND fallback element match when no visual prompt exists. */
+  /** Selected scene-script extract, for element matching only: never a prompt (#2291). */
   scriptExtract: string;
   userId: string;
   promptOverride?: string;
@@ -140,7 +146,7 @@ export async function prepareShotImageWorkflowInput(args: {
     refs,
   } = args;
 
-  // Priority: provided > the frame's selected prompt version > scene script.
+  // Priority: provided > the frame's selected prompt version > derived from the spec.
   // The read is SKIPPED when nothing downstream can consume it — the caller
   // supplied the prompt, named the version it came from, and isn't claiming a
   // user edit. Left unconditional it executed on every override path
@@ -157,9 +163,16 @@ export async function prepareShotImageWorkflowInput(args: {
   const selectedPrompt = needsSelectedPrompt
     ? await scopedDb.framePromptVersions.getSelected(frame.id)
     : null;
-  const prompt = promptOverride || selectedPrompt?.text || scriptExtract;
-  if (!prompt.trim()) {
-    throw new Error('Shot has no prompt or description to regenerate from');
+  const prompt =
+    promptOverride ||
+    selectedPrompt?.text ||
+    (await derivedStillPrompt(scopedDb, {
+      shotId: shot.id,
+      scene,
+      styleConfig: lazySequenceStyle(scopedDb, sequence),
+    }));
+  if (!prompt || !prompt.trim()) {
+    throw new ValidationError(NO_STILL_PROMPT_MESSAGE);
   }
 
   // Decided HERE, not in the workflow: whether this is a real edit depends on
