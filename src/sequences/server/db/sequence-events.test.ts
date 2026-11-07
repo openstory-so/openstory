@@ -755,7 +755,7 @@ describe('sequence settings history', () => {
     const events =
       await createSequenceEventsMethods(db).listBySequence(sequenceId);
     expect(events.map((event) => event.summary)).toEqual([
-      'Changed the image model to GPT Image 2.5',
+      'Changed the image model to GPT Image 2.6',
       'Changed aspect ratio to 9:16',
     ]);
     expect(events[0]?.data).toMatchObject({
@@ -768,7 +768,7 @@ describe('sequence settings history', () => {
 
     const page = await createSequenceEventsMethods(db).listHistory(sequenceId);
     expect(page.events[0]?.changes).toEqual([
-      { label: 'Image', from: 'Nano Banana 2', to: 'GPT Image 2.5' },
+      { label: 'Image', from: 'Nano Banana 2', to: 'GPT Image 2.6' },
     ]);
     expect(page.events[1]?.changes).toEqual([
       { label: 'Aspect ratio', from: '16:9', to: '9:16' },

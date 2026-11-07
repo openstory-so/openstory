@@ -750,7 +750,7 @@ describe('preview image vs still cost (#1642)', () => {
   it('is priced so a sketch stays worth firing next to a real still', () => {
     expect(preview).toBeGreaterThan(0);
     expect(defaultStill).toBeGreaterThan(0);
-    // Default still (GPT Image 2.5) is the usual generate-time image. The
+    // Default still (GPT Image 2.6) is the usual generate-time image. The
     // sketch is the cheapest picker still since #2094, so it is fired once
     // per shot, and again only when a reference-only shot's motion prompt
     // changes.

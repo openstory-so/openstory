@@ -262,13 +262,13 @@ export const IMAGE_MODELS = {
     maxPromptLength: 50000,
   },
   gpt_image_2: {
-    id: 'openai/gpt-image-2.5/flare/text-to-image' as const,
-    name: 'GPT Image 2.5',
+    id: 'openai/gpt-image-2.6/flare/text-to-image' as const,
+    name: 'GPT Image 2.6',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 2,
     description:
-      'Default GPT Image 2.5 — fast, rich textures, typography, up to 4K',
+      'Default GPT Image 2.6 — fast, rich textures, typography, up to 4K',
     maxPromptLength: 32000,
   },
   grok_imagine_image: {
@@ -787,7 +787,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   // advertises as $0 compute-seconds.
   nano_banana_2_lite: 'google/nano-banana-lite/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
-  gpt_image_2: 'openai/gpt-image-2.5/flare/edit',
+  gpt_image_2: 'openai/gpt-image-2.6/flare/edit',
   grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
   grok_imagine_image_quality: 'xai/grok-imagine-image/quality/edit',
   flux_2_max: 'fal-ai/flux-2-max/edit',
