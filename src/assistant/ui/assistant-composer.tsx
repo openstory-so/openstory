@@ -63,6 +63,8 @@ export type AssistantComposerProps = {
   /** Text a page handed over; placed, not sent. */
   initialPrompt?: string;
   busy: boolean;
+  /** The run waits on Allow or Deny; the client refuses a new message until then. */
+  awaitingApproval?: boolean;
   /** The model that answers; one pick for every thread. */
   model: AnalysisModelId;
   onModelChange: (model: AnalysisModelId) => void;
@@ -162,6 +164,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   onDismissContext,
   initialPrompt,
   busy,
+  awaitingApproval = false,
   model,
   onModelChange,
   onSend,
@@ -268,6 +271,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   // message never goes out with a file silently missing.
   const canSend =
     !busy &&
+    !awaitingApproval &&
     (text.trim().length > 0 || attachments.some((a) => a.status === 'ready')) &&
     attachments.every((a) => a.status === 'ready');
 
@@ -289,7 +293,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   return (
     <div
       className={cn(
-        'flex flex-col border-t bg-background p-3',
+        'flex flex-col gap-1.5 border-t bg-background p-3',
         dragging && 'ring-2 ring-ring ring-inset'
       )}
     >
@@ -403,6 +407,11 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
           )}
         </div>
       </form>
+      {awaitingApproval && (
+        <p className="px-1 text-xs text-muted-foreground">
+          Allow or deny the request above to send a message.
+        </p>
+      )}
     </div>
   );
 };

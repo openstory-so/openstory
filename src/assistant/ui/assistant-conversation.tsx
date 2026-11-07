@@ -4,13 +4,18 @@
  * the panel shell can swap threads by key.
  */
 
-import type { ChatInterrupt, ToolApprovalInterrupt } from '@tanstack/ai-client';
 import type { ConnectionAdapter } from '@tanstack/ai-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/ui/shadcn/button';
 import type { PageContextItem } from '../page-context';
+import {
+  answerApproval,
+  approvalFor,
+  approvalState,
+  type PendingInterrupt,
+} from './approvals';
 import { AssistantComposer } from './assistant-composer';
 import { AssistantMessage } from './assistant-message';
 import { setAssistantModel, useAssistantState } from './assistant-store';
@@ -29,7 +34,23 @@ export type AssistantConversationProps = {
   uploadStub?: (file: File) => Promise<string>;
 };
 
-export const AssistantConversation: React.FC<AssistantConversationProps> = ({
+/** Remounts the thread on Reload, so the chat hydrates again from the server. */
+export const AssistantConversation: React.FC<AssistantConversationProps> = (
+  props
+) => {
+  const [generation, setGeneration] = useState(0);
+  return (
+    <Conversation
+      key={generation}
+      {...props}
+      onReload={() => setGeneration((n) => n + 1)}
+    />
+  );
+};
+
+const Conversation: React.FC<
+  AssistantConversationProps & { onReload: () => void }
+> = ({
   threadId,
   pageContext,
   onDismissContext,
@@ -38,11 +59,23 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
   suggestions,
   connection,
   uploadStub,
+  onReload,
 }) => {
   const queryClient = useQueryClient();
   const { model } = useAssistantState();
   const chat = useAssistantChat({ threadId, pageContext, model, connection });
-  const { messages, sendMessage, isLoading, error, stop, interrupts } = chat;
+  const {
+    messages,
+    sendMessage,
+    isLoading,
+    isHydrating,
+    error,
+    stop,
+    interrupts,
+    interruptErrors,
+    resuming,
+  } = chat;
+  const [sendError, setSendError] = useState<Error>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -52,23 +85,34 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
     getItemKey: (index) => messages[index]?.id ?? index,
   });
 
-  // Bound approvals, by tool call, so the card that asked carries its buttons.
-  // Answered by tool call id. The server tools are not registered on the
-  // client, so the typed list cannot name their approvals; widen to the
-  // untyped approval shape the stream carries.
-  const pending: ReadonlyArray<ChatInterrupt | ToolApprovalInterrupt> =
-    interrupts;
-  const resolve = (toolCallId: string, approved: boolean) =>
-    pending
-      .find(
-        (i): i is ToolApprovalInterrupt =>
-          i.kind === 'tool-approval' && i.toolCallId === toolCallId
-      )
-      ?.resolveInterrupt(approved);
+  // The server tools are not registered on the client, so the typed list
+  // cannot name their approvals; widen to the shapes the stream carries.
+  const pending: ReadonlyArray<PendingInterrupt> = interrupts;
+  const runBusy = isLoading || isHydrating || resuming;
   const approvals = {
-    approve: (toolCallId: string) => resolve(toolCallId, true),
-    deny: (toolCallId: string) => resolve(toolCallId, false),
+    stateOf: (toolCallId: string) =>
+      approvalState(approvalFor(pending, toolCallId), runBusy),
+    errorOf: (toolCallId: string) =>
+      approvalFor(pending, toolCallId)?.errors[0]?.message,
+    approve: (toolCallId: string) => answer(toolCallId, true),
+    deny: (toolCallId: string) => answer(toolCallId, false),
+    reload: onReload,
   };
+  function answer(toolCallId: string, approved: boolean) {
+    const interrupt = approvalFor(pending, toolCallId);
+    if (interrupt && approvalState(interrupt, runBusy) === 'open') {
+      answerApproval(interrupt, approved);
+    }
+  }
+  const awaitingApproval = pending.length > 0 || resuming;
+
+  const send = (content: Parameters<typeof sendMessage>[0]) => {
+    setSendError(undefined);
+    sendMessage(content).catch((cause: unknown) =>
+      setSendError(cause instanceof Error ? cause : new Error(String(cause)))
+    );
+  };
+  const alert = error ?? sendError ?? interruptErrors[0];
 
   const lastId = messages.at(-1)?.id;
   const items = virtualizer.getVirtualItems();
@@ -103,7 +147,7 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
                   variant="outline"
                   size="sm"
                   className="h-auto w-full justify-start whitespace-normal py-1.5 text-left"
-                  onClick={() => void sendMessage(suggestion)}
+                  onClick={() => send(suggestion)}
                 >
                   {suggestion}
                 </Button>
@@ -141,7 +185,7 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
                     message={message}
                     streaming={isLoading && message.id === lastId}
                     approvals={approvals}
-                    onViewMessage={(text) => void sendMessage(text)}
+                    onViewMessage={send}
                   />
                 </div>
               );
@@ -149,9 +193,9 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
           </div>
         </div>
       )}
-      {error && (
+      {alert && (
         <p role="alert" className="border-t px-4 py-2 text-xs text-destructive">
-          {error.message}
+          {alert.message}
         </p>
       )}
       <AssistantComposer
@@ -160,10 +204,11 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
         onDismissContext={onDismissContext}
         initialPrompt={initialPrompt}
         busy={isLoading}
+        awaitingApproval={awaitingApproval}
         model={model}
         onModelChange={setAssistantModel}
         onSend={(content) => {
-          void sendMessage(content);
+          send(content);
           // The first send creates the thread row; History should list it.
           if (messages.length === 0) {
             void queryClient.invalidateQueries({
