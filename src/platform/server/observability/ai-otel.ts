@@ -324,12 +324,12 @@ function toPostHogMessage(
 }
 
 function asPostHogMessagesJson(
-  raw: AttributeValue | undefined,
+  raw: unknown,
   fallbackRole: 'user' | 'assistant'
 ): string | undefined {
   if (raw == null || raw === '') return undefined;
   if (typeof raw !== 'string') {
-    return postHogMessagesAttribute(String(raw), fallbackRole);
+    return postHogMessagesAttribute(textFromUnknown(raw), fallbackRole);
   }
   const trimmed = raw.trim();
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {

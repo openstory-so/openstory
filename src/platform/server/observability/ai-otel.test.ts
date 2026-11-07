@@ -668,6 +668,24 @@ describe('normalizePostHogAiContent', () => {
     ]);
   });
 
+  it('serialises a structured attribute value as JSON, not [object Object]', async () => {
+    const { normalizePostHogAiContent } = await importAiOtel();
+    const attrs: Attributes = {
+      'gen_ai.output.messages': { tool: 'search', args: { q: 'cats' } },
+    };
+
+    normalizePostHogAiContent(attrs);
+
+    expect(JSON.parse(String(attrs['$ai_output_choices']))).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '{"tool":"search","args":{"q":"cats"}}' },
+        ],
+      },
+    ]);
+  });
+
   it('lifts langfuse.observation.* onto gen_ai and $ai_* for the root span', async () => {
     const { normalizePostHogAiContent } = await importAiOtel();
     const attrs: Attributes = {
