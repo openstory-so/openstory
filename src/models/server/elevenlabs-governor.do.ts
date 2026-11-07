@@ -29,9 +29,7 @@ export class ElevenLabsGovernor extends DurableObject {
   /** Take a slot. False when every slot is held by a live lease. */
   acquire(input: SlotInput, now = Date.now()): boolean {
     const leases = this.liveLeases(now);
-    const free =
-      input.holder in leases ||
-      Object.keys(leases).length < Math.max(1, input.slots);
+    const free = Object.keys(leases).length < Math.max(1, input.slots);
     if (free) leases[input.holder] = now + input.leaseMs;
     this.ctx.storage.kv.put(LEASES_KEY, leases);
     return free;
