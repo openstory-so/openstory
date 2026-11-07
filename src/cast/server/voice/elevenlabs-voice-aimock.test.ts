@@ -124,17 +124,8 @@ describe('Voice Design over aimock', () => {
 
   it('refuses an unrecorded design under strict replay', async () => {
     const { designVoicePreviews } = await voice();
-    // The strict-miss 503 is retried in-call; skip the backoff waits.
-    vi.useFakeTimers({ toFake: ['setTimeout'] });
-    const run: { error?: unknown; settled: boolean } = { settled: false };
-    designVoicePreviews('test-mock-key', 'an unrecorded brief, long enough')
-      .catch((caught: unknown) => (run.error = caught))
-      .finally(() => (run.settled = true));
-    while (!run.settled) {
-      await new Promise((resolve) => setImmediate(resolve));
-      await vi.advanceTimersByTimeAsync(60_000);
-    }
-    vi.useRealTimers();
-    expect(run.error).toBeInstanceOf(Error);
+    await expect(
+      designVoicePreviews('test-mock-key', 'an unrecorded brief, long enough')
+    ).rejects.toThrow();
   });
 });

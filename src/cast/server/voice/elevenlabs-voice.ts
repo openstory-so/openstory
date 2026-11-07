@@ -19,6 +19,7 @@ import {
   createElevenLabsSdk,
   elevenLabsAdapterConfig,
   loadElevenLabsVoiceDesign,
+  retryOnRateLimit,
 } from '@/models/server/elevenlabs-config';
 
 export type DesignedPreview = {
@@ -48,21 +49,22 @@ export async function designVoicePreviews(
   const adapterConfig = elevenLabsAdapterConfig(apiKey, 120);
   const adapter = createElevenLabsVoiceDesign('eleven_ttv_v3', apiKey, {
     timeoutInSeconds: adapterConfig.timeoutInSeconds,
-    maxRetries: adapterConfig.maxRetries,
     ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
   });
-  const result = await generateVoice({
-    adapter,
-    prompt: voiceDescription,
-    threadId: generateId(),
-    modelOptions: {
-      autoGenerateText: true,
-      shouldEnhance: true,
-      guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
-      // 192 kbps needs the Creator tier; 128 does not.
-      outputFormat: 'mp3_44100_128',
-    },
-  });
+  const result = await retryOnRateLimit(() =>
+    generateVoice({
+      adapter,
+      prompt: voiceDescription,
+      threadId: generateId(),
+      modelOptions: {
+        autoGenerateText: true,
+        shouldEnhance: true,
+        guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+        // 192 kbps needs the Creator tier; 128 does not.
+        outputFormat: 'mp3_44100_128',
+      },
+    })
+  );
   return result.voices.map((voice) => {
     // `audio`/`contentType` are optional on the generic `GeneratedVoice`
     // shape, but ElevenLabs' design endpoint always returns both.
@@ -152,7 +154,8 @@ export async function saveDesignedVoice(
   }
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const voice = await client.textToVoice.create(args);
+  // A lost 5xx reply may hide a saved voice; never resend a create.
+  const voice = await client.textToVoice.create(args, { maxRetries: 0 });
   return voice.voiceId;
 }
 
@@ -241,9 +244,13 @@ async function addSharedVoice(
   args: { publicOwnerId: string; voiceId: string; name: string }
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const added = await client.voices.share(args.publicOwnerId, args.voiceId, {
-    newName: args.name,
-  });
+  // A lost 5xx reply may hide an added voice; never resend a create.
+  const added = await client.voices.share(
+    args.publicOwnerId,
+    args.voiceId,
+    { newName: args.name },
+    { maxRetries: 0 }
+  );
   return added.voiceId;
 }
 

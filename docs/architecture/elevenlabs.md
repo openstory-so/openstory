@@ -18,14 +18,16 @@ created them, so there is no organization BYOK and `'elevenlabs'` is not on
 through `scopedDb.credentials.resolveKey('elevenlabs')`.
 
 **Concurrency (#2295).** The plan allows 2 concurrent requests across the
-account; a third gets `429 concurrent_limit_exceeded`. There is no queue.
-Every client built from `elevenLabsAdapterConfig` (both adapters and the SDK)
-retries 408/429/5xx in the call `ELEVENLABS_MAX_RETRIES` (8) times, backing
-off 1 s doubling to a 60 s cap with jitter (or `Retry-After`), about 3
-minutes; then the workflow step retries the whole call. Other 4xx are not
-retried in the call. A new ElevenLabs call must go through that config, never
-a bare client. A 5xx retry can repeat a create that ElevenLabs did run (the
-`save-voice` leak is already noted in the workflow); a 429 never ran.
+account; a third gets `429 concurrent_limit_exceeded`. There is no queue. A
+429 never ran, so it is resent up to 8 times, waiting `Retry-After` or 1 s
+doubling (jittered) to a 60 s cap, about 3 minutes; then the workflow step
+retries the whole call. The SDK does it in its `fetch`
+(`createElevenLabsSdk`); the TanStack adapters take no `fetch`, so their
+callers wrap the call in `retryOnRateLimit`. A 5xx keeps the libraries' own 2
+retries, and a create (`textToVoice.create`, `voices.share`) passes
+`maxRetries: 0`: a lost reply may hide a voice that was made, and a resend
+would leak an account-wide slot. Other 4xx are never retried. A new
+ElevenLabs call goes through `createElevenLabsSdk` or `retryOnRateLimit`.
 
 `ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack adapters and
 the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —

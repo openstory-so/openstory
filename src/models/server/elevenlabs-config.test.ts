@@ -135,6 +135,8 @@ describe('ElevenLabs concurrency 429', () => {
     );
   const badRequest = () =>
     Response.json({ detail: { status: 'invalid_request' } }, { status: 400 });
+  const serverError = () =>
+    Response.json({ detail: { status: 'internal' } }, { status: 500 });
   const design = () =>
     Response.json({
       previews: [
@@ -149,9 +151,11 @@ describe('ElevenLabs concurrency 429', () => {
     });
   const voice = () =>
     Response.json({ voice_id: 'v_1', name: 'Narrator', category: 'generated' });
+  const voiceModule = () => import('@/cast/server/voice/elevenlabs-voice');
 
-  beforeEach(() => {
+  beforeEach(async () => {
     env.ELEVENLABS_BASE_URL = 'http://elevenlabs.test';
+    await voiceModule();
     vi.useFakeTimers({ toFake: ['setTimeout'] });
   });
   afterEach(() => {
@@ -172,53 +176,64 @@ describe('ElevenLabs concurrency 429', () => {
     return outcome;
   }
 
-  async function designVoice() {
-    const { designVoicePreviews } =
-      await import('@/cast/server/voice/elevenlabs-voice');
-    return designVoicePreviews('el-test', 'A dry narrator.');
+  function stubFetch(...replies: Array<() => Response>) {
+    const fetch = vi.fn();
+    for (const reply of replies.slice(0, -1)) {
+      fetch.mockImplementationOnce(async () => reply());
+    }
+    const last = replies.at(-1);
+    if (last) fetch.mockImplementation(async () => last());
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
   }
 
-  it('Voice Design waits out the 429 and succeeds', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValue(design());
-    vi.stubGlobal('fetch', fetch);
-    const outcome = await settle(designVoice());
-    expect(outcome).toHaveProperty('value');
+  const designVoice = async () =>
+    (await voiceModule()).designVoicePreviews('el-test', 'A dry narrator.');
+  const saveVoice = async () =>
+    (await voiceModule()).saveDesignedVoice('el-test', {
+      voiceName: 'Narrator',
+      voiceDescription: 'A dry narrator.',
+      generatedVoiceId: 'gv_1',
+    });
+
+  it('Voice Design waits out three 429s', async () => {
+    const fetch = stubFetch(
+      concurrencyLimit,
+      concurrencyLimit,
+      concurrencyLimit,
+      design
+    );
+    expect(await settle(designVoice())).toHaveProperty('value');
     expect(fetch).toHaveBeenCalledTimes(4);
   });
 
-  it('Voice Design does not retry other 4xx', async () => {
-    const fetch = vi.fn().mockResolvedValue(badRequest());
-    vi.stubGlobal('fetch', fetch);
-    const outcome = await settle(designVoice());
-    expect(outcome).toHaveProperty('error');
+  it('Voice Design does not retry a 400', async () => {
+    const fetch = stubFetch(badRequest);
+    expect(await settle(designVoice())).toHaveProperty('error');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('the SDK waits out the 429 and succeeds', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValueOnce(concurrencyLimit())
-      .mockResolvedValue(voice());
-    vi.stubGlobal('fetch', fetch);
-    const client = await createElevenLabsSdk('el-test');
-    const outcome = await settle(client.voices.get('v_1'));
-    expect(outcome).toHaveProperty('value');
+  it('the SDK waits out three 429s', async () => {
+    const fetch = stubFetch(
+      concurrencyLimit,
+      concurrencyLimit,
+      concurrencyLimit,
+      voice
+    );
+    expect(await settle(saveVoice())).toEqual({ value: 'v_1' });
     expect(fetch).toHaveBeenCalledTimes(4);
   });
 
-  it('the SDK does not retry other 4xx', async () => {
-    const fetch = vi.fn().mockResolvedValue(badRequest());
-    vi.stubGlobal('fetch', fetch);
+  it('the SDK never resends a create after a 5xx', async () => {
+    const fetch = stubFetch(serverError);
+    expect(await settle(saveVoice())).toHaveProperty('error');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('the SDK does not retry a 400', async () => {
+    const fetch = stubFetch(badRequest);
     const client = await createElevenLabsSdk('el-test');
-    const outcome = await settle(client.voices.get('v_1'));
-    expect(outcome).toHaveProperty('error');
+    expect(await settle(client.voices.get('v_1'))).toHaveProperty('error');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

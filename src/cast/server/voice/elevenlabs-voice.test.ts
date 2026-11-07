@@ -21,6 +21,7 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
     voices: { get: mockGet, share: mockShare, delete: mockDelete },
   })),
   loadElevenLabsVoiceDesign: async () => createElevenLabsVoiceDesign,
+  retryOnRateLimit: async <T>(call: () => Promise<T>) => call(),
   elevenLabsAdapterConfig: (apiKey: string, timeoutInSeconds = 60) => ({
     apiKey,
     timeoutInSeconds,
@@ -151,9 +152,12 @@ describe('resolveAssignableVoiceId', () => {
         name: 'Narrator · Sam',
       })
     ).resolves.toBe('copy-1');
-    expect(mockShare).toHaveBeenCalledWith('owner-1', 'lib-1', {
-      newName: 'Narrator · Sam',
-    });
+    expect(mockShare).toHaveBeenCalledWith(
+      'owner-1',
+      'lib-1',
+      { newName: 'Narrator · Sam' },
+      { maxRetries: 0 }
+    );
   });
 });
 

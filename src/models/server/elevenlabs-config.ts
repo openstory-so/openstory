@@ -39,8 +39,64 @@ export function isElevenLabsConfigured(): boolean {
   return true;
 }
 
-/** In-call retries on 408/429/5xx; 429 is the account's concurrency cap (#2295). */
-const ELEVENLABS_MAX_RETRIES = 8;
+/** 429 is the account's concurrency cap (#2295); a 429 never ran, so it is safe to resend. */
+const RATE_LIMIT_RETRIES = 8;
+
+function rateLimitDelayMs(headers: Headers | undefined, attempt: number) {
+  const retryAfter = Number(headers?.get('retry-after'));
+  const ms =
+    retryAfter > 0
+      ? retryAfter * 1000
+      : 1000 * 2 ** attempt * (1 + Math.random() * 0.2);
+  return Math.min(ms, 60_000);
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function rateLimitHeaders(error: unknown): Headers | undefined {
+  if (
+    error instanceof Object &&
+    'statusCode' in error &&
+    error.statusCode === 429
+  ) {
+    const raw = 'rawResponse' in error ? error.rawResponse : undefined;
+    return raw instanceof Object &&
+      'headers' in raw &&
+      raw.headers instanceof Headers
+      ? raw.headers
+      : new Headers();
+  }
+  return undefined;
+}
+
+/** Re-runs an adapter call ElevenLabs refused with 429; any other error throws. */
+export async function retryOnRateLimit<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      const headers = rateLimitHeaders(error);
+      if (!headers || attempt >= RATE_LIMIT_RETRIES) throw error;
+      await sleep(rateLimitDelayMs(headers, attempt));
+    }
+  }
+}
+
+/** The SDK's fetch: resends a 429 (a stream body cannot be resent). */
+const rateLimitedFetch: typeof fetch = async (input, init) => {
+  for (let attempt = 0; ; attempt++) {
+    const response = await workersSafeFetch(input, init);
+    if (
+      response.status !== 429 ||
+      attempt >= RATE_LIMIT_RETRIES ||
+      init?.body instanceof ReadableStream
+    ) {
+      return response;
+    }
+    await response.body?.cancel();
+    await sleep(rateLimitDelayMs(response.headers, attempt));
+  }
+};
 
 /**
  * Shared adapter / SDK config. `timeoutInSeconds` is the SDK's stall
@@ -55,7 +111,6 @@ export function elevenLabsAdapterConfig(
   return {
     apiKey,
     timeoutInSeconds,
-    maxRetries: ELEVENLABS_MAX_RETRIES,
     ...(baseURL && { baseURL }),
   };
 }
@@ -108,8 +163,7 @@ export async function createElevenLabsSdk(
   return new ElevenLabsClient({
     apiKey: config.apiKey,
     timeoutInSeconds: config.timeoutInSeconds,
-    maxRetries: config.maxRetries,
-    fetch: workersSafeFetch,
+    fetch: rateLimitedFetch,
     ...(config.baseURL && { baseUrl: config.baseURL }),
   });
 }
