@@ -92,7 +92,7 @@ export type ToolCallCardProps = {
   /** "$1.20" from the plan that came before an execute call. */
   estimate?: string;
   /** Whether the run still waits on this card's answer; buttons show only when it does. */
-  approval?: ApprovalState;
+  approval: ApprovalState;
   approvalError?: string;
   onApprove?: () => void;
   onDeny?: () => void;
@@ -105,7 +105,7 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
   part,
   result,
   estimate,
-  approval = 'open',
+  approval,
   approvalError,
   onApprove,
   onDeny,
