@@ -58,7 +58,8 @@ import {
 } from '@/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
-import type { Resolution } from '@/models/resolutions';
+import { DEFAULT_RESOLUTION, type Resolution } from '@/models/resolutions';
+import { MotionResolutionPicker } from '@/models/ui/pickers/motion-resolution-picker';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import {
@@ -159,6 +160,8 @@ export type SceneListProps = {
   aspectRatio: AspectRatio;
   /** Output resolution tier (#1449) — sizes the batch-motion estimate. */
   resolution?: Resolution;
+  /** Persist the sequence's tier; offers the picker beside the motion model. */
+  onResolutionChange?: (resolution: Resolution) => void;
   onSelectScene: (sceneId: string, additive: boolean) => void;
   onSelectShot: (shotId: string) => void;
   onClearSelection: () => void;
@@ -238,6 +241,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   selection,
   aspectRatio,
   resolution,
+  onResolutionChange,
   onSelectScene,
   onSelectShot,
   onClearSelection,
@@ -814,6 +818,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               referenceOnly={!draftStartFrames}
             />
           )}
+          {continueUses('clip') && onResolutionChange && (
+            <MotionResolutionPicker
+              model={videoModel}
+              value={resolution ?? DEFAULT_RESOLUTION}
+              onChange={onResolutionChange}
+              draft={draftFirst}
+              disabled={isGenerating}
+            />
+          )}
           {continueUses('music') && (
             <MusicModelSelector
               selectedModel={musicModel}
@@ -1122,6 +1135,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 // rule out an image-to-video-only model for the whole run.
                 referenceOnly={batchRendersReferenceOnly}
               />
+              {onResolutionChange && (
+                <MotionResolutionPicker
+                  model={videoModel}
+                  value={resolution ?? DEFAULT_RESOLUTION}
+                  onChange={onResolutionChange}
+                  draft={draftFirst}
+                  disabled={isGenerating || isMotionInProgress}
+                />
+              )}
               {includeMusic && (
                 <MusicModelSelector
                   selectedModel={musicModel}

@@ -23,6 +23,7 @@ import type { VariantType } from '@/platform/server/db/schema/shot-variants';
 import type { CreateSequenceInput } from '@/sequences/server/sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
 import type { Sequence } from '@/platform/server/db/schema';
+import type { Resolution } from '@/models/resolutions';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -383,7 +384,7 @@ export function useSetSequenceTargetDuration(sequenceId: string) {
 /** The sequence's model defaults: the last pick for each kind (#2004). */
 export type SequenceModels = Partial<
   Record<'analysisModel' | 'imageModel' | 'videoModel' | 'musicModel', string>
->;
+> & { resolution?: Resolution };
 
 /**
  * Persist the sequence's model defaults. Work not yet made inherits them,

@@ -1,3 +1,4 @@
+import { resolutionSchema } from '@/models/resolutions';
 import { isValidAnalysisModelId } from '@/models/models.config';
 import {
   DEFAULT_IMAGE_MODEL,
@@ -289,6 +290,8 @@ const sequenceModelsSchema = z.object({
     .string()
     .refine(isValidAudioModel, { message: 'Invalid music model' })
     .optional(),
+  /** Output tier (#1449), picked where a motion run starts. */
+  resolution: resolutionSchema.optional(),
 });
 
 /**
@@ -314,7 +317,8 @@ export const setSequenceModelsFn = createServerFn({ method: 'POST' })
         sequence.analysisModel ||
       (models.imageModel ?? sequence.imageModel) !== sequence.imageModel ||
       (models.videoModel ?? sequence.videoModel) !== sequence.videoModel ||
-      (models.musicModel ?? sequence.musicModel) !== sequence.musicModel;
+      (models.musicModel ?? sequence.musicModel) !== sequence.musicModel ||
+      (models.resolution ?? sequence.resolution) !== sequence.resolution;
     if (!moved) return sequence;
     return await context.scopedDb.sequences.update({
       id: sequenceId,
