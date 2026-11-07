@@ -304,6 +304,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Seconds (music prompt, and the music track hash as their clamped sum)',
       'Seconds, snapped onto the video model grid, against the clip that rendered',
+      'Exact milliseconds against an uploaded clip, which has no grid',
     ],
     ignored: [
       'Visual and motion prompts',
@@ -589,7 +590,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
       'References the motion prompt names, as the sheet version or media URL that was current then (referenceKeys). A stamped key for someone who still exists but the prompt no longer names is not compared; a deleted one is stale',
-      'The length it was rendered at, snapped onto the model grid on both sides',
+      'The length it was rendered at, snapped onto the model grid on both sides; an uploaded clip compares its exact length',
     ],
     ignored: [
       'Video model (a different model is a different segment, not a stale one)',
@@ -889,7 +890,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'duration',
     to: 'clip',
     tracking: 'hash',
-    note: 'the manifest length against the live duration, each snapped onto the model grid, so a pipeline re-snap no longer flags every clip (#767)',
+    note: 'the manifest length against the live duration, each snapped onto the model grid, so a pipeline re-snap no longer flags every clip (#767). An uploaded clip compares exactly, so a retime flags it (#2292)',
   },
   {
     from: 'dialogue',
