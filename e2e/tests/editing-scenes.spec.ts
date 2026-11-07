@@ -545,22 +545,21 @@ test.describe('Editing scenes', () => {
     const second = sceneIds[1];
     if (!second) throw new Error('scenes not set up');
     await openSceneScript(second);
-    await page
-      .getByRole('combobox')
-      .first()
-      .selectOption({ label: 'Locations' });
+    await page.getByRole('tab', { name: 'Locations' }).click();
     const select = page.getByRole('combobox', { name: 'Scene location' });
-    const current = (await select.innerText()).trim();
+    const current = ((await select.textContent()) ?? '').trim();
     await select.click();
-    await page
+    const option = page
       .getByRole('option')
       .filter({ hasNotText: current })
-      .first()
-      .click();
-    await page.reload();
-    const chosen = (await select.innerText()).trim();
-    expect(chosen).not.toBe(current);
-    await expect(page.getByText(chosen).nth(1)).toBeVisible();
+      .first();
+    const chosen = ((await option.textContent()) ?? '').trim();
+    await option.click();
+    await expect(select).toHaveText(chosen);
+    const removeButton = (name: string) =>
+      page.getByRole('button', { name: `Remove ${name} from sequence` });
+    await expect(removeButton(chosen)).toBeVisible();
+    await expect(removeButton(current)).toHaveCount(0);
   });
 
   test('adding a scene leaves the other shots as they were', async () => {
