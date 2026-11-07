@@ -648,7 +648,7 @@ const bibleToPrompt: GraphEdge[] = ['visualPrompt', 'motionPrompt'].flatMap(
       from: 'location',
       to,
       tracking: 'hash' as const,
-      note: 'only a location this prompt names, else the scene slugline. An unwritten prompt also reads the scene extract (#2012)',
+      note: 'the scene location when its tag names one (#2289); else only a location this prompt names, else the scene slugline. An unwritten prompt also reads the scene extract (#2012)',
     },
     {
       from: 'element',

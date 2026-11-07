@@ -10,6 +10,7 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
+import { canonicalBibleTag } from '@/cast/bible-field';
 import { dressForScene, type SceneLookPicks } from '@/cast/character-looks';
 
 type CharacterMatchInput = Pick<
@@ -311,41 +312,17 @@ function matchLocationInText<T extends LocationMatchInput>(
   });
 }
 
-/**
- * Match locations to a scene by environment tag or location name.
- * Pure function that works in-memory without DB queries.
- *
- * Generic so we can reuse it on `LocationBibleEntry` (same id/name/tag shape)
- * when narrowing the bible for prompt-input hashing.
- *
- * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
- * matched nothing, so a scene that already binds a location is untouched and
- * its stored hashes do not move. A prose-script scene that previously bound
- * NO location and whose text names one DOES gain a binding, so its rendered
- * shots read stale once after deploy. Pass it wherever the scene is in hand;
- * omitting it leaves a prose-script scene with no set. See
- * `matchLocationInText`.
- */
-export function matchLocationsToScene<T extends LocationMatchInput>(
+/** Locations the scene's environment tag or slugline names. */
+function matchLocationsToTag<T extends LocationMatchInput>(
   allLocations: T[],
   environmentTag: string,
-  sceneLocation: string,
-  sceneText?: string | null,
-  /** A shot's own prompt narrows a scene containing several remote rooms. */
-  visualPrompt?: string | null
+  sceneLocation: string
 ): T[] {
-  if (visualPrompt?.trim()) {
-    const framed = matchLocationInText(allLocations, visualPrompt);
-    if (framed.length > 0) return framed;
-  }
-  if (!environmentTag && !sceneLocation) {
-    return sceneText ? matchLocationInText(allLocations, sceneText) : [];
-  }
-
   const envTagLower = environmentTag.toLowerCase();
   const sceneLocLower = sceneLocation.toLowerCase();
+  if (!envTagLower && !sceneLocLower) return [];
 
-  const tagged = allLocations.filter((loc) => {
+  return allLocations.filter((loc) => {
     const consistencyTag = (loc.consistencyTag ?? '').toLowerCase();
     const locName = loc.name.toLowerCase();
     const locId = loc.locationId.toLowerCase();
@@ -368,7 +345,70 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
         (sceneLocLower.length > 0 && term.includes(sceneLocLower))
     );
   });
+}
 
+/**
+ * The one location a scene is set in, when its tag names exactly one: one
+ * match, or a single tag equal to one location's own tag (the picker writes
+ * `canonicalBibleTag`, and its name can also substring-match a neighbour).
+ */
+function pickedLocation<T extends LocationMatchInput>(
+  tagged: T[],
+  environmentTag: string
+): T | null {
+  if (tagged.length === 1) return tagged[0] ?? null;
+  const tags = environmentTag
+    .split(',')
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean);
+  if (tags.length !== 1) return null;
+  const exact = tagged.filter((loc) =>
+    [canonicalBibleTag(loc), loc.locationId, loc.name].some(
+      (id) => id.toLowerCase() === tags[0]
+    )
+  );
+  return exact.length === 1 ? (exact[0] ?? null) : null;
+}
+
+/**
+ * Match locations to a scene by environment tag or location name.
+ * Pure function that works in-memory without DB queries.
+ *
+ * Generic so we can reuse it on `LocationBibleEntry` (same id/name/tag shape)
+ * when narrowing the bible for prompt-input hashing.
+ *
+ * A tag that names one location wins over the shot prompt (#2289): the
+ * location picker writes one tag, and a prompt written for the old set must
+ * not undo it. A tag naming several rooms (a video call, #1697) lets the
+ * shot's prompt pick its own room.
+ *
+ * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
+ * matched nothing, so a scene that already binds a location is untouched and
+ * its stored hashes do not move. A prose-script scene that previously bound
+ * NO location and whose text names one DOES gain a binding, so its rendered
+ * shots read stale once after deploy. Pass it wherever the scene is in hand;
+ * omitting it leaves a prose-script scene with no set. See
+ * `matchLocationInText`.
+ */
+export function matchLocationsToScene<T extends LocationMatchInput>(
+  allLocations: T[],
+  environmentTag: string,
+  sceneLocation: string,
+  sceneText?: string | null,
+  /** A shot's own prompt narrows a scene containing several remote rooms. */
+  visualPrompt?: string | null
+): T[] {
+  const tagged = matchLocationsToTag(
+    allLocations,
+    environmentTag,
+    sceneLocation
+  );
+  const picked = pickedLocation(tagged, environmentTag);
+  if (picked) return [picked];
+  if (visualPrompt?.trim()) {
+    const framed = matchLocationInText(allLocations, visualPrompt);
+    if (framed.length > 0) return framed;
+  }
   if (tagged.length > 0 || !sceneText) return tagged;
   return matchLocationInText(allLocations, sceneText);
 }
@@ -502,9 +542,10 @@ export type ShotPromptView =
  * channels. Elements follow it on a still and on a reference-only clip; with a
  * start frame they stay additive, per `matchElementsToMotion`.
  *
- * For locations, text falls through to the scene slugline when the prompt
- * names no room, and the scene extract is read only while there is no prompt:
- * it names every room in the scene.
+ * For locations, a scene tag that names one room wins over the prompt
+ * (#2289). Otherwise the prompt picks the room, text falls through to the
+ * scene slugline when the prompt names no room, and the scene extract is read
+ * only while there is no prompt: it names every room in the scene.
  *
  * Characters come back wearing the look the scene picks for them (#2015), as
  * new objects: compare them by id, not by reference.

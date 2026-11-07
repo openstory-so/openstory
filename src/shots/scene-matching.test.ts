@@ -73,6 +73,56 @@ describe('participant-owned remote locations', () => {
   });
 });
 
+describe('a picked scene location (#2289)', () => {
+  const diner = {
+    name: 'Diner',
+    locationId: 'loc_001',
+    consistencyTag: 'diner_chrome',
+  };
+  const bakery = {
+    name: 'Bakery',
+    locationId: 'loc_002',
+    consistencyTag: 'bakery_warm',
+  };
+  const dinerKitchen = {
+    name: 'Diner kitchen',
+    locationId: 'loc_003',
+    consistencyTag: 'diner_kitchen_steel',
+  };
+  const all = [diner, bakery, dinerKitchen];
+  const oldPrompt = 'Wide shot of the diner, chrome stools at the counter.';
+
+  it('wins over a prompt written for the old location', () => {
+    expect(
+      matchLocationsToScene(all, 'bakery_warm', 'Bakery', '', oldPrompt)
+    ).toEqual([bakery]);
+  });
+
+  it('wins when its name also substring-matches a neighbour', () => {
+    expect(
+      matchLocationsToScene(
+        all,
+        'diner_chrome',
+        'Diner',
+        '',
+        'The cook plates eggs in the diner kitchen.'
+      )
+    ).toEqual([diner]);
+  });
+
+  it('lets the prompt pick a room when the tag names several', () => {
+    expect(
+      matchLocationsToScene(
+        all,
+        'diner_chrome, bakery_warm',
+        '',
+        '',
+        'The baker in the bakery.'
+      )
+    ).toEqual([bakery]);
+  });
+});
+
 const elements: SequenceElementMinimal[] = [
   {
     id: '1',

@@ -33,7 +33,11 @@ code now says "shot"; the file map in §7 is current.
    writes (`ShotPromptView` is required), and verify passes the selected
    text, so stamp and verify hash the same set. Causes, the clip's
    `referenceKeys` compare and the motion render's reference attachment use
-   the same resolution. A digest stamped on the scene roster before #2012 is
+   the same resolution. One exception for locations (#2289): a scene tag that
+   names one location wins over the prompt, so a location picked in the
+   scene's Locations tab stales every shot whose prompt still names the old
+   room. A tag naming several rooms (#1697) still lets the prompt pick.
+   A digest stamped on the scene roster before #2012 is
    still accepted at verify until `LEGACY_HASH_UNTIL`, with every roster
    character and location the prompt does not name read as its bible (and,
    for a character, its default look's clothing, #2015) stood at the stamp, so an off-shot edit to either cannot stale it (elements keep
