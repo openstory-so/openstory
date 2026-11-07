@@ -43,7 +43,6 @@ export default defineConfig({
       'src/**/*.test.{ts,tsx}',
       'packages/*/src/**/*.test.{ts,tsx}',
       'scripts/**/*.test.ts',
-      'workers/**/*.test.ts',
     ],
     setupFiles: ['./src/test/setup.ts'],
     environment: 'node',
