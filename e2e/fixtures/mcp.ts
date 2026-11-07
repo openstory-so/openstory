@@ -23,7 +23,11 @@ export async function rpc(
   params: Record<string, unknown> = {}
 ): Promise<z.infer<typeof RpcReply>> {
   const res = await request.post('/mcp', {
-    headers: { accept: 'application/json, text/event-stream' },
+    // A fresh socket per call: reusing one the dev server just closed resets mid-poll.
+    headers: {
+      accept: 'application/json, text/event-stream',
+      connection: 'close',
+    },
     data: { jsonrpc: '2.0', id: ++rpcId, method, params },
   });
   const text = await res.text();

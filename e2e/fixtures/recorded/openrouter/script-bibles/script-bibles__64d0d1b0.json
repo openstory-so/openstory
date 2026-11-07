@@ -1,0 +1,105 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Extract a complete character bible, location bible, and element bible from the script within the USER_SCRIPT tags. The script has a numbered line gutter (\"N: \") — report lineNumbers from it, but never treat the gutter as script text.\n\n<ELEMENTS>\nThe following user-uploaded elements are available. Produce an elementBible entry for each one used in the script:\n(none)\n</ELEMENTS>\n\n<USER_SCRIPT>\n1: INT. CORNER DINER - NIGHT\n2: \n3: MAYA, 30s, a waitress in a grey t-shirt and red apron, wipes down the chrome counter. DEV, 40s, a long-haul driver in a canvas jacket, sits on the last stool.\n4: \n5: MAYA\n6: You're late. The kitchen closed an hour ago.\n7: \n8: DEV\n9: Then I'll take coffee and an argument.\n10: \n11: MAYA\n12: Coffee's free. The argument costs extra.\n13: \n14: EXT. DINER CAR PARK - NIGHT\n15: \n16: Rain on gravel. DEV stands beside his truck. MAYA steps out and flips the sign to closed.\n17: \n18: MAYA\n19: Take the pie. It won't keep.\n20: \n21: DEV\n22: You're a hard woman to say no to.\n</USER_SCRIPT>\n\nFor each character that appears on screen:\n1. Provide COMPLETE physical descriptions for visual consistency\n2. Include clothing details that define the character\n3. Add distinguishing features\n4. Create a consistencyTag starting with the character's name slug\nA voice that is only heard gets its own entry with voiceOnly true, a voiceDescription, personality as register/attitude, and empty appearance fields.\n\nFor each unique location:\n1. Provide COMPLETE visual descriptions for visual consistency\n2. Include architectural style and design details\n3. Identify key visual features that define the location\n4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette\n5. Create a consistencyTag starting with the core location name\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\n  \"characterBible\": [\n    {\n      \"characterId\": \"maya\",\n      \"name\": \"MAYA\",\n      \"age\": \"30s\",\n      \"gender\": \"Female\",\n      \"ethnicity\": \"Unspecified\",\n      \"physicalDescription\": \"A woman in her 30s of unspecified nationality and cultural background, average height and build, with dark brown hair tied back in a practical style and brown eyes. Her face has subtle expression lines from frequent smiling and dry humor. No permanent marks are specified.\",\n      \"standardClothing\": \"Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes.\",\n      \"looks\": [\n        {\n          \"name\": \"Diner uniform\",\n          \"clothing\": \"Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes.\",\n          \"styling\": \"Hair tied back; no jewelry or makeup is specified.\",\n          \"lines\": [3, 16]\n        }\n      ],\n      \"personality\": \"Dry-witted and self-possessed, with a playful edge. She handles late-night requests with brisk practicality, but her teasing has a quietly generous streak.\",\n      \"movement\": \"Works with efficient, practiced motions, wiping the counter without fuss. Moves decisively, including stepping outside to flip the sign, with a relaxed confidence.\",\n      \"voiceDescription\": \"Native English; regional variant and accent unspecified. Female, 30s. Excellent quality. Persona: dry-witted, grounded, quietly generous. Emotion: amused, matter-of-fact. She speaks in a clear, naturally mid-range voice, with crisp phrasing and an unhurried pace. Her teasing lines land lightly rather than sharply, and moments of kindness come through without becoming sentimental.\",\n      \"voiceOnly\": false,\n      \"isPerson\": true,\n      \"consistencyTag\": \"maya\"\n    },\n    {\n      \"characterId\": \"dev\",\n      \"name\": \"DEV\",\n      \"age\": \"40s\",\n      \"gender\": \"Male\",\n      \"ethnicity\": \"Unspecified\",\n      \"physicalDescription\": \"A man in his 40s of unspecified nationality and cultural background, with a solid, road-worn build and an easy, slightly stooped posture. He has short, dark hair, brown eyes, and mild age lines around his eyes and mouth. No permanent marks are specified.\",\n      \"standardClothing\": \"Canvas jacket over a plain dark shirt, sturdy trousers, and practical boots.\",\n      \"looks\": [\n        {\n          \"name\": \"Road clothes\",\n          \"clothing\": \"Canvas jacket over a plain dark shirt, sturdy trousers, and practical boots.\",\n          \"styling\": \"No accessories or additional styling are specified.\",\n          \"lines\": [3, 16]\n        }\n      ],\n      \"personality\": \"Wry, sociable, and comfortable trading jokes. He answers a rebuff with charm rather than irritation and shows appreciation without making a fuss.\",\n      \"movement\": \"Sits casually at the counter and later stands beside his truck with an unhurried, relaxed manner. His gestures are economical, as if accustomed to long stretches on the road.\",\n      \"voiceDescription\": \"Native English; regional variant and accent unspecified. Male, 40s. Excellent quality. Persona: road-weary, charming, dryly playful. Emotion: relaxed, amused. His voice is low-mid in pitch with a lightly grainy, conversational timbre. He leaves an easy beat for a joke to land, speaks at a measured pace, and lets warmth show beneath his teasing delivery.\",\n      \"voiceOnly\": false,\n      \"isPerson\": true,\n      \"consistencyTag\": \"dev\"\n    }\n  ],\n  \"locationBible\": [\n    {\n      \"locationId\": \"corner_diner\",\n      \"name\": \"CORNER DINER\",\n      \"type\": \"interior\",\n      \"description\": \"A compact neighborhood diner with a long service counter facing a row of stools and a small working kitchen behind it. The counter has a bright chrome edge and a smooth, pale laminate top; the floor is durable, dark tile. The space feels functional and well-used, with simple booth seating and an uncluttered service area.\",\n      \"architecturalStyle\": \"Utilitarian mid-century diner design, with straightforward lines, durable finishes, and compact customer seating.\",\n      \"keyFeatures\": \"Chrome counter, last stool at the counter, service area and kitchen beyond, simple booths, fixed ceiling fixtures, and a counter sign or menu display.\",\n      \"ambiance\": \"Workaday and intimate, with a familiar late-service quiet and a lightly playful, conversational feel.\",\n      \"consistencyTag\": \"corner_diner\",\n      \"firstMention\": {\n        \"text\": \"INT. CORNER DINER - NIGHT\",\n        \"lineNumber\": 1\n      }\n    },\n    {\n      \"locationId\": \"diner_car_park\",\n      \"name\": \"DINER CAR PARK\",\n      \"type\": \"exterior\",\n      \"description\": \"A modest gravel car park beside the diner, opening directly onto the building's entrance. The uneven gravel surface is bordered by the diner wall and a simple sign visible near the doorway. The space accommodates a truck and has an open, practical layout rather than marked parking bays.\",\n      \"architecturalStyle\": \"Plain roadside commercial exterior, with a functional diner facade and minimal site detailing.\",\n      \"keyFeatures\": \"Gravel ground, diner entrance, sign that can be flipped to indicate closure, and space beside the building for a parked truck.\",\n      \"ambiance\": \"Quiet and informal, with a roadside, end-of-service stillness.\",\n      \"consistencyTag\": \"diner_car_park\",\n      \"firstMention\": {\n        \"text\": \"EXT. DINER CAR PARK - NIGHT\",\n        \"lineNumber\": 14\n      }\n    }\n  ],\n  \"elementBible\": []\n}",
+        "usage": {
+          "prompt_tokens": 3468,
+          "completion_tokens": 1903,
+          "total_tokens": 5371,
+          "cost": 0.0019729,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 3465,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0019729,
+            "upstream_inference_prompt_cost": 0.0000699,
+            "upstream_inference_completions_cost": 0.001903
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 668,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1277,
+        "interChunkDelaysMs": [
+          417, 418, 417, 419, 420, 424, 415, 362, 416, 420, 419, 87, 31, 0, 93,
+          0, 0, 0, 16, 0, 0, 0, 10, 1, 0, 0, 55, 0, 159, 6, 7, 0, 0, 0, 0, 0, 0,
+          0, 9, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 14, 0, 0, 1, 13, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 15, 0, 0, 0,
+          14, 0, 0, 0, 12, 0, 0, 1, 13, 0, 0, 0, 14, 0, 0, 0, 15, 0, 2, 0, 12,
+          0, 0, 0, 12, 0, 0, 0, 14, 0, 0, 0, 13, 0, 0, 0, 9, 1, 0, 0, 12, 6, 0,
+          0, 12, 0, 0, 0, 17, 0, 0, 0, 22, 0, 0, 0, 19, 0, 0, 0, 10, 0, 0, 0,
+          18, 0, 0, 0, 14, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 11, 0, 0, 0, 11, 0,
+          3, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 2,
+          0, 0, 0, 1, 0, 0, 0, 7, 0, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 7, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0,
+          0, 0, 0, 0, 0, 3, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0,
+          3, 0, 0, 0, 0, 0, 25, 0, 0, 0, 20, 0, 0, 0, 34, 0, 0, 0, 40, 0, 0, 0,
+          45, 0, 0, 0, 27, 0, 0, 0, 21, 0, 0, 0, 19, 0, 0, 4, 15, 0, 0, 0, 39,
+          0, 0, 0, 19, 0, 0, 0, 16, 0, 0, 0, 21, 0, 0, 0, 19, 0, 0, 0, 35, 0, 0,
+          0, 11, 0, 0, 0, 28, 0, 0, 0, 28, 0, 0, 0, 18, 0, 0, 0, 10, 0, 0, 0,
+          20, 0, 0, 0, 36, 1, 0, 0, 14, 0, 0, 0, 27, 0, 0, 0, 56, 0, 1, 0, 30,
+          0, 0, 0, 48, 0, 0, 0, 39, 0, 0, 0, 20, 0, 0, 0, 21, 0, 0, 0, 17, 0, 0,
+          0, 27, 0, 0, 0, 2, 0, 0, 0, 37, 0, 0, 0, 0, 0, 0, 0, 29, 19, 0, 0, 1,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 26, 0, 0, 0, 0, 8, 0, 0,
+          0, 14, 0, 0, 0, 15, 0, 0, 0, 28, 14, 0, 0, 0, 0, 10, 0, 4, 0, 0, 0,
+          24, 0, 0, 0, 6, 0, 0, 0, 6, 0, 0, 0, 32, 0, 0, 1, 27, 0, 0, 0, 41, 0,
+          0, 0, 19, 0, 0, 0, 27, 0, 0, 0, 41, 0, 0, 0, 13, 0, 0, 0, 23, 0, 0, 0,
+          14, 0, 0, 0, 31, 0, 0, 0, 4, 0, 0, 0, 10, 0, 0, 0, 36, 0, 0, 0, 30, 1,
+          0, 0, 14, 0, 0, 0, 0, 15, 0, 0, 0, 25, 0, 0, 0, 3, 0, 1, 0, 23, 0, 2,
+          0, 16, 1, 0, 0, 15, 0, 0, 0, 15, 0, 0, 0, 13, 0, 0, 0, 18, 0, 0, 0,
+          10, 0, 0, 0, 16, 1, 0, 0, 27, 0, 0, 0, 14, 0, 0, 0, 13, 1, 0, 0, 15,
+          0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 17, 0, 0, 0, 14, 1, 0,
+          0, 41, 0, 0, 0, 38, 0, 2, 0, 26, 0, 0, 0, 28, 0, 0, 0, 31, 0, 0, 0,
+          30, 1, 0, 0, 20, 0, 0, 0, 10, 0, 0, 0, 17, 0, 0, 0, 34, 0, 0, 0, 30,
+          0, 0, 0, 34, 0, 0, 0, 27, 0, 0, 0, 19, 1, 0, 0, 28, 1, 0, 0, 13, 0, 0,
+          0, 7, 0, 0, 0, 29, 0, 0, 0, 6, 0, 0, 0, 7, 0, 0, 0, 25, 0, 0, 0, 9, 0,
+          0, 0, 38, 0, 0, 0, 14, 0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 30, 0, 0, 0,
+          37, 0, 0, 0, 38, 0, 0, 0, 29, 0, 0, 0, 10, 0, 0, 1, 46, 0, 0, 0, 15,
+          0, 0, 0, 39, 0, 1, 0, 18, 0, 0, 0, 37, 0, 0, 0, 39, 0, 0, 0, 18, 0, 0,
+          0, 12, 0, 0, 0, 13, 0, 1, 0, 17, 0, 0, 0, 7, 0, 0, 1, 13, 0, 0, 0, 3,
+          0, 0, 0, 25, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 32, 0, 0, 0, 6, 0, 0,
+          0, 13, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 18, 0, 0, 0, 17, 0, 0, 0, 30,
+          0, 0, 0, 14, 0, 0, 0, 41, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 11, 10,
+          0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 38, 0, 0, 0, 27, 0, 0, 0, 27, 0, 0, 0,
+          30, 0, 0, 0, 27, 0, 0, 0, 28, 1, 0, 0, 33, 0, 0, 0, 21, 0, 0, 0, 20,
+          0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 14, 0, 0, 0, 37, 0, 0, 0, 40, 0, 0,
+          0, 23, 0, 1, 0, 26, 0, 0, 0, 15, 0, 0, 0, 27, 0, 0, 0, 18, 0, 0, 0,
+          23, 0, 0, 0, 30, 0, 0, 0, 49, 1, 0, 0, 0, 35, 0, 0, 0, 12, 0, 0, 0,
+          21, 0, 0, 0, 38, 1, 0, 0, 12, 0, 0, 0, 57, 1, 0, 0, 31, 0, 0, 0, 27,
+          0, 0, 0, 14, 0, 0, 0, 16, 0, 0, 0, 5, 0, 0, 0, 19, 0, 0, 0, 21, 0, 0,
+          0, 19, 0, 0, 0, 13, 0, 0, 0, 11, 0, 0, 0, 10, 0, 0, 0, 8, 0, 0, 0, 16,
+          0, 0, 0, 20, 0, 0, 0, 31, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0,
+          0, 22, 0, 0, 0, 12, 0, 0, 0, 13, 0, 0, 0, 15, 0, 0, 0, 33, 0, 0, 0,
+          25, 0, 0, 0, 43, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 7, 0,
+          0, 0, 38, 0, 0, 0, 21, 0, 0, 0, 25, 0, 0, 2, 190, 0, 1, 0, 3, 0, 0, 0,
+          1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 45, 0, 0,
+          0, 45, 0, 0, 0, 22, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 18, 0, 0, 0,
+          25, 0, 1, 0, 31, 0, 0, 0, 20, 0, 0, 0, 15, 0, 0, 0, 12, 0, 0, 0, 28,
+          0, 0, 0, 9, 0, 0, 0, 45, 4, 9, 9, 0, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0,
+          0, 36, 0, 0, 0, 5, 0, 0, 0, 0, 3, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0,
+          40, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 1, 0, 0, 0, 28, 0, 0, 0, 67, 0,
+          0, 113, 0, 3
+        ],
+        "totalDurationMs": 12243
+      },
+      "metadata": {
+        "systemHash": "7de7d0b8"
+      }
+    }
+  ]
+}

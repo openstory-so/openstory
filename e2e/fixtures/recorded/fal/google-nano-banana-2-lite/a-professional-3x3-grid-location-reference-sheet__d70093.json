@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nCITY HALL STEPS\nType: Exterior\n\n[VISUAL DESCRIPTION]:\nA broad public entrance to a civic building, approached by a substantial flight of stone steps leading to a prominent doorway. The steps provide room for people to climb and for a row of cameras to be set up nearby. The building facade and entrance read as formal public architecture, with durable masonry surfaces and a clearly defined threshold.\n\n[ARCHITECTURAL STYLE]:\nFormal civic architecture with a monumental entry and traditional stone construction.\n\n[KEY FEATURES]:\nWide stone steps, a large entrance door, a solid masonry facade, and space at the foot or side of the steps for press cameras. Exterior wall-mounted fixtures may flank the entrance; no specific signage is described.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nPublic and official, with a press-presence that makes the entrance feel exposed and confrontational.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/8743062dd73c0f352fceb7662fc305df4ec627a864d10b6d385c0df1da8b98ab.png",
+              "content_type": "image/png",
+              "file_name": "k4gkumhlNAvM1lnCen9sx_pD2b6OOo.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042175
+      }
+    }
+  ]
+}

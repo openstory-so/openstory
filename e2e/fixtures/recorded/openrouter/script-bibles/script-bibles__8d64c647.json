@@ -1,0 +1,93 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Extract a complete character bible, location bible, and element bible from the script within the USER_SCRIPT tags. The script has a numbered line gutter (\"N: \") — report lineNumbers from it, but never treat the gutter as script text.\n\n<ELEMENTS>\nThe following user-uploaded elements are available. Produce an elementBible entry for each one used in the script:\n(none)\n</ELEMENTS>\n\n<USER_SCRIPT>\n1: INT. BAKERY KITCHEN - EARLY MORNING\n2: \n3: MARA, a baker in a flour-dusted apron, kneads dough on a steel bench. She glances at the wall clock.\n4: \n5: MARA\n6: We open in five minutes.\n7: \n8: EXT. BAKERY STREET - MORNING\n9: \n10: MARA flips the shop sign to OPEN and steps out into the morning light. A delivery cyclist waves from across the road.\n11: \n12: CYCLIST\n13: Smells amazing today!\n</USER_SCRIPT>\n\nFor each character that appears on screen:\n1. Provide COMPLETE physical descriptions for visual consistency\n2. Include clothing details that define the character\n3. Add distinguishing features\n4. Create a consistencyTag starting with the character's name slug\nA voice that is only heard gets its own entry with voiceOnly true, a voiceDescription, personality as register/attitude, and empty appearance fields.\n\nFor each unique location:\n1. Provide COMPLETE visual descriptions for visual consistency\n2. Include architectural style and design details\n3. Identify key visual features that define the location\n4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette\n5. Create a consistencyTag starting with the core location name\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"characterBible\":[{\"characterId\":\"mara\",\"name\":\"MARA\",\"age\":\"30s\",\"gender\":\"Female\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"A woman in her 30s, of average height and sturdy, capable build. She has dark brown hair tied back in a practical bun, brown eyes, and a lightly flour-marked face. No permanent marks are specified.\",\"standardClothing\":\"A white cotton baker’s shirt, a flour-dusted natural-canvas apron, dark work trousers, and sturdy black nonslip shoes.\",\"looks\":[{\"name\":\"Bakery workwear\",\"clothing\":\"A white cotton baker’s shirt, a flour-dusted natural-canvas apron, dark work trousers, and sturdy black nonslip shoes.\",\"styling\":\"Dark brown hair secured in a practical bun.\",\"lines\":[3,10]}],\"personality\":\"Focused and practical, with a calm, matter-of-fact way of speaking. She keeps working while monitoring the time and is comfortable addressing the day’s routine directly.\",\"movement\":\"Works with steady, practiced hands while kneading. Glances at the clock, then moves briskly to flip the shop sign and step outside.\",\"voiceDescription\":\"Native English; regional accent unspecified. Female, 30s. Excellent quality. Persona: practical, composed baker. Emotion: focused, matter-of-fact. Her voice has a clear, warm mid-range tone with an easy conversational cadence. She speaks plainly and efficiently, with the relaxed confidence of someone used to a busy morning routine.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"mara\"},{\"characterId\":\"cyclist\",\"name\":\"CYCLIST\",\"age\":\"20s–40s\",\"gender\":\"Unspecified\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"A delivery cyclist seen across the road, of average height and lean build. Their features are not described; for visual continuity, they have short dark hair and a neutral, friendly expression. No permanent marks are specified.\",\"standardClothing\":\"A practical dark cycling jacket, fitted trousers, and a bicycle helmet; a compact delivery bag is worn on the back.\",\"looks\":[{\"name\":\"Delivery ride\",\"clothing\":\"A practical dark cycling jacket, fitted trousers, and a bicycle helmet; a compact delivery bag is worn on the back.\",\"styling\":\"\",\"lines\":[10]}],\"personality\":\"Friendly and appreciative, offering a cheerful, spontaneous compliment from across the road.\",\"movement\":\"Waves from across the road while riding or paused with the bicycle; the gesture is open and casual.\",\"voiceDescription\":\"Native English; regional accent unspecified. Gender unspecified, 20s–40s. Excellent quality. Persona: friendly passer-by. Emotion: upbeat, appreciative. The voice is clear and conversational, with a light, welcoming tone. The compliment is delivered spontaneously and warmly, at an easy everyday pace.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"cyclist\"}],\"locationBible\":[{\"locationId\":\"bakery_kitchen\",\"name\":\"BAKERY KITCHEN\",\"type\":\"interior\",\"description\":\"A working bakery kitchen arranged around a stainless-steel bench, with enough open floor space for kneading and other preparation. A wall clock is visible to the baker. The surfaces and equipment are practical and easy to clean, with pale, lightly worn walls and a sturdy floor suited to a commercial workspace.\",\"architecturalStyle\":\"Functional, compact commercial kitchen with an utilitarian bakery fit-out.\",\"keyFeatures\":\"Long steel workbench, wall clock, open dough-preparation area, practical kitchen surfaces and storage.\",\"ambiance\":\"Orderly, purposeful, and lived-in, conveying the quiet concentration of a bakery getting ready to open.\",\"consistencyTag\":\"bakery_kitchen\",\"firstMention\":{\"text\":\"INT. BAKERY KITCHEN - EARLY MORNING\",\"lineNumber\":1}},{\"locationId\":\"bakery_street\",\"name\":\"BAKERY STREET\",\"type\":\"exterior\",\"description\":\"The street directly outside the bakery shop, with the entrance and shop sign facing the road and room for pedestrians at the storefront. The road runs past the bakery, with a crossing distance that allows a cyclist to wave from the opposite side. The exterior is a modest neighborhood commercial frontage with a shop window, door, and durable pavement.\",\"architecturalStyle\":\"Everyday neighborhood high-street storefront, with a simple, practical commercial façade.\",\"keyFeatures\":\"Bakery entrance and shopfront, a sign that can be flipped to OPEN, street pavement, and the road opposite the shop.\",\"ambiance\":\"A familiar local street with a welcoming, informal feel.\",\"consistencyTag\":\"bakery_street\",\"firstMention\":{\"text\":\"EXT. BAKERY STREET - MORNING\",\"lineNumber\":8}}],\"elementBible\":[]}",
+        "usage": {
+          "prompt_tokens": 3400,
+          "completion_tokens": 1384,
+          "total_tokens": 4784,
+          "cost": 0.00154086,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 3013,
+            "cache_write_tokens": 384,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00154086,
+            "upstream_inference_prompt_cost": 0.00015686,
+            "upstream_inference_completions_cost": 0.001384
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 409,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1340,
+        "interChunkDelaysMs": [
+          413, 418, 417, 418, 421, 419, 353, 2, 0, 12, 0, 0, 0, 28, 0, 0, 0, 0,
+          1, 0, 11, 0, 0, 0, 12, 0, 0, 0, 0, 12, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0,
+          0, 0, 9, 0, 0, 0, 10, 0, 0, 0, 34, 0, 0, 0, 1, 0, 0, 0, 0, 19, 0, 0,
+          1, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 5, 0, 0, 0, 20, 0, 0, 0, 17, 1, 0,
+          0, 18, 0, 0, 0, 43, 0, 0, 0, 19, 0, 0, 0, 22, 0, 1, 0, 33, 0, 0, 0,
+          11, 0, 0, 0, 17, 0, 0, 0, 14, 0, 1, 0, 0, 20, 1, 0, 0, 43, 0, 0, 0,
+          20, 0, 0, 0, 10, 0, 0, 0, 8, 0, 0, 0, 26, 0, 0, 0, 21, 0, 0, 0, 20, 1,
+          0, 0, 16, 0, 0, 0, 21, 0, 0, 0, 16, 0, 0, 0, 8, 1, 0, 0, 13, 0, 0, 0,
+          15, 0, 0, 0, 62, 0, 0, 0, 29, 0, 0, 0, 24, 0, 0, 0, 19, 0, 0, 0, 34,
+          0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 18, 0, 0, 0, 34, 0, 0, 0, 17, 1, 0,
+          0, 31, 0, 0, 0, 12, 0, 0, 1, 17, 0, 0, 0, 30, 0, 0, 0, 23, 0, 0, 0,
+          14, 0, 0, 0, 6, 0, 0, 0, 56, 0, 0, 0, 14, 0, 0, 0, 33, 0, 0, 0, 34, 0,
+          0, 0, 19, 0, 0, 0, 33, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 27, 0, 0, 0,
+          26, 0, 0, 0, 17, 0, 0, 0, 22, 0, 0, 0, 11, 0, 0, 0, 21, 0, 0, 0, 19,
+          0, 0, 0, 30, 0, 1, 0, 12, 0, 0, 0, 23, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0,
+          0, 35, 0, 0, 0, 19, 0, 0, 0, 6, 0, 0, 0, 0, 22, 0, 0, 0, 7, 1, 0, 0,
+          44, 0, 0, 0, 22, 0, 0, 0, 9, 0, 0, 0, 21, 0, 1, 0, 25, 0, 0, 0, 27, 0,
+          0, 0, 39, 0, 0, 0, 18, 0, 0, 0, 16, 0, 0, 1, 23, 0, 0, 0, 25, 0, 0, 0,
+          15, 0, 0, 0, 27, 1, 0, 0, 17, 0, 0, 1, 54, 1, 0, 0, 42, 1, 0, 0, 25,
+          1, 0, 0, 12, 0, 0, 3, 14, 0, 0, 0, 18, 0, 0, 0, 19, 0, 0, 0, 23, 0, 0,
+          0, 10, 0, 0, 0, 15, 0, 0, 1, 8, 0, 0, 1, 18, 0, 0, 0, 25, 0, 0, 0, 7,
+          1, 0, 0, 301, 0, 1, 2, 3, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0,
+          2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 1, 0, 0, 1, 1, 0, 5, 0, 0, 0, 1, 0, 0,
+          2, 2, 0, 0, 1, 2, 1, 0, 0, 8, 0, 0, 0, 14, 1, 0, 0, 10, 0, 0, 0, 28,
+          0, 0, 0, 14, 0, 0, 1, 12, 0, 1, 0, 19, 0, 0, 0, 12, 0, 0, 0, 25, 1, 0,
+          0, 31, 0, 0, 0, 29, 0, 0, 0, 27, 1, 0, 0, 16, 1, 0, 0, 7, 0, 0, 0, 20,
+          0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 27, 1, 0, 0, 3, 0, 0, 0, 18, 0, 1,
+          0, 17, 0, 0, 0, 18, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 24, 0, 0, 0,
+          20, 0, 0, 0, 19, 0, 0, 4, 13, 0, 0, 0, 23, 0, 0, 0, 25, 0, 0, 0, 27,
+          0, 0, 0, 27, 0, 0, 0, 20, 0, 0, 0, 30, 0, 0, 0, 29, 0, 0, 0, 25, 0, 0,
+          0, 42, 4, 0, 0, 29, 4, 0, 0, 25, 0, 0, 0, 18, 1, 0, 0, 24, 0, 0, 0,
+          19, 0, 0, 0, 27, 0, 0, 0, 30, 0, 0, 0, 30, 0, 0, 0, 15, 0, 0, 1, 41,
+          0, 0, 0, 16, 0, 0, 1, 49, 0, 0, 0, 18, 0, 0, 0, 14, 0, 0, 0, 28, 0, 0,
+          0, 18, 0, 0, 0, 30, 1, 0, 0, 33, 1, 0, 0, 23, 0, 0, 0, 13, 0, 0, 0,
+          20, 1, 0, 0, 10, 0, 0, 0, 14, 0, 0, 0, 14, 0, 0, 0, 19, 0, 0, 0, 10,
+          0, 0, 0, 7, 0, 0, 0, 28, 0, 0, 0, 10, 0, 0, 0, 20, 0, 0, 1, 5, 0, 0,
+          0, 29, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 33, 0, 0, 0,
+          26, 0, 1, 0, 43, 0, 0, 0, 15, 1, 1, 4, 37, 0, 0, 0, 22, 0, 0, 0, 45,
+          0, 0, 0, 15, 0, 0, 0, 21, 0, 0, 0, 8, 0, 0, 0, 71, 0, 1, 0, 18, 0, 0,
+          0, 29, 0, 0, 1, 26, 0, 0, 0, 14, 0, 0, 0, 28, 0, 0, 0, 18, 0, 0, 0,
+          26, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 1, 17, 0, 0, 0, 28, 0, 0, 0, 18,
+          1, 0, 0, 27, 0, 0, 0, 28, 0, 0, 0, 35, 1, 0, 0, 15, 0, 0, 0, 22, 0, 0,
+          0, 24, 0, 0, 0, 36, 0, 0, 1, 17, 0, 0, 2, 13, 1, 0, 0, 7, 0, 0, 0, 25,
+          0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 40, 0, 0, 0, 96, 54, 1,
+          3
+        ],
+        "totalDurationMs": 9454
+      },
+      "metadata": {
+        "systemHash": "7de7d0b8"
+      }
+    }
+  ]
+}

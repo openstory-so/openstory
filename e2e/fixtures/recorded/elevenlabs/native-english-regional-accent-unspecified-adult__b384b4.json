@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "elevenlabs-voice-design",
+        "userMessage": "Native English; regional accent unspecified. Adult, gender unspecified. Excellent quality. Persona: guarded public spokesperson. Emotion: controlled, firm, neutral. The voice is even and professionally restrained, with a compact mid-range delivery. Speech is brief and carefully contained, avoiding emotional color or unnecessary emphasis while making the refusal unmistakable.",
+        "model": "eleven_ttv_v3"
+      },
+      "response": {
+        "json": {
+          "detail": {
+            "type": "rate_limit_error",
+            "code": "concurrent_limit_exceeded",
+            "message": "Too many concurrent requests. Your current subscription is associated with a maximum of 2 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.",
+            "status": "too_many_concurrent_requests",
+            "request_id": "86f0b4317dcfbfccfc2360a9db84490a",
+            "docs_url": "https://elevenlabs.io/docs/eleven-api/resources/errors#rate-limiting-and-concurrency"
+          }
+        },
+        "status": 429
+      }
+    }
+  ]
+}

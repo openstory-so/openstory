@@ -1,0 +1,70 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the \"## Scene N\" headings.\n\n<DIRECTOR_STYLE>\nMood: Authentic and immediate\nCamera: Handheld camera with observational framing\nReferences: vertiginous big-wall climbing documentary; unflinching observational documentary portraiture; tense vérité whistleblower documentary\n</DIRECTOR_STYLE>\n\n<CHARACTERS>\n- MARA\n- CYCLIST\n</CHARACTERS>\n\n<SCENES>\n## Scene 1 — BAKERY KITCHEN\nINT. BAKERY KITCHEN - EARLY MORNING\nshots: up to 10\n\nINT. BAKERY KITCHEN - EARLY MORNING\n\nMARA, a baker in a flour-dusted apron, kneads dough on a steel bench. She glances at the wall clock.\n\nMARA\nWe open in five minutes.\n\n---\n\n## Scene 2 — BAKERY STREET\nEXT. BAKERY STREET - MORNING\nshots: up to 10\n\nEXT. BAKERY STREET - MORNING\n\nMARA flips the shop sign to OPEN and steps out into the morning light. A delivery cyclist waves from across the road.\n\nCYCLIST\nSmells amazing today!\n</SCENES>\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneNumber\":1,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Observational handheld frame with MARA at the steel bench, dough and flour in the foreground and the wall clock visible behind her.\",\"subjectStartState\":\"MARA leans over the steel bench in a flour-dusted apron, hands on the dough, focused on kneading.\"},\"action\":\"MARA kneads the dough, then glances at the wall clock.\",\"cameraMovement\":{\"move\":\"handheld drift\",\"pacing\":\"subtle, unhurried\"},\"direction\":\"Stay with her working rhythm; let the glance to the clock register naturally.\",\"soundCue\":\"Soft dough-on-steel thuds, faint early-morning bakery ambience.\",\"dialogue\":[{\"character\":\"MARA\",\"line\":\"We open in five minutes.\",\"tone\":\"matter-of-fact\"}],\"durationSeconds\":5}]},{\"sceneNumber\":2,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"wide\",\"angle\":\"eye level\",\"composition\":\"Handheld observational view of the bakery entrance and street; MARA is framed by the doorway, with the opposite side of the road visible.\",\"subjectStartState\":\"MARA stands at the bakery entrance beside the shop sign, ready to turn it; CYCLIST is not yet in frame.\"},\"action\":\"MARA flips the sign to OPEN and steps into the morning light as CYCLIST waves from across the road.\",\"cameraMovement\":{\"move\":\"handheld follow\",\"pacing\":\"natural, lightly responsive\"},\"direction\":\"Hold the street's distance between them as the greeting carries across.\",\"soundCue\":\"Street ambience, a bicycle bell faintly ringing.\",\"dialogue\":[{\"character\":\"CYCLIST\",\"line\":\"Smells amazing today!\",\"tone\":\"cheerful\"}],\"durationSeconds\":5}]}]}",
+        "usage": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 633,
+          "total_tokens": 2983,
+          "cost": 0.00074816,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 2053,
+            "cache_write_tokens": 294,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00074816,
+            "upstream_inference_prompt_cost": 0.00011516,
+            "upstream_inference_completions_cost": 0.000633
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 240,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 947,
+        "interChunkDelaysMs": [
+          417, 417, 420, 420, 27, 0, 0, 0, 26, 0, 0, 0, 47, 0, 0, 0, 45, 0, 0,
+          0, 57, 1, 0, 0, 48, 0, 0, 0, 39, 0, 0, 0, 42, 0, 0, 0, 46, 0, 0, 0,
+          76, 0, 0, 0, 59, 0, 0, 0, 41, 0, 0, 0, 34, 0, 0, 0, 50, 0, 0, 0, 70,
+          0, 0, 0, 44, 0, 0, 0, 45, 0, 0, 1, 50, 0, 0, 0, 47, 0, 0, 0, 44, 0, 0,
+          0, 44, 0, 0, 0, 40, 0, 0, 1, 63, 1, 0, 0, 44, 0, 0, 0, 43, 0, 0, 0,
+          42, 0, 0, 0, 56, 0, 0, 0, 34, 8, 0, 13, 0, 0, 0, 16, 0, 0, 0, 16, 0,
+          0, 0, 22, 0, 0, 0, 19, 0, 0, 0, 24, 0, 0, 0, 24, 0, 0, 0, 19, 0, 0, 0,
+          34, 0, 0, 1, 35, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 13, 0, 0, 0, 22, 0,
+          0, 0, 26, 0, 0, 0, 17, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 34, 0, 0, 0,
+          27, 0, 0, 1, 10, 0, 0, 0, 12, 0, 0, 0, 11, 0, 0, 0, 5, 1, 0, 0, 15, 0,
+          0, 0, 19, 1, 0, 0, 24, 0, 0, 1, 21, 0, 1, 0, 14, 0, 0, 0, 14, 1, 0, 0,
+          0, 16, 0, 0, 0, 6, 0, 0, 0, 6, 0, 0, 0, 11, 0, 1, 0, 10, 0, 0, 0, 11,
+          0, 0, 0, 9, 1, 0, 0, 7, 0, 0, 0, 12, 0, 0, 0, 9, 0, 1, 0, 12, 0, 0, 0,
+          11, 0, 0, 0, 23, 0, 1, 0, 17, 0, 0, 0, 18, 0, 0, 1, 13, 0, 0, 0, 17,
+          0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 28, 0, 0, 0, 23, 0, 0, 0, 18, 0, 0,
+          0, 13, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 15, 0, 0, 0, 14, 0, 0, 0, 5,
+          0, 0, 0, 48, 0, 0, 0, 39, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
+          7, 1, 0, 0, 13, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+          0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+          0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          2, 0, 0, 0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0,
+          0, 1, 0, 0, 2, 2, 0, 0, 0, 3, 0, 1, 0, 3, 0, 0, 0, 5, 0, 0, 0, 0, 0,
+          0, 0, 0, 3, 0, 0, 0, 0, 1, 1, 0, 0, 0, 29, 0, 6
+        ],
+        "totalDurationMs": 5075
+      },
+      "metadata": {
+        "systemHash": "619c7524"
+      }
+    }
+  ]
+}

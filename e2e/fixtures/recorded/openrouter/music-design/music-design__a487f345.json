@@ -1,0 +1,57 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Classify music design for each scene and generate a unified music prompt for the sequence.\n\nThere are 2 scenes. Return exactly 2 rows in `scenes`, in this order.\n\n<SCENES>\n[\n  {\n    \"sceneId\": \"01M6QXZ9WM4E6A9FDTCV4PP31V\",\n    \"title\": \"NEWSROOM\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 8,\n    \"location\": \"INT. NEWSROOM - NIGHT\",\n    \"timeOfDay\": \"night\"\n  },\n  {\n    \"sceneId\": \"01M6QXZ9WTMYHM81KKK4FGXHBK\",\n    \"title\": \"CITY HALL STEPS\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 7,\n    \"location\": \"EXT. CITY HALL STEPS - MORNING\",\n    \"timeOfDay\": \"morning\"\n  }\n]\n</SCENES>\n\nFor each scene, classify:\n1. presence: \"none\"|\"minimal\"|\"moderate\"|\"full\"\n2. style: Genre/instrumentation (if music present)\n3. mood: Emotional quality (if music present)\n4. atmosphere: Environmental atmosphere\n\nThen synthesize unified tags (starting with \"instrumental\") and a 1-2 sentence prompt for one cohesive music track.\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneId\":\"01M6QXZ9WM4E6A9FDTCV4PP31V\",\"musicDesign\":{\"presence\":\"minimal\",\"style\":\"subtle electronic ambient\",\"mood\":\"tense\",\"atmosphere\":\"late-night newsroom, focused and subdued\"}},{\"sceneId\":\"01M6QXZ9WTMYHM81KKK4FGXHBK\",\"musicDesign\":{\"presence\":\"moderate\",\"style\":\"cinematic orchestral\",\"mood\":\"hopeful\",\"atmosphere\":\"open civic plaza in the morning\"}}],\"tags\":\"instrumental, cinematic, electronic ambient, orchestral, tense, hopeful, building, piano, strings, restrained, spacious\",\"prompt\":\"Instrumental underscore begins with restrained, pulsing electronic textures and sparse piano, evoking a focused late-night newsroom. It gradually opens into warm strings and a hopeful cinematic lift for a morning civic setting.\"}",
+        "usage": {
+          "prompt_tokens": 1255,
+          "completion_tokens": 289,
+          "total_tokens": 1544,
+          "cost": 0.0003013,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1252,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003013,
+            "upstream_inference_prompt_cost": 0.0001568,
+            "upstream_inference_completions_cost": 0.0001445
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 94,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1056,
+        "interChunkDelaysMs": [
+          417, 419, 420, 420, 422, 416, 419, 420, 420, 419, 421, 420, 420, 364,
+          14, 0, 12, 0, 0, 0, 10, 0, 0, 0, 19, 0, 0, 0, 13, 0, 0, 0, 10, 0, 0,
+          0, 19, 0, 1, 0, 14, 0, 0, 0, 16, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 18,
+          0, 0, 0, 11, 0, 0, 0, 14, 0, 0, 0, 11, 0, 0, 0, 10, 4, 0, 0, 8, 0, 0,
+          0, 11, 0, 0, 0, 18, 0, 0, 0, 12, 0, 1, 0, 14, 0, 0, 0, 7, 0, 0, 0, 12,
+          0, 0, 0, 13, 0, 0, 0, 10, 0, 1, 0, 10, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0,
+          0, 8, 1, 0, 0, 9, 0, 0, 0, 81, 0, 0, 0, 32, 0, 0, 0, 6, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2,
+          0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
+          0, 1, 0, 0, 0, 0, 0, 43, 1, 1
+        ],
+        "totalDurationMs": 7435
+      },
+      "metadata": {
+        "systemHash": "8a201535"
+      }
+    }
+  ]
+}

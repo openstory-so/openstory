@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "wide, eye level, MARA (Image 2) stands at the bakery entrance beside the shop sign, ready to turn it; CYCLIST (Image 1) is not yet in frame., Handheld observational view of the bakery entrance and street; MARA (Image 2) is framed by the doorway, with the opposite side of the road visible., EXT. BAKERY STREET - MORNING, morning, bakery_street (Image 3), Natural lighting appropriate to morning, #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/8836cffbe6d6fe1f66f108c44f2337b56880946c5171ae4dbea2991f73828f8e.jpeg"
+        }
+      }
+    }
+  ]
+}

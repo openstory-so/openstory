@@ -1,0 +1,46 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Split the script within the USER_SCRIPT tags into logical scenes by emitting boundary annotations. The script has a numbered line gutter (\"N: \") — quotes must copy the script text WITHOUT the gutter.\n\n<USER_SCRIPT>\n1: INT. NEWSROOM - NIGHT\n2: \n3: MARA, a tired editor in a green cardigan, stares at a monitor. DEV, a young reporter, rushes in with a laptop.\n4: \n5: DEV\n6: We have the leaked memo. It names the mayor.\n7: \n8: MARA\n9: Then we run it at six.\n10: \n11: EXT. CITY HALL STEPS - MORNING\n12: \n13: MARA and DEV climb the steps past a row of cameras. A spokesperson blocks the door.\n14: \n15: SPOKESPERSON\n16: No comment.\n17: \n18: MARA\n19: We did not ask a question yet.\n</USER_SCRIPT>\n\nIMPORTANT: each boundary's quote must be copied character-for-character from the script (no gutter, no paraphrase, no smart-quote substitution). Respond with ONLY valid JSON matching the schema.",
+        "model": "anthropic/claude-opus-5.5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"projectMetadata\":{\"title\":\"The Leaked Memo\"},\"boundaries\":[{\"hintLine\":1,\"quote\":\"INT. NEWSROOM - NIGHT\"},{\"hintLine\":11,\"quote\":\"EXT. CITY HALL STEPS - MORNING\"}]}",
+        "usage": {
+          "prompt_tokens": 2143,
+          "completion_tokens": 102,
+          "total_tokens": 2245,
+          "cost": 0.021224,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.021224,
+            "upstream_inference_prompt_cost": 0.017144,
+            "upstream_inference_completions_cost": 0.00408
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 3885,
+        "interChunkDelaysMs": [0, 0, 0, 0, 1, 5, 0, 0, 0, 0, 1, 0, 190, 0, 5],
+        "totalDurationMs": 4087
+      },
+      "metadata": {
+        "systemHash": "cb8502f6"
+      }
+    }
+  ]
+}

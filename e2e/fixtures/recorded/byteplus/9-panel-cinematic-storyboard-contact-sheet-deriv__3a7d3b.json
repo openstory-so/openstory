@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "9-panel cinematic storyboard CONTACT SHEET derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene.\n\nLayout: a rigid 3x3 grid of 9 equal rectangular cells in a 16:9 landscape image. Each cell is exactly 1/3 of the width and 1/3 of the height. Separate cells with a thin black gutter.\n- Content must not cross, bleed, or overlap a gutter. No collage.\n- Each cell is a complete, independently framed shot — not a crop of a larger scene.\n\nScene: medium wide, eye level, MARA (Image 2) leans over the steel bench in a flour-dusted apron, hands on the dough, focused on kneading., Observational handheld frame with MARA (Image 2) at the steel bench, dough and flour in the foreground and the wall clock visible behind her., INT. BAKERY KITCHEN - EARLY MORNING, early morning, bakery_kitchen (Image 3), Natural lighting appropriate to early morning, #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/64a6743f40609518ee27d221944c972a825187f70cb690f04f8db4ded18c9a07.jpeg"
+        }
+      }
+    }
+  ]
+}

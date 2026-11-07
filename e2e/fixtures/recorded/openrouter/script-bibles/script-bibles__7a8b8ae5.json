@@ -1,0 +1,107 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Extract a complete character bible, location bible, and element bible from the script within the USER_SCRIPT tags. The script has a numbered line gutter (\"N: \") — report lineNumbers from it, but never treat the gutter as script text.\n\n<ELEMENTS>\nThe following user-uploaded elements are available. Produce an elementBible entry for each one used in the script:\n(none)\n</ELEMENTS>\n\n<USER_SCRIPT>\n1: INT. NEWSROOM - NIGHT\n2: \n3: MARA, a tired editor in a green cardigan, stares at a monitor. DEV, a young reporter, rushes in with a laptop.\n4: \n5: DEV\n6: We have the leaked memo. It names the mayor.\n7: \n8: MARA\n9: Then we run it at six.\n10: \n11: EXT. CITY HALL STEPS - MORNING\n12: \n13: MARA and DEV climb the steps past a row of cameras. A spokesperson blocks the door.\n14: \n15: SPOKESPERSON\n16: No comment.\n17: \n18: MARA\n19: We did not ask a question yet.\n</USER_SCRIPT>\n\nFor each character that appears on screen:\n1. Provide COMPLETE physical descriptions for visual consistency\n2. Include clothing details that define the character\n3. Add distinguishing features\n4. Create a consistencyTag starting with the character's name slug\nA voice that is only heard gets its own entry with voiceOnly true, a voiceDescription, personality as register/attitude, and empty appearance fields.\n\nFor each unique location:\n1. Provide COMPLETE visual descriptions for visual consistency\n2. Include architectural style and design details\n3. Identify key visual features that define the location\n4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette\n5. Create a consistencyTag starting with the core location name\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"characterBible\":[{\"characterId\":\"mara\",\"name\":\"MARA\",\"age\":\"40s\",\"gender\":\"Woman\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"An adult woman with a medium build and average height, fair-to-medium skin, brown eyes, and dark brown hair worn in a practical shoulder-length style. Tiredness shows in faint under-eye lines and a slightly drawn expression. No permanent marks are specified. Her cultural and national background is unspecified.\",\"standardClothing\":\"Green cardigan over a simple light blouse, dark straight-leg trousers, and practical flat shoes.\",\"looks\":[{\"name\":\"Newsroom\",\"clothing\":\"Green cardigan over a simple light blouse, dark straight-leg trousers, and practical flat shoes.\",\"styling\":\"\",\"lines\":[1,11]}],\"personality\":\"Decisive and focused, with a dry, direct wit. She stays composed under pressure and challenges procedural posturing without hesitation.\",\"movement\":\"Tends to hold a steady, work-focused posture. Moves with purposeful efficiency; no distinctive habitual gesture is specified.\",\"voiceDescription\":\"Native English; regional accent unspecified. Woman, 40s. Excellent quality. Persona: seasoned newsroom editor. Emotion: firm, composed, wry. Her voice has a clear mid-range register with a lightly textured edge and controlled resonance. She speaks at a measured pace, landing short statements decisively; dry humor comes through as understated emphasis rather than a broad comic performance.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"mara\"},{\"characterId\":\"dev\",\"name\":\"DEV\",\"age\":\"20s\",\"gender\":\"Unspecified\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"A young adult reporter of average height and slim-to-average build, with medium skin, dark eyes, and short dark hair. No permanent marks are specified. The script does not establish Dev's cultural or national background.\",\"standardClothing\":\"A charcoal casual jacket over a muted crew-neck shirt, dark trousers, and practical shoes; carries a laptop.\",\"looks\":[{\"name\":\"Reporter\",\"clothing\":\"A charcoal casual jacket over a muted crew-neck shirt, dark trousers, and practical shoes.\",\"styling\":\"\",\"lines\":[1,11]}],\"personality\":\"Urgent and earnest, with a reporter's instinct to get consequential information into the open. Brings important news directly and without ceremony.\",\"movement\":\"Rushes into the newsroom with quick, forward-leaning energy. Moves briskly and purposefully; carries the laptop close at hand.\",\"voiceDescription\":\"Native English; regional accent unspecified. Young adult, gender unspecified. Excellent quality. Persona: urgent young reporter. Emotion: alert, earnest, driven. The voice is clear and relatively bright, with a quick cadence that can gather momentum around breaking information. Delivery is direct and intelligible, with emphasis on the stakes of a story rather than theatrical excitement.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"dev\"},{\"characterId\":\"spokesperson\",\"name\":\"SPOKESPERSON\",\"age\":\"30s–50s\",\"gender\":\"Unspecified\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"An adult of average height and build, with medium skin, dark eyes, and neatly groomed dark hair. Their features are composed and professionally presented. No permanent marks are specified; cultural and national background is unspecified.\",\"standardClothing\":\"A well-fitted dark business suit, a light button-up shirt, and polished formal shoes.\",\"looks\":[{\"name\":\"Formal suit\",\"clothing\":\"A well-fitted dark business suit, a light button-up shirt, and polished formal shoes.\",\"styling\":\"\",\"lines\":[11]}],\"personality\":\"Guarded and formal, offering a terse refusal rather than engaging with the press. Maintains a controlled public-facing manner.\",\"movement\":\"Holds a blocking position at the entrance with a restrained, deliberate posture. No distinctive habitual gestures are specified.\",\"voiceDescription\":\"Native English; regional accent unspecified. Adult, gender unspecified. Excellent quality. Persona: guarded public spokesperson. Emotion: controlled, firm, neutral. The voice is even and professionally restrained, with a compact mid-range delivery. Speech is brief and carefully contained, avoiding emotional color or unnecessary emphasis while making the refusal unmistakable.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"spokesperson\"}],\"locationBible\":[{\"locationId\":\"newsroom\",\"name\":\"NEWSROOM\",\"type\":\"interior\",\"description\":\"A busy working newsroom arranged around shared desks and computer stations, with clear aisles for staff moving between work areas. Monitors, keyboards, notebooks, and office chairs create a functional, lived-in editorial workspace. The room feels practical and used rather than decorative, with a mixture of individual work surfaces and open collaborative areas.\",\"architecturalStyle\":\"Contemporary commercial office interior with an open-plan newsroom layout and utilitarian editorial-office design.\",\"keyFeatures\":\"Rows or clusters of desks with computer monitors, office chairs, scattered work materials, and circulation space between stations. Fixed ceiling fixtures provide general illumination; no distinctive signs or architectural ornament are specified.\",\"ambiance\":\"Busy, work-focused, and deadline-driven, with the organized clutter of an active news operation.\",\"consistencyTag\":\"newsroom\",\"firstMention\":{\"text\":\"INT. NEWSROOM - NIGHT\",\"lineNumber\":1}},{\"locationId\":\"city_hall_steps\",\"name\":\"CITY HALL STEPS\",\"type\":\"exterior\",\"description\":\"A broad public entrance to a civic building, approached by a substantial flight of stone steps leading to a prominent doorway. The steps provide room for people to climb and for a row of cameras to be set up nearby. The building facade and entrance read as formal public architecture, with durable masonry surfaces and a clearly defined threshold.\",\"architecturalStyle\":\"Formal civic architecture with a monumental entry and traditional stone construction.\",\"keyFeatures\":\"Wide stone steps, a large entrance door, a solid masonry facade, and space at the foot or side of the steps for press cameras. Exterior wall-mounted fixtures may flank the entrance; no specific signage is described.\",\"ambiance\":\"Public and official, with a press-presence that makes the entrance feel exposed and confrontational.\",\"consistencyTag\":\"city_hall_steps\",\"firstMention\":{\"text\":\"EXT. CITY HALL STEPS - MORNING\",\"lineNumber\":11}}],\"elementBible\":[]}",
+        "usage": {
+          "prompt_tokens": 3427,
+          "completion_tokens": 2006,
+          "total_tokens": 5433,
+          "cost": 0.0028626,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 3424,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0028626,
+            "upstream_inference_prompt_cost": 0.0008566,
+            "upstream_inference_completions_cost": 0.002006
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 729,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1088,
+        "interChunkDelaysMs": [
+          416, 416, 418, 419, 419, 665, 175, 420, 146, 419, 418, 420, 336, 13,
+          0, 0, 0, 22, 0, 0, 0, 15, 0, 0, 0, 17, 0, 0, 0, 11, 0, 0, 0, 14, 0, 0,
+          0, 11, 0, 0, 0, 16, 0, 0, 0, 10, 0, 0, 0, 11, 0, 0, 0, 14, 0, 0, 0,
+          10, 0, 0, 0, 10, 0, 0, 1, 12, 0, 0, 1, 16, 0, 0, 0, 17, 0, 0, 0, 6, 0,
+          0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 5, 1, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0,
+          0, 0, 0, 2, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0,
+          18, 0, 0, 0, 14, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 16, 0, 0, 0, 9, 0,
+          0, 1, 10, 0, 0, 0, 14, 0, 0, 0, 13, 0, 0, 0, 17, 0, 0, 0, 21, 0, 0, 0,
+          31, 0, 0, 0, 26, 0, 0, 0, 15, 0, 0, 0, 35, 0, 0, 0, 16, 0, 0, 0, 51,
+          0, 0, 0, 34, 0, 0, 0, 25, 1, 0, 0, 20, 0, 0, 0, 19, 0, 0, 0, 21, 0, 1,
+          0, 43, 0, 0, 0, 36, 0, 0, 0, 13, 1, 0, 0, 12, 0, 0, 0, 24, 0, 0, 0,
+          15, 0, 0, 0, 21, 0, 0, 0, 23, 0, 0, 0, 13, 0, 0, 0, 27, 0, 0, 0, 22,
+          1, 0, 0, 0, 43, 0, 0, 0, 48, 0, 0, 0, 49, 0, 0, 0, 43, 0, 0, 0, 25, 0,
+          1, 0, 18, 0, 0, 0, 31, 0, 0, 0, 44, 0, 0, 0, 0, 0, 28, 0, 0, 0, 33, 0,
+          0, 0, 18, 0, 1, 0, 24, 0, 1, 0, 0, 0, 12, 0, 1, 0, 19, 0, 1, 0, 13, 0,
+          0, 0, 3, 0, 0, 0, 20, 0, 0, 0, 12, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0,
+          15, 0, 0, 0, 29, 0, 0, 0, 21, 0, 0, 0, 52, 0, 0, 0, 7, 0, 0, 0, 6, 0,
+          0, 0, 17, 0, 0, 0, 19, 1, 0, 0, 8, 0, 0, 0, 34, 0, 0, 0, 20, 0, 0, 0,
+          17, 0, 0, 0, 0, 0, 39, 0, 1, 0, 32, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0,
+          31, 0, 0, 0, 13, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 10, 0, 0, 0, 12,
+          0, 0, 1, 37, 0, 0, 0, 13, 0, 0, 0, 6, 0, 0, 0, 14, 0, 0, 0, 3, 0, 0,
+          0, 24, 0, 0, 0, 25, 0, 0, 0, 19, 0, 0, 0, 32, 0, 0, 0, 28, 0, 0, 0,
+          24, 0, 0, 0, 30, 0, 0, 0, 44, 0, 0, 0, 29, 0, 0, 0, 28, 1, 0, 0, 21,
+          0, 0, 0, 24, 0, 0, 0, 27, 0, 0, 0, 28, 0, 0, 0, 21, 0, 0, 0, 12, 0, 0,
+          0, 0, 12, 0, 0, 0, 31, 0, 0, 0, 15, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0,
+          25, 0, 0, 0, 16, 0, 0, 0, 19, 0, 0, 0, 13, 0, 0, 0, 26, 0, 0, 0, 43,
+          0, 0, 0, 53, 1, 0, 0, 20, 0, 0, 0, 19, 0, 0, 0, 27, 1, 0, 0, 46, 0, 0,
+          0, 27, 1, 0, 0, 11, 0, 2, 0, 17, 0, 0, 0, 13, 0, 0, 0, 11, 1, 0, 0,
+          16, 0, 0, 0, 17, 0, 0, 0, 15, 0, 13, 0, 7, 0, 0, 0, 28, 0, 0, 0, 13,
+          0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0,
+          0, 45, 1, 0, 0, 22, 0, 0, 0, 46, 0, 0, 0, 34, 1, 0, 0, 0, 0, 0, 0, 21,
+          0, 0, 0, 13, 0, 1, 0, 34, 0, 0, 0, 7, 0, 0, 0, 22, 0, 0, 0, 8, 0, 0,
+          0, 40, 0, 0, 0, 32, 0, 0, 0, 11, 0, 0, 0, 36, 1, 0, 0, 20, 0, 0, 0,
+          28, 0, 0, 0, 3, 0, 0, 0, 25, 0, 0, 0, 6, 0, 0, 0, 11, 0, 1, 0, 15, 0,
+          0, 0, 15, 0, 0, 0, 12, 0, 0, 0, 18, 1, 0, 0, 9, 0, 0, 0, 16, 0, 0, 0,
+          37, 0, 1, 0, 17, 0, 0, 0, 29, 0, 0, 0, 42, 0, 0, 0, 29, 0, 0, 0, 15,
+          0, 0, 0, 25, 1, 0, 0, 12, 0, 0, 0, 28, 0, 1, 0, 15, 0, 0, 0, 9, 0, 0,
+          0, 19, 0, 0, 0, 32, 0, 0, 0, 5, 0, 0, 0, 16, 0, 0, 0, 21, 1, 0, 0, 0,
+          38, 0, 0, 0, 4, 0, 0, 0, 21, 0, 0, 0, 20, 0, 1, 1, 20, 0, 1, 0, 24, 0,
+          0, 0, 30, 1, 0, 3, 14, 0, 0, 0, 27, 0, 0, 0, 24, 0, 0, 0, 13, 1, 0, 0,
+          18, 0, 0, 0, 30, 0, 0, 0, 29, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 16, 0,
+          0, 0, 5, 0, 0, 0, 24, 0, 0, 0, 6, 0, 0, 0, 17, 0, 0, 0, 38, 0, 0, 0,
+          22, 0, 0, 0, 26, 0, 0, 0, 31, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 45,
+          0, 0, 0, 25, 1, 0, 0, 14, 0, 0, 0, 26, 0, 0, 0, 33, 0, 0, 0, 26, 0, 0,
+          0, 19, 0, 0, 0, 27, 0, 0, 0, 15, 0, 0, 0, 42, 0, 0, 0, 17, 1, 0, 0,
+          32, 0, 0, 0, 43, 0, 0, 0, 25, 0, 0, 0, 33, 0, 0, 0, 13, 0, 0, 0, 34,
+          0, 0, 0, 26, 0, 0, 0, 18, 0, 0, 0, 13, 0, 0, 0, 25, 0, 0, 0, 44, 0, 0,
+          0, 56, 0, 0, 0, 31, 0, 0, 0, 38, 0, 0, 0, 22, 187, 8, 1, 12, 0, 0, 0,
+          0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0,
+          0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 9, 1, 0, 0, 27, 0, 0, 0, 20, 0,
+          1, 0, 10, 0, 0, 0, 29, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 47, 0, 0, 0,
+          29, 1, 0, 0, 27, 0, 0, 0, 25, 0, 0, 0, 35, 0, 0, 0, 31, 0, 1, 0, 13,
+          0, 0, 0, 29, 0, 0, 0, 31, 0, 0, 0, 41, 0, 0, 0, 15, 0, 0, 0, 40, 0, 0,
+          0, 29, 0, 0, 0, 29, 0, 0, 0, 33, 0, 0, 0, 23, 0, 1, 4, 12, 0, 0, 0,
+          26, 0, 0, 0, 20, 1, 0, 0, 49, 0, 0, 0, 23, 0, 0, 0, 11, 0, 0, 0, 20,
+          0, 0, 0, 42, 0, 0, 0, 23, 0, 0, 0, 44, 0, 0, 0, 21, 0, 0, 0, 24, 0, 0,
+          0, 45, 0, 1, 0, 22, 0, 0, 0, 26, 0, 0, 0, 0, 0, 21, 0, 0, 0, 16, 0, 0,
+          0, 29, 0, 0, 0, 16, 0, 0, 0, 41, 0, 0, 0, 16, 0, 0, 0, 9, 0, 1, 0, 17,
+          0, 0, 0, 12, 0, 0, 0, 17, 0, 0, 0, 12, 0, 1, 0, 6, 0, 0, 0, 14, 0, 0,
+          0, 20, 0, 0, 0, 193, 0, 4
+        ],
+        "totalDurationMs": 13231
+      },
+      "metadata": {
+        "systemHash": "7de7d0b8"
+      }
+    }
+  ]
+}

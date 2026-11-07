@@ -1,0 +1,68 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the \"## Scene N\" headings.\n\n<DIRECTOR_STYLE>\nMood: Authentic and immediate\nCamera: Handheld camera with observational framing\nReferences: vertiginous big-wall climbing documentary; unflinching observational documentary portraiture; tense vérité whistleblower documentary\n</DIRECTOR_STYLE>\n\n<CHARACTERS>\n- MARA\n- DEV\n- SPOKESPERSON\n</CHARACTERS>\n\n<SCENES>\n## Scene 1 — NEWSROOM\nINT. NEWSROOM - NIGHT\nshots: up to 14\n\nINT. NEWSROOM - NIGHT\n\nMARA, a tired editor in a green cardigan, stares at a monitor. DEV, a young reporter, rushes in with a laptop.\n\nDEV\nWe have the leaked memo. It names the mayor.\n\nMARA\nThen we run it at six.\n\n---\n\n## Scene 2 — CITY HALL STEPS\nEXT. CITY HALL STEPS - MORNING\nshots: up to 11\n\nEXT. CITY HALL STEPS - MORNING\n\nMARA and DEV climb the steps past a row of cameras. A spokesperson blocks the door.\n\nSPOKESPERSON\nNo comment.\n\nMARA\nWe did not ask a question yet.\n</SCENES>\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneNumber\":1,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Observational handheld frame with MARA at the monitor in the foreground; leave open space at the edge for DEV to enter.\",\"subjectStartState\":\"MARA sits facing the monitor, tired and still, wearing a green cardigan; DEV is not yet in frame.\"},\"action\":\"DEV rushes in with a laptop, tells MARA about the leaked memo, and MARA answers without leaving her place.\",\"cameraMovement\":{\"move\":\"handheld drift, then follow DEV into the room\",\"pacing\":\"immediate, slightly unsteady\"},\"direction\":\"Stay with the unplanned urgency of DEV's entrance, then hold on MARA's response.\",\"soundCue\":\"Low newsroom ambience, footsteps, laptop shifting in DEV's hands.\",\"dialogue\":[{\"character\":\"DEV\",\"line\":\"We have the leaked memo. It names the mayor.\",\"tone\":\"\"},{\"character\":\"MARA\",\"line\":\"Then we run it at six.\",\"tone\":\"\"}],\"durationSeconds\":6} ]},{\"sceneNumber\":2,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Handheld observational frame follows MARA and DEV up the steps, with the doorway held in the background and the cameras edging the frame.\",\"subjectStartState\":\"MARA and DEV climb the steps together; SPOKESPERSON is not yet in frame.\"},\"action\":\"MARA and DEV climb toward the door as SPOKESPERSON steps into their path and exchanges words with them.\",\"cameraMovement\":{\"move\":\"handheld follow up the steps, then settle on the blocked doorway\",\"pacing\":\"brisk, unsettled\"},\"direction\":\"Keep the exchange immediate and unsmoothed, as if caught amid the press scrum.\",\"soundCue\":\"Footsteps on stone, camera shutters, faint crowd murmur.\",\"dialogue\":[{\"character\":\"SPOKESPERSON\",\"line\":\"No comment.\",\"tone\":\"\"},{\"character\":\"MARA\",\"line\":\"We did not ask a question yet.\",\"tone\":\"\"}],\"durationSeconds\":7}]}]}",
+        "usage": {
+          "prompt_tokens": 2358,
+          "completion_tokens": 790,
+          "total_tokens": 3148,
+          "cost": 0.00137935,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 2355,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00137935,
+            "upstream_inference_prompt_cost": 0.00058935,
+            "upstream_inference_completions_cost": 0.00079
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 337,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1237,
+        "interChunkDelaysMs": [
+          415, 435, 401, 420, 418, 87, 25, 0, 12, 0, 0, 0, 13, 0, 2, 0, 11, 0,
+          0, 0, 12, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 14, 0, 0, 0,
+          11, 0, 0, 0, 16, 1, 0, 0, 14, 0, 0, 0, 17, 1, 0, 0, 17, 0, 0, 1, 8, 0,
+          1, 0, 0, 0, 0, 0, 10, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
+          0, 0, 0, 7, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0,
+          6, 0, 0, 0, 29, 0, 0, 0, 56, 0, 0, 0, 15, 0, 0, 0, 1, 1, 0, 0, 14, 1,
+          0, 0, 29, 0, 1, 0, 17, 0, 0, 0, 35, 0, 0, 0, 16, 0, 0, 0, 37, 0, 0, 0,
+          16, 0, 0, 0, 32, 0, 0, 0, 18, 1, 0, 0, 15, 0, 0, 0, 15, 1, 0, 0, 26,
+          0, 0, 0, 41, 0, 0, 0, 15, 0, 0, 1, 18, 0, 0, 0, 22, 0, 0, 0, 10, 0, 0,
+          0, 16, 0, 0, 0, 9, 0, 0, 0, 16, 1, 0, 0, 23, 0, 0, 0, 7, 1, 0, 0, 32,
+          0, 0, 0, 21, 0, 0, 0, 6, 0, 0, 0, 19, 0, 0, 0, 7, 1, 0, 0, 4, 0, 0, 0,
+          30, 0, 0, 0, 7, 0, 0, 0, 14, 0, 0, 0, 21, 0, 0, 0, 12, 0, 0, 0, 24, 0,
+          0, 0, 34, 0, 0, 0, 16, 1, 0, 0, 38, 0, 0, 0, 31, 0, 0, 0, 27, 0, 0, 0,
+          31, 0, 0, 0, 6, 0, 0, 0, 15, 0, 0, 0, 10, 0, 0, 0, 23, 0, 0, 0, 19, 0,
+          0, 0, 19, 0, 0, 0, 9, 0, 0, 0, 22, 0, 1, 0, 28, 0, 0, 0, 30, 0, 0, 0,
+          31, 0, 0, 0, 68, 0, 0, 0, 1, 0, 0, 1, 4, 0, 0, 0, 12, 0, 0, 0, 30, 0,
+          0, 0, 40, 0, 1, 0, 8, 0, 0, 0, 22, 0, 0, 0, 30, 0, 0, 0, 23, 0, 0, 0,
+          2, 6, 0, 0, 40, 0, 0, 0, 0, 24, 0, 0, 0, 18, 0, 0, 0, 41, 0, 0, 0, 42,
+          0, 0, 0, 1, 30, 0, 0, 0, 22, 1, 0, 0, 0, 11, 0, 2, 0, 14, 0, 0, 0, 11,
+          0, 0, 0, 14, 0, 0, 0, 14, 0, 0, 0, 10, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0,
+          0, 7, 0, 0, 0, 18, 0, 0, 0, 0, 99, 41, 0, 12
+        ],
+        "totalDurationMs": 5580
+      },
+      "metadata": {
+        "systemHash": "619c7524"
+      }
+    }
+  ]
+}
