@@ -114,6 +114,8 @@ let secondId = '';
 let sceneIds: string[] = [];
 let castIds: Record<string, string> = {};
 let placeIds: Record<string, string> = {};
+/** A blank shot added to take a moved line; it has no prompts to go stale. */
+let addedShotId = '';
 
 const seq = (id: string) => ({ sequenceId: id });
 
@@ -386,11 +388,13 @@ test.describe('Editing dialogue and cast', () => {
     const scene = sceneIds[0];
     // The recorded analysis may give a scene one shot; a second shot takes the move.
     if (inScene(rows, scene).length < 2) {
-      await call(request, 'create_shot', {
-        ...seq(firstId),
-        sceneId: scene,
-        durationSeconds: 4,
-      });
+      const added = await call(
+        request,
+        'create_shot',
+        { ...seq(firstId), sceneId: scene, durationSeconds: 4 },
+        z.object({ shotId: z.string() })
+      );
+      addedShotId = added.shotId;
     }
     const shots = inScene(await readShots(firstId), scene);
     const from = shotWith(shots, 'argument costs extra');
@@ -578,13 +582,19 @@ test.describe('Editing dialogue and cast', () => {
       voiceOnly: false,
       physicalDescription: 'Woman in her 30s, lean, dark hair in a short bob.',
     });
+    // Her shots are picked by her lines, not by the causes under test.
     for (const id of [firstId, secondId]) {
-      for (const row of await readShots(id)) {
-        if (!row.causes.some((c) => c.includes('"MAYA"'))) continue;
+      const hers = (await readShots(id)).filter(
+        (r) =>
+          r.id !== addedShotId && r.lines.some((l) => l.startsWith('MAYA:'))
+      );
+      expect(hers.length, `MAYA speaks in ${id}`).toBeGreaterThan(0);
+      for (const row of hers) {
         expect(row, `description in ${id}`).toMatchObject({
           visual: 'stale',
           motion: 'stale',
         });
+        expect(row.causes.join(' ')).toMatch(/Character "MAYA".*description/);
       }
     }
     await page.goto(`/sequences/${secondId}/scenes`);
