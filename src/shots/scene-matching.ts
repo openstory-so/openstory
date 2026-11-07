@@ -347,27 +347,23 @@ function matchLocationsToTag<T extends LocationMatchInput>(
   });
 }
 
-/**
- * The one location a scene is set in, when its tag names exactly one: one
- * match, or a single tag equal to one location's own tag (the picker writes
- * `canonicalBibleTag`, and its name can also substring-match a neighbour).
- */
+/** The one location the tag names, else `[]`; an exact tag beats a substring neighbour. */
 function pickedLocation<T extends LocationMatchInput>(
   tagged: T[],
   environmentTag: string
-): T | null {
-  if (tagged.length === 1) return tagged[0] ?? null;
+): T[] {
+  if (tagged.length <= 1) return tagged;
   const tags = environmentTag
     .split(',')
     .map((tag) => tag.trim().toLowerCase())
     .filter(Boolean);
-  if (tags.length !== 1) return null;
+  if (tags.length !== 1) return [];
   const exact = tagged.filter((loc) =>
     [canonicalBibleTag(loc), loc.locationId, loc.name].some(
       (id) => id.toLowerCase() === tags[0]
     )
   );
-  return exact.length === 1 ? (exact[0] ?? null) : null;
+  return exact.length === 1 ? exact : [];
 }
 
 /**
@@ -377,10 +373,8 @@ function pickedLocation<T extends LocationMatchInput>(
  * Generic so we can reuse it on `LocationBibleEntry` (same id/name/tag shape)
  * when narrowing the bible for prompt-input hashing.
  *
- * A tag that names one location wins over the shot prompt (#2289): the
- * location picker writes one tag, and a prompt written for the old set must
- * not undo it. A tag naming several rooms (a video call, #1697) lets the
- * shot's prompt pick its own room.
+ * A tag naming one location beats the shot prompt (#2289); a tag naming
+ * several rooms lets the prompt pick (#1697).
  *
  * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
  * matched nothing, so a scene that already binds a location is untouched and
@@ -404,7 +398,7 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
     sceneLocation
   );
   const picked = pickedLocation(tagged, environmentTag);
-  if (picked) return [picked];
+  if (picked.length > 0) return picked;
   if (visualPrompt?.trim()) {
     const framed = matchLocationInText(allLocations, visualPrompt);
     if (framed.length > 0) return framed;
