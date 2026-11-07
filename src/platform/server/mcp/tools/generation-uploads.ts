@@ -50,6 +50,7 @@ import {
 } from '@/platform/server/storage/buckets';
 import { productionAccess } from '@/sequences/server/production-access';
 import {
+  type AddModelResult,
   addModelToSequence,
   setSequenceModel,
 } from '@/sequences/server/sequence-models';
@@ -435,6 +436,13 @@ const renderSequenceDraftsAtQualityTool = openstoryTool({
 
 // ── Sequence models ─────────────────────────────────────────────────────────
 
+export function addModelSummary(result: AddModelResult): string {
+  const started = `Started ${result.model} on ${result.count} unit${result.count === 1 ? '' : 's'}.`;
+  return result.skipped > 0
+    ? `${started} Skipped ${result.skipped} shot${result.skipped === 1 ? '' : 's'} with no image prompt.`
+    : started;
+}
+
 const addModelToSequenceTool = openstoryTool({
   name: 'add_model_to_sequence',
   description:
@@ -452,6 +460,9 @@ const addModelToSequenceTool = openstoryTool({
     model: z.string(),
     count: z.number(),
     failed: z.number(),
+    skipped: z
+      .number()
+      .describe('Shots left out: no image prompt and no spec to derive one.'),
   }),
   run: async ({ sequenceId: id, ...data }, { scopedDb, userId }) => {
     const sequence = await productionAccess(scopedDb).sequence(id);
@@ -461,7 +472,7 @@ const addModelToSequenceTool = openstoryTool({
     );
     return {
       data: result,
-      summary: `Started ${result.model} on ${result.count} unit${result.count === 1 ? '' : 's'}.`,
+      summary: addModelSummary(result),
     };
   },
 });
