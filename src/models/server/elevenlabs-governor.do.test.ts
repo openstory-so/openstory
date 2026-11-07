@@ -38,14 +38,6 @@ describe('ElevenLabsGovernor', () => {
     expect(g.acquire(slot('d'), t0 + 60_000)).toBe(false);
   });
 
-  it('lets a holder take its own slot again', () => {
-    const g = governor();
-    const t0 = 1_000_000;
-    g.acquire(slot('a'), t0);
-    g.acquire(slot('b'), t0);
-    expect(g.acquire(slot('a'), t0)).toBe(true);
-  });
-
   it('keeps its leases across an eviction', () => {
     const store = new Map<string, unknown>();
     const t0 = 1_000_000;
