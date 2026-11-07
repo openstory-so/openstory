@@ -78,11 +78,15 @@ export async function cleanupTestUser(
   organizationId: string
 ): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
-  await fetch('http://localhost:3020/api/test/user', {
+  const res = await fetch('http://localhost:3020/api/test/user', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, organizationId }),
   });
+
+  if (!res.ok) {
+    throw new Error(`Failed to clean up test user via API: ${res.status}`);
+  }
 }
 
 /**
