@@ -73,11 +73,16 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
       : 'Retrying…'
     : undefined;
 
+  // A re-render over a playable clip keeps the clip and says so (#2274).
+  const badgeMessage =
+    retryMessage ??
+    (hasPlayableVideo && videoStatus === 'generating' ? 'Generating…' : null);
+
   // With a thumbnail and no failure the still image carries the UI — surface
-  // something only while retrying, as a small badge that doesn't cover the
-  // video's play button.
+  // something only while retrying or re-rendering, as a small badge that
+  // doesn't cover the video's play button.
   if (!hasNoThumbnail && !hasFailed) {
-    if (!retryMessage) return null;
+    if (!badgeMessage) return null;
     return (
       <div
         className={cn(
@@ -87,7 +92,7 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
       >
         <span className="flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs font-medium backdrop-blur-sm">
           <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-          {retryMessage}
+          {badgeMessage}
         </span>
       </div>
     );

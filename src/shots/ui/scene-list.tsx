@@ -207,6 +207,8 @@ export type SceneListProps = {
   styleName?: string;
   /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
+  /** Shots whose clip is out of date — the batch re-renders them (#2274). */
+  staleVideoShotIds?: Set<string>;
   /** Desktop sidebar only: fold the list to the thumbnail rail (#1713). */
   onCollapse?: () => void;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
@@ -265,6 +267,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   generateVoices = false,
   styleName,
   staleShotIds,
+  staleVideoShotIds,
   onCollapse,
   className,
   scrollToSelection = false,
@@ -393,9 +396,16 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
     return shots.filter((f) =>
-      isBatchMotionEligible(f, rendersReferenceOnly(f, { generateStartFrames }))
+      isBatchMotionEligible(
+        f,
+        rendersReferenceOnly(f, { generateStartFrames }),
+        staleVideoShotIds?.has(f.id) ?? false
+      )
     );
-  }, [shots, generateStartFrames]);
+  }, [shots, generateStartFrames, staleVideoShotIds]);
+  const onlyStaleShots =
+    notStartedShots.length > 0 &&
+    notStartedShots.every((f) => f.videoStatus === 'completed');
 
   // The batch's mode: one reference-only shot in it decides the model list,
   // because submit checks the picked model against every such shot.
@@ -1146,7 +1156,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                         ? 'Writing motion prompts…'
                         : includeMusic && !musicPromptsReady
                           ? 'Composing music…'
-                          : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
+                          : onlyStaleShots
+                            ? `Regenerate ${notStartedShots.length} stale ${notStartedShots.length === 1 ? 'shot' : 'shots'}`
+                            : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
                   </InButtonCost>
                 </Button>
               </div>
@@ -1233,6 +1245,7 @@ const areEqual = (
     prevProps.styleCategory !== nextProps.styleCategory ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||
+    prevProps.staleVideoShotIds !== nextProps.staleVideoShotIds ||
     prevProps.leftoverGrokShotIds !== nextProps.leftoverGrokShotIds ||
     prevProps.className !== nextProps.className
   ) {

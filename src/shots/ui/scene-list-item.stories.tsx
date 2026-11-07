@@ -1,6 +1,10 @@
 import { dbSceneId } from '@/shots/scene-id';
 import type { SceneWithScript } from './use-scenes';
-import { frameFixture, frameVariantFixture } from '@/mocks/frame-fixtures';
+import {
+  frameFixture,
+  frameVariantFixture,
+  videoVariantFixture,
+} from '@/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/shots/shot-view';
 import type { Meta, StoryObj } from '@storybook/react';
 import { SceneListItem } from './scene-list-item';
@@ -138,6 +142,21 @@ export const GeneratingActive: Story = {
       imageStatus: 'generating',
     },
     isActive: true,
+  },
+};
+
+export const RegeneratingClip: Story = {
+  args: {
+    shot: {
+      ...mockShot,
+      video: videoVariantFixture({
+        renderSegmentId: 'segment-1',
+        sequenceId: 'seq-1',
+        url: 'https://example.com/clip.mp4',
+      }),
+      videoStatus: 'generating',
+    },
+    isActive: false,
   },
 };
 
