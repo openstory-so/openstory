@@ -39,6 +39,9 @@ export function isElevenLabsConfigured(): boolean {
   return true;
 }
 
+/** In-call retries on 408/429/5xx; 429 is the account's concurrency cap (#2295). */
+const ELEVENLABS_MAX_RETRIES = 8;
+
 /**
  * Shared adapter / SDK config. `timeoutInSeconds` is the SDK's stall
  * deadline so a hung TTS / music call fails the workflow step instead of
@@ -52,6 +55,7 @@ export function elevenLabsAdapterConfig(
   return {
     apiKey,
     timeoutInSeconds,
+    maxRetries: ELEVENLABS_MAX_RETRIES,
     ...(baseURL && { baseURL }),
   };
 }
@@ -104,6 +108,7 @@ export async function createElevenLabsSdk(
   return new ElevenLabsClient({
     apiKey: config.apiKey,
     timeoutInSeconds: config.timeoutInSeconds,
+    maxRetries: config.maxRetries,
     fetch: workersSafeFetch,
     ...(config.baseURL && { baseUrl: config.baseURL }),
   });

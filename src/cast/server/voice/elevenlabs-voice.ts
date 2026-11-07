@@ -48,6 +48,7 @@ export async function designVoicePreviews(
   const adapterConfig = elevenLabsAdapterConfig(apiKey, 120);
   const adapter = createElevenLabsVoiceDesign('eleven_ttv_v3', apiKey, {
     timeoutInSeconds: adapterConfig.timeoutInSeconds,
+    maxRetries: adapterConfig.maxRetries,
     ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
   });
   const result = await generateVoice({
