@@ -541,8 +541,7 @@ test.describe('Editing scenes', () => {
     expect(after.map((r) => r.lines)).toEqual(before.map((r) => r.lines));
   });
 
-  // Bug #2289: the scene Locations tab keeps listing the old location after the Scene location select moves.
-  test.fixme('switching a scene location shows the new location on the scene', async () => {
+  test('switching a scene location shows the new location on the scene', async () => {
     const second = sceneIds[1];
     if (!second) throw new Error('scenes not set up');
     await openSceneScript(second);
