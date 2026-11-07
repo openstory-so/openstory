@@ -98,7 +98,8 @@ Two verdicts sit outside that compare, both in `ArtifactStaleness`
 (`shot-staleness.ts`): **`generating`** short-circuits a shot with a run in
 flight (#1121 — the reason a fresh sequence must not be judged mid-run) and
 **`updating`** a shot with a pending Update-all claim (#1085); `unknown` is the
-no-context case.
+no-context case, and what a shot reads when its whole compare throws in a
+batch (#2293) - never `untracked`, which means "no stored hash".
 
 `recompute(now)` reads the **current persisted state** and re-derives the hash.
 Helpers live in [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts). The
@@ -729,6 +730,10 @@ that shot's `audioSourceKey` and `audioClipIds`. The key is stamped, so the
 null-audio shortcut for a model without audio input does not apply: a later
 voice or take is audio drift, and a prompt, still, reference or duration
 change is still picture drift. The underlying render row is untouched.
+
+Duration is compared snapped onto the model grid on both sides. An uploaded
+clip (`model: 'user-upload'`) has no grid: it stamps the exact length it
+adopted, and any retime re-stales it (#2292).
 
 `dialogueKey` (#1784) is every line the render prompt quoted, voiced or not,
 with its bound voice token (`dialogueLinesKey`). `audioSourceKey` sees voiced

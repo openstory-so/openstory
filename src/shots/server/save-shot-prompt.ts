@@ -16,6 +16,7 @@ import {
 } from './prompt-context';
 import { getFrameImageUrl } from './frame-image';
 import { loadShotPromptDialogue } from './shot-dialogue';
+import { emitLinesMoved } from './dialogue-edit';
 import { redrawShotPreview } from './shot-preview';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 import { dbSceneId } from '@/shots/scene-id';
@@ -77,6 +78,7 @@ export async function saveShotPrompt(
       { createdBy: user.id }
     );
     dialogueChanged = (after?.id ?? null) !== (before?.id ?? null);
+    if (dialogueChanged) await emitLinesMoved(context);
   }
   if (currentPrompt !== null && currentPrompt === text) {
     // The lines moved but the prompt text did not: nothing to append to the

@@ -15,6 +15,7 @@ import {
 import { dialogueLinesKey, shotDialogue } from './shot-dialogue';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import { asStub } from '@/test/as-stub';
+import { USER_UPLOAD_MODEL } from './user-upload-model';
 
 const shot = (
   id: string,
@@ -862,5 +863,17 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
         durationMsByShot: new Map([['shot-1', 0]]),
       })
     ).toBe(false);
+  });
+
+  it('compares an uploaded clip against the exact duration it adopted (#2292)', () => {
+    const upload = version('v1', 'seg', USER_UPLOAD_MODEL, [
+      { ...entry, durationMs: 4200 },
+    ]);
+    expect(
+      stale(upload, { durationMsByShot: new Map([['shot-1', 4200]]) })
+    ).toBe(false);
+    expect(
+      stale(upload, { durationMsByShot: new Map([['shot-1', 9000]]) })
+    ).toBe(true);
   });
 });

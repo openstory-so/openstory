@@ -15,14 +15,12 @@ import {
   characterLooks,
   characterSheetVariants,
   characterBibleVersions,
-  characterVoiceVersions,
   characters,
   credits,
   frameVariants,
   frames,
   shots,
   locationBibleVersions,
-  locationReferencePhotos,
   locationSheetVariants,
   locations,
   renderSegments,
@@ -40,6 +38,8 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
+import { deleteCharactersStatements } from '@/cast/server/db/characters';
+import { deleteLocationsStatements } from '@/cast/server/db/locations';
 import { getSequenceByIdUnscoped } from '@/platform/server/db/scoped';
 import { getPublicAssetsDomain } from '@/platform/public-assets';
 import {
@@ -193,7 +193,7 @@ export async function createOtpVerification(
  * Delete the #1600 version rows of the sequences `where` matches. They
  * RESTRICT their parents' delete, so this runs before any sequence delete.
  */
-async function deleteSequenceVersionRows(where: SQL | undefined) {
+async function deleteSequenceVersionRows(where: SQL) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
   // The sequences' characters (#2017), read before their cast links go — only
@@ -235,69 +235,23 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),
     db.delete(sequenceCast).where(inArray(sequenceCast.sequenceId, ids)),
-    db
-      .delete(characterBibleVersions)
-      .where(inArray(characterBibleVersions.characterId, theirs)),
-    db
-      .delete(characterLookVersions)
-      .where(
-        inArray(
-          characterLookVersions.lookId,
-          db
-            .select({ id: characterLooks.id })
-            .from(characterLooks)
-            .where(inArray(characterLooks.characterId, theirs))
-        )
-      ),
-    db
-      .delete(characterLooks)
-      .where(inArray(characterLooks.characterId, theirs)),
-    // Nothing cascades from `characters` (#2017).
-    db
-      .delete(characterSheetVariants)
-      .where(inArray(characterSheetVariants.characterId, theirs)),
-    db
-      .delete(characterVoiceVersions)
-      .where(inArray(characterVoiceVersions.characterId, theirs)),
-    db.delete(characters).where(inArray(characters.id, theirs)),
+    ...deleteCharactersStatements(db, inArray(characters.id, theirs)),
     db
       .delete(sequenceLocationLinks)
       .where(inArray(sequenceLocationLinks.sequenceId, ids)),
-    ...deleteLocationRows(theirLocations),
+    ...deleteLocationsStatements(db, theirLocations),
   ]);
 }
 
-/**
- * Delete the locations `where` matches with everything they own: nothing
- * cascades from a location (#1695). Their links go first, in the caller's
- * batch or here.
- */
-function deleteLocationRows(where: SQL | undefined) {
-  const db = getDb();
-  const ids = db.select({ id: locations.id }).from(locations).where(where);
-  return [
-    db
-      .delete(locationReferencePhotos)
-      .where(inArray(locationReferencePhotos.locationId, ids)),
-    db
-      .delete(locationBibleVersions)
-      .where(inArray(locationBibleVersions.locationId, ids)),
-    db
-      .delete(locationSheetVariants)
-      .where(inArray(locationSheetVariants.locationId, ids)),
-    db.delete(locations).where(where),
-  ] as const;
-}
-
 /** Delete the organization locations `where` matches, links included. */
-async function deleteTestLocations(where: SQL | undefined) {
+async function deleteTestLocations(where: SQL) {
   const db = getDb();
   const ids = db.select({ id: locations.id }).from(locations).where(where);
   await db.batch([
     db
       .delete(sequenceLocationLinks)
       .where(inArray(sequenceLocationLinks.locationId, ids)),
-    ...deleteLocationRows(where),
+    ...deleteLocationsStatements(db, where),
   ]);
 }
 
@@ -310,7 +264,13 @@ export async function cleanupTestUser(
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(member).where(eq(member.userId, userId));
   await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
-  // An organization delete is refused while it has locations (#1695).
+  // Nothing cascades from a character (#2017) or a location (#1695).
+  await db.batch([
+    ...deleteCharactersStatements(
+      db,
+      eq(characters.organizationId, organizationId)
+    ),
+  ]);
   await deleteTestLocations(eq(locations.organizationId, organizationId));
   await db.delete(organization).where(eq(organization.id, organizationId));
   await db.delete(user).where(eq(user.id, userId));
@@ -749,14 +709,24 @@ export async function cleanupLocationByName(
   name: string
 ): Promise<void> {
   const db = getDb();
-  const named = db
-    .select({ id: locationBibleVersions.locationId })
-    .from(locationBibleVersions)
-    .where(eq(locationBibleVersions.name, name));
+  // Read first: the batch deletes the bible versions a subquery would match on.
+  const named = await db
+    .select({ id: locations.id })
+    .from(locations)
+    .innerJoin(
+      locationBibleVersions,
+      eq(locationBibleVersions.locationId, locations.id)
+    )
+    .where(
+      and(
+        eq(locations.organizationId, organizationId),
+        eq(locationBibleVersions.name, name)
+      )
+    );
   await deleteTestLocations(
-    and(
-      eq(locations.organizationId, organizationId),
-      inArray(locations.id, named)
+    inArray(
+      locations.id,
+      named.map((row) => row.id)
     )
   );
 }

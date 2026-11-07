@@ -461,9 +461,7 @@ test.describe('Editing shots', () => {
       lines: [],
     });
     await expectShot(target.id, { motionPrompt: 'stale' });
-    // Bug #2294: the open preview does not refresh after a dialogue edit elsewhere.
-    await page.reload();
-    await openOptimised();
+    // The open preview follows the lines through realtime (#2294).
     await expect(panel).toContainText(SUFFIX_NO_DIALOGUE);
     await expect(panel).not.toContainText(SUFFIX_WITH_DIALOGUE);
 
@@ -474,8 +472,6 @@ test.describe('Editing shots', () => {
       versionId: selectedVersionId,
     });
     await expectShot(target.id, { motionPrompt: 'fresh' });
-    await page.reload();
-    await openOptimised();
     await expect(panel).toContainText(SUFFIX_WITH_DIALOGUE);
   });
 
@@ -517,8 +513,7 @@ test.describe('Editing shots', () => {
     await expectShot(target.id, { video: 'fresh' });
   });
 
-  // Bug #2292: retiming a shot leaves its uploaded clip current; update_shot says it stales it.
-  test.fixme('a retime stales the clip, never the shot prompts', async () => {
+  test('a retime stales the clip, never the shot prompts', async () => {
     await call(request, 'update_shot', {
       ...s(),
       shotId: target.id,

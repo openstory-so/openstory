@@ -304,6 +304,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Seconds (music prompt, and the music track hash as their clamped sum)',
       'Seconds, snapped onto the video model grid, against the clip that rendered',
+      'Exact seconds, against an uploaded clip (the length it adopted)',
     ],
     ignored: [
       'Visual and motion prompts',
@@ -589,7 +590,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
       'References the motion prompt names, as the sheet version or media URL that was current then (referenceKeys). A stamped key for someone who still exists but the prompt no longer names is not compared; a deleted one is stale',
-      'The length it was rendered at, snapped onto the model grid on both sides',
+      'The length it was rendered at, snapped onto the model grid on both sides (an upload: exact)',
     ],
     ignored: [
       'Video model (a different model is a different segment, not a stale one)',

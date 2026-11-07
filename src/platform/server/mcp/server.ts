@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { InsufficientScopeError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { createScopedDb } from '@/platform/server/db/scoped';
+import { adminSequenceAccessFor } from './tool-context';
 import type { McpAuthContext } from './auth';
 import { mcpJsonRpcError } from './json-rpc';
 import { serveResourceRequest } from './resources';
@@ -180,6 +181,12 @@ function mcpToolContext(
           ipAddress: request.headers.get('cf-connecting-ip'),
           userAgent: request.headers.get('user-agent'),
         },
+        adminSequenceAccess: adminSequenceAccessFor({
+          kind: auth.kind,
+          email: auth.user.email,
+          openOrganization: (organizationId) =>
+            createScopedDb(organizationId, auth.user.id),
+        }),
       };
     },
   };
