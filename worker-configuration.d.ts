@@ -29,6 +29,7 @@ interface __BaseEnv_Env {
 	REALTIME: DurableObjectNamespace<import("./src/server").RealtimeChannel>;
 	VIDEO_EXPORT_CONTAINER?: DurableObjectNamespace<import("./src/server").VideoExportContainer>;
 	BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
+	ELEVENLABS_GOVERNOR: DurableObjectNamespace<import("./src/server").ElevenLabsGovernor>;
 	STREAMS: DurableObjectNamespace<import("./src/server").StreamObject>;
 	IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 	ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;
@@ -69,7 +70,7 @@ interface __BaseEnv_Env {
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/server");
-		durableNamespaces: "RealtimeChannel" | "BytePlusGovernor" | "StreamObject";
+		durableNamespaces: "RealtimeChannel" | "BytePlusGovernor" | "ElevenLabsGovernor" | "StreamObject";
 	}
 	interface ProductionEnv {
 		R2_PUBLIC_ASSETS_BUCKET: R2Bucket;
@@ -99,6 +100,7 @@ declare namespace Cloudflare {
 		REALTIME: DurableObjectNamespace<import("./src/server").RealtimeChannel>;
 		VIDEO_EXPORT_CONTAINER: DurableObjectNamespace<import("./src/server").VideoExportContainer>;
 		BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
+		ELEVENLABS_GOVERNOR: DurableObjectNamespace<import("./src/server").ElevenLabsGovernor>;
 		STREAMS: DurableObjectNamespace<import("./src/server").StreamObject>;
 		IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 		ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;
@@ -163,6 +165,7 @@ declare namespace Cloudflare {
 		XAI_API_KEY: string;
 		REALTIME: DurableObjectNamespace<import("./src/server").RealtimeChannel>;
 		BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
+		ELEVENLABS_GOVERNOR: DurableObjectNamespace<import("./src/server").ElevenLabsGovernor>;
 		STREAMS: DurableObjectNamespace<import("./src/server").StreamObject>;
 		IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 		ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;

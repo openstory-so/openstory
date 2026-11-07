@@ -61,6 +61,24 @@ conservative 3 × 1000-char preview over-estimate), Music per minute rounded
 up ($0.15, advertised **2026-09-15**). `recordFalUsage: false`, unaudited
 like xAI/Google/Ark spend.
 
+**Concurrency governor (#2295).** The plan allows 2 requests in flight per
+ACCOUNT, shared by every organization; a third gets `429
+concurrent_limit_exceeded`. `ElevenLabsGovernor` (`elevenlabs-governor.do.ts`,
+binding `ELEVENLABS_GOVERNOR`, migration tag `v5` in all three env blocks)
+holds the 2 slots as leases in the DO's KV. `withElevenLabsSlot`
+(`elevenlabs-governor.ts`) takes a slot, makes the call and releases the slot.
+A Worker that dies mid-call loses its slot when the 10-minute lease ends. A
+caller polls for a slot in-step for up to 5 minutes, then the step fails and
+its retry backoff starts. Only `CharacterVoiceWorkflow`'s `design-voice` and
+`save-voice` take a slot. Their steps use a longer backoff
+(`ELEVENLABS_SLOT_STEP`: 6 retries, 20 s exponential). TTS, music, Scribe and
+isolation do not take a slot yet, so a 429 can still occur: the backoff
+covers it. Each wait and each 429 emits `elevenlabs_concurrency_backoff`
+(`cause: 'queued'` with `wait_ms`, or `cause: 'rejected'` with `exhausted`).
+Read it like `byteplus_quota_backoff`: a rate, not an incident. Slots are per
+deployment, so a preview and production on the same account can still add
+up to more than 2. Change `ELEVENLABS_CONCURRENCY` when the plan changes.
+
 **Music (#1640).** The catalog id is `elevenlabs-music`, on the adapter's
 newest Eleven Music model (`music_v2_5`) — do not send
 `fal-ai/elevenlabs/music`; that proxy is retired. Every `music_v*` bills the

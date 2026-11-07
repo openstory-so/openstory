@@ -54,6 +54,7 @@ import {
   releaseVoiceIfUnreferenced,
 } from '@/cast/server/voice/release-voice';
 import { durableLLMCallCf } from '@/models/server/llm-call-helper';
+import { withElevenLabsSlot } from '@/models/server/elevenlabs-governor';
 import {
   designVoicePreviews,
   saveDesignedVoice,
@@ -62,6 +63,7 @@ import type {
   WorkflowEvent,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowStepContext,
 } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 import { castChannelId } from '@/cast/cast-channel';
@@ -73,6 +75,20 @@ const SEED_READ_STEP = {
   retries: { limit: 2, delay: '5 seconds', backoff: 'constant' },
   timeout: '10 minutes',
 } as const satisfies WorkflowStepConfig;
+
+/** A 429 means another call holds the account's slot: wait longer than the default. */
+const ELEVENLABS_SLOT_STEP = {
+  retries: { limit: 6, delay: '20 seconds', backoff: 'exponential' },
+  timeout: '15 minutes',
+} as const satisfies WorkflowStepConfig;
+
+function slotCall(operation: string, ctx: WorkflowStepContext) {
+  return {
+    operation,
+    attempt: ctx.attempt,
+    lastAttempt: ctx.attempt > (ctx.config.retries?.limit ?? 0),
+  };
+}
 
 export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<CharacterVoiceWorkflowInput> {
   protected override readonly failureLabel = 'Voice design';
@@ -259,30 +275,37 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const { characterDbId, sequenceId, characterBible } = input;
     // Previews are free of slots; they land in R2 so the card can audition
     // them after the ElevenLabs preview ids age out.
-    const previews = await step.do('design-voice', async () => {
-      const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
-      const designed = await designVoicePreviews(key, voiceDescription);
-      const stored: VoicePreview[] = [];
-      for (const preview of designed) {
-        const path = `${castStorageDir(input.organizationId, sequenceId, 'characters', characterDbId)}/${generateId()}.mp3`;
-        const result = await uploadFile(
-          STORAGE_BUCKETS.AUDIO,
-          path,
-          base64ToBytes(preview.audioBase64),
-          { contentType: preview.mediaType || 'audio/mpeg', upsert: true }
+    const previews = await step.do(
+      'design-voice',
+      ELEVENLABS_SLOT_STEP,
+      async (ctx) => {
+        const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
+        const designed = await withElevenLabsSlot(
+          slotCall('voice design', ctx),
+          () => designVoicePreviews(key, voiceDescription)
         );
-        stored.push({
-          generatedVoiceId: preview.generatedVoiceId,
-          url: result.publicUrl,
-          path,
-          takeNumber: stored.length + 1,
-        });
+        const stored: VoicePreview[] = [];
+        for (const preview of designed) {
+          const path = `${castStorageDir(input.organizationId, sequenceId, 'characters', characterDbId)}/${generateId()}.mp3`;
+          const result = await uploadFile(
+            STORAGE_BUCKETS.AUDIO,
+            path,
+            base64ToBytes(preview.audioBase64),
+            { contentType: preview.mediaType || 'audio/mpeg', upsert: true }
+          );
+          stored.push({
+            generatedVoiceId: preview.generatedVoiceId,
+            url: result.publicUrl,
+            path,
+            takeNumber: stored.length + 1,
+          });
+        }
+        if (stored.length === 0) {
+          throw new Error('Voice Design returned no previews');
+        }
+        return stored;
       }
-      if (stored.length === 0) {
-        throw new Error('Voice Design returned no previews');
-      }
-      return stored;
-    });
+    );
 
     await this.recordVoiceProvenance(step, scopedDb, event, {
       path: previews[0]?.path,
@@ -309,16 +332,22 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // ponytail: a lost response after ElevenLabs saved the voice would save it
     // again on retry (one leaked slot); the hourly sweep is the upgrade path.
-    const voiceId = await step.do('save-voice', async () => {
-      const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
-      const top = previews[0];
-      if (!top) throw new Error('No preview to save');
-      return saveDesignedVoice(key, {
-        voiceName: `${characterBible.name} · ${characterDbId.slice(-6)}`,
-        voiceDescription,
-        generatedVoiceId: top.generatedVoiceId,
-      });
-    });
+    const voiceId = await step.do(
+      'save-voice',
+      ELEVENLABS_SLOT_STEP,
+      async (ctx) => {
+        const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
+        const top = previews[0];
+        if (!top) throw new Error('No preview to save');
+        return withElevenLabsSlot(slotCall('voice save', ctx), () =>
+          saveDesignedVoice(key, {
+            voiceName: `${characterBible.name} · ${characterDbId.slice(-6)}`,
+            voiceDescription,
+            generatedVoiceId: top.generatedVoiceId,
+          })
+        );
+      }
+    );
     return { previews, voiceId };
   }
 
