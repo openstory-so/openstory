@@ -319,6 +319,12 @@
         "name": "BYTEPLUS_GOVERNOR",
         "class_name": "BytePlusGovernor",
       },
+      // ElevenLabs governor (#2295): the account's concurrent-request slots,
+      // so a third call waits instead of getting a 429. Tag v5.
+      {
+        "name": "ELEVENLABS_GOVERNOR",
+        "class_name": "ElevenLabsGovernor",
+      },
       // Assistant stream log (#2155): one Durable Streams object per run, so
       // a reload or a second tab tails a reply still being written. The class
       // is @durable-streams/server-cloudflare's, which requires this exact
@@ -342,6 +348,10 @@
     {
       "tag": "v4",
       "new_sqlite_classes": ["StreamObject"],
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["ElevenLabsGovernor"],
     },
   ],
   "env": {
@@ -645,6 +655,10 @@
             "class_name": "BytePlusGovernor",
           },
           {
+            "name": "ELEVENLABS_GOVERNOR",
+            "class_name": "ElevenLabsGovernor",
+          },
+          {
             "name": "STREAMS",
             "class_name": "StreamObject",
           },
@@ -666,6 +680,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["StreamObject"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["ElevenLabsGovernor"],
         },
       ],
       "triggers": {
@@ -941,6 +959,10 @@
             "class_name": "BytePlusGovernor",
           },
           {
+            "name": "ELEVENLABS_GOVERNOR",
+            "class_name": "ElevenLabsGovernor",
+          },
+          {
             "name": "STREAMS",
             "class_name": "StreamObject",
           },
@@ -958,6 +980,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["StreamObject"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["ElevenLabsGovernor"],
         },
       ],
     },
