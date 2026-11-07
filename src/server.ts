@@ -129,6 +129,7 @@ export { UploadCheckWorkflow } from '@/cast/server/workflows/upload-check-workfl
 // in wrangler.jsonc resolves in the Worker bundle (#802).
 export { RealtimeChannel } from '@/platform/server/realtime/realtime-channel.do';
 export { BytePlusGovernor } from '@/models/server/byteplus-governor.do';
+export { ElevenLabsGovernor } from '@/models/server/elevenlabs-governor.do';
 // Assistant stream log (#2155): the Durable Streams server's object, one per
 // run, behind the `STREAMS` binding (see src/assistant/server/durability.ts).
 export { StreamObject } from '@durable-streams/server-cloudflare';

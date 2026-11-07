@@ -76,7 +76,11 @@ function makeWorkflow(): Probe {
 function makeStep(): WorkflowStep {
   // minimal WorkflowStep stub: runImpl only uses `do`
   return asStub<WorkflowStep>({
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
+    do: vi.fn((_name: string, ...rest: unknown[]) => {
+      const fn = rest.at(-1);
+      if (typeof fn !== 'function') throw new Error('step.do needs a callback');
+      return fn({ attempt: 1, config: {} });
+    }),
   });
 }
 
