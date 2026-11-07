@@ -1,0 +1,69 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the \"## Scene N\" headings.\n\n<DIRECTOR_STYLE>\nMood: Authentic and immediate\nCamera: Handheld camera with observational framing\nReferences: vertiginous big-wall climbing documentary; unflinching observational documentary portraiture; tense vérité whistleblower documentary\n</DIRECTOR_STYLE>\n\n<CHARACTERS>\n- MAYA\n- DEV\n</CHARACTERS>\n\n<SCENES>\n## Scene 1 — CORNER DINER\nINT. CORNER DINER - NIGHT\nshots: up to 20\n\nINT. CORNER DINER - NIGHT\n\nMAYA, 30s, a waitress in a grey t-shirt and red apron, wipes down the chrome counter. DEV, 40s, a long-haul driver in a canvas jacket, sits on the last stool.\n\nMAYA\nYou're late. The kitchen closed an hour ago.\n\nDEV\nThen I'll take coffee and an argument.\n\nMAYA\nCoffee's free. The argument costs extra.\n\n---\n\n## Scene 2 — DINER CAR PARK\nEXT. DINER CAR PARK - NIGHT\nshots: up to 13\n\nEXT. DINER CAR PARK - NIGHT\n\nRain on gravel. DEV stands beside his truck. MAYA steps out and flips the sign to closed.\n\nMAYA\nTake the pie. It won't keep.\n\nDEV\nYou're a hard woman to say no to.\n</SCENES>\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneNumber\":1,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Observational two-shot across the chrome counter, MAYA working in the foreground and DEV seated on the last stool; diner lights and counter recede behind them.\",\"subjectStartState\":\"MAYA stands behind the counter in a grey t-shirt and red apron, wiping the chrome; DEV sits on the last stool in a canvas jacket.\"},\"action\":\"MAYA wipes down the counter as she and DEV trade remarks.\",\"cameraMovement\":{\"move\":\"handheld drift\",\"pacing\":\"subtle, unhurried\"},\"direction\":\"Stay with the ordinary rhythm of the exchange; let the pauses land naturally.\",\"soundCue\":\"Soft diner room tone, cloth squeaking over chrome, faint night traffic outside.\",\"dialogue\":[{\"character\":\"MAYA\",\"line\":\"You're late. The kitchen closed an hour ago.\",\"tone\":\"\"},{\"character\":\"DEV\",\"line\":\"Then I'll take coffee and an argument.\",\"tone\":\"\"},{\"character\":\"MAYA\",\"line\":\"Coffee's free. The argument costs extra.\",\"tone\":\"\"}],\"durationSeconds\":12}]},{\"sceneNumber\":2,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"DEV and his truck hold the frame beside the rain-dark gravel; leave space at the edge for MAYA to enter from the diner.\",\"subjectStartState\":\"DEV stands beside his truck in the car park at night; MAYA is not yet in frame.\"},\"action\":\"MAYA steps out of the diner, flips the sign to closed, and offers DEV the pie as they speak.\",\"cameraMovement\":{\"move\":\"handheld follow, then settle\",\"pacing\":\"observational, slightly wavering\"},\"direction\":\"Keep the exchange candid and unposed as MAYA enters the frame.\",\"soundCue\":\"Rain pattering on gravel and truck metal; diner door opens and closes.\",\"dialogue\":[{\"character\":\"MAYA\",\"line\":\"Take the pie. It won't keep.\",\"tone\":\"\"},{\"character\":\"DEV\",\"line\":\"You're a hard woman to say no to.\",\"tone\":\"\"}],\"durationSeconds\":10}]}]}",
+        "usage": {
+          "prompt_tokens": 2387,
+          "completion_tokens": 849,
+          "total_tokens": 3236,
+          "cost": 0.00089728,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 2384,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00089728,
+            "upstream_inference_prompt_cost": 0.00004828,
+            "upstream_inference_completions_cost": 0.000849
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 384,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 964,
+        "interChunkDelaysMs": [
+          418, 419, 417, 420, 419, 400, 19, 0, 22, 0, 0, 0, 20, 0, 0, 0, 13, 1,
+          0, 0, 12, 0, 0, 0, 14, 0, 0, 0, 13, 0, 1, 0, 6, 0, 0, 0, 5, 0, 0, 0,
+          2, 0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0,
+          0, 0, 0, 0, 0, 23, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 26, 0, 0, 0, 17,
+          0, 0, 0, 13, 0, 0, 0, 13, 1, 0, 0, 41, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0,
+          0, 0, 27, 0, 0, 0, 12, 0, 0, 0, 30, 0, 0, 0, 17, 0, 0, 0, 3, 0, 0, 0,
+          16, 0, 0, 0, 26, 1, 0, 0, 16, 0, 0, 0, 0, 47, 0, 0, 0, 29, 0, 0, 0,
+          27, 0, 0, 0, 44, 0, 0, 0, 23, 0, 0, 0, 48, 1, 0, 0, 43, 4, 9, 0, 0, 0,
+          0, 0, 40, 1, 0, 0, 11, 0, 0, 0, 26, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0,
+          10, 0, 0, 0, 9, 0, 0, 0, 19, 0, 0, 0, 26, 0, 1, 0, 11, 0, 0, 0, 14, 0,
+          0, 0, 10, 0, 0, 0, 18, 0, 0, 0, 17, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0,
+          21, 0, 0, 0, 13, 0, 0, 0, 40, 0, 0, 0, 6, 0, 0, 0, 19, 0, 0, 0, 12, 0,
+          0, 0, 37, 0, 0, 0, 11, 0, 0, 0, 18, 0, 0, 0, 14, 0, 0, 0, 42, 0, 0, 0,
+          22, 0, 0, 0, 213, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 6, 0, 0, 0, 13, 0, 0, 0, 18, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0,
+          0, 39, 0, 0, 1, 10, 0, 0, 0, 11, 7, 0, 0, 22, 0, 0, 0, 16, 0, 0, 0,
+          22, 0, 0, 0, 11, 0, 0, 0, 24, 0, 0, 0, 18, 0, 0, 0, 12, 0, 0, 0, 20,
+          0, 0, 0, 24, 0, 0, 0, 23, 0, 0, 0, 40, 0, 0, 0, 34, 0, 0, 0, 15, 0, 0,
+          0, 15, 0, 0, 0, 8, 0, 0, 0, 14, 0, 0, 0, 18, 0, 0, 0, 7, 0, 0, 0, 0,
+          7, 0, 0, 0, 21, 0, 0, 0, 17, 0, 0, 0, 8, 0, 0, 0, 12, 0, 0, 0, 23, 0,
+          0, 0, 80, 0, 54, 0, 5
+        ],
+        "totalDurationMs": 5677
+      },
+      "metadata": {
+        "systemHash": "619c7524"
+      }
+    }
+  ]
+}

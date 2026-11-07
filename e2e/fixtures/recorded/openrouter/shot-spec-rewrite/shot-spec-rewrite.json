@@ -1,0 +1,64 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Rewrite this shot's spec.\n\n<SCENE>\n{\"sceneId\":\"01M6SM62ZQXQPDFA8YW0VECCZG\",\"sceneNumber\":2,\"originalScript\":{\"extract\":\"EXT. CITY HALL STEPS - MORNING\\n\\nMARA and DEV climb the steps past a row of cameras. A spokesperson blocks the door.\\n\\nSPOKESPERSON\\nNo comment.\\n\\nMARA\\nWe did not ask a question yet.\\n\\nA cameraman lowers his lens.\",\"dialogue\":[{\"character\":\"SPOKESPERSON\",\"line\":\"No comment.\",\"tone\":\"\"},{\"character\":\"MARA\",\"line\":\"We did not ask a question yet.\",\"tone\":\"\"}]},\"metadata\":{\"title\":\"CITY HALL STEPS\",\"durationSeconds\":7,\"location\":\"EXT. CITY HALL STEPS - MORNING\",\"timeOfDay\":\"morning\",\"storyBeat\":\"\"},\"continuity\":{\"characterTags\":[\"mara\",\"dev\",\"spokesperson\"],\"environmentTag\":\"city_hall_steps\",\"elementTags\":null,\"colorPalette\":\"\",\"lightingSetup\":\"\",\"styleTag\":\"\"}}\n</SCENE>\n\n<LINES>\n[{\"character\":\"SPOKESPERSON\",\"line\":\"No comment.\",\"tone\":\"\"},{\"character\":\"MARA\",\"line\":\"We did not ask a question yet.\",\"tone\":\"\"}]\n</LINES>\n\n<CURRENT_SPEC>\n{\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Handheld observational frame follows MARA and DEV up the steps, with the doorway held in the background and the cameras edging the frame.\",\"subjectStartState\":\"MARA and DEV climb the steps together; SPOKESPERSON is not yet in frame.\"},\"action\":\"MARA and DEV climb toward the door as SPOKESPERSON steps into their path and exchanges words with them.\",\"cameraMovement\":{\"move\":\"handheld follow up the steps, then settle on the blocked doorway\",\"pacing\":\"brisk, unsettled\"},\"direction\":\"Keep the exchange immediate and unsmoothed, as if caught amid the press scrum.\",\"soundCue\":\"Footsteps on stone, camera shutters, faint crowd murmur.\"}\n</CURRENT_SPEC>\n\n<SIBLING_SPECS>\n[]\n</SIBLING_SPECS>\n\n<CHARACTER_BIBLE>\n[{\"looks\":[{\"lookId\":\"01M6SM639R5SY22RBS3NM5TRVX\",\"name\":\"Reporter\",\"clothing\":\"A charcoal casual jacket over a muted crew-neck shirt, dark trousers, and practical shoes.\",\"styling\":\"\"}],\"characterId\":\"dev\",\"name\":\"DEV\",\"age\":\"20s\",\"gender\":\"Unspecified\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"A young adult reporter of average height and slim-to-average build, with medium skin, dark eyes, and short dark hair. No permanent marks are specified. The script does not establish Dev's cultural or national background.\",\"standardClothing\":\"A charcoal casual jacket over a muted crew-neck shirt, dark trousers, and practical shoes.\",\"personality\":\"Urgent and earnest, with a reporter's instinct to get consequential information into the open. Brings important news directly and without ceremony.\",\"movement\":\"Rushes into the newsroom with quick, forward-leaning energy. Moves briskly and purposefully; carries the laptop close at hand.\",\"voiceDescription\":\"Native English; regional accent unspecified. Young adult, gender unspecified. Excellent quality. Persona: urgent young reporter. Emotion: alert, earnest, driven. The voice is clear and relatively bright, with a quick cadence that can gather momentum around breaking information. Delivery is direct and intelligible, with emphasis on the stakes of a story rather than theatrical excitement.\",\"voiceOnly\":false,\"isPerson\":true,\"rendering\":\"Photoreal live action\",\"consistencyTag\":\"dev\"},{\"looks\":[{\"lookId\":\"01M6SM639EKQ82BV1Y8CFF262S\",\"name\":\"Newsroom\",\"clothing\":\"Green cardigan over a simple light blouse, dark straight-leg trousers, and practical flat shoes.\",\"styling\":\"\"}],\"characterId\":\"mara\",\"name\":\"MARA\",\"age\":\"40s\",\"gender\":\"Woman\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"An adult woman with a medium build and average height, fair-to-medium skin, brown eyes, and dark brown hair worn in a practical shoulder-length style. Tiredness shows in faint under-eye lines and a slightly drawn expression. No permanent marks are specified. Her cultural and national background is unspecified.\",\"standardClothing\":\"Green cardigan over a simple light blouse, dark straight-leg trousers, and practical flat shoes.\",\"personality\":\"Decisive and focused, with a dry, direct wit. She stays composed under pressure and challenges procedural posturing without hesitation.\",\"movement\":\"Tends to hold a steady, work-focused posture. Moves with purposeful efficiency; no distinctive habitual gesture is specified.\",\"voiceDescription\":\"Native English; regional accent unspecified. Woman, 40s. Excellent quality. Persona: seasoned newsroom editor. Emotion: firm, composed, wry. Her voice has a clear mid-range register with a lightly textured edge and controlled resonance. She speaks at a measured pace, landing short statements decisively; dry humor comes through as understated emphasis rather than a broad comic performance.\",\"voiceOnly\":false,\"isPerson\":true,\"rendering\":\"Photoreal live action\",\"consistencyTag\":\"mara\"},{\"looks\":[{\"lookId\":\"01M6SM639ZDNVQPJCQGKQH6ZQQ\",\"name\":\"Formal suit\",\"clothing\":\"A well-fitted dark business suit, a light button-up shirt, and polished formal shoes.\",\"styling\":\"\"}],\"characterId\":\"spokesperson\",\"name\":\"SPOKESPERSON\",\"age\":\"30s–50s\",\"gender\":\"Unspecified\",\"ethnicity\":\"Unspecified\",\"physicalDescription\":\"An adult of average height and build, with medium skin, dark eyes, and neatly groomed dark hair. Their features are composed and professionally presented. No permanent marks are specified; cultural and national background is unspecified.\",\"standardClothing\":\"A well-fitted dark business suit, a light button-up shirt, and polished formal shoes.\",\"personality\":\"Guarded and formal, offering a terse refusal rather than engaging with the press. Maintains a controlled public-facing manner.\",\"movement\":\"Holds a blocking position at the entrance with a restrained, deliberate posture. No distinctive habitual gestures are specified.\",\"voiceDescription\":\"Native English; regional accent unspecified. Adult, gender unspecified. Excellent quality. Persona: guarded public spokesperson. Emotion: controlled, firm, neutral. The voice is even and professionally restrained, with a compact mid-range delivery. Speech is brief and carefully contained, avoiding emotional color or unnecessary emphasis while making the refusal unmistakable.\",\"voiceOnly\":false,\"isPerson\":true,\"rendering\":\"Photoreal live action\",\"consistencyTag\":\"spokesperson\"}]\n</CHARACTER_BIBLE>\n\n<LOCATION_BIBLE>\n[{\"locationId\":\"city_hall_steps\",\"name\":\"CITY HALL STEPS\",\"type\":\"exterior\",\"description\":\"A broad public entrance to a civic building, approached by a substantial flight of stone steps leading to a prominent doorway. The steps provide room for people to climb and for a row of cameras to be set up nearby. The building facade and entrance read as formal public architecture, with durable masonry surfaces and a clearly defined threshold.\",\"architecturalStyle\":\"Formal civic architecture with a monumental entry and traditional stone construction.\",\"keyFeatures\":\"Wide stone steps, a large entrance door, a solid masonry facade, and space at the foot or side of the steps for press cameras. Exterior wall-mounted fixtures may flank the entrance; no specific signage is described.\",\"ambiance\":\"Public and official, with a press-presence that makes the entrance feel exposed and confrontational.\",\"consistencyTag\":\"city_hall_steps\",\"firstMention\":{\"sceneId\":\"01M6SM62ZDVZ12N91H1JMJQCY1\",\"text\":\"EXT. CITY HALL STEPS - MORNING\",\"lineNumber\":11}},{\"locationId\":\"newsroom\",\"name\":\"NEWSROOM\",\"type\":\"interior\",\"description\":\"A busy working newsroom arranged around shared desks and computer stations, with clear aisles for staff moving between work areas. Monitors, keyboards, notebooks, and office chairs create a functional, lived-in editorial workspace. The room feels practical and used rather than decorative, with a mixture of individual work surfaces and open collaborative areas.\",\"architecturalStyle\":\"Contemporary commercial office interior with an open-plan newsroom layout and utilitarian editorial-office design.\",\"keyFeatures\":\"Rows or clusters of desks with computer monitors, office chairs, scattered work materials, and circulation space between stations. Fixed ceiling fixtures provide general illumination; no distinctive signs or architectural ornament are specified.\",\"ambiance\":\"Busy, work-focused, and deadline-driven, with the organized clutter of an active news operation.\",\"consistencyTag\":\"newsroom\",\"firstMention\":{\"sceneId\":\"01M6SM62ZDVZ12N91H1JMJQCY0\",\"text\":\"INT. NEWSROOM - NIGHT\",\"lineNumber\":1}}]\n</LOCATION_BIBLE>\n\n<ELEMENT_BIBLE>\n[]\n</ELEMENT_BIBLE>",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Handheld observational frame follows MARA and DEV up the stone steps, with the doorway in the background and the row of cameras edging the frame.\",\"subjectStartState\":\"MARA and DEV are climbing the steps together; SPOKESPERSON is not yet in frame.\"},\"action\":\"SPOKESPERSON steps into MARA and DEV’s path at the door; after their brief exchange, a cameraman lowers his lens.\",\"cameraMovement\":{\"move\":\"handheld follow up the steps, then settle on the blocked doorway\",\"pacing\":\"brisk, unsettled\"},\"direction\":\"Keep the exchange immediate and unsmoothed, as if caught amid the press scrum.\",\"soundCue\":\"Footsteps on stone, camera shutters, and faint crowd murmur; shutters taper as a cameraman lowers his lens.\"}",
+        "usage": {
+          "prompt_tokens": 2150,
+          "completion_tokens": 395,
+          "total_tokens": 2545,
+          "cost": 0.000466175,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 2147,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000466175,
+            "upstream_inference_prompt_cost": 0.000268675,
+            "upstream_inference_completions_cost": 0.0001975
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 209,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1352,
+        "interChunkDelaysMs": [
+          416, 418, 419, 419, 419, 421, 225, 125, 0, 1, 0, 0, 0, 2, 0, 0, 23, 0,
+          1, 0, 81, 0, 0, 0, 91, 0, 0, 0, 0, 0, 68, 0, 0, 1, 89, 0, 0, 0, 45, 0,
+          0, 0, 46, 0, 0, 0, 38, 1, 0, 0, 37, 0, 0, 0, 89, 1, 0, 0, 54, 0, 0, 0,
+          50, 0, 0, 0, 57, 1, 0, 0, 49, 0, 0, 0, 59, 0, 0, 0, 32, 0, 1, 0, 44,
+          0, 0, 0, 35, 0, 0, 0, 41, 0, 0, 0, 59, 0, 0, 0, 260, 0, 0, 213, 0, 0,
+          0, 79, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 60, 0, 0, 0, 53, 0, 0, 0,
+          42, 0, 0, 0, 54, 0, 0, 0, 53, 0, 0, 0, 48, 0, 0, 0, 57, 0, 0, 0, 49,
+          1, 0, 0, 78, 0, 0, 0, 68, 1, 0, 0, 52, 1, 0, 0, 48, 0, 0, 0, 46, 0, 0,
+          0, 56, 0, 0, 0, 51, 0, 0, 0, 54, 0, 8, 11, 0, 10, 0, 0, 0, 14, 0, 0,
+          0, 10, 0, 0, 0, 9, 1, 0, 0, 11, 0, 0, 0, 14, 0, 0, 0, 11, 0, 0, 0, 14,
+          0, 0, 0, 14, 0, 162, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0,
+          0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0, 9, 0, 0, 0, 11,
+          0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 70, 0, 0, 0, 0, 1, 1, 0, 0, 2, 0, 0,
+          0, 3, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2,
+          0, 0, 0, 0, 0, 0, 0, 0, 48, 0, 4
+        ],
+        "totalDurationMs": 7353
+      },
+      "metadata": {
+        "systemHash": "6e0fab0b"
+      }
+    }
+  ]
+}

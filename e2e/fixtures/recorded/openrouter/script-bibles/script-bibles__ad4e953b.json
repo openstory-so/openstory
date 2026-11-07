@@ -1,0 +1,72 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Extract a complete character bible, location bible, and element bible from the script within the USER_SCRIPT tags. The script has a numbered line gutter (\"N: \") — report lineNumbers from it, but never treat the gutter as script text.\n\n<ELEMENTS>\nThe following user-uploaded elements are available. Produce an elementBible entry for each one used in the script:\n(none)\n</ELEMENTS>\n\n<CAST>\nThese characters are already cast in this sequence. For each one the script uses, return an entry with this exact characterId and reuse its look names:\n- char_maya: MAYA — 30s, Female, A woman in her 30s of unspecified nationality and cultural background, average height and build, with dark brown hair tied back in a practical style and brown eyes. Her face has subtle expression lines from frequent smiling and dry humor. No permanent marks are specified.. Looks: \"Diner uniform\" (Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes.); \"Rain coat\" (Yellow rain slicker, apron folded under one arm.)\n</CAST>\n\n<USER_SCRIPT>\n1: INT. CORNER DINER - DAY\n2: \n3: MAYA balances three plates along her arm and bumps the kitchen door open with her hip.\n4: \n5: MAYA\n6: Order up. Mind the gravy.\n</USER_SCRIPT>\n\nFor each character that appears on screen:\n1. Provide COMPLETE physical descriptions for visual consistency\n2. Include clothing details that define the character\n3. Add distinguishing features\n4. Create a consistencyTag starting with the character's name slug\nA voice that is only heard gets its own entry with voiceOnly true, a voiceDescription, personality as register/attitude, and empty appearance fields.\n\nFor each unique location:\n1. Provide COMPLETE visual descriptions for visual consistency\n2. Include architectural style and design details\n3. Identify key visual features that define the location\n4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette\n5. Create a consistencyTag starting with the core location name\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"characterBible\":[{\"characterId\":\"char_maya\",\"name\":\"MAYA\",\"age\":\"30s\",\"gender\":\"Female\",\"ethnicity\":\"\",\"physicalDescription\":\"A woman in her 30s of unspecified nationality and cultural background, average height and build, with dark brown hair tied back in a practical style and brown eyes. Her face has subtle expression lines from frequent smiling and dry humor. No permanent marks are specified.\",\"standardClothing\":\"Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes.\",\"looks\":[{\"name\":\"Diner uniform\",\"clothing\":\"Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes.\",\"styling\":\"Dark brown hair tied back in a practical style.\",\"lines\":[]}],\"personality\":\"Efficient and capable, with a dry, lightly humorous manner. She stays matter-of-fact while managing a busy task and offers a playful caution about the gravy.\",\"movement\":\"Balances plates along her arm with practiced control and uses her hip to push open the kitchen door, keeping her hands free.\",\"voiceDescription\":\"Native English; regional variant unspecified. Female, 30s. Excellent quality. Persona: capable, wry, hospitable. Emotion: brisk, amused. Her voice is clear and conversational, with a grounded, friendly tone. She delivers the order promptly and gives the gravy warning with dry humor, keeping the pace efficient rather than hurried.\",\"voiceOnly\":false,\"isPerson\":true,\"consistencyTag\":\"maya\"}],\"locationBible\":[{\"locationId\":\"corner_diner\",\"name\":\"CORNER DINER\",\"type\":\"interior\",\"description\":\"A compact neighborhood diner with a practical, well-used layout: a customer dining area connects directly to a working kitchen through a swing door. The space is arranged for quick service, with sturdy tables and chairs, a service counter, and clear paths between the kitchen and dining area. Surfaces are durable and easy to clean, including tiled flooring, laminate tabletops, and painted walls. Fixed pendant fixtures and simple wall-mounted lights provide the room's permanent illumination.\",\"architecturalStyle\":\"Unpretentious, functional neighborhood diner with straightforward mid-century-inspired details and durable commercial finishes.\",\"keyFeatures\":\"Kitchen swing door; service counter; sturdy dining tables and chairs; tiled floor; laminate surfaces; painted walls; fixed pendant and wall-mounted light fixtures.\",\"ambiance\":\"Lively, practical, and welcoming, with the close, familiar atmosphere of a small local restaurant.\",\"consistencyTag\":\"corner_diner\",\"firstMention\":{\"text\":\"INT. CORNER DINER - DAY\",\"lineNumber\":1}}],\"elementBible\":[]}",
+        "usage": {
+          "prompt_tokens": 3473,
+          "completion_tokens": 895,
+          "total_tokens": 4368,
+          "cost": 0.00107011,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 3013,
+            "cache_write_tokens": 457,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00107011,
+            "upstream_inference_prompt_cost": 0.00017511,
+            "upstream_inference_completions_cost": 0.000895
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 350,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1207,
+        "interChunkDelaysMs": [
+          412, 417, 469, 512, 275, 421, 152, 7, 0, 17, 0, 0, 0, 173, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 0, 0, 0, 17, 0, 0, 0, 22, 0,
+          0, 0, 7, 0, 0, 0, 13, 0, 0, 0, 15, 0, 0, 0, 18, 0, 0, 0, 8, 0, 0, 0,
+          14, 0, 0, 0, 12, 0, 0, 0, 11, 0, 0, 0, 31, 0, 1, 0, 0, 0, 0, 0, 0, 25,
+          0, 0, 0, 8, 0, 3, 0, 17, 0, 0, 0, 15, 0, 0, 0, 16, 0, 0, 0, 11, 0, 0,
+          0, 8, 0, 0, 0, 18, 0, 0, 0, 8, 0, 0, 0, 17, 0, 0, 0, 11, 1, 0, 0, 17,
+          0, 0, 0, 12, 0, 0, 0, 157, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23,
+          0, 0, 0, 33, 0, 0, 0, 19, 0, 0, 0, 12, 0, 0, 0, 21, 1, 0, 0, 26, 0, 0,
+          0, 14, 0, 0, 0, 27, 0, 0, 0, 29, 0, 0, 0, 20, 0, 1, 0, 12, 0, 0, 0,
+          11, 0, 0, 0, 30, 0, 0, 1, 11, 0, 0, 0, 32, 1, 0, 0, 18, 0, 0, 0, 10,
+          0, 0, 0, 152, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 20, 0, 0, 0, 18, 0, 0, 0, 34, 0, 0, 0, 20, 0, 0, 0, 30,
+          0, 0, 0, 0, 29, 0, 0, 0, 46, 1, 0, 0, 21, 0, 0, 0, 19, 0, 0, 0, 7, 0,
+          0, 0, 17, 0, 0, 0, 12, 0, 1, 0, 65, 0, 0, 0, 33, 0, 0, 0, 151, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 23, 0, 0, 0, 17, 0,
+          0, 0, 22, 1, 0, 0, 34, 0, 0, 0, 34, 1, 0, 0, 14, 0, 0, 0, 43, 0, 0, 0,
+          29, 0, 0, 1, 23, 0, 0, 0, 27, 0, 0, 0, 11, 0, 0, 0, 19, 0, 0, 0, 28,
+          0, 0, 1, 19, 1, 0, 0, 175, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 25, 0,
+          0, 0, 10, 0, 0, 0, 19, 0, 0, 0, 42, 0, 0, 0, 138, 0, 1
+        ],
+        "totalDurationMs": 6395
+      },
+      "metadata": {
+        "systemHash": "7de7d0b8"
+      }
+    }
+  ]
+}

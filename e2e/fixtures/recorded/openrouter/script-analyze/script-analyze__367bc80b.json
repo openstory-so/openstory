@@ -1,0 +1,46 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Split the script within the USER_SCRIPT tags into logical scenes by emitting boundary annotations. The script has a numbered line gutter (\"N: \") — quotes must copy the script text WITHOUT the gutter.\n\n<USER_SCRIPT>\n1: INT. CORNER DINER - DAY\n2: \n3: MAYA balances three plates along her arm and bumps the kitchen door open with her hip.\n4: \n5: MAYA\n6: Order up. Mind the gravy.\n</USER_SCRIPT>\n\nIMPORTANT: each boundary's quote must be copied character-for-character from the script (no gutter, no paraphrase, no smart-quote substitution). Respond with ONLY valid JSON matching the schema.",
+        "model": "anthropic/claude-opus-5.5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"projectMetadata\":{\"title\":\"Corner Diner\"},\"boundaries\":[{\"hintLine\":1,\"quote\":\"INT. CORNER DINER - DAY\"}]}",
+        "usage": {
+          "prompt_tokens": 1990,
+          "completion_tokens": 63,
+          "total_tokens": 2053,
+          "cost": 0.01844,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.01844,
+            "upstream_inference_prompt_cost": 0.01592,
+            "upstream_inference_completions_cost": 0.00252
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1662,
+        "interChunkDelaysMs": [339, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        "totalDurationMs": 2002
+      },
+      "metadata": {
+        "systemHash": "cb8502f6"
+      }
+    }
+  ]
+}

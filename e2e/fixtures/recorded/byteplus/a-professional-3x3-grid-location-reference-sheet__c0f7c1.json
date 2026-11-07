@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nBAKERY STREET\nType: Exterior\n\n[VISUAL DESCRIPTION]:\nThe street directly outside the bakery shop, with the entrance and shop sign facing the road and room for pedestrians at the storefront. The road runs past the bakery, with a crossing distance that allows a cyclist to wave from the opposite side. The exterior is a modest neighborhood commercial frontage with a shop window, door, and durable pavement.\n\n[ARCHITECTURAL STYLE]:\nEveryday neighborhood high-street storefront, with a simple, practical commercial façade.\n\n[KEY FEATURES]:\nBakery entrance and shopfront, a sign that can be flipped to OPEN, street pavement, and the road opposite the shop.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nA familiar local street with a welcoming, informal feel.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/312a600d6ed396c01f5981d91a1b36c7bc4703e31c323e0e7f7b3373cbc16523.jpeg"
+        }
+      }
+    }
+  ]
+}

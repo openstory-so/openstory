@@ -1,0 +1,57 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the \"## Scene N\" headings.\n\n<DIRECTOR_STYLE>\nMood: Authentic and immediate\nCamera: Handheld camera with observational framing\nReferences: vertiginous big-wall climbing documentary; unflinching observational documentary portraiture; tense vérité whistleblower documentary\n</DIRECTOR_STYLE>\n\n<CHARACTERS>\n- MAYA\n</CHARACTERS>\n\n<SCENES>\n## Scene 1 — CORNER DINER\nINT. CORNER DINER - DAY\nshots: up to 9\n\nINT. CORNER DINER - DAY\n\nMAYA balances three plates along her arm and bumps the kitchen door open with her hip.\n\nMAYA\nOrder up. Mind the gravy.\n</SCENES>\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneNumber\":1,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Handheld observational framing; MAYA held slightly off-center, three plates visible along her arm, kitchen door in the near background.\",\"subjectStartState\":\"MAYA stands beside the kitchen door, balancing three plates along her arm, focused on keeping them steady.\"},\"action\":\"MAYA bumps the kitchen door open with her hip as she calls out the order.\",\"cameraMovement\":{\"move\":\"handheld drift, then follow her through the doorway\",\"pacing\":\"immediate, gently unsteady\"},\"direction\":\"Keep the take close and unpolished; let the plates and her careful balance stay in view.\",\"soundCue\":\"Diner room murmur, plates lightly clinking, kitchen door thump.\",\"dialogue\":[{\"character\":\"MAYA\",\"line\":\"Order up. Mind the gravy.\",\"tone\":\"\"}],\"durationSeconds\":3.5}]}]}",
+        "usage": {
+          "prompt_tokens": 2252,
+          "completion_tokens": 348,
+          "total_tokens": 2600,
+          "cost": 0.00091085,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 2249,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00091085,
+            "upstream_inference_prompt_cost": 0.00056285,
+            "upstream_inference_completions_cost": 0.000348
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 133,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1115,
+        "interChunkDelaysMs": [
+          418, 417, 129, 10, 0, 10, 0, 0, 0, 10, 0, 0, 0, 17, 0, 0, 0, 10, 0, 0,
+          0, 12, 0, 0, 0, 6, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 13, 0, 0, 0, 14,
+          0, 0, 0, 13, 0, 0, 0, 157, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0, 0, 0, 36, 0, 0, 0, 30,
+          0, 0, 0, 35, 0, 0, 0, 23, 0, 0, 0, 17, 0, 0, 0, 15, 0, 0, 0, 25, 0, 0,
+          0, 13, 0, 0, 0, 35, 0, 0, 0, 41, 0, 0, 0, 19, 0, 0, 0, 45, 0, 0, 0,
+          171, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 49, 1, 4
+        ],
+        "totalDurationMs": 2982
+      },
+      "metadata": {
+        "systemHash": "619c7524"
+      }
+    }
+  ]
+}

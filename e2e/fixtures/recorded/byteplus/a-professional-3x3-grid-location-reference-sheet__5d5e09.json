@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nBAKERY KITCHEN\nType: Interior\n\n[VISUAL DESCRIPTION]:\nA working bakery kitchen arranged around a stainless-steel bench, with enough open floor space for kneading and other preparation. A wall clock is visible to the baker. The surfaces and equipment are practical and easy to clean, with pale, lightly worn walls and a sturdy floor suited to a commercial workspace.\n\n[ARCHITECTURAL STYLE]:\nFunctional, compact commercial kitchen with an utilitarian bakery fit-out.\n\n[KEY FEATURES]:\nLong steel workbench, wall clock, open dough-preparation area, practical kitchen surfaces and storage.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nOrderly, purposeful, and lived-in, conveying the quiet concentration of a bakery getting ready to open.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/b89511f062006fa0049133fbf8c70358c94493407f7b1f9cb2428979bc1f0356.jpeg"
+        }
+      }
+    }
+  ]
+}

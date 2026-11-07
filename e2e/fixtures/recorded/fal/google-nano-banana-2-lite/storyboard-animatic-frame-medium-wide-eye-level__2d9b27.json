@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium wide. eye level. Observational two-shot across the chrome counter, MAYA working in the foreground and DEV seated on the last stool; diner lights and counter recede behind them. MAYA stands behind the counter in a grey t-shirt and red apron, wiping the chrome; DEV sits on the last stool in a canvas jacket. Then: MAYA wipes down the counter as she and DEV trade remarks. Camera: handheld drift, subtle, unhurried. Stay with the ordinary rhythm of the exchange; let the pauses land naturally. Characters: MAYA: Female, 30s, A woman in her 30s of unspecified nationality and cultural background, average height and build, with dark brown hair tied back in a practical style and brown eyes. Her face has subtle expression lines from frequent smiling and dry humor. No permanent marks are specified, wearing Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes. DEV: Male, 40s, A man in his 40s of unspecified nationality and cultural background, with a solid, road-worn build and an easy, slightly stooped posture. He has short, dark hair, brown eyes, and mild age lines around his eyes and mouth. No permanent marks are specified, wearing Canvas jacket over a plain dark shirt, sturdy trousers, and practical boots. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/c8969078c2fa0ab71394f0a0f5a252fe08fdc87138fa906b22ca99aa095172db.png",
+              "content_type": "image/png",
+              "file_name": "SqUXiu3cCOsJOvQ4HX1P0_cuWExJ5Y.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042144
+      }
+    }
+  ]
+}

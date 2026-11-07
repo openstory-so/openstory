@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium wide, eye level, MARA (Image 1) leans over the steel bench in a flour-dusted apron, hands on the dough, focused on kneading., Observational handheld frame with MARA (Image 1) at the steel bench, dough and flour in the foreground and the wall clock visible behind her., INT. BAKERY KITCHEN - EARLY MORNING, early morning, bakery_kitchen (Image 2), Natural lighting appropriate to early morning, #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "dola-seedream-5-0-pro-260628"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/2596e9873c1989bb16d4f4817375077e153238f9dd6a188b4a515f2d921781aa.jpeg"
+        }
+      }
+    }
+  ]
+}

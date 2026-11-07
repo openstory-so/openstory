@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "elevenlabs-voice",
+        "userMessage": "6JlpHV07qO0Q25o1LS58",
+        "model": "eleven_multilingual_ttv_v2"
+      },
+      "response": {
+        "json": {
+          "detail": {
+            "type": "invalid_request",
+            "code": "bad_request",
+            "message": "You have reached your maximum amount of custom voices (139 / 3). You can upgrade your subscription to increase your custom voice limit.",
+            "status": "voice_limit_reached",
+            "request_id": "0e56cb02eea068bfe0ebd05c03227331"
+          }
+        },
+        "status": 400
+      }
+    }
+  ]
+}

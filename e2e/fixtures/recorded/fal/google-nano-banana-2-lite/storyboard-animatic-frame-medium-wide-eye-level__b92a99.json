@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium wide. eye level. Handheld observational framing; MAYA held slightly off-center, three plates visible along her arm, kitchen door in the near background. MAYA stands beside the kitchen door, balancing three plates along her arm, focused on keeping them steady. Then: MAYA bumps the kitchen door open with her hip as she calls out the order. Camera: handheld drift, then follow her through the doorway, immediate, gently unsteady. Keep the take close and unpolished; let the plates and her careful balance stay in view. Characters: MAYA: Female, 30s, A woman in her 30s of unspecified nationality and cultural background, average height and build, with dark brown hair tied back in a practical style and brown eyes. Her face has subtle expression lines from frequent smiling and dry humor. No permanent marks are specified, wearing Grey short-sleeved T-shirt, red waist apron, dark work trousers, and practical dark shoes. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/e3dab0c44caef9860d0e79477a30742f6ddcb609bc892e5a778db3292721f6b9.png",
+              "content_type": "image/png",
+              "file_name": "oOrQvsZ4ZfFcOk43Mm1VW_mcqdRzGy.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042118
+      }
+    }
+  ]
+}

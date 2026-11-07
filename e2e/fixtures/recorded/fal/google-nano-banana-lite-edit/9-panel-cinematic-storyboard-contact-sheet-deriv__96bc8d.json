@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "9-panel cinematic storyboard CONTACT SHEET derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene.\n\nLayout: a rigid 3x3 grid of 9 equal rectangular cells in a 16:9 landscape image. Each cell is exactly 1/3 of the width and 1/3 of the height. Separate cells with a thin black gutter.\n- Content must not cross, bleed, or overlap a gutter. No collage.\n- Each cell is a complete, independently framed shot — not a crop of a larger scene.\n\nScene: medium wide, eye level, MARA (Image 3) and DEV (Image 2) climb the steps together; SPOKESPERSON (Image 4) is not yet in frame., Handheld observational frame follows MARA (Image 3) and DEV (Image 2) up the steps, with the doorway held in the background and the cameras edging the frame., EXT. CITY HALL STEPS - MORNING, morning, city_hall_steps (Image 5), Natural lighting appropriate to morning, #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image",
+        "model": "google/nano-banana-lite/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/0c97292cd75728c61f4edfce0fdcb934abe804989d5dc3e4aaddca63477922e1.png",
+              "content_type": "image/png",
+              "file_name": "-JrdHbrFZjMGH4k9Uw_T-_EGLXX2Iv.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.043866
+      }
+    }
+  ]
+}
