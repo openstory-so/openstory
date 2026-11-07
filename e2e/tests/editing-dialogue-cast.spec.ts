@@ -471,6 +471,7 @@ test.describe('Editing dialogue and cast', () => {
 
   test('a look is worn per scene: editing it unworn changes nothing, switching a scene stales that scene', async () => {
     const maya = castIds['MAYA'];
+    if (!maya) throw new Error('MAYA not cast');
     const { lookId } = await call(
       request,
       'create_character_look',
