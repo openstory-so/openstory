@@ -45,6 +45,8 @@ Each record carries trace and span ids, so a log links to its trace. The body is
 
 There is no tail consumer. The old forwarder Worker got no trace context, and a streaming tail consumer was never called (#1974).
 
+Every record logged inside a request carries the caller's ids (#2282): `logContextMiddleware` puts the browser's `X-POSTHOG-SESSION-ID` / `X-POSTHOG-DISTINCT-ID` (posthog-js `tracing_headers`, same origin only) into LogTape's implicit context as `posthogSessionId` / `posthogDistinctId`, and the auth middlewares add `userId` once the principal is known, so API-key and OAuth callers link to a person too. The context store is given to `configureLogging` from `src/instrumentation.ts` only: `src/platform/logger.ts` is shared with the browser, which has no `AsyncLocalStorage`. PostHog's logs settings read the person from `properties.userId` and `properties.posthogDistinctId`, the session from `properties.posthogSessionId`. Workflow runs start with no request and inherit nothing; their payload carries `userId` where it matters.
+
 ## Compatibility date
 
 `compatibility_date` is `2026-10-08` (#1999). The production and test env blocks inherit it. PR preview deploys patch the default block in place and keep the date. `src/platform/server/compatibility-date.test.ts` fails if the app Worker declares any other date.

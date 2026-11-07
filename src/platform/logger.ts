@@ -20,10 +20,12 @@ import {
   getJsonLinesFormatter,
   getLogger,
   type ConsoleFormatter,
+  type ContextLocalStorage,
   type LogLevel,
   type LogRecord,
   type Sink,
   type TextFormatter,
+  withContext,
 } from '@logtape/logtape';
 // Pretty formatter for dev. Static ESM import — @logtape/pretty is marked
 // `sideEffects: false`, so Vite tree-shakes it out of the prod worker bundle
@@ -73,7 +75,10 @@ let configured = false;
  * Configure LogTape. Idempotent — safe to call on hot-reload and from both
  * server entry (instrumentation.ts) and browser entry (ObservabilityProvider).
  */
-export function configureLogging(): void {
+export function configureLogging(options?: {
+  // Server only: lets `withContext` stamp a request's ids on every record (#2282).
+  contextLocalStorage: ContextLocalStorage<Record<string, unknown>>;
+}): void {
   if (configured) return;
   configured = true;
 
@@ -86,6 +91,7 @@ export function configureLogging(): void {
     : buildServerSinks(dev);
 
   configureSync({
+    ...options,
     sinks,
     loggers: [
       {
@@ -237,7 +243,7 @@ function redactProperties(
 // Public helpers
 // ============================================================================
 
-export { getLogger };
+export { getLogger, withContext };
 
 /**
  * A serialized error plus its full `cause` chain. The structured `{ err }` we
