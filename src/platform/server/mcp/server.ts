@@ -15,7 +15,12 @@ import { createMCPServer, resourceDefinition } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { InsufficientScopeError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
-import { createScopedDb } from '@/platform/server/db/scoped';
+import { isSystemAdmin } from '@/platform/server/auth/system-admin';
+import {
+  createScopedDb,
+  getSequenceByIdUnscoped,
+  type ScopedDb,
+} from '@/platform/server/db/scoped';
 import type { McpAuthContext } from './auth';
 import { mcpJsonRpcError } from './json-rpc';
 import { serveResourceRequest } from './resources';
@@ -152,6 +157,28 @@ export const mcpServer = createMCPServer({
 });
 
 /**
+ * The caller's organization, or, for a system admin's `osk_` key, the one
+ * that owns a sequence the caller's does not (the `loadSequence` fallback).
+ * Never for an OAuth token: a third-party client would read every organization.
+ */
+async function toolScopedDb(
+  auth: McpAuthContext,
+  sequenceId: string | undefined
+): Promise<ScopedDb> {
+  const own = createScopedDb(auth.organizationId, auth.user.id);
+  if (
+    !sequenceId ||
+    auth.kind !== 'api_key' ||
+    !isSystemAdmin(auth.user.email) ||
+    (await own.sequences.getById(sequenceId))
+  ) {
+    return own;
+  }
+  const sequence = await getSequenceByIdUnscoped(sequenceId);
+  return sequence ? createScopedDb(sequence.organizationId, auth.user.id) : own;
+}
+
+/**
  * Per-request tool context. API keys are unscoped; an OAuth token must carry
  * the tool's scope, checked when a production tool runs so discovery and
  * `whoami` work without one.
@@ -168,12 +195,12 @@ function mcpToolContext(
       organizationName: auth.organizationName,
     },
     origin,
-    scoped: (scope) => {
+    scoped: async (scope, sequenceId) => {
       if (auth.kind === 'oauth' && !auth.scopes.includes(scope)) {
         throw new InsufficientScopeError(scope);
       }
       return {
-        scopedDb: createScopedDb(auth.organizationId, auth.user.id),
+        scopedDb: await toolScopedDb(auth, sequenceId),
         origin,
         userId: auth.user.id,
         request: {

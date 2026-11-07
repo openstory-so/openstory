@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as dbModule from '@/platform/server/db/scoped';
+import * as systemAdminModule from '@/platform/server/auth/system-admin';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { z } from 'zod';
 import {
@@ -9,6 +10,7 @@ import {
   withToolViews,
 } from './server';
 import type { User } from '@/platform/server/auth/config';
+import type { Sequence } from '@/platform/server/db/schema';
 import { asStub } from '@/test/as-stub';
 import * as createModule from '@/platform/server/api-v1/create';
 
@@ -691,6 +693,68 @@ describe('production tool authorization', () => {
       expect(createDb).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('system admin fallback', () => {
+  const sequenceId = '01J00000000000000000000000';
+  const getSequence = (caller: Parameters<typeof serveMcpRequest>[1]) =>
+    rpc(
+      'tools/call',
+      { name: 'openstory.get_sequence', arguments: { sequenceId } },
+      caller
+    );
+  const foreignSequence = () =>
+    vi
+      .spyOn(dbModule, 'getSequenceByIdUnscoped')
+      .mockResolvedValue(
+        asStub<Sequence>({ organizationId: 'organization_9' })
+      );
+
+  it('opens another organization’s sequence for an admin’s API key', async () => {
+    vi.spyOn(systemAdminModule, 'isSystemAdmin').mockReturnValue(true);
+    const unscoped = foreignSequence();
+    const ownGetById = vi.fn(async () => null);
+    const foreignGetById = vi.fn(async () => null);
+    const createDb = vi
+      .spyOn(dbModule, 'createScopedDb')
+      .mockImplementation((organizationId) =>
+        asStub<ScopedDb>({
+          sequences: {
+            getById:
+              organizationId === 'organization_9' ? foreignGetById : ownGetById,
+          },
+        })
+      );
+    await getSequence(auth);
+    expect(ownGetById).toHaveBeenCalledWith(sequenceId);
+    expect(unscoped).toHaveBeenCalledWith(sequenceId);
+    expect(createDb).toHaveBeenLastCalledWith('organization_9', 'user_1');
+    expect(foreignGetById).toHaveBeenCalledWith(sequenceId);
+  });
+
+  it.each([
+    ['a non-admin API key', false, auth],
+    [
+      'an admin OAuth token',
+      true,
+      { ...auth, kind: 'oauth' as const, scopes: ['sequences:read'] },
+    ],
+  ])('keeps %s in its own organization', async (_, admin, caller) => {
+    vi.spyOn(systemAdminModule, 'isSystemAdmin').mockReturnValue(admin);
+    const unscoped = foreignSequence();
+    const getById = vi.fn(async () => null);
+    const createDb = vi
+      .spyOn(dbModule, 'createScopedDb')
+      .mockReturnValue(asStub<ScopedDb>({ sequences: { getById } }));
+    const { body } = await getSequence(caller);
+    expect(unscoped).not.toHaveBeenCalled();
+    expect(createDb).toHaveBeenCalledTimes(1);
+    expect(createDb).toHaveBeenCalledWith('organization_1', 'user_1');
+    expect(body.result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
+  });
 });
 
 describe('write tool authorization', () => {

@@ -100,17 +100,20 @@ function buildResourceServer(context: OpenStoryMcpContext) {
     })
   );
   // Same scope as the tools on list and read; templates/list needs none.
-  const scoped = () => context.scoped('sequences:read');
+  const scoped = (sequenceId?: string) =>
+    context.scoped('sequences:read', sequenceId);
   // One query per resources/list, shared by the listed templates.
   let listing: ReturnType<ScopedDb['sequences']['listPage']> | undefined;
   for (const template of MCP_RESOURCE_TEMPLATES) {
     const list = template.listed
       ? async () => {
           try {
-            listing ??= scoped().scopedDb.sequences.listPage({
-              limit: LISTED_SEQUENCES,
-              cursor: null,
-            });
+            listing ??= Promise.resolve(scoped()).then(({ scopedDb }) =>
+              scopedDb.sequences.listPage({
+                limit: LISTED_SEQUENCES,
+                cursor: null,
+              })
+            );
             const rows = await listing;
             return {
               resources: rows.slice(0, LISTED_SEQUENCES).map((sequence) => ({
@@ -131,7 +134,7 @@ function buildResourceServer(context: OpenStoryMcpContext) {
       async (uri, variables) => {
         const ids = parseIds(uri, template, variables);
         try {
-          const { scopedDb, origin } = scoped();
+          const { scopedDb, origin } = await scoped(ids.sequenceId);
           const text = JSON.stringify(
             await template.read(scopedDb, ids, origin)
           );
