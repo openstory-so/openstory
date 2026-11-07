@@ -1,9 +1,9 @@
 /**
  * Flushes buffered PostHog *product events* and AI OTel spans. Not the log
- * pipeline: LogTape JSON goes to `console.log`, and in production Cloudflare
- * tail-forwards those to PostHog Logs (`workers/posthog-log-forwarder`).
- * Local `tail_consumers` is `[]`, so this in-process flush is the only way
- * `$ai_generation` / `capture()` events leave `bun dev`.
+ * pipeline: LogTape JSON goes to `console.log`, and Cloudflare's native log
+ * export ships it to PostHog Logs in production and previews. Local dev has no
+ * export, so this in-process flush is the only way `$ai_generation` /
+ * `capture()` events leave `bun dev`.
  *
  * Shared by both `#flush-scheduler` variants. Uses `allSettled` (not `all`)
  * so one flush rejecting can't abandon the other mid-flight, and never

@@ -42,19 +42,6 @@
       "head_sampling_rate": 1,
     },
   },
-  // PostHog log forwarder — receives every tail event from this Worker,
-  // transforms our LogTape JSON lines into proper OTLP log records, and POSTs
-  // them to PostHog's /i/v1/logs endpoint. The forwarder is its own Worker
-  // (workers/posthog-log-forwarder/) and must be deployed first.
-  // tail_consumers is NON-inheritable, so each env block declares its own:
-  // [env.production] uses the -prd forwarder, PR previews patch this default
-  // block to the -stg forwarder in deploy-cloudflare.yml, and the default
-  // stays empty so local dev and Deploy-to-Cloudflare button deploys don't
-  // reference a forwarder Worker that doesn't exist on the account.
-  // Not streaming_tail_consumers: from 2026-10-02 to 10-05 Cloudflare called
-  // a streaming consumer zero times from prod or any preview, even after
-  // redeploying both sides, and prod logs were lost (#1974).
-  "tail_consumers": [],
   // ─────────────────────────────────────────────────────────────────────────
   // DEFAULT env = local dev. The D1 here uses a placeholder `database_id` so
   // it can ONLY resolve to a local Miniflare D1 — there is no real Cloudflare
@@ -377,8 +364,9 @@
       // Replaces the top-level block wholesale (inheritable keys are not
       // merged), so logs are restated. Traces also go to PostHog Tracing via
       // the `posthog-traces-openstory-prd` destination (Cloudflare dashboard →
-      // Workers → Observability → Destinations). Logs stay on the tail
-      // forwarder: the native logs destination shipped LogTape JSON as a blob.
+      // Workers → Observability → Destinations). Logs go to PostHog Logs via
+      // `posthog-openstory-prd` with trace and span ids; PostHog's "JSON parse
+      // logs" turns the LogTape line into attributes (#2280).
       // Traces sample 100% so every error has a trace. Every span is a billed
       // event from 2026-10-01; ~4M/month measured (Sep 2026) vs 20M included.
       "observability": {
@@ -389,6 +377,7 @@
           "head_sampling_rate": 1,
           "persist": true,
           "invocation_logs": false,
+          "destinations": ["posthog-openstory-prd"],
         },
         "traces": {
           "enabled": true,
@@ -682,13 +671,6 @@
       "triggers": {
         "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
       },
-      // Same forwarder as the top-level default — redeclared because
-      // tail_consumers is non-inheritable across env blocks.
-      "tail_consumers": [
-        {
-          "service": "openstory-log-forwarder-prd",
-        },
-      ],
     },
     // Playwright e2e environment. D1 AND R2 are local (Miniflare) for
     // hermetic runs — no remote bindings, so no Cloudflare credentials are
@@ -978,10 +960,6 @@
           "new_sqlite_classes": ["StreamObject"],
         },
       ],
-      // Explicit empty array opts out of inheritance and silences wrangler's
-      // "tail_consumers not on env.test" warning. We don't want e2e runs
-      // forwarding LogTape JSON into the prod PostHog log pipeline.
-      "tail_consumers": [],
     },
   },
 }
