@@ -233,6 +233,16 @@ function inputsForCard(
     }
   }
   const placedRequest = { ...request };
+  // Spell an enum lever as the card does: we send '768P' and '4k', cards list '768p' and '4K'.
+  for (const input of Object.values(card.inputs)) {
+    if (input.kind !== 'enum' || input.bound === 'usage') continue;
+    const value = placedRequest[input.param];
+    if (typeof value !== 'string' || input.values.includes(value)) continue;
+    const match = input.values.find(
+      (option) => option.toLowerCase() === value.toLowerCase()
+    );
+    if (match) placedRequest[input.param] = match;
+  }
   for (const key of bound.request) {
     if (
       !Object.prototype.hasOwnProperty.call(placedRequest, key) &&
@@ -273,6 +283,15 @@ function knownLevers(params: FalCostEstimateParams): {
     usage.duration = params.durationSeconds;
   }
   return { request, usage };
+}
+
+/** The median mixes every tier, so a card that prices the asked tier wins. */
+function cardPricesKnownResolution(
+  card: RateCard,
+  params: FalCostEstimateParams
+): boolean {
+  const known = knownLevers(params).request.resolution != null;
+  return known && cardParams(card).request.includes('resolution');
 }
 
 /**
@@ -325,7 +344,11 @@ export function estimateFalCost(
 
   // Observed median outranks the card. A card with no median is the
   // estimate; a refusal stays null rather than borrowing another price.
-  if (pricing.rateCard && trustedObservedUnits(pricing) == null) {
+  if (
+    pricing.rateCard &&
+    (trustedObservedUnits(pricing) == null ||
+      cardPricesKnownResolution(pricing.rateCard, params))
+  ) {
     return estimateFromCard(endpointId, pricing.rateCard, params);
   }
 

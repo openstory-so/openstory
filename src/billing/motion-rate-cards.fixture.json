@@ -1,0 +1,487 @@
+{
+  "xai/grok-imagine-video/v1.5/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "usage",
+        "kind": "number",
+        "default": 5
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["480p", "720p", "1080p"],
+        "default": "480p"
+      },
+      "image_url": {
+        "param": "image_url",
+        "bound": "request",
+        "kind": "boolean",
+        "default": false
+      }
+    },
+    "tables": {
+      "per_sec": {
+        "480p": 0.08,
+        "720p": 0.14,
+        "1080p": 0.25
+      }
+    },
+    "price": {
+      "+": [
+        {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "per_sec",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "if": [
+            {
+              "var": "image_url"
+            },
+            0.01,
+            0
+          ]
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 5,
+          "resolution": "480p"
+        },
+        "usd": 0.4,
+        "quote": "A 5-second clip costs $0.40 at 480p"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/xai/grok-imagine-video/v1.5/image-to-video/llms.txt",
+      "hash": "29c8ddab13c1e15df797727333de3a4ab3b939f0abf9bad2f291808c4713b3c8",
+      "extractedAt": "2026-10-22T07:01:38.000Z"
+    }
+  },
+  "google/gemini-omni-flash/v1.2/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 5
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["360p", "720p", "1080p", "4K"],
+        "default": "720p"
+      }
+    },
+    "tables": {
+      "rate": {
+        "360p": 0.0273,
+        "720p": 0.0819,
+        "1080p": 0.1229,
+        "4K": 0.2457
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "var": "duration"
+        },
+        {
+          "lookup": {
+            "table": "rate",
+            "keys": [
+              {
+                "var": "resolution"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 1,
+          "resolution": "360p"
+        },
+        "usd": 0.0273,
+        "quote": "For **360p**, your request will cost **$0.0273** per second"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/google/gemini-omni-flash/v1.2/image-to-video/llms.txt",
+      "hash": "2c4e7b95326f0eb482b54934f0a32c17b4a9a7634bf98303bef69740c3c6707f",
+      "extractedAt": "2026-11-06T11:00:54.000Z"
+    }
+  },
+  "fal-ai/kling-video/v3/pro/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      },
+      "generate_audio": {
+        "param": "generate_audio",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["off", "on", "voice_control"],
+        "default": "off"
+      }
+    },
+    "tables": {
+      "rate": {
+        "off": 0.112,
+        "on": 0.168,
+        "voice_control": 0.196
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "var": "duration"
+        },
+        {
+          "lookup": {
+            "table": "rate",
+            "keys": [
+              {
+                "var": "generate_audio"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 1,
+          "generate_audio": "off"
+        },
+        "usd": 0.112,
+        "quote": "For every second of video you generated, you will be charged $0.112 (audio off)"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video/llms.txt",
+      "hash": "c63f3c7228bd5227f480c172af5ffbad50a151f8b30a71fcd0e7edf9009aa1c4",
+      "extractedAt": "2026-10-01T11:00:57.000Z"
+    }
+  },
+  "kling/v4/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["720p", "1080p"],
+        "default": "720p"
+      }
+    },
+    "tables": {
+      "rates": {
+        "720p": 0.157,
+        "1080p": 0.235
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "var": "duration"
+        },
+        {
+          "lookup": {
+            "table": "rates",
+            "keys": [
+              {
+                "var": "resolution"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 1,
+          "resolution": "720p"
+        },
+        "usd": 0.157,
+        "quote": "Video costs **$0.157** per second at **720p** and **$0.235** per second at **1080p**."
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/kling/v4/image-to-video/llms.txt",
+      "hash": "711539e7b83419844a53eb5db5b41e6d67afcd4a57928d439a8fa67e9dbf5197",
+      "extractedAt": "2026-10-22T06:00:29.000Z"
+    }
+  },
+  "minimax/h3-max/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["480p", "768p", "1080p"],
+        "default": "480p"
+      }
+    },
+    "tables": {
+      "rate": {
+        "480p": 0.035,
+        "768p": 0.056,
+        "1080p": 0.112
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "var": "duration"
+        },
+        {
+          "lookup": {
+            "table": "rate",
+            "keys": [
+              {
+                "var": "resolution"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 1,
+          "resolution": "480p"
+        },
+        "usd": 0.035,
+        "quote": "$0.035 at 480p"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/minimax/h3-max/image-to-video/llms.txt",
+      "hash": "83b638d53730d00377b6e96c2a81ee95fbdac849551ede44b02eab1342b07c7d",
+      "extractedAt": "2026-10-31T11:00:54.000Z",
+      "expiresAt": "2026-11-15T23:59:59Z"
+    }
+  },
+  "minimax/h3-max/reference-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["480p", "768p", "1080p"],
+        "default": "768p"
+      },
+      "extra_reference_tokens": {
+        "param": "extra_reference_tokens",
+        "bound": "usage",
+        "kind": "number",
+        "default": 0
+      }
+    },
+    "tables": {
+      "rates": {
+        "480p": 0.05,
+        "768p": 0.08,
+        "1080p": 0.16
+      }
+    },
+    "price": {
+      "+": [
+        {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rates",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "*": [
+            {
+              "var": "extra_reference_tokens"
+            },
+            2e-5
+          ]
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 5,
+          "resolution": "768p"
+        },
+        "usd": 0.4,
+        "quote": "a 5-second 768p output costs $0.40 with up to four square reference images"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/minimax/h3-max/reference-to-video/llms.txt",
+      "hash": "71b57442074179399f9147d3a0794ed090e1e27108c73fc812e453830413d2f3",
+      "extractedAt": "2026-10-23T10:00:49.000Z"
+    }
+  },
+  "bytedance/seedance-2.0/mini/image-to-video": {
+    "inputs": {
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      },
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["480p", "720p"],
+        "default": "480p"
+      }
+    },
+    "tables": {
+      "price_per_sec": {
+        "480p": 0.0721,
+        "720p": 0.1547
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "var": "duration"
+        },
+        {
+          "lookup": {
+            "table": "price_per_sec",
+            "keys": [
+              {
+                "var": "resolution"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "duration": 1,
+          "resolution": "480p"
+        },
+        "usd": 0.0721,
+        "quote": "For every second of video generated, you will be charged roughly **$0.0721**/second for **480p**"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/bytedance/seedance-2.0/mini/image-to-video/llms.txt",
+      "hash": "eec6674f49a234b8702a8cb101371a0dbfd95e6a22528abf9f972921a39ec939",
+      "extractedAt": "2026-10-22T10:00:32.000Z"
+    }
+  },
+  "bytedance/seedance-2.5/image-to-video": {
+    "inputs": {
+      "resolution": {
+        "param": "resolution",
+        "bound": "request",
+        "kind": "enum",
+        "values": ["480p", "720p", "1080p"],
+        "default": "480p"
+      },
+      "duration": {
+        "param": "duration",
+        "bound": "request",
+        "kind": "number",
+        "default": 1
+      }
+    },
+    "tables": {
+      "video_rate": {
+        "480p": 0.2205,
+        "720p": 0.473,
+        "1080p": 1.164
+      }
+    },
+    "price": {
+      "*": [
+        {
+          "lookup": {
+            "table": "video_rate",
+            "keys": [
+              {
+                "var": "resolution"
+              }
+            ]
+          }
+        },
+        {
+          "var": "duration"
+        }
+      ]
+    },
+    "examples": [
+      {
+        "params": {
+          "resolution": "480p",
+          "duration": 1
+        },
+        "usd": 0.2205,
+        "quote": "For 480p, your request will cost roughly $0.2205 per second of generated video"
+      }
+    ],
+    "source": {
+      "url": "https://fal.ai/models/bytedance/seedance-2.5/image-to-video/llms.txt",
+      "hash": "f8704060c796cf5b1ac888dc3f9cccf146493bd73160702e6626d7c81af29c2e",
+      "extractedAt": "2026-09-30T11:00:26.000Z"
+    }
+  }
+}
