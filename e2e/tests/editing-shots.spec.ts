@@ -618,6 +618,26 @@ test.describe('Editing shots', () => {
   });
 
   test('regenerating a still leaves the shot spec current', async () => {
+    const verdict = async () =>
+      (
+        await call(
+          request,
+          'get_shot_spec',
+          { ...s(), shotId: neighbour.id },
+          SpecRead
+        )
+      ).verdict;
+    expect(await verdict()).toBe('current');
+
+    // MCP: no prompt, the stored one renders.
+    await call(request, 'generate_shot_image', {
+      ...s(),
+      shotId: neighbour.id,
+      model: 'seedream_v5',
+    });
+    await settleVersions('image', neighbour.frameId, 2);
+    expect(await verdict()).toBe('current');
+
     // Regenerate Image sends the prompt it shows, unedited.
     const { anchorFrame } = await call(
       request,
@@ -631,14 +651,8 @@ test.describe('Editing shots', () => {
       model: 'seedream_v5',
       prompt: anchorFrame.prompt,
     });
-    await settleVersions('image', neighbour.frameId, 2);
-    const { verdict } = await call(
-      request,
-      'get_shot_spec',
-      { ...s(), shotId: neighbour.id },
-      SpecRead
-    );
-    expect(verdict).toBe('current');
+    await settleVersions('image', neighbour.frameId, 3);
+    expect(await verdict()).toBe('current');
   });
 
   // Bug #2291: the visual prompt carries the spoken line, so Seedream burns it in as a caption.
