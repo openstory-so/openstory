@@ -85,12 +85,11 @@ export async function buildShotImageWorkflowInput(opts: {
     elements,
   } = opts;
 
-  // Priority: provided > stored frame mirror > description. The frame's
-  // `imagePrompt` is the single source of truth (#713/#989) — the old
-  // `metadata.prompts.visual` fallback is gone (that field was removed).
+  // Priority: provided > stored frame mirror. Never the scene script: a still
+  // model draws its spoken lines as a caption (#2291).
   const scriptExtract = opts.scene?.originalScript.extract ?? '';
-  const prompt = opts.prompt || opts.imagePrompt || scriptExtract;
-  if (!prompt) return null;
+  const prompt = opts.prompt || opts.imagePrompt;
+  if (!prompt?.trim()) return null;
 
   const continuity = opts.continuity ?? opts.scene?.continuity;
 

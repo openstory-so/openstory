@@ -32,12 +32,14 @@ const { prepareShotImageWorkflowInput } = await import('./shot-image-input');
 
 const FRAME_ID = 'frm_1';
 
-function makeScopedDb() {
-  const writePrompt = vi.fn(async () => ({ id: 'fpv_user_edit' }));
-  const getSelectedPrompt = vi.fn(async () => ({
+function makeScopedDb(
+  selected: { id: string; text: string } | null = {
     id: 'fpv_selected',
     text: 'Stored prompt',
-  }));
+  }
+) {
+  const writePrompt = vi.fn(async () => ({ id: 'fpv_user_edit' }));
+  const getSelectedPrompt = vi.fn(async () => selected);
   const getSelectedVariant = vi.fn(async () => ({ model: 'flux_2_max' }));
   const getLastFailed = vi.fn(async () => ({ model: 'seedream_v5' }));
   const stub = {
@@ -214,8 +216,23 @@ describe('prepareShotImageWorkflowInput refuses a blank prompt before credits', 
         promptVersionOverride: 'fpv_from_caller',
         modelOverride: 'nano_banana_pro',
       })
-    ).rejects.toThrow('Shot has no prompt or description to regenerate from');
+    ).rejects.toThrow('Shot has no visual prompt to render a still from');
 
+    expect(requireCredits).not.toHaveBeenCalled();
+  });
+
+  it('never renders the scene script, which holds the spoken lines (#2291)', async () => {
+    requireCredits.mockClear();
+    const { scopedDb, writePrompt } = makeScopedDb(null);
+
+    await expect(
+      prepareShotImageWorkflowInput({
+        ...baseArgs(scopedDb),
+        scriptExtract: 'INT. BAKERY — DAWN\n\nMARA\nWe open in five minutes.',
+      })
+    ).rejects.toThrow('Shot has no visual prompt to render a still from');
+
+    expect(writePrompt).not.toHaveBeenCalled();
     expect(requireCredits).not.toHaveBeenCalled();
   });
 });

@@ -99,15 +99,27 @@ describe('buildShotImageWorkflowInput — prompt fallback chain (#547)', () => {
     expect(input?.prompt).toBe('STORED');
   });
 
-  it('falls back to shot.description last', async () => {
+  it('never falls back to the scene script, which holds the spoken lines (#2291)', async () => {
     const shot = makeShot();
     const input = await buildShotImageWorkflowInput({
       ...baseOpts,
-      scene: makeScene({ extract: 'DESC' }),
+      scene: makeScene({
+        extract: 'INT. BAKERY — DAWN\n\nMARA\nWe open in five minutes.',
+      }),
       shot,
       imagePrompt: null,
     });
-    expect(input?.prompt).toBe('DESC');
+    expect(input).toBeNull();
+  });
+
+  it('returns null for a whitespace-only stored prompt', async () => {
+    const shot = makeShot();
+    const input = await buildShotImageWorkflowInput({
+      ...baseOpts,
+      shot,
+      imagePrompt: '   ',
+    });
+    expect(input).toBeNull();
   });
 
   it('returns null when no prompt is available anywhere (caller skips the shot)', async () => {
@@ -151,6 +163,7 @@ describe('buildShotImageWorkflowInput — sceneId + core shape', () => {
       ...baseOpts,
       scene: makeScene({ sceneId: 'scene-xyz', extract: 'DESC' }),
       shot,
+      imagePrompt: 'P',
     });
     expect(input?.sceneSnapshot?.sceneId).toBe('scene-xyz');
   });
