@@ -17,6 +17,7 @@ import {
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
+import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   Sequence,
@@ -180,6 +181,18 @@ export async function listShotDialogueReadings(
   });
 }
 
+/** Tells other tabs the lines or reading moved. Best-effort: the write landed. */
+async function emitDialogueUpdated(shot: Pick<Shot, 'id' | 'sequenceId'>) {
+  try {
+    await getGenerationChannel(shot.sequenceId).emit(
+      'generation.shot:updated',
+      { shotId: shot.id, updateType: 'dialogue' }
+    );
+  } catch (error) {
+    logger.error('realtime emit failed', { shotId: shot.id, err: error });
+  }
+}
+
 /** The event is logged, not thrown: the write it describes already landed. */
 async function recordDialogueEvent(
   context: DialogueEditContext,
@@ -202,6 +215,7 @@ async function recordDialogueEvent(
       err: error,
     });
   }
+  await emitDialogueUpdated(context.shot);
 }
 
 /**
@@ -265,6 +279,7 @@ export async function saveShotDialogue(
     'user-edit',
     { createdBy: context.user.id }
   );
+  if (version) await emitDialogueUpdated(context.shot);
   return { versionId: version?.id ?? null };
 }
 
