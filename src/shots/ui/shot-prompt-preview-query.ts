@@ -19,6 +19,10 @@ export type ShotPromptPreviewQueryInput = {
   generateAudio: boolean;
 };
 
+/** Every preview of one shot, whatever models or prompts it was keyed on. */
+export const shotPromptPreviewShotKey = (sequenceId: string, shotId: string) =>
+  ['shot-prompt-preview', sequenceId, shotId] as const;
+
 function shotPromptPreviewQueryKey(input: ShotPromptPreviewQueryInput) {
   return [
     'shot-prompt-preview',

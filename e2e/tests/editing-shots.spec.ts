@@ -461,9 +461,7 @@ test.describe('Editing shots', () => {
       lines: [],
     });
     await expectShot(target.id, { motionPrompt: 'stale' });
-    // Bug #2294: the open preview does not refresh after a dialogue edit elsewhere.
-    await page.reload();
-    await openOptimised();
+    // The open preview follows the lines through realtime (#2294).
     await expect(panel).toContainText(SUFFIX_NO_DIALOGUE);
     await expect(panel).not.toContainText(SUFFIX_WITH_DIALOGUE);
 
@@ -474,8 +472,6 @@ test.describe('Editing shots', () => {
       versionId: selectedVersionId,
     });
     await expectShot(target.id, { motionPrompt: 'fresh' });
-    await page.reload();
-    await openOptimised();
     await expect(panel).toContainText(SUFFIX_WITH_DIALOGUE);
   });
 
