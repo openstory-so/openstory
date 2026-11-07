@@ -219,7 +219,10 @@ refetch on focus, invalidated by realtime and by any refused continue —
   `Sarah Chen` and `Sarah's Mother` still conflicts). The plan catches
   that, leaves the line out of the voice and dialogue units, and returns
   `speakerConflicts` with the same message. The footer prints it.
-  Recording the line still refuses.
+  Recording the line still refuses. The wire value is that record, not the
+  unit list: `firstStageWithWork` and `planWork` filter their argument, so
+  every caller passes `plan.units` (#2299). Passing the record throws
+  `filter is not a function` and the workspace error boundary replaces the page.
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
 prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
