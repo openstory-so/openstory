@@ -20,6 +20,7 @@ import {
   credits,
   frameVariants,
   frames,
+  generatedAssets,
   shots,
   locationBibleVersions,
   locationReferencePhotos,
@@ -32,6 +33,7 @@ import {
   sequenceStyleVersions,
   sequences,
   session,
+  stitches,
   styles,
   member,
   organization,
@@ -235,9 +237,26 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),
     db.delete(sequenceCast).where(inArray(sequenceCast.sequenceId, ids)),
+    ...deleteCharacterRows(inArray(characters.id, theirs)),
+    db
+      .delete(sequenceLocationLinks)
+      .where(inArray(sequenceLocationLinks.sequenceId, ids)),
+    ...deleteLocationRows(theirLocations),
+  ]);
+}
+
+/**
+ * Delete the characters `where` matches with everything they own: nothing
+ * cascades from `characters` (#2017). Their cast links go first.
+ */
+function deleteCharacterRows(where: SQL | undefined) {
+  const db = getDb();
+  const ids = db.select({ id: characters.id }).from(characters).where(where);
+  return [
+    db.delete(sequenceCast).where(inArray(sequenceCast.characterId, ids)),
     db
       .delete(characterBibleVersions)
-      .where(inArray(characterBibleVersions.characterId, theirs)),
+      .where(inArray(characterBibleVersions.characterId, ids)),
     db
       .delete(characterLookVersions)
       .where(
@@ -246,25 +265,18 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
           db
             .select({ id: characterLooks.id })
             .from(characterLooks)
-            .where(inArray(characterLooks.characterId, theirs))
+            .where(inArray(characterLooks.characterId, ids))
         )
       ),
-    db
-      .delete(characterLooks)
-      .where(inArray(characterLooks.characterId, theirs)),
-    // Nothing cascades from `characters` (#2017).
+    db.delete(characterLooks).where(inArray(characterLooks.characterId, ids)),
     db
       .delete(characterSheetVariants)
-      .where(inArray(characterSheetVariants.characterId, theirs)),
+      .where(inArray(characterSheetVariants.characterId, ids)),
     db
       .delete(characterVoiceVersions)
-      .where(inArray(characterVoiceVersions.characterId, theirs)),
-    db.delete(characters).where(inArray(characters.id, theirs)),
-    db
-      .delete(sequenceLocationLinks)
-      .where(inArray(sequenceLocationLinks.sequenceId, ids)),
-    ...deleteLocationRows(theirLocations),
-  ]);
+      .where(inArray(characterVoiceVersions.characterId, ids)),
+    db.delete(characters).where(where),
+  ] as const;
 }
 
 /**
@@ -312,6 +324,14 @@ export async function cleanupTestUser(
   await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
   // An organization delete is refused while it has locations (#1695).
   await deleteTestLocations(eq(locations.organizationId, organizationId));
+  // Or characters (#2017), cast or not, generated assets or stitches.
+  await db.batch([
+    ...deleteCharacterRows(eq(characters.organizationId, organizationId)),
+    db
+      .delete(generatedAssets)
+      .where(eq(generatedAssets.organizationId, organizationId)),
+    db.delete(stitches).where(eq(stitches.organizationId, organizationId)),
+  ]);
   await db.delete(organization).where(eq(organization.id, organizationId));
   await db.delete(user).where(eq(user.id, userId));
   // Credits will cascade or be cleaned via organization if we add FKs later
