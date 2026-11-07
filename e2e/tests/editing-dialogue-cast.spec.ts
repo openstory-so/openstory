@@ -441,7 +441,7 @@ test.describe('Editing dialogue and cast', () => {
     await expect(block.getByText(words)).toHaveCount(1, { timeout: 30_000 });
   });
 
-  // Bug: after update_location the diner shots' prompts read untracked, not stale.
+  // Bug #2293: after update_location the diner shots' prompts read untracked, not stale.
   test.fixme('editing a location marks only the scenes there out of date', async () => {
     await call(request, 'update_location', {
       ...seq(firstId),

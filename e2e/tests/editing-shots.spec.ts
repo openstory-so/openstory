@@ -461,7 +461,7 @@ test.describe('Editing shots', () => {
       lines: [],
     });
     await expectShot(target.id, { motionPrompt: 'stale' });
-    // Bug: the open preview does not refresh after a dialogue edit elsewhere.
+    // Bug #2294: the open preview does not refresh after a dialogue edit elsewhere.
     await page.reload();
     await openOptimised();
     await expect(panel).toContainText(SUFFIX_NO_DIALOGUE);
@@ -517,7 +517,7 @@ test.describe('Editing shots', () => {
     await expectShot(target.id, { video: 'fresh' });
   });
 
-  // Bug: retiming a shot leaves its uploaded clip current; update_shot says it stales it.
+  // Bug #2292: retiming a shot leaves its uploaded clip current; update_shot says it stales it.
   test.fixme('a retime stales the clip, never the shot prompts', async () => {
     await call(request, 'update_shot', {
       ...s(),
@@ -622,7 +622,7 @@ test.describe('Editing shots', () => {
     ).toHaveCount(inScene.length);
   });
 
-  // Bug: Regenerate Image rewrites scene continuity and stales the shot spec.
+  // Bug #2290: Regenerate Image rewrites scene continuity and stales the shot spec.
   test.fixme('regenerating a still leaves the shot spec current', async () => {
     await call(request, 'generate_shot_image', {
       ...s(),
@@ -639,7 +639,7 @@ test.describe('Editing shots', () => {
     expect(verdict).toBe('current');
   });
 
-  // Bug: the visual prompt carries the spoken line, so Seedream burns it in as a caption.
+  // Bug #2291: the visual prompt carries the spoken line, so Seedream burns it in as a caption.
   test.fixme('a still prompt does not contain the shot’s spoken line', async () => {
     await openShot(target);
     await page.getByRole('tab', { name: 'Start Frame' }).click();
