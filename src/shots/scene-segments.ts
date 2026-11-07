@@ -29,6 +29,7 @@ import {
   resolveShotDuration,
 } from '@/motion/resolve-shot-duration';
 import { durationGridForModel } from '@/motion/model-capabilities';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
   DEFAULT_SEGMENT_CAP_MS,
   tileSceneIntoSegments,
@@ -482,7 +483,11 @@ function durationMoved(
 ): boolean {
   if (entry.durationMs === undefined) return false;
   const rawMs = live.durationMsByShot.get(entry.shotId);
-  if (!rawMs || rawMs <= 0 || !isValidImageToVideoModel(model)) return false;
+  if (!rawMs || rawMs <= 0) return false;
+  // An upload stamps the shot's exact duration; no grid to snap to (#2292).
+  if (model === USER_UPLOAD_MODEL)
+    return entry.durationMs !== Math.round(rawMs);
+  if (!isValidImageToVideoModel(model)) return false;
   // Packed entries store each member's editorial duration, not a standalone
   // request duration. The model's minimum applies to the whole clip (#1720).
   if (packed) return entry.durationMs !== Math.round(rawMs);

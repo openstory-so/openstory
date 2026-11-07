@@ -728,6 +728,10 @@ null-audio shortcut for a model without audio input does not apply: a later
 voice or take is audio drift, and a prompt, still, reference or duration
 change is still picture drift. The underlying render row is untouched.
 
+Duration is compared snapped onto the model grid on both sides. An uploaded
+clip (`model: 'user-upload'`) has no grid: it stamps the exact length it
+adopted, and any retime re-stales it (#2292).
+
 `dialogueKey` (#1784) is every line the render prompt quoted, voiced or not,
 with its bound voice token (`dialogueLinesKey`). `audioSourceKey` sees voiced
 lines only, and is null on a model without dialogue-audio input, yet every

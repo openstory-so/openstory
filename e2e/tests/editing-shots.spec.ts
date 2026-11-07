@@ -517,8 +517,7 @@ test.describe('Editing shots', () => {
     await expectShot(target.id, { video: 'fresh' });
   });
 
-  // Bug #2292: retiming a shot leaves its uploaded clip current; update_shot says it stales it.
-  test.fixme('a retime stales the clip, never the shot prompts', async () => {
+  test('a retime stales the clip, never the shot prompts', async () => {
     await call(request, 'update_shot', {
       ...s(),
       shotId: target.id,
