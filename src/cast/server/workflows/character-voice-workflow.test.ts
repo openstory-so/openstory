@@ -43,8 +43,19 @@ vi.doMock('@/cast/server/voice/release-voice', () => ({
   releaseVoiceIfUnreferenced: mockReleaseIfUnreferenced,
   releaseReplacedVoice: mockReleaseReplaced,
 }));
+const mockSlot = vi.fn(async (_call: unknown, fn: () => Promise<unknown>) =>
+  fn()
+);
+vi.doMock('@/models/server/elevenlabs-governor', () => ({
+  withElevenLabsSlot: mockSlot,
+}));
 
 const { CharacterVoiceWorkflow } = await import('./character-voice-workflow');
+
+const ELEVENLABS_SLOT_STEP = {
+  retries: { limit: 6, delay: '20 seconds', backoff: 'exponential' },
+  timeout: '15 minutes',
+};
 
 class Probe extends CharacterVoiceWorkflow {
   runBody(
@@ -207,12 +218,31 @@ describe('CharacterVoiceWorkflow', () => {
       promoteVoiceClaimIfPending,
       stampVoiceClaimWorkflowRunId,
     } = makeScopedDb();
+    const step = makeStep();
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
-      makeStep(),
+      step,
       scopedDb
     );
 
+    expect(step.do).toHaveBeenCalledWith(
+      'design-voice',
+      ELEVENLABS_SLOT_STEP,
+      expect.any(Function)
+    );
+    expect(step.do).toHaveBeenCalledWith(
+      'save-voice',
+      ELEVENLABS_SLOT_STEP,
+      expect.any(Function)
+    );
+    expect(mockSlot).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'voice design', attempt: 1 }),
+      expect.any(Function)
+    );
+    expect(mockSlot).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'voice save', attempt: 1 }),
+      expect.any(Function)
+    );
     expect(stampVoiceClaimWorkflowRunId).toHaveBeenCalledWith('ver-1', 'run-1');
     expect(mockLlm).not.toHaveBeenCalled();
     expect(mockDesign).toHaveBeenCalledTimes(1);

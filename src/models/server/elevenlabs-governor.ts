@@ -35,7 +35,7 @@ export type ElevenLabsCall = {
 };
 
 function governorStub(): DurableObjectStub<ElevenLabsGovernor> | undefined {
-  // Outside workerd (tests, scripts) the binding is absent.
+  // Missing binding means ungated (some scripts). Tests may stub it.
   const env: Partial<Cloudflare.Env> = getEnv();
   const namespace = env.ELEVENLABS_GOVERNOR;
   if (!namespace) return undefined;
@@ -77,7 +77,7 @@ async function takeSlot(
   stub: DurableObjectStub<ElevenLabsGovernor>,
   holder: string,
   call: ElevenLabsCall
-): Promise<void> {
+): Promise<number> {
   const startedAt = Date.now();
   let waited = false;
   const slot = { holder, slots: ELEVENLABS_CONCURRENCY, leaseMs: LEASE_MS };
@@ -92,34 +92,33 @@ async function takeSlot(
       setTimeout(resolve, POLL_MS * (1 + Math.random() / 2))
     );
   }
-  if (waited) {
-    reportBackoff(call, { cause: 'queued', waitMs: Date.now() - startedAt });
-  }
+  return waited ? Date.now() - startedAt : 0;
 }
 
 /**
  * Run one ElevenLabs request inside an account slot. A 429 is reported and
- * rethrown so the step's backoff retries it. No-op where the DO is not bound.
+ * rethrown so the step's backoff retries it. Ungated when the DO is not
+ * bound; the call still runs.
  */
 export async function withElevenLabsSlot<T>(
   call: ElevenLabsCall,
   fn: () => Promise<T>
 ): Promise<T> {
   const stub = governorStub();
+  if (!stub) return fn();
   const holder = generateId();
-  if (stub) await takeSlot(stub, holder, call);
   try {
+    const waitMs = await takeSlot(stub, holder, call);
+    if (waitMs > 0) reportBackoff(call, { cause: 'queued', waitMs });
     return await fn();
   } catch (error) {
     if (statusOf(error) === 429) reportBackoff(call, { cause: 'rejected' });
     throw error;
   } finally {
-    if (stub) {
-      await stub.release(holder).catch((err: unknown) => {
-        logger.warn(`ElevenLabs ${call.operation}: slot release failed`, {
-          err,
-        });
+    await stub.release(holder).catch((err: unknown) => {
+      logger.warn(`ElevenLabs ${call.operation}: slot release failed`, {
+        err,
       });
-    }
+    });
   }
 }

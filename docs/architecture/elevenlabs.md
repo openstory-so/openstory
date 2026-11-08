@@ -70,11 +70,12 @@ holds the 2 slots as leases in the DO's KV. `withElevenLabsSlot`
 A Worker that dies mid-call loses its slot when the 10-minute lease ends. A
 caller polls for a slot in-step for up to 5 minutes, then the step fails and
 its retry backoff starts. Only `CharacterVoiceWorkflow`'s `design-voice` and
-`save-voice` take a slot. Their steps use a longer backoff
-(`ELEVENLABS_SLOT_STEP`: 6 retries, 20 s exponential). TTS, music, Scribe and
-isolation do not take a slot yet, so a 429 can still occur: the backoff
-covers it. Each wait and each 429 emits `elevenlabs_concurrency_backoff`
-(`cause: 'queued'` with `wait_ms`, or `cause: 'rejected'` with `exhausted`).
+`save-voice` take a slot. Only those two steps use the longer backoff
+(`ELEVENLABS_SLOT_STEP`: 6 retries, 20 s exponential) and emit
+`elevenlabs_concurrency_backoff` (`cause: 'queued'` with `wait_ms`, or
+`cause: 'rejected'` with `exhausted`). TTS, music, Scribe and isolation do
+not wait on the governor, do not use that backoff, and do not emit the event,
+so a 429 there still fails the call.
 Read it like `byteplus_quota_backoff`: a rate, not an incident. Slots are per
 deployment, so a preview and production on the same account can still add
 up to more than 2. Change `ELEVENLABS_CONCURRENCY` when the plan changes.

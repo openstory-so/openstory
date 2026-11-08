@@ -273,8 +273,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<{ previews: VoicePreview[]; voiceId: string }> {
     const input = event.payload;
     const { characterDbId, sequenceId, characterBible } = input;
-    // Previews are free of slots; they land in R2 so the card can audition
-    // them after the ElevenLabs preview ids age out.
+    // Design previews are not saved voices; MP3s go to R2 before the preview ids expire.
     const previews = await step.do(
       'design-voice',
       ELEVENLABS_SLOT_STEP,

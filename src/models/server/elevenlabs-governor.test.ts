@@ -47,7 +47,7 @@ beforeEach(() => {
     // the DO reads no env
     asStub<Cloudflare.Env>({})
   );
-  capture.mockClear();
+  capture.mockReset();
 });
 
 afterEach(() => {
@@ -109,5 +109,48 @@ describe('withElevenLabsSlot', () => {
         exhausted: true,
       },
     });
+  });
+
+  it('throws after five minutes when both slots stay held', async () => {
+    vi.useFakeTimers();
+    const hold = deferred();
+    const a = withElevenLabsSlot(call, () => hold.promise);
+    const b = withElevenLabsSlot(call, () => hold.promise);
+    const fn = vi.fn(async () => 'called');
+    const settled = expect(withElevenLabsSlot(call, fn)).rejects.toThrow(
+      /no free request slot/
+    );
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 4_000);
+    await settled;
+    expect(fn).not.toHaveBeenCalled();
+    hold.resolve();
+    await a;
+    await b;
+  });
+
+  it('releases the slot when the queued report throws', async () => {
+    vi.useFakeTimers();
+    const first = deferred();
+    const second = deferred();
+    const a = withElevenLabsSlot(call, () => first.promise);
+    const b = withElevenLabsSlot(call, () => second.promise);
+    capture.mockImplementation(() => {
+      throw new Error('posthog');
+    });
+    const third = vi.fn(async () => 'third');
+    const queued = withElevenLabsSlot(call, third);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(third).not.toHaveBeenCalled();
+    first.resolve();
+    await a;
+    const queuedDone = expect(queued).rejects.toThrow('posthog');
+    await vi.advanceTimersByTimeAsync(5_000);
+    await queuedDone;
+    await expect(withElevenLabsSlot(call, async () => 'fourth')).resolves.toBe(
+      'fourth'
+    );
+    expect(third).not.toHaveBeenCalled();
+    second.resolve();
+    await b;
   });
 });
