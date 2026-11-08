@@ -179,6 +179,7 @@ describe('createOAuthProviderPlugins', () => {
         user,
         session,
         scopes: [],
+        isContinuation: false,
       })
     ).toBe(false);
   });
