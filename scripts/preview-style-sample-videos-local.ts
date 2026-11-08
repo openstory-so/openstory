@@ -16,7 +16,7 @@
  * (no `R2_PUBLIC_STORAGE_DOMAIN` set), and the showcase's `optimizedVideoUrl`
  * leaves relative URLs untouched — so the app plays your local files directly.
  *
- * It writes to the same `.wrangler/state` that `bun dev` uses, so just refresh
+ * It writes to the same local state that `bun dev` uses, so just refresh
  * the running app afterward. Reversible: re-run the real seed
  * (`bun run styles:sample-videos:seed:local`) to restore CDN URLs.
  *

@@ -22,6 +22,14 @@ import {
   upsertEnvVars,
 } from './env-file';
 import { runProdSetup } from './setup-prod';
+import { homedir } from 'node:os';
+import {
+  defaultDataDir,
+  isWorktree,
+  markerFile,
+  syncedFolderWarning,
+  writeMarker,
+} from './state-dir';
 
 const isDeploy = process.argv.includes('--deploy');
 const isPrPreview = process.argv.includes('--pr-preview');
@@ -52,6 +60,8 @@ async function localSetup() {
   } else {
     p.log.success('.env.local — already configured');
   }
+
+  await chooseDataDir();
 
   // AI keys — the only values worth prompting for. Everything else is
   // optional and documented in .env.example.
@@ -104,6 +114,44 @@ async function localSetup() {
   p.outro(
     `Run ${chalk.bold('bun dev')} to start the development server.\nPublic HTTPS: ${chalk.bold('bun tunnel:provision')} then press t + Enter in bun dev.\nTo deploy to production, run: ${chalk.bold('bun setup --prod')}`
   );
+}
+
+/** Where the local library lives (#2222). Default ~/openstory needs no env var. */
+async function chooseDataDir() {
+  if (isWorktree()) {
+    p.log.info('Data folder — a worktree keeps its state in .wrangler');
+    return;
+  }
+  const home = homedir();
+  const current =
+    parseEnvFile(ENV_FILE).get('OPENSTORY_DATA_DIR') ?? defaultDataDir(home);
+  const raw = await p.text({
+    message: 'Data folder — your local library and its database',
+    placeholder: current,
+    defaultValue: current,
+  });
+  if (p.isCancel(raw)) {
+    p.cancel('Setup cancelled. Progress saved to .env.local');
+    process.exit(0);
+  }
+  const dir = resolve(raw.trim().replace(/^~(?=\/|$)/, home) || current);
+  const synced = syncedFolderWarning(dir, home);
+  if (synced) {
+    p.log.warn(
+      `${dir} is synced by ${synced}. A live database there can be corrupted; pick a local folder.`
+    );
+    const ok = await p.confirm({
+      message: 'Use it anyway?',
+      initialValue: false,
+    });
+    if (p.isCancel(ok) || !ok) return chooseDataDir();
+  }
+  writeMarker(dir);
+  const isDefault = dir === defaultDataDir(home);
+  if (!isDefault || parseEnvFile(ENV_FILE).has('OPENSTORY_DATA_DIR')) {
+    upsertEnvVars(ENV_FILE, { OPENSTORY_DATA_DIR: isDefault ? '' : dir });
+  }
+  p.log.success(`Data folder — ${dir} (${markerFile(dir)})`);
 }
 
 async function main() {

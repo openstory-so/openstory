@@ -24,14 +24,15 @@
  *   - `.env` / `.env.local` discovery (so local vars resolve)
  *   - `main` and `migrations_dir`
  * and keys local D1/R2 persistence by binding identity (`database_id` etc.).
- * Keeping the D1/R2 bindings byte-identical and the file at the repo root means
- * the proxy lands on the exact same `.wrangler/state` SQLite files that
- * `bun dev` / `wrangler dev` use.
+ * Keeping the D1/R2 bindings byte-identical and the persist path from
+ * `scripts/state-dir.ts` means the proxy lands on the exact same SQLite files
+ * that `bun dev` uses.
  */
 import JSON5 from 'json5';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy, type PlatformProxy } from 'wrangler';
+import { proxyPersistPath, resolveStateDir } from './state-dir';
 
 const WRANGLER_CONFIG = fileURLToPath(
   new URL('../wrangler.jsonc', import.meta.url)
@@ -114,6 +115,7 @@ export async function getLocalPlatformProxy<Env = Record<string, unknown>>(
     return await getPlatformProxy<Env>({
       configPath,
       environment: options.environment,
+      persist: { path: proxyPersistPath(resolveStateDir()) },
       remoteBindings: false,
     });
   } finally {

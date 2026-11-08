@@ -5,8 +5,19 @@
  * command inherits the stale value.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { prepareStateDir } from './state-dir.ts';
 
 await import('./ensure-env.ts');
+
+// Before migrations: set up ~/openstory once and move .wrangler/state into it.
+try {
+  prepareStateDir();
+} catch (error) {
+  console.error(
+    `[state] ${error instanceof Error ? error.message : String(error)}`
+  );
+  process.exit(1);
+}
 
 const all = process.argv.includes('--all');
 if (all) {
