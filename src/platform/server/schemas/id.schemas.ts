@@ -29,3 +29,12 @@ export const ulidSchema = z
  * Allows undefined or null values
  */
 export const ulidSchemaOptional = ulidSchema.optional();
+
+/** A ULID or a slug (`[a-z0-9-]`, #2222); lowercase slugs can never pass `isValidId`. */
+export const idOrSlugSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .refine((val) => isValidId(val) || /^[a-z0-9]+(-[a-z0-9]+)*$/.test(val), {
+    message: 'Expected a ULID or a slug',
+  });

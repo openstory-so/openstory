@@ -32,7 +32,7 @@ One resolver, `scripts/state-dir.ts`. `vite.config.ts` (`persistState`) and `scr
 `sequences`, `characters`, `locations` (SQL table `sequence_locations`) and `styles` carry a `slug`, unique per organization (`idx_<table>_organization_slug`). It is set from the title or name, recomputed on rename (kept when the new name gives the same base), and takes `-2`, `-3` on collision (`freeSlug` in `src/platform/server/db/slug.ts`, `slugify` in `src/platform/slug.ts`). Slugs are lowercase, so one never passes `isValidId` and a slug-or-ULID parameter is never ambiguous.
 
 - ULIDs stay the only identity. No foreign key, stored URL or R2 key uses a slug. Scenes and shots store none.
-- `/api/v1/sequences/{id}`, its `assets` and `exports`, and `/api/v1/styles/{id}` take a slug or a ULID (`resolveId` on each scoped-db module). HAL links keep the ULID.
+- `/api/v1/sequences/{id}`, its `assets` and `exports`, and `/api/v1/styles/{id}` take a slug or a ULID (`resolveId` on each scoped-db module). Every MCP tool does too: `resolveSlugs` in `src/platform/server/mcp/tool-context.ts` turns a slug in a top-level `sequenceId`, `characterId`, `locationId` or `styleId` into its ULID before the tool runs (an unknown slug is not found). HAL links and tool results keep the ULID.
 - The sequence, character and location pages redirect a slug to the same URL with the ULID (`src/platform/ui/slug-redirect.ts`).
 - A slug resolves only inside the caller's organization; public style templates still resolve by id.
 - The backfill (`20261108062356_backfill_slugs`) is SQL, which cannot strip accents: it writes `Café Noir` as `caf-noir` where a new write gives `cafe-noir`. A rename fixes an old row.

@@ -1,8 +1,9 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { toolDefinition } from '@tanstack/ai';
 import { z } from 'zod';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { OpenStoryError } from '@/platform/errors';
+import { idOrSlugSchema } from '@/platform/server/schemas/id.schemas';
+import { NotFoundError, OpenStoryError } from '@/platform/errors';
+import { isValidId } from '@/platform/id';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import {
   getSequenceByIdUnscoped,
@@ -48,6 +49,30 @@ function sequenceIdOf(input: unknown): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
+const SLUGGED_FIELDS = {
+  sequenceId: 'sequences',
+  characterId: 'characters',
+  locationId: 'locations',
+  styleId: 'styles',
+} as const;
+
+/**
+ * A slug in a top-level id field becomes its ULID (#2222), so every tool
+ * takes `noir-chase` where it takes a sequence id. A slug the organisation
+ * has none of is not found; a ULID passes through untouched.
+ */
+async function resolveSlugs(scopedDb: ScopedDb, input: unknown): Promise<void> {
+  if (typeof input !== 'object' || input === null) return;
+  const fields: Record<string, unknown> = input;
+  for (const [field, module] of Object.entries(SLUGGED_FIELDS)) {
+    const value = fields[field];
+    if (typeof value !== 'string' || isValidId(value)) continue;
+    const id = await scopedDb[module].resolveId(value);
+    if (!id) throw new NotFoundError(`No ${module.slice(0, -1)} "${value}"`);
+    fields[field] = id;
+  }
+}
+
 /**
  * Rebind `ctx.scopedDb` to the organisation that owns `sequenceId` when this
  * caller is allowed to and the sequence is not in the key's organisation.
@@ -89,7 +114,7 @@ export const overResponseCap = (text: string) =>
   new TextEncoder().encode(text).length > 256 * 1024;
 
 export const sequenceInput = z.strictObject({
-  sequenceId: ulidSchema,
+  sequenceId: idOrSlugSchema,
 });
 export const pageInput = sequenceInput.extend({
   limit: z.int().min(1).max(100).default(20),
@@ -246,6 +271,7 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   const written = !spec.annotations.readOnlyHint;
   try {
     const toolContext = context();
+    await resolveSlugs(toolContext.scopedDb, parsed.data);
     await adoptForeignSequence(toolContext, parsed.data);
     const { data, summary, images } = await spec.run(parsed.data, toolContext);
     const output = spec.outputSchema.safeParse(data);

@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import {
   characterReadSchema,
   locationReadSchema,
@@ -31,7 +34,7 @@ export const castReadTools = [
   productionRead(
     'get_character',
     'Inspect a sequence character by database characterId, including appearance, performance, voice takes, first mention and selected sheet. characterId is not an analysis label.',
-    sequenceInput.extend({ characterId: ulidSchema }),
+    sequenceInput.extend({ characterId: idOrSlugSchema }),
     z.object({ character: characterReadSchema }),
     async (input, { scopedDb, origin }) => ({
       character: await readCharacter(
@@ -55,7 +58,7 @@ export const castReadTools = [
   productionRead(
     'get_location',
     'Inspect a location a sequence uses by database locationId (the same id list_library_locations gives, not the loc_* token), including its bible, rendering, first mention in this sequence and selected reference. The bible and sheet are the organization’s, shared by every sequence that uses it.',
-    sequenceInput.extend({ locationId: ulidSchema }),
+    sequenceInput.extend({ locationId: idOrSlugSchema }),
     z.object({ location: locationReadSchema }),
     async (input, { scopedDb, origin }) => ({
       location: await readLocation(
