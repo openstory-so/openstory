@@ -6,6 +6,7 @@ import {
   stat,
   writeFile,
   mkdir,
+  symlink,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -210,6 +211,23 @@ describe('openstory pull', () => {
         await readFile(join(dest, 'scenes', '01-old', 'notes.md'), 'utf8')
       ).toBe('mine');
       expect(await readFile(join(dest, 'mine.txt'), 'utf8')).toBe('mine');
+      // A listed path reached through a symlink out of the folder stays put.
+      const outside = await mkdtemp(join(tmpdir(), 'openstory-outside-'));
+      await writeFile(join(outside, 'prompt.txt'), 'theirs');
+      await rm(join(dest, 'scenes', '02-old'), { recursive: true });
+      await symlink(outside, join(dest, 'scenes', '02-old'));
+      listed = [{ relativePath: 'keep.txt', versionId: 'k', text: 'k' }];
+      await run();
+      expect(await readFile(join(outside, 'prompt.txt'), 'utf8')).toBe(
+        'theirs'
+      );
+      await rm(outside, { recursive: true });
+      await rm(join(dest, 'scenes', '02-old'));
+      listed = [
+        { relativePath: 'scenes/02-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      await run();
       listed = [{ relativePath: 'keep.txt', versionId: 'k', text: 'k' }];
       await rm(join(dest, 'scenes', '01-old', 'notes.md'));
       await run();

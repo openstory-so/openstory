@@ -17,13 +17,14 @@ import {
   link,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   rmdir,
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 
 export type DownloadAssetsOptions = {
   sequenceId: string;
@@ -127,10 +128,15 @@ export async function downloadSequenceAssets(
   // Only paths an earlier manifest listed: anything else in the folder is the user's.
   const listedNow = new Set(assets.map((asset) => asset.relativePath));
   let removed = 0;
+  const root = await realpath(options.dest).catch(() => null);
   for (const path of previous.keys()) {
+    if (root === null) break;
     if (listedNow.has(path) || !safeRelativePath(path)) continue;
     if (!(await fileExists(options.dest, path))) continue;
-    await rm(join(options.dest, path));
+    // A symlinked folder inside dest must not lead the delete outside it.
+    const target = await realpath(join(options.dest, path));
+    if (!target.startsWith(`${root}${sep}`)) continue;
+    await rm(target);
     await pruneEmptyDirs(options.dest, dirname(path));
     removed += 1;
   }
