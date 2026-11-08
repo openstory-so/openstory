@@ -8,6 +8,7 @@ import type { ToolCallPart, ToolResultPart } from '@tanstack/ai';
 import { viewForChatTool } from '@/platform/mcp-views';
 import { Button } from '@/ui/shadcn/button';
 import { cn } from '@/ui/utils';
+import type { ApprovalState } from './approvals';
 import { McpAppFrame } from './mcp-app-frame';
 
 /** "openstory_get_shot_frames" (or the MCP "openstory.…") → "Get shot frames". */
@@ -90,8 +91,12 @@ export type ToolCallCardProps = {
   result?: ToolResultPart;
   /** "$1.20" from the plan that came before an execute call. */
   estimate?: string;
-  onApprove?: () => void;
-  onDeny?: () => void;
+  /** Where this card's approval stands; read only while the card is waiting. */
+  approval: ApprovalState;
+  approvalError: string | undefined;
+  onApprove: () => void;
+  onDeny: () => void;
+  onReload: () => void;
   /** Text a tool's view posts into the thread (`ui/message`). */
   onViewMessage?: (text: string) => void;
 };
@@ -100,8 +105,11 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
   part,
   result,
   estimate,
+  approval,
+  approvalError,
   onApprove,
   onDeny,
+  onReload,
   onViewMessage,
 }) => {
   const status = toolCardStatus(part, result);
@@ -158,14 +166,47 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
               Estimated cost {estimate}
             </p>
           )}
-          <div className="flex gap-2">
-            <Button size="sm" onClick={onApprove}>
-              Allow
-            </Button>
-            <Button size="sm" variant="outline" onClick={onDeny}>
-              Deny
-            </Button>
-          </div>
+          {approval === 'gone' ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                This request is no longer open in this tab.
+              </p>
+              <Button size="sm" variant="outline" onClick={onReload}>
+                Reload chat
+              </Button>
+            </div>
+          ) : approval === 'stuck' ? (
+            <p className="text-xs text-muted-foreground">
+              This request cannot be answered here. Start a new chat.
+            </p>
+          ) : approval === 'staged' ? (
+            <p className="text-xs text-muted-foreground">
+              Answered. Answer the other request to continue.
+            </p>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={approval === 'busy'}
+                onClick={onApprove}
+              >
+                Allow
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={approval === 'busy'}
+                onClick={onDeny}
+              >
+                Deny
+              </Button>
+            </div>
+          )}
+          {approvalError && (
+            <p role="alert" className="text-xs text-destructive">
+              {approvalError}
+            </p>
+          )}
         </div>
       )}
       {viewUri && status === 'done' && result && (
