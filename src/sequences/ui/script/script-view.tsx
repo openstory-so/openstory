@@ -103,7 +103,8 @@ import {
   TITLE_CARD_NOTE,
 } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createBlankSequenceFn } from '@/sequences/sequences.fn';
 import { useNavigate } from '@tanstack/react-router';
 import {
   parkCreatingSequence,
@@ -973,6 +974,34 @@ export const ScriptView: FC<{
   ) => setEnhanceUI((s) => ({ ...s, [key]: value }));
 
   const navigate = useNavigate();
+  const blankSequence = useMutation({
+    mutationFn: () => {
+      const style = styleId || sequence?.styleId;
+      const analysisModel = analysisModels[0];
+      if (!style || !analysisModel) throw new Error('Choose a style');
+      return createBlankSequenceFn({
+        data: {
+          styleId: style,
+          aspectRatio,
+          resolution: genSettings.resolution,
+          analysisModel,
+          imageModel: imageModels[0] ?? DEFAULT_IMAGE_MODEL,
+          videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+        },
+      });
+    },
+    onSuccess: (created) => {
+      void navigate({
+        to: '/sequences/$id/scenes',
+        params: { id: created.id },
+      });
+    },
+    onError: (error) => {
+      toast.error('Could not start a blank sequence', {
+        description: errorMessage(error),
+      });
+    },
+  });
   const { needsBillingSetup, showGate } = useBillingGate();
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
@@ -1832,6 +1861,23 @@ export const ScriptView: FC<{
                     onClick={handleCancel}
                   >
                     Cancel
+                  </Button>
+                )}
+                {!isEditing && isAuthenticated && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      blankSequence.isPending ||
+                      !(styleId || sequence?.styleId) ||
+                      analysisModels.length === 0
+                    }
+                    onClick={() => {
+                      if (!requireAuth()) return;
+                      blankSequence.mutate();
+                    }}
+                  >
+                    {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
                 <Button
