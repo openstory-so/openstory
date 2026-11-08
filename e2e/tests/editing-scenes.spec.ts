@@ -253,9 +253,12 @@ async function sceneAction(id: string, item: string): Promise<void> {
 /** Selects the scene and returns its Script tab. */
 async function openSceneScript(id: string) {
   const title = await labelOf(id);
-  await group(id)
-    .getByRole('button', { name: title, exact: true })
-    .click({ timeout: 20_000 });
+  const button = group(id).getByRole('button', { name: title, exact: true });
+  await expect(button).toBeEnabled({ timeout: 20_000 });
+  // A click on the selected scene deselects it.
+  if (!(await group(id).getAttribute('class'))?.includes('border-primary')) {
+    await button.click();
+  }
   await expect(group(id)).toHaveClass(/border-primary/);
   const panel = page.getByRole('tabpanel', { name: 'Script' });
   await expect(panel).toBeVisible();
