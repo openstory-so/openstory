@@ -34,9 +34,9 @@ export type SyncState = {
 
 type Sequence = { id: string; slug: string };
 
-export type SyncArgs = { origin: string; dir: string; once: boolean };
+type SyncArgs = { origin: string; dir: string; once: boolean };
 
-export function parseSync(args: string[], home: string, cwd: string): SyncArgs {
+function parseSync(args: string[], home: string, cwd: string): SyncArgs {
   const { origin, rest } = parseOrigin(args);
   let dir = join(home, 'openstory');
   let once = false;
@@ -117,7 +117,7 @@ function folderName(value: string): string {
   return value;
 }
 
-export class Mirror {
+class Mirror {
   private key: string | null = null;
   private organization: { id: string; folder: string } | null = null;
 

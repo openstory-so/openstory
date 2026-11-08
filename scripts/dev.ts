@@ -5,6 +5,7 @@
  * command inherits the stale value.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { prepareStateDir } from './state-dir.ts';
 
 await import('./ensure-env.ts');
@@ -68,7 +69,7 @@ if (dataDir) {
   spawn(
     'bun',
     [
-      'scripts/sync-local.ts',
+      fileURLToPath(new URL('./sync-local.ts', import.meta.url)),
       dataDir,
       `http://localhost:${process.env.PORT ?? 3000}`,
     ],

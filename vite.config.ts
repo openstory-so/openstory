@@ -134,7 +134,7 @@ function wranglerBindingsBanner(): Plugin {
         }
         if (stateDir) {
           process.stdout.write(
-            `    DATA ${'state'.padEnd(nameWidth)}  →  ${stateDir.state}\n`
+            `    DATA ${'state'.padEnd(nameWidth - 2)}  →  ${stateDir.state}\n`
           );
         }
         if (authCookiePrefix) {
