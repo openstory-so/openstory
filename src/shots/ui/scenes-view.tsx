@@ -901,6 +901,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     }
     return set;
   }, [sequenceStaleness]);
+  // The batch re-renders these clips (#2274); a stale prompt or still alone does not.
+  const staleVideoShotIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const [shotId, staleness] of Object.entries(sequenceStaleness ?? {})) {
+      if (staleness.video === 'stale') set.add(shotId);
+    }
+    return set;
+  }, [sequenceStaleness]);
 
   // Model identity lives on the version that produced the asset (#1066), so the
   // tabs target whatever the selected shot's selected image/video version was
@@ -1332,14 +1340,18 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // Optimistic: compute eligible shots locally (same filter as backend).
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
       // for a user-driven batch generate, never auto-retried.
-      const eligibleShotIds = (shots ?? [])
-        .filter((f) =>
-          isBatchMotionEligible(
-            f,
-            rendersReferenceOnly(f, { generateStartFrames })
-          )
+      const eligibleShots = (shots ?? []).filter((f) =>
+        isBatchMotionEligible(
+          f,
+          rendersReferenceOnly(f, { generateStartFrames }),
+          staleVideoShotIds.has(f.id)
         )
-        .map((f) => f.id);
+      );
+      const eligibleShotIds = eligibleShots.map((f) => f.id);
+      // Roll back to the status before the optimistic 'generating'.
+      const previousStatus = new Map(
+        eligibleShots.map((f) => [f.id, f.videoStatus])
+      );
 
       setRegeneratingMotion((prev) => addAllToSet(prev, eligibleShotIds));
 
@@ -1365,6 +1377,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         sequence_id: sequenceId,
         include_music: includeMusic,
         eligible_shot_count: eligibleShotIds.length,
+        stale_shot_count: eligibleShots.filter(
+          (f) => f.videoStatus === 'completed'
+        ).length,
         // Explicit batch model overrides per-shot identity (#1066).
         video_model: videoModel,
         music_model: includeMusic ? musicModel : undefined,
@@ -1381,6 +1396,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             generateAudio,
             draftMotion,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
+            // Until the rail's read lands, the server must not add stale clips.
+            includeStaleClips: sequenceStaleness != null,
           },
         });
         // Server may have updated sequence.videoModel / sequence.musicModel to
@@ -1395,9 +1412,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         );
         // Roll back optimistic cache updates
         queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
-          old?.map((f) =>
-            eligibleSet.has(f.id) ? { ...f, videoStatus: 'pending' } : f
-          )
+          old?.map((f) => {
+            const status = previousStatus.get(f.id);
+            return status ? { ...f, videoStatus: status } : f;
+          })
         );
         if (includeMusic) {
           void queryClient.invalidateQueries({
@@ -1419,6 +1437,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       sequenceId,
       shots,
       generateStartFrames,
+      staleVideoShotIds,
+      sequenceStaleness,
       leftoverGrokShotIds,
       queryClient,
       posthog,
@@ -1654,6 +1674,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     generateVoices: sequence?.generateVoices,
     styleName,
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
+    staleVideoShotIds,
+    videoStalenessFailed: sequenceStalenessFailed,
     targetDurationSeconds: sequence?.targetDurationSeconds,
     isAnalyzing: isProcessing,
     leftoverGrokShotIds,
