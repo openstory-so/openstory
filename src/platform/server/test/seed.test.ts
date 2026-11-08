@@ -1,9 +1,12 @@
 /**
  * `cleanupTestUser` deletes an organization with characters, looks, locations,
- * dialogue, assets, stitches, assistant threads and compliance rows (#2296).
+ * dialogue, assets, stitches, assistant threads and compliance rows (#2296),
+ * including shots that still reference their scenes (#2333).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
+import { generateId } from '@/platform/id';
+import { dbSceneId } from '@/shots/scene-id';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -17,7 +20,9 @@ import {
   enforcementActions,
   generatedAssets,
   organization,
+  scenes,
   shotDialogueVersions,
+  shots,
   stitches,
   uploadAttestations,
   welcomeCardClaims,
@@ -198,6 +203,33 @@ describe('cleanupTestUser', () => {
         .select()
         .from(organization)
         .where(eq(organization.id, organizationId))
+    ).toEqual([]);
+    expect(await rowCounts()).toEqual(before);
+  });
+
+  it('deletes an organization whose shots still point at their scenes', async () => {
+    const before = await rowCounts();
+    const user = await createTestUser();
+    const sequence = await createTestSequence(user.organizationId, user.id);
+    const sceneId = dbSceneId(generateId());
+    await db.insert(scenes).values({
+      id: sceneId,
+      sequenceId: sequence.id,
+      orderIndex: 0,
+    });
+    await db.insert(shots).values({
+      sequenceId: sequence.id,
+      sceneId,
+      shotNumber: 1,
+    });
+
+    await cleanupTestUser(user.id, user.organizationId);
+
+    expect(
+      await db
+        .select()
+        .from(organization)
+        .where(eq(organization.id, user.organizationId))
     ).toEqual([]);
     expect(await rowCounts()).toEqual(before);
   });
