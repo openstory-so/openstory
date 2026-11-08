@@ -21,7 +21,7 @@ import {
   placeholderAutoStyleDraft,
 } from '@/look/auto-style';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { resolveStyleSource } from './create-sequences';
+import { resolveStyleSource } from './resolve-style-source';
 
 let closeDb: () => Promise<void>;
 let db: Database;

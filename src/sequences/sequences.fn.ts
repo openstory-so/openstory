@@ -21,7 +21,11 @@ import {
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
 import { VARIANT_TYPES } from '@/platform/server/db/schema/shot-variants';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { createSequenceSchema } from '@/sequences/server/sequence.schemas';
+import { createBlankSequence } from '@/sequences/server/create-blank-sequence';
+import {
+  blankSequenceSchema,
+  createSequenceSchema,
+} from '@/sequences/server/sequence.schemas';
 import {
   triggerContinue,
   triggerStoryboard,
@@ -183,6 +187,17 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       organizationId: context.organizationId,
     });
     return sequences;
+  });
+
+/** Draft sequence with no script and no storyboard run (#1478). */
+export const createBlankSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
+  .validator(zodValidator(blankSequenceSchema))
+  .handler(async ({ data, context }) => {
+    return createBlankSequence(data, {
+      scopedDb: context.scopedDb,
+      user: context.user,
+    });
   });
 
 /**

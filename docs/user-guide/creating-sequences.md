@@ -13,6 +13,8 @@ Sequences are the core unit of work in OpenStory. Each sequence represents a vid
 2. Click **Create New Sequence**
 3. You'll be taken to the script editor where you can configure your sequence
 
+**Start blank** (signed in, next to Generate) creates a draft with no script and does not run generation. You land in the scenes workspace and add scenes yourself. Continue stays at the script stage until you ask it to go further.
+
 ### Writing Your Script
 
 The script editor accepts anything from a one-line idea to a full screenplay:

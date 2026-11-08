@@ -56,6 +56,22 @@ export const REFERENCE_ONLY_MODEL_ERROR =
 export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
   'Without start frames, each shot renders straight to video, so motion is required. Turn motion on, or turn on Generate start frames.';
 
+/** Settings for a sequence that starts with no script and no workflow. */
+export const blankSequenceSchema = z.object({
+  styleId: z.string().min(1),
+  aspectRatio: aspectRatioSchema,
+  resolution: resolutionSchema,
+  analysisModel: z.string().refine(isValidAnalysisModelId, {
+    message: 'Invalid analysis model',
+  }),
+  imageModel: z.string().refine((val) => validImageModelKeys.includes(val), {
+    message: 'Invalid image model',
+  }),
+  videoModel: z.string().refine((val) => validVideoModelKeys.includes(val), {
+    message: 'Invalid video model',
+  }),
+});
+
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
   script: z.string().min(10), // Override to make it required with business rules
