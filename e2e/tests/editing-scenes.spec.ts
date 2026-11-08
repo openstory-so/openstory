@@ -244,28 +244,22 @@ async function openScenes(): Promise<void> {
 
 async function sceneAction(id: string, item: string): Promise<void> {
   const menuItem = page.getByRole('menuitem', { name: item });
-  // A click before hydration opens nothing; retry until the menu is there.
-  await expect(async () => {
-    if (!(await menuItem.isVisible())) {
-      await group(id)
-        .getByRole('button', { name: /^Scene actions for / })
-        .click();
-    }
-    await expect(menuItem).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  await group(id)
+    .getByRole('button', { name: /^Scene actions for / })
+    .click({ timeout: 30_000 });
   await menuItem.click();
 }
 
 /** Selects the scene and returns its Script tab. */
 async function openSceneScript(id: string) {
   const title = await labelOf(id);
-  // The first click right after load can be swallowed, so click until selected.
-  await expect(async () => {
-    if (!(await group(id).getAttribute('class'))?.includes('border-primary')) {
-      await group(id).getByRole('button', { name: title, exact: true }).click();
-    }
-    await expect(group(id)).toHaveClass(/border-primary/, { timeout: 2_000 });
-  }).toPass({ timeout: 20_000 });
+  const button = group(id).getByRole('button', { name: title, exact: true });
+  await expect(button).toBeEnabled({ timeout: 20_000 });
+  // A click on the selected scene deselects it.
+  if (!(await group(id).getAttribute('class'))?.includes('border-primary')) {
+    await button.click();
+  }
+  await expect(group(id)).toHaveClass(/border-primary/);
   const panel = page.getByRole('tabpanel', { name: 'Script' });
   await expect(panel).toBeVisible();
   return panel;

@@ -22,6 +22,7 @@ import { copyImageToClipboard } from '@/ui/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useHydrated } from '@/ui/use-hydrated';
 
 type PreviewView = 'prompt' | 'json';
 
@@ -34,6 +35,8 @@ export const OptimisedPromptPanel: React.FC<{
   defaultOpen?: boolean;
 }> = ({ preview, copiedKey, onCopy, footnote, idPrefix, defaultOpen }) => {
   const [open, setOpen] = useState(defaultOpen ?? false);
+  // A click before hydration does nothing; disabled until it can.
+  const hydrated = useHydrated();
   const [view, setView] = useState<PreviewView>('prompt');
   // Over the model's RECOMMENDATION, not a block (#1754) — the prompt is
   // sent whole either way, so this is amber-shaped advice, not a failure.
@@ -55,6 +58,7 @@ export const OptimisedPromptPanel: React.FC<{
       <CollapsibleTrigger asChild>
         <button
           type="button"
+          disabled={!hydrated}
           className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <ChevronRight

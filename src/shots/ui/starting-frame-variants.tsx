@@ -17,6 +17,7 @@ import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { hasUpscaleOverlay, UpscaleOverlay } from './upscale-overlay';
 import { VariantSelector } from './variant-selector';
+import { useHydrated } from '@/ui/use-hydrated';
 
 type StartingFrameVariantsProps = {
   shot: ShotView;
@@ -44,6 +45,8 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
   onGenerateStart,
 }) => {
   const [open, setOpen] = useState(false);
+  // A click before hydration does nothing; disabled until it can.
+  const hydrated = useHydrated();
   const generateVariants = useGenerateVariants();
   const selectVariant = useSelectVariant();
   const { needsBillingSetup: falNeedsBillingSetup, showGate: showFalGate } =
@@ -110,6 +113,7 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
         type="button"
         variant="ghost"
         size="sm"
+        disabled={!hydrated}
         onClick={() => setOpen(true)}
         className="absolute top-2 left-2 z-20 h-8 gap-1.5 bg-black/50 px-2 text-xs text-white hover:bg-black/70"
         aria-label={isUpscaling ? 'Upscaling frame variant' : 'Frame variants'}

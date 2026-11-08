@@ -70,6 +70,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { SceneListItem } from './scene-list-item';
+import { useHydrated } from '@/ui/use-hydrated';
 
 type SceneGroupProps = {
   scene: SceneWithScript;
@@ -250,6 +251,8 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   isAnalyzing = false,
 }) => {
   const [expanded, setExpanded] = useState(true);
+  // A click before hydration does nothing; disabled until it can.
+  const hydrated = useHydrated();
   const queryClient = useQueryClient();
   const updateScene = useUpdateScene(sequenceId);
   const createShot = useCreateShot(sequenceId);
@@ -469,6 +472,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
             className="min-w-0 flex-1 space-y-1.5 text-left"
             onClick={handleSceneClick}
             aria-label={sceneLabel}
+            disabled={!hydrated}
           >
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{sceneLabel}</span>
@@ -488,6 +492,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
               size="icon"
               className="h-6 w-6 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-focus-within/scene-header:opacity-100 group-hover/scene-header:opacity-100 data-[state=open]:opacity-100"
               aria-label={`Scene actions for ${sceneLabel}`}
+              disabled={!hydrated}
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
