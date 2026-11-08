@@ -540,14 +540,17 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   );
 }
 
-/** A full-height edge strip that steps the viewer; the circle is only its look. */
+/** Steps the viewer; over a still the whole edge strip takes the click, not just the circle. */
 function StepStrip({
   side,
   label,
+  wide,
   onClick,
   children,
 }: {
   side: 'left' | 'right';
+  /** Off over a clip or a failure, whose controls and text sit at the edges. */
+  wide: boolean;
   label: string;
   onClick: () => void;
   children: React.ReactNode;
@@ -558,7 +561,8 @@ function StepStrip({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        'group absolute inset-y-0 flex w-1/6 min-w-16 items-center px-4 outline-none',
+        'group absolute flex items-center px-4 outline-none',
+        wide ? 'inset-y-0 w-1/6 min-w-16' : 'top-1/2 -translate-y-1/2',
         side === 'left' ? 'left-0 justify-start' : 'right-0 justify-end'
       )}
     >
@@ -969,6 +973,9 @@ export function GenerationDetail({
   const references = studioShownReferences(asset);
   const reuse = studioReuse(asset);
   const editSource = studioPrimaryOutput(asset);
+  const wideStep =
+    asset.status === 'completed' &&
+    editSource?.contentType.startsWith('image/') === true;
   const creator = [asset.creatorName, asset.creatorEmail]
     .filter(Boolean)
     .join(' · ');
@@ -982,12 +989,22 @@ export function GenerationDetail({
       <div className="relative flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
         <StudioViewer asset={asset} />
         {onPrev && (
-          <StepStrip side="left" label="Previous generation" onClick={onPrev}>
+          <StepStrip
+            side="left"
+            label="Previous generation"
+            wide={wideStep}
+            onClick={onPrev}
+          >
             <ChevronLeft aria-hidden="true" />
           </StepStrip>
         )}
         {onNext && (
-          <StepStrip side="right" label="Next generation" onClick={onNext}>
+          <StepStrip
+            side="right"
+            label="Next generation"
+            wide={wideStep}
+            onClick={onNext}
+          >
             <ChevronRight aria-hidden="true" />
           </StepStrip>
         )}
