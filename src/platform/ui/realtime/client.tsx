@@ -31,10 +31,16 @@ import type {
  */
 
 type Subscriber = (msg: RealtimeUserEvent) => void;
+type Subscription = {
+  channels: string[];
+  cb: Subscriber;
+  /** The stream is subscribed: refetch what an event may have moved before. */
+  onConnected: () => void;
+};
 
 type RealtimeContextValue = {
   status: ConnectionStatus;
-  register: (id: string, channels: string[], cb: Subscriber) => void;
+  register: (id: string, subscription: Subscription) => void;
   unregister: (id: string) => void;
 };
 
@@ -51,14 +57,25 @@ type LiveStream = {
   stable: ReturnType<typeof setTimeout> | null;
 };
 
-/** Parse one SSE `data:` payload; `null` when it isn't a user event we deliver. */
-function parseUserEvent(raw: string): RealtimeUserEvent | null {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
+/** The channels a `connected` frame names; sent once all are subscribed. */
+function connectedChannels(payload: unknown): string[] | null {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    !('type' in payload) ||
+    payload.type !== 'connected' ||
+    !('channels' in payload) ||
+    !Array.isArray(payload.channels)
+  ) {
     return null;
   }
+  return payload.channels.filter(
+    (channel): channel is string => typeof channel === 'string'
+  );
+}
+
+/** One parsed SSE `data:` payload; `null` when it isn't a user event we deliver. */
+function parseUserEvent(payload: unknown): RealtimeUserEvent | null {
   if (
     typeof payload !== 'object' ||
     payload === null ||
@@ -79,9 +96,7 @@ function parseUserEvent(raw: string): RealtimeUserEvent | null {
 }
 
 export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
-  const subscriptionsRef = useRef<
-    Map<string, { channels: string[]; cb: Subscriber }>
-  >(new Map());
+  const subscriptionsRef = useRef<Map<string, Subscription>>(new Map());
   const streamsRef = useRef<Record<StreamGroup, LiveStream>>({
     billing: { source: null, key: '', attempt: 0, retry: null, stable: null },
     heavy: { source: null, key: '', attempt: 0, retry: null, stable: null },
@@ -128,8 +143,6 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
     source.onopen = () => {
       if (streamsRef.current[group].source !== source) return;
-      groupStatusRef.current[group] = 'connected';
-      publishStatus();
       if (live.stable !== null) clearTimeout(live.stable);
       // An isolate can accept the socket and then die. Keep the failure
       // count until the stream has stayed up for a ping interval.
@@ -166,7 +179,28 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
     };
     source.onmessage = (event) => {
       if (streamsRef.current[group].source !== source) return;
-      const msg = parseUserEvent(event.data);
+      let payload: unknown;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      const connected = connectedChannels(payload);
+      if (connected) {
+        // Open is not subscribed: status waits for the server's frame.
+        groupStatusRef.current[group] = 'connected';
+        publishStatus();
+        for (const {
+          channels,
+          onConnected,
+        } of subscriptionsRef.current.values()) {
+          if (channels.some((channel) => connected.includes(channel))) {
+            onConnected();
+          }
+        }
+        return;
+      }
+      const msg = parseUserEvent(payload);
       if (!msg) return;
       for (const {
         channels: subscribed,
@@ -213,8 +247,8 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
     }, 0);
   };
 
-  const register = (id: string, channels: string[], cb: Subscriber): void => {
-    subscriptionsRef.current.set(id, { channels, cb });
+  const register = (id: string, subscription: Subscription): void => {
+    subscriptionsRef.current.set(id, subscription);
     scheduleSync();
   };
 
@@ -252,6 +286,8 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
 interface UseRealtimeOpts<T, E extends string> {
   events: readonly E[];
   onData?: (arg: EventPayloadUnion<T, E>) => void;
+  /** Runs each time the stream is subscribed, first connect and reconnects. */
+  onConnected?: () => void;
   channels?: readonly (string | undefined)[];
   enabled?: boolean;
 }
@@ -259,7 +295,7 @@ interface UseRealtimeOpts<T, E extends string> {
 function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
   opts: UseRealtimeOpts<typeof realtimeSchema, E>
 ): { status: ConnectionStatus } {
-  const { channels = [], events, onData, enabled } = opts;
+  const { channels = [], events, onData, onConnected, enabled } = opts;
   const context = useContext(RealtimeContext);
   if (!context) {
     throw new Error(
@@ -270,6 +306,8 @@ function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
   const registrationId = useRef(Math.random().toString(36).slice(2)).current;
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
+  const onConnectedRef = useRef(onConnected);
+  onConnectedRef.current = onConnected;
 
   const { register, unregister } = context;
   const channelsKey = JSON.stringify(channels);
@@ -288,7 +326,7 @@ function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
       return;
     }
 
-    register(registrationId, validChannels, (msg) => {
+    const cb: Subscriber = (msg) => {
       const name = events.find((candidate) => candidate === msg.event);
       if (name === undefined || !isRealtimeLeaf(name)) return;
       const payload = parseLeafPayload(name, msg.channel, msg.data);
@@ -298,6 +336,11 @@ function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const typed = payload as EventPayloadUnion<typeof realtimeSchema, E>;
       onDataRef.current?.(typed);
+    };
+    register(registrationId, {
+      channels: validChannels,
+      cb,
+      onConnected: () => onConnectedRef.current?.(),
     });
 
     return () => unregister(registrationId);

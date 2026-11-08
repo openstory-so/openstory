@@ -7,7 +7,10 @@ import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
-import { shotPromptPreviewShotKey } from '@/shots/ui/shot-prompt-preview-query';
+import {
+  shotPromptPreviewSequenceKey,
+  shotPromptPreviewShotKey,
+} from '@/shots/ui/shot-prompt-preview-query';
 import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
@@ -124,6 +127,59 @@ function isValidVideoStatus(
   status: unknown
 ): status is LiveEmitStatus | 'cancelled' {
   return isValidShotStatus(status) || status === 'cancelled';
+}
+
+/** What a run's end may have moved without an event for each part. */
+function runEndKeys(sequenceId: string): readonly (readonly unknown[])[] {
+  return [
+    // Updated status/title.
+    sequenceKeys.detail(sequenceId),
+    // Dialogue can finish without any image/video progress event. Also
+    // recover persisted clips if a per-shot event was missed or a sibling failed.
+    shotKeys.list(sequenceId),
+    shotKeys.dialogueSectionsAll(),
+    // Fast analysis can finish before the client subscribes to scene/shot
+    // creation events. Reconcile the scene spine and script at completion too.
+    sceneKeys.list(sequenceId),
+    sceneKeys.composedScript(sequenceId),
+    // Final catch-all so the cast, location and element lists — and the
+    // per-scene membership the tabs filter by — reflect the finished run
+    // even if an intermediate event was missed.
+    sequenceCharacterKeys.list(sequenceId),
+    sequenceLocationKeys.list(sequenceId),
+    sequenceElementKeys.bySequence(sequenceId),
+    sceneFacetKeys.maps(sequenceId),
+    // Staleness was deferred for the whole run (#1121: every artifact reads
+    // 'generating' while the sequence is 'processing'). The run ending is
+    // the moment a real verdict becomes computable, and nothing else
+    // invalidates this namespace at that point — without it the deferred
+    // entries sit in cache until something unrelated refetches them.
+    shotStalenessNamespace,
+    musicPromptStalenessKey(sequenceId),
+    generationPlanKeys.bySequence(sequenceId),
+  ];
+}
+
+/**
+ * The stream just subscribed: an event sent before then was never seen, so
+ * refetch everything one could have moved (#2326). Debounced, since each
+ * hook on the channel reports the same connect.
+ */
+export function refetchMissedEvents(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  for (const queryKey of [
+    ...runEndKeys(sequenceId),
+    shotKeys.all,
+    shotPromptPreviewSequenceKey(sequenceId),
+  ]) {
+    debouncedInvalidate(
+      queryClient,
+      queryKey,
+      `connected:${JSON.stringify(queryKey)}`
+    );
+  }
 }
 
 /**
@@ -830,55 +886,9 @@ export function updateQueryCacheFromEvent(
     case 'generation.failed':
     case 'generation.reservation:short':
     case 'generation.updated':
-      // Invalidate sequence to get updated status/title
-      void queryClient.invalidateQueries({
-        queryKey: sequenceKeys.detail(sequenceId),
-      });
-      // Dialogue can finish without any image/video progress event. Also
-      // recover persisted clips if a per-shot event was missed or a sibling failed.
-      void queryClient.invalidateQueries({
-        queryKey: shotKeys.list(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueSectionsAll(),
-      });
-      // Fast analysis can finish before the client subscribes to scene/shot
-      // creation events. Reconcile the scene spine and script at completion too.
-      void queryClient.invalidateQueries({
-        queryKey: sceneKeys.list(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: sceneKeys.composedScript(sequenceId),
-      });
-      // Final catch-all so the cast, location and element lists — and the
-      // per-scene membership the tabs filter by — reflect the finished run
-      // even if an intermediate event was missed.
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.list(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.list(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: sequenceElementKeys.bySequence(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: sceneFacetKeys.maps(sequenceId),
-      });
-      // Staleness was deferred for the whole run (#1121: every artifact reads
-      // 'generating' while the sequence is 'processing'). The run ending is
-      // the moment a real verdict becomes computable, and nothing else
-      // invalidates this namespace at that point — without it the deferred
-      // entries sit in cache until something unrelated refetches them.
-      void queryClient.invalidateQueries({
-        queryKey: shotStalenessNamespace,
-      });
-      void queryClient.invalidateQueries({
-        queryKey: musicPromptStalenessKey(sequenceId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: generationPlanKeys.bySequence(sequenceId),
-      });
+      for (const queryKey of runEndKeys(sequenceId)) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
       break;
 
     case 'generation.error':
