@@ -358,32 +358,46 @@ function matchLocationsByTag<T extends LocationMatchInput>(
 ): T[] {
   if (!environmentTag && !sceneLocation) return [];
 
+  const termsOf = (loc: T) =>
+    [loc.name, loc.locationId, loc.consistencyTag ?? '']
+      .map((t) => t.toLowerCase())
+      .filter((t) => t.length > 0);
+
+  // Exact first, so "Downtown Apartment" does not also tag its Bathroom.
+  const keys = new Set(
+    [...environmentTag.split(','), sceneLocation]
+      .map(normalizeLocationKey)
+      .filter((k) => k.length > 0)
+  );
+  const exact = allLocations.filter((loc) =>
+    termsOf(loc).some((term) => keys.has(normalizeLocationKey(term)))
+  );
+  if (exact.length > 0) return exact;
+
   const envTagLower = environmentTag.toLowerCase();
   const sceneLocLower = sceneLocation.toLowerCase();
 
-  return allLocations.filter((loc) => {
-    const consistencyTag = (loc.consistencyTag ?? '').toLowerCase();
-    const locName = loc.name.toLowerCase();
-    const locId = loc.locationId.toLowerCase();
-    const searchTerms = [
-      locName,
-      locId,
-      ...(consistencyTag ? [consistencyTag] : []),
-    ].filter((t) => t.length > 0);
-
+  return allLocations.filter((loc) =>
     // Forward match: a location identifier appears in the env/scene-location
     // tag. Reverse match: the env/scene-location tag appears in a location
     // identifier. Both directions guard against empty haystacks — without the
     // length check, `'forest'.includes('')` returns true for every location
     // when only one of envTagLower / sceneLocLower is populated.
-    return searchTerms.some(
+    termsOf(loc).some(
       (term) =>
         (envTagLower.length > 0 && envTagLower.includes(term)) ||
         (sceneLocLower.length > 0 && sceneLocLower.includes(term)) ||
         (envTagLower.length > 0 && term.includes(envTagLower)) ||
         (sceneLocLower.length > 0 && term.includes(sceneLocLower))
-    );
-  });
+    )
+  );
+}
+
+function normalizeLocationKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 type ElementMatchInput = Pick<SequenceElementMinimal, 'token'>;

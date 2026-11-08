@@ -557,6 +557,8 @@ test.describe('Editing scenes', () => {
     await page.getByRole('tab', { name: 'Locations' }).click();
     const select = page.getByRole('combobox', { name: 'Scene location' });
     const value = select.locator('[data-slot="select-value"]');
+    // The scene must start on a location, or there is nothing to switch from.
+    await expect(value).not.toHaveText(/^\s*(Choose a location)?\s*$/);
     const current = ((await value.textContent()) ?? '').trim();
     await select.click();
     const option = page
