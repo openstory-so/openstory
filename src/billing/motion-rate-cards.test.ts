@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rateCardSchema } from '@modelschemas/rate-card';
+import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import { z } from 'zod';
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
 import { motionResolutionTiers } from '@/motion/model-capabilities';
