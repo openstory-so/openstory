@@ -152,10 +152,14 @@ export async function saveDesignedVoice(
     voiceName: string;
     voiceDescription: string;
     generatedVoiceId: string;
-  }
+  },
+  signal?: AbortSignal
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const voice = await retryOnRateLimit(() => client.textToVoice.create(args));
+  const voice = await retryOnRateLimit(
+    () => client.textToVoice.create(args, { abortSignal: signal }),
+    signal
+  );
   return voice.voiceId;
 }
 
@@ -175,11 +179,15 @@ export async function deleteElevenLabsVoice(
 
 export async function getElevenLabsVoice(
   apiKey: string,
-  voiceId: string
+  voiceId: string,
+  signal?: AbortSignal
 ): Promise<SavedVoiceMeta | null> {
   const client = await createElevenLabsSdk(apiKey);
   try {
-    const voice = await retryOnRateLimit(() => client.voices.get(voiceId));
+    const voice = await retryOnRateLimit(
+      () => client.voices.get(voiceId, { abortSignal: signal }),
+      signal
+    );
     const category = voice.category ?? '';
     return {
       voiceId: voice.voiceId,
@@ -200,24 +208,30 @@ export async function listLibraryVoices(
     search?: string;
     page?: number;
     filters?: CatalogVoiceFilters;
-  } = {}
+  } = {},
+  signal?: AbortSignal
 ): Promise<CatalogVoicePage> {
   const client = await createElevenLabsSdk(apiKey);
   const page = args.page ?? 0;
   const filters = args.filters ?? {};
-  const result = await retryOnRateLimit(() =>
-    client.voices.getShared({
-      pageSize: 30,
-      page,
-      sort: args.search ? 'usage_character_count_1y' : 'trending',
-      includeCustomRates: false,
-      ...(args.search && { search: args.search }),
-      ...(filters.gender && { gender: filters.gender }),
-      ...(filters.age && { age: filters.age }),
-      ...(filters.language && { language: filters.language }),
-      ...(filters.accent && { accent: filters.accent }),
-      ...(filters.quality === 'studio' && { category: 'high_quality' }),
-    })
+  const result = await retryOnRateLimit(
+    () =>
+      client.voices.getShared(
+        {
+          pageSize: 30,
+          page,
+          sort: args.search ? 'usage_character_count_1y' : 'trending',
+          includeCustomRates: false,
+          ...(args.search && { search: args.search }),
+          ...(filters.gender && { gender: filters.gender }),
+          ...(filters.age && { age: filters.age }),
+          ...(filters.language && { language: filters.language }),
+          ...(filters.accent && { accent: filters.accent }),
+          ...(filters.quality === 'studio' && { category: 'high_quality' }),
+        },
+        { abortSignal: signal }
+      ),
+    signal
   );
   return {
     voices: result.voices.map((voice) =>
