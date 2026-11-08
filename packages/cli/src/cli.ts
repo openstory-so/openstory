@@ -8,10 +8,11 @@ import type { Command, Writer } from './context.js';
 import { login, moveOldCredentials } from './login.js';
 import { pull } from './pull.js';
 import { share } from './share.js';
+import { sync } from './sync.js';
 import { updateNotice } from './update-notice.js';
 
 /** One line per subcommand; each lives in its own file. */
-const COMMANDS: Record<string, Command> = { login, pull, share };
+const COMMANDS: Record<string, Command> = { login, pull, share, sync };
 
 export const usage = `Usage: ${Object.values(COMMANDS)
   .map((command) => command.usage)
@@ -29,6 +30,12 @@ openstory share uploads a cut (the same arguments as stitch) to OpenStory
 and prints a link anyone can open. Every still is checked for a real person;
 one who is needs --portrait-rights with the basis for using their likeness
 (a release reference, "self", a contract id).
+
+openstory sync mirrors every sequence of the key's organization into
+~/openstory/<organization>/<sequence>/ (or --dir), then keeps it current
+until stopped. Your sign-up organization is personal/. The folder is output
+only: OpenStory never reads it back, and a renamed sequence renames its
+folder. --once stops after the first pass.
 
 --origin picks the OpenStory server (default https://openstory.so).
 Run it with npx @openstory/cli@latest <command>.

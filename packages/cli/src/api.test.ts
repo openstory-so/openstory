@@ -56,8 +56,8 @@ describe('openstory main', () => {
       out.length = 0;
       await main(['--version'], io);
       expect(out.join('')).toBe(`${CLI_VERSION}\n`);
-      await main(['sync'], io);
-      expect(err.join('')).toContain('Unknown command: sync');
+      await main(['nope'], io);
+      expect(err.join('')).toContain('Unknown command: nope');
       expect(process.exitCode).toBe(1);
     } finally {
       process.exitCode = 0;
