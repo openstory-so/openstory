@@ -245,6 +245,8 @@ async function deleteSequenceVersionRows(where: SQL) {
     )}))`
   );
   await db.batch([
+    // `shots.scene_id` has no ON DELETE, so scenes cannot cascade while shots point at them (#2333).
+    db.delete(shots).where(inArray(shots.sequenceId, ids)),
     db
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),
