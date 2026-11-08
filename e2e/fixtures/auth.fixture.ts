@@ -84,12 +84,17 @@ export async function cleanupTestUser(
   organizationId: string
 ): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
-  // Delete 500s on a foreign key; throwing failed tests that had already passed.
-  await fetch(`${testApiOrigin}/api/test/user`, {
+  const res = await fetch(`${testApiOrigin}/api/test/user`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, organizationId }),
   });
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to clean up test user via API: ${res.status} ${await res.text()}`
+    );
+  }
 }
 
 /**

@@ -11,6 +11,17 @@
 import { generateId } from '@/platform/id';
 import {
   DEFAULT_LOOK_NAME,
+  assistantInterrupts,
+  assistantMessages,
+  assistantRuns,
+  assistantThreads,
+  contentProvenance,
+  contentReports,
+  deviceCode,
+  deviceGrantOrganizations,
+  enforcementActions,
+  uploadAttestations,
+  welcomeCardClaims,
   characterLookVersions,
   characterLooks,
   characterSheetVariants,
@@ -19,6 +30,7 @@ import {
   credits,
   frameVariants,
   frames,
+  generatedAssets,
   shots,
   locationBibleVersions,
   locationSheetVariants,
@@ -30,6 +42,7 @@ import {
   sequenceStyleVersions,
   sequences,
   session,
+  stitches,
   styles,
   member,
   organization,
@@ -51,6 +64,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
@@ -264,17 +278,99 @@ export async function cleanupTestUser(
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(member).where(eq(member.userId, userId));
   await deleteSequenceVersionRows(eq(sequences.organizationId, organizationId));
-  // Nothing cascades from a character (#2017) or a location (#1695).
+  // Nothing that restricts the organization or user delete cascades.
   await db.batch([
     ...deleteCharactersStatements(
       db,
       eq(characters.organizationId, organizationId)
     ),
+    db
+      .delete(generatedAssets)
+      .where(eq(generatedAssets.organizationId, organizationId)),
+    db.delete(stitches).where(eq(stitches.organizationId, organizationId)),
+    ...deleteRestrictingRows(userId, organizationId),
   ]);
   await deleteTestLocations(eq(locations.organizationId, organizationId));
   await db.delete(organization).where(eq(organization.id, organizationId));
   await db.delete(user).where(eq(user.id, userId));
-  // Credits will cascade or be cleaned via organization if we add FKs later
+}
+
+/** Rows that restrict the organization or user delete, children first. */
+function deleteRestrictingRows(userId: string, organizationId: string) {
+  const db = getDb();
+  const threads = db
+    .select({ id: assistantThreads.id })
+    .from(assistantThreads)
+    .where(
+      or(
+        eq(assistantThreads.organizationId, organizationId),
+        eq(assistantThreads.userId, userId)
+      )
+    );
+  const reports = db
+    .select({ id: contentReports.id })
+    .from(contentReports)
+    .where(
+      or(
+        eq(contentReports.subjectOrganizationId, organizationId),
+        eq(contentReports.subjectUserId, userId),
+        eq(contentReports.reporterUserId, userId),
+        eq(contentReports.handledByUserId, userId)
+      )
+    );
+  return [
+    db
+      .delete(assistantInterrupts)
+      .where(inArray(assistantInterrupts.threadId, threads)),
+    db.delete(assistantRuns).where(inArray(assistantRuns.threadId, threads)),
+    db
+      .delete(assistantMessages)
+      .where(inArray(assistantMessages.threadId, threads)),
+    db.delete(assistantThreads).where(inArray(assistantThreads.id, threads)),
+    db
+      .delete(enforcementActions)
+      .where(
+        or(
+          eq(enforcementActions.subjectOrganizationId, organizationId),
+          eq(enforcementActions.subjectUserId, userId),
+          eq(enforcementActions.actorUserId, userId),
+          eq(enforcementActions.revokedByUserId, userId),
+          inArray(enforcementActions.reportId, reports)
+        )
+      ),
+    db.delete(contentReports).where(inArray(contentReports.id, reports)),
+    db
+      .delete(contentProvenance)
+      .where(
+        or(
+          eq(contentProvenance.organizationId, organizationId),
+          eq(contentProvenance.userId, userId)
+        )
+      ),
+    db
+      .delete(uploadAttestations)
+      .where(
+        or(
+          eq(uploadAttestations.organizationId, organizationId),
+          eq(uploadAttestations.userId, userId)
+        )
+      ),
+    db
+      .delete(welcomeCardClaims)
+      .where(eq(welcomeCardClaims.organizationId, organizationId)),
+    // Its grant cascades from the device code.
+    db
+      .delete(deviceCode)
+      .where(
+        inArray(
+          deviceCode.id,
+          db
+            .select({ id: deviceGrantOrganizations.deviceCodeId })
+            .from(deviceGrantOrganizations)
+            .where(eq(deviceGrantOrganizations.organizationId, organizationId))
+        )
+      ),
+  ];
 }
 
 /**

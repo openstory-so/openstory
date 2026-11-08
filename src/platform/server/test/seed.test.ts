@@ -1,15 +1,26 @@
 /**
- * `cleanupTestUser` deletes an organization with characters, looks, locations
- * and dialogue (#2296): nothing cascades from a character or a location.
+ * `cleanupTestUser` deletes an organization with characters, looks, locations,
+ * dialogue, assets, stitches, assistant threads and compliance rows (#2296).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import {
+  assistantMessages,
+  assistantThreads,
+  contentProvenance,
+  contentReports,
+  deviceCode,
+  deviceGrantOrganizations,
   dialogueSpeeches,
+  enforcementActions,
+  generatedAssets,
   organization,
   shotDialogueVersions,
+  stitches,
+  uploadAttestations,
+  welcomeCardClaims,
 } from '@/platform/server/db/schema';
 import { createCharactersMethods } from '@/cast/server/db/characters';
 import { createCharacterLooksMethods } from '@/cast/server/db/character-looks';
@@ -48,7 +59,7 @@ const rowCounts = async () => {
 };
 
 describe('cleanupTestUser', () => {
-  it('deletes the organization with its characters, looks, locations and dialogue', async () => {
+  it('deletes the organization with every row that restricts its delete', async () => {
     const before = await rowCounts();
     const user = await createTestUser();
     const { organizationId } = user;
@@ -107,6 +118,78 @@ describe('cleanupTestUser', () => {
       inputHash: 'h',
       characterCount: 1,
     });
+    await db.insert(generatedAssets).values({
+      organizationId,
+      userId: user.id,
+      provider: 'fal',
+      endpointId: 'fal-ai/flux-1/dev',
+      activity: 'image',
+      modelName: 'FLUX.1 [dev]',
+      input: { prompt: 'a loft' },
+    });
+    await db.insert(stitches).values({
+      organizationId,
+      userId: user.id,
+      cut: {
+        clips: [{ videoUrl: 'clip.mp4', posterUrl: null, cues: [] }],
+        frameWidth: 1920,
+        frameHeight: 1080,
+        musicUrl: null,
+        musicGainDb: 0,
+      },
+    });
+    await db
+      .insert(assistantThreads)
+      .values({ id: 'thread1', organizationId, userId: user.id, title: 'Hi' });
+    await db.insert(assistantMessages).values({
+      threadId: 'thread1',
+      messageId: 'm1',
+      position: 0,
+      message: { role: 'user', content: 'Hi' },
+    });
+    await db.insert(contentProvenance).values({
+      organizationId,
+      userId: user.id,
+      assetKind: 'frame_variant',
+      assetId: 'a1',
+      provider: 'fal',
+      model: 'flux',
+    });
+    await db.insert(uploadAttestations).values({
+      organizationId,
+      userId: user.id,
+      subjectType: 'talent',
+      subjectId: 's1',
+      statementVersion: 'v1',
+      statementSha256: 'h',
+    });
+    await db.insert(contentReports).values({
+      id: 'report1',
+      reporterUserId: user.id,
+      subjectOrganizationId: organizationId,
+      targetType: 'sequence',
+      targetId: sequence.id,
+      reason: 'csam',
+    });
+    await db.insert(enforcementActions).values({
+      subjectOrganizationId: organizationId,
+      action: 'warning',
+      reason: 'csam',
+      reportId: 'report1',
+    });
+    await db
+      .insert(welcomeCardClaims)
+      .values({ organizationId, fingerprint: 'f1' });
+    await db.insert(deviceCode).values({
+      id: 'dc1',
+      deviceCode: 'dc1',
+      userCode: 'U1',
+      expiresAt: new Date(),
+      status: 'approved',
+    });
+    await db
+      .insert(deviceGrantOrganizations)
+      .values({ deviceCodeId: 'dc1', organizationId });
 
     await cleanupTestUser(user.id, organizationId);
 
