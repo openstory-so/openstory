@@ -403,8 +403,8 @@ type MotionEligibilityShot = {
  * `'cancelled'` is eligible here and NOT in smart retry: a cancel excludes a
  * shot from AUTO retry, not from a user asking again.
  *
- * `videoStale` is the shot's video staleness verdict (`'stale'`, #2274): a
- * completed clip the rail marks out of date is eligible for a re-render.
+ * `videoStale` is true when the rail's video verdict is `'stale'` (#2274).
+ * A completed clip is then eligible. A stale still or prompt is not.
  */
 export function isBatchMotionEligible(
   shot: MotionEligibilityShot,
@@ -419,6 +419,18 @@ export function isBatchMotionEligible(
       shot.videoStatus === 'cancelled' ||
       (shot.videoStatus === 'completed' && videoStale))
   );
+}
+
+/**
+ * The batch spends on a completed clip only when this run was allowed to
+ * see the video verdict. Anything else (`fresh`, a missing read, a stale
+ * still) stays out.
+ */
+export function completedClipIsStaleForBatch(
+  video: string | undefined,
+  includeStaleClips: boolean
+): boolean {
+  return includeStaleClips && video === 'stale';
 }
 
 /**

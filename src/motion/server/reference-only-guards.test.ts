@@ -9,7 +9,11 @@ import { canRenderReferenceOnly } from './motion-generation';
 import { estimateFalCost } from '@/billing/fal-cost';
 import { estimateVideoCost } from '@/billing/cost-estimation';
 import { micros } from '@/billing/money';
-import { isBatchMotionEligible, isMotionGenerating } from '@/shots/shot-view';
+import {
+  completedClipIsStaleForBatch,
+  isBatchMotionEligible,
+  isMotionGenerating,
+} from '@/shots/shot-view';
 import {
   referenceOnlyCapableWith,
   referenceOnlyMotionModels,
@@ -206,6 +210,14 @@ describe('isBatchMotionEligible', () => {
         true
       )
     ).toBe(false);
+  });
+
+  it('joins a completed clip only for a stale video the run was allowed to see', () => {
+    expect(completedClipIsStaleForBatch('stale', true)).toBe(true);
+    expect(completedClipIsStaleForBatch('stale', false)).toBe(false);
+    expect(completedClipIsStaleForBatch('fresh', true)).toBe(false);
+    expect(completedClipIsStaleForBatch('generating', true)).toBe(false);
+    expect(completedClipIsStaleForBatch(undefined, true)).toBe(false);
   });
 
   it('reports an in-flight render without a still', () => {

@@ -60,7 +60,11 @@ import {
   resolveMotionPromptFromVersion,
 } from '@/motion/server/resolve-motion-prompt';
 import { rendersReferenceOnly } from '@/shots/use-start-frame';
-import { isBatchMotionEligible, toShotView } from '@/shots/shot-view';
+import {
+  completedClipIsStaleForBatch,
+  isBatchMotionEligible,
+  toShotView,
+} from '@/shots/shot-view';
 import { loadShotMediaStaleness } from '@/shots/server/shot-media-staleness';
 
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
@@ -103,6 +107,8 @@ const batchGenerateMotionInputSchema = z.object({
   /** Ark draft mode for the batch (#1756); persisted like the model pick. */
   draftMotion: z.boolean().optional(),
   leftoverGrokShotIds: z.array(ulidSchema).optional(),
+  /** Completed stale clips. False until the client has a staleness result (#2274). */
+  includeStaleClips: z.boolean(),
 });
 
 export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
@@ -187,7 +193,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       isBatchMotionEligible(
         f,
         shotIsReferenceOnly(f),
-        mediaStaleness.get(f.id)?.video === 'stale'
+        completedClipIsStaleForBatch(
+          mediaStaleness.get(f.id)?.video,
+          data.includeStaleClips
+        )
       )
     );
     // Location sheets are loaded once for the batch, so ANY reference-only

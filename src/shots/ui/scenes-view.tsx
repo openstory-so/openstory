@@ -1338,7 +1338,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         )
       );
       const eligibleShotIds = eligibleShots.map((f) => f.id);
-      // A stale clip rolls back to 'completed', not 'pending'.
+      // Roll back to the status before the optimistic 'generating'.
       const previousStatus = new Map(
         eligibleShots.map((f) => [f.id, f.videoStatus])
       );
@@ -1386,6 +1386,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             generateAudio,
             draftMotion,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
+            // Until the rail's read lands, the server must not add stale clips.
+            includeStaleClips: sequenceStaleness != null,
           },
         });
         // Server may have updated sequence.videoModel / sequence.musicModel to
@@ -1426,6 +1428,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       shots,
       generateStartFrames,
       staleVideoShotIds,
+      sequenceStaleness,
       leftoverGrokShotIds,
       queryClient,
       posthog,
@@ -1661,6 +1664,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     styleName,
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
     staleVideoShotIds,
+    videoStalenessFailed: sequenceStalenessFailed,
     targetDurationSeconds: sequence?.targetDurationSeconds,
     isAnalyzing: isProcessing,
     leftoverGrokShotIds,
