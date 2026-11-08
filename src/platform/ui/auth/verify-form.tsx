@@ -122,23 +122,28 @@ export function VerifyForm({ email, redirectTo = '/' }: VerifyFormProps) {
 
         <form onSubmit={handleVerifyOtp} className="space-y-4">
           <div className="flex flex-col items-center gap-4">
-            <InputOTP
-              maxLength={6}
-              value={otp}
-              onChange={setOtp}
-              disabled={!hydrated || isPending}
-              // oxlint-disable-next-line no-autofocus - autofocus is appropriate for the input-otp component
-              autoFocus={true}
-            >
-              <InputOTPGroup>
-                <InputOTPSlot index={0} />
-                <InputOTPSlot index={1} />
-                <InputOTPSlot index={2} />
-                <InputOTPSlot index={3} />
-                <InputOTPSlot index={4} />
-                <InputOTPSlot index={5} />
-              </InputOTPGroup>
-            </InputOTP>
+            {/* Absent until hydration: a disabled input is still in the SSR HTML. */}
+            {hydrated ? (
+              <InputOTP
+                maxLength={6}
+                value={otp}
+                onChange={setOtp}
+                disabled={isPending}
+                // oxlint-disable-next-line no-autofocus - autofocus is appropriate for the input-otp component
+                autoFocus={true}
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            ) : (
+              <div className="h-8 w-48" aria-hidden />
+            )}
           </div>
 
           <Button

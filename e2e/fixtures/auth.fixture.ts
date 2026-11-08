@@ -33,6 +33,15 @@ type TestUser = {
 
 const userInfoFile = path.join(import.meta.dirname, '../.auth/user-info.json');
 
+const testApiOrigin = 'http://localhost:3020';
+
+/** A failed test-API call used to be ignored, so sign-in then sat on /verify. */
+async function assertTestApiOk(res: Response, action: string): Promise<void> {
+  if (res.ok) return;
+  const body = await res.text();
+  throw new Error(`${action} failed (${res.status}): ${body}`);
+}
+
 /**
  * Read stored user info from auth.setup.ts
  * Used by tests running with storageState
@@ -56,15 +65,12 @@ export async function createTestUser(
 
   // Create via the guarded test API so all writes go through the single
   // safe Miniflare process (instead of direct getPlatformProxy from this worker).
-  const res = await fetch('http://localhost:3020/api/test/user', {
+  const res = await fetch(`${testApiOrigin}/api/test/user`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, admin }),
   });
-
-  if (!res.ok) {
-    throw new Error(`Failed to create test user via API: ${res.status}`);
-  }
+  await assertTestApiOk(res, 'Create test user');
 
   const created = TestUserResponseSchema.parse(await res.json());
   return created;
@@ -78,7 +84,8 @@ export async function cleanupTestUser(
   organizationId: string
 ): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
-  await fetch('http://localhost:3020/api/test/user', {
+  // Delete 500s on a foreign key; throwing failed tests that had already passed.
+  await fetch(`${testApiOrigin}/api/test/user`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, organizationId }),
@@ -104,11 +111,12 @@ export async function authenticateUser(
 
   // Create OTP via test API (the route normalizes to the identifier
   // Better Auth's signIn.emailOtp will actually look up).
-  await fetch('http://localhost:3020/api/test/verify', {
+  const seeded = await fetch(`${testApiOrigin}/api/test/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, otp: testOtp }),
   });
+  await assertTestApiOk(seeded, 'Seed OTP');
 
   // Navigate directly to verify page with email
   await page.goto(`/verify?email=${encodeURIComponent(email)}`);
