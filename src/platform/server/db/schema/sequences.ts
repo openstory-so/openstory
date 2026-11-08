@@ -138,9 +138,7 @@ export const sequences = snakeCase.table(
     // db:generate stays clean. The app must NOT rely on this default: the
     // scoped create (db/scoped/sequences.ts) substitutes DEFAULT_VIDEO_MODEL
     // for an omitted videoModel, and create-sequences always passes the
-    // user's resolved selection. drizzle inlines `.default()` and ignores
-    // `$defaultFn` when both are set, so an app-level grok default can't live
-    // here.
+    // user's resolved selection.
     videoModel: text({ length: 100 }).default('kling_v3_pro').notNull(),
     workflow: text({ length: 100 }),
 
