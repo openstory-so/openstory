@@ -168,7 +168,13 @@ describe('sequences.create slugs', () => {
   it('gives same-titled sequences created at once distinct slugs (one per analysis model)', async () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const created = await Promise.all(
-      [1, 2, 3].map(() => methods.create({ title: 'The Chase', styleId }))
+      [1, 2, 3].map(() =>
+        methods.create({
+          title: 'The Chase',
+          styleId,
+          generationStopAt: 'images',
+        })
+      )
     );
     expect(created.map((s) => s.slug).sort()).toEqual([
       'the-chase',
