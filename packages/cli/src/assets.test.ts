@@ -111,7 +111,7 @@ describe('openstory pull', () => {
           return token;
         },
       });
-      expect(first).toEqual({ saved: 2, skipped: 0 });
+      expect(first).toEqual({ saved: 2, skipped: 0, removed: 0 });
       expect(await readFile(join(dest, 'script.txt'), 'utf8')).toBe(
         'INT. ROOM'
       );
@@ -142,7 +142,7 @@ describe('openstory pull', () => {
         key: async () => 'new',
         refresh: async () => 'newer',
       });
-      expect(second).toEqual({ saved: 0, skipped: 2 });
+      expect(second).toEqual({ saved: 0, skipped: 2, removed: 0 });
       expect(calls.filter((path) => path.startsWith('/r2/'))).toEqual([]);
 
       await expect(
@@ -171,6 +171,51 @@ describe('openstory pull', () => {
       ).rejects.toThrow('Refusing to write ../secret.txt');
     } finally {
       await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('removes only paths the previous manifest listed', async () => {
+    const dest = await mkdtemp(join(tmpdir(), 'openstory-assets-'));
+    try {
+      let listed = [
+        { relativePath: 'scenes/01-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      const fetchFn: typeof fetch = async () => Response.json(manifest(listed));
+      const run = () =>
+        downloadSequenceAssets({
+          sequenceId: 'SEQ',
+          origin,
+          cacheDir: join(dest, 'cache'),
+          dest,
+          history: false,
+          includeExports: false,
+          fetch: fetchFn,
+          key: async () => 'key',
+          refresh: async () => 'key',
+        });
+      await run();
+      await writeFile(join(dest, 'scenes', '01-old', 'notes.md'), 'mine');
+      await writeFile(join(dest, 'mine.txt'), 'mine');
+      listed = [
+        { relativePath: 'scenes/02-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      expect((await run()).removed).toBe(1);
+      await expect(
+        stat(join(dest, 'scenes', '01-old', 'prompt.txt'))
+      ).rejects.toThrow();
+      // The user's files, and the folder holding one, stay.
+      expect(
+        await readFile(join(dest, 'scenes', '01-old', 'notes.md'), 'utf8')
+      ).toBe('mine');
+      expect(await readFile(join(dest, 'mine.txt'), 'utf8')).toBe('mine');
+      listed = [{ relativePath: 'keep.txt', versionId: 'k', text: 'k' }];
+      await rm(join(dest, 'scenes', '01-old', 'notes.md'));
+      await run();
+      await expect(stat(join(dest, 'scenes', '02-old'))).rejects.toThrow();
+    } finally {
+      await rm(dest, { recursive: true, force: true });
     }
   });
 

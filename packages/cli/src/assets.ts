@@ -3,7 +3,8 @@
  *
  * The command asks the public API for the manifest, then writes each file.
  * A second run skips a path whose versionId is unchanged and whose file is
- * still there. Shared cast, location, and style files are stored once in the
+ * still there, and a path the previous manifest listed but this one does not
+ * is removed. Shared cast, location, and style files are stored once in the
  * cache directory, named from the stored url, and linked into the folder.
  * This file does not import the app: the skip rule is copied here on purpose.
  */
@@ -18,6 +19,7 @@ import {
   readFile,
   rename,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from 'node:fs/promises';
@@ -46,7 +48,7 @@ type AssetRow = {
 
 export async function downloadSequenceAssets(
   options: DownloadAssetsOptions
-): Promise<{ saved: number; skipped: number }> {
+): Promise<{ saved: number; skipped: number; removed: number }> {
   const fetchFn = options.fetch ?? fetch;
   const manifestUrl = new URL(
     `/api/v1/sequences/${encodeURIComponent(options.sequenceId)}/assets`,
@@ -122,13 +124,35 @@ export async function downloadSequenceAssets(
     }
   }
 
+  // Only paths an earlier manifest listed: anything else in the folder is the user's.
+  const listedNow = new Set(assets.map((asset) => asset.relativePath));
+  let removed = 0;
+  for (const path of previous.keys()) {
+    if (listedNow.has(path) || !safeRelativePath(path)) continue;
+    if (!(await fileExists(options.dest, path))) continue;
+    await rm(join(options.dest, path));
+    await pruneEmptyDirs(options.dest, dirname(path));
+    removed += 1;
+  }
+
   await mkdir(options.dest, { recursive: true });
   await writeFile(
     join(options.dest, 'manifest.json'),
     `${JSON.stringify(manifest, null, 2)}\n`
   );
   const skipped = assets.length - todo.length;
-  return { saved: todo.length, skipped };
+  return { saved: todo.length, skipped, removed };
+}
+
+/** Removes `dir` and its parents while empty, stopping at `root`. */
+async function pruneEmptyDirs(root: string, dir: string): Promise<void> {
+  for (let rel = dir; rel !== '.' && rel !== ''; rel = dirname(rel)) {
+    try {
+      await rmdir(join(root, rel));
+    } catch {
+      return;
+    }
+  }
 }
 
 async function writeCached(

@@ -67,7 +67,7 @@ export const pull: Command = {
       refresh: () => signIn(auth),
     });
     context.stdout.write(
-      `Saved ${result.saved} files. Skipped ${result.skipped} already there.\n`
+      `Saved ${result.saved} files. Skipped ${result.skipped} already there.${result.removed > 0 ? ` Removed ${result.removed} no longer listed.` : ''}\n`
     );
   },
 };

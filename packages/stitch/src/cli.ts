@@ -833,10 +833,15 @@ export function openUrl(url: string, stderr: Writer = process.stderr): void {
 
 /** stitch never talks to OpenStory itself: the moved commands run the CLI from npm. */
 function runOpenStoryCli(args: string[]): Promise<number> {
-  // ponytail: shell on Windows so npx.cmd resolves; args pass unquoted there.
+  // Windows can only start npx.cmd through cmd.exe, which would parse the args.
+  if (process.platform === 'win32') {
+    process.stderr.write(
+      `Run: npx @openstory/cli@latest ${args.map((arg) => JSON.stringify(arg)).join(' ')}\n`
+    );
+    return Promise.resolve(1);
+  }
   const child = spawn('npx', ['--yes', '@openstory/cli@latest', ...args], {
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   });
   return new Promise((resolveExit) => {
     child.on('error', (error) => {
