@@ -26,11 +26,11 @@ Except discovery and the device-login pair, callers send an `osk_` key **or**
 an OAuth access token. Two ways to get a key:
 
 - **Device-code login** (for agents/CLIs, no copy-pasting): `POST
-/api/v1/device/code` returns a `device_code`, a short `user_code`, and a
+  /api/v1/device/code` returns a `device_code`, a short `user_code`, and a
   `verification_url`. Show the user the code and URL (or open
   `verification_url_complete`), then `GET
-/api/v1/device/token?device_code=…&wait=60s` until it returns `200 { api_key,
-organization }`. While the user decides you get `428 authorization_pending` (keep
+  /api/v1/device/token?device_code=…&wait=60s` until it returns `200 { api_key,
+  organization }`. While the user decides you get `428 authorization_pending` (keep
   polling; `?wait` blocks server-side), `429 slow_down` if you poll faster than
   `interval` without `?wait`, `403 access_denied`, or `410 expired_token` (codes
   last 10 minutes; start again). Both endpoints are rate limited per IP.

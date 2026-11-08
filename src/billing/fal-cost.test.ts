@@ -231,6 +231,71 @@ describe('estimateFalCost', () => {
     ).toBe(micros(160_000));
   });
 
+  test('a resolution the card lists outranks the median', () => {
+    const live = {
+      ...PRICING,
+      'fal-ai/nano-banana-2': {
+        unitPrice: micros(80_000),
+        unit: 'images',
+        observed: { medianUnits: 2, sampleCount: MIN_OBSERVED_SAMPLES },
+        rateCard: resolutionCard,
+      },
+    };
+    // Card 2K is 1.5 × $0.08. The median would be 2 × $0.08.
+    expect(
+      estimateFalCost(
+        'fal-ai/nano-banana-2',
+        { numImages: 1, resolution: '2K' },
+        live
+      )
+    ).toBe(micros(120_000));
+    expect(
+      estimateFalCost(
+        'fal-ai/nano-banana-2',
+        { numImages: 1, resolution: '2k' },
+        live
+      )
+    ).toBe(micros(120_000));
+  });
+
+  test('a stills tier the card does not list keeps the median', () => {
+    const live = {
+      ...PRICING,
+      'fal-ai/nano-banana-2': {
+        unitPrice: micros(80_000),
+        unit: 'images',
+        observed: { medianUnits: 2, sampleCount: MIN_OBSERVED_SAMPLES },
+        rateCard: resolutionCard,
+      },
+    };
+    expect(
+      estimateFalCost(
+        'fal-ai/nano-banana-2',
+        { numImages: 1, resolution: '720p' },
+        live
+      )
+    ).toBe(micros(160_000));
+  });
+
+  test('a listed resolution whose card refuses stays null despite the median', () => {
+    const live = {
+      ...PRICING,
+      'fal-ai/nano-banana-2': {
+        unitPrice: micros(80_000),
+        unit: 'images',
+        observed: { medianUnits: 2, sampleCount: MIN_OBSERVED_SAMPLES },
+        rateCard: { ...resolutionCard, price: 0 },
+      },
+    };
+    expect(
+      estimateFalCost(
+        'fal-ai/nano-banana-2',
+        { numImages: 1, resolution: '2K' },
+        live
+      )
+    ).toBeNull();
+  });
+
   test('per-image uses typicalUnitsPerCall × numImages (nano-banana historical 1.5×)', () => {
     // unitPrice $0.08, typicalUnitsPerCall 1.5 → $0.12 each, $0.24 for 2.
     expect(

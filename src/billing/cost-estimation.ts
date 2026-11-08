@@ -21,7 +21,13 @@ import {
 } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { aspectRatioToDimensions } from '@/models/aspect-ratios';
-import type { RenderedResolution, Resolution } from '@/models/resolutions';
+import {
+  isResolution,
+  pickVideoResolution,
+  type RenderedResolution,
+  type Resolution,
+} from '@/models/resolutions';
+import { motionResolutionTokensForModel } from '@/motion/model-capabilities';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { imageRequestDimensions } from '@/stills/build-image-request';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
@@ -224,9 +230,21 @@ export function estimateVideoCost(
     falEndpointId,
     {
       durationSeconds,
-      resolution: opts.resolution,
+      resolution: videoResolutionToken(model, opts.resolution),
     },
     opts.pricing
+  );
+}
+
+/** The tier as submit spells it for this model: 720p is '768P' on H3 Max. */
+function videoResolutionToken(
+  model: ImageToVideoModel,
+  resolution: RenderedResolution | undefined
+): string | undefined {
+  if (!resolution || !isResolution(resolution)) return resolution;
+  return (
+    pickVideoResolution(motionResolutionTokensForModel(model), resolution) ??
+    resolution
   );
 }
 
@@ -243,7 +261,10 @@ export function estimateStudioVideoCost(
 ): Microdollars | null {
   return estimateFalCost(
     studioVideoEndpointId(model, opts.mode),
-    { durationSeconds, resolution: opts.resolution },
+    {
+      durationSeconds,
+      resolution: videoResolutionToken(model, opts.resolution),
+    },
     opts.pricing
   );
 }

@@ -22,12 +22,12 @@ vi.mock('./use-scenes', () => ({
 }));
 
 function scene(script: SceneWithScript['script']): SceneWithScript {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the document only reads id, order, title, and script
   return {
     id: dbSceneId('scene-1'),
     orderIndex: 0,
     title: 'Garage',
     script,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the document only reads id, order, title, and script
   } as SceneWithScript;
 }
 

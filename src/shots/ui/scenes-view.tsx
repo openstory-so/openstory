@@ -6,6 +6,7 @@ import { useSequenceRuns } from '@/sequences/ui/generation/use-sequence-runs';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/sequences/ui/generation/motion-progress-banner';
+import type { Resolution } from '@/models/resolutions';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
 import { DivergenceCompareDialog } from './divergence-compare-dialog';
 import { MobileSceneDrawer } from './mobile-scene-drawer';
@@ -488,6 +489,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       persistModels({ videoModel: model });
     },
     [sequenceVideoModel, persistModels]
+  );
+  const persistResolution = useCallback(
+    (resolution: Resolution) => persistModels({ resolution }),
+    [persistModels]
   );
   const styleName = style?.name ?? undefined;
   // Phase config from DB — set in stone when the workflow was triggered
@@ -1612,6 +1617,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     selection,
     aspectRatio,
     resolution: sequence?.resolution,
+    onResolutionChange: persistResolution,
     draftMotion: sequence?.draftMotion,
     includeMusic: sequence?.includeMusic ?? true,
     onIncludeMusicChange: persistIncludeMusic,
@@ -1699,6 +1705,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               shot={selectedShot}
               sequenceId={sequenceId}
               resolution={sequence?.resolution}
+              onResolutionChange={persistResolution}
               sequenceGeneratesStartFrames={generateStartFrames}
               sequenceDraftMotion={sequence?.draftMotion ?? false}
               selectedTab={effectiveTab}

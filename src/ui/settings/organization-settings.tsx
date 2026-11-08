@@ -130,10 +130,8 @@ function OrganizationPanel() {
     queryKey: ['organization', 'members'],
     queryFn: () => authData(authClient.organization.listMembers()),
   });
-  const invitations = useSuspenseQuery({
-    queryKey: ['organization', 'invitations'],
-    queryFn: () => authData(authClient.organization.listInvitations()),
-  });
+  // 1.7.16 refuses list-invitations without invitation:create. A member's
+  // 403 must not take down the member list, which shares this suspense.
   const canInvite = useOrganizationPermission({ invitation: ['create'] });
   const canCancel = useOrganizationPermission({ invitation: ['cancel'] });
   const canEditMembers = useOrganizationPermission({
@@ -149,61 +147,10 @@ function OrganizationPanel() {
       authClient.organization.removeMember({ memberIdOrEmail: memberId }),
     'Could not remove the member'
   );
-  const cancelInvitation = useOrganizationMutation(
-    (invitationId: string) =>
-      authClient.organization.cancelInvitation({ invitationId }),
-    'Could not cancel the invitation'
-  );
-  const pending = invitations.data.filter(
-    (invitation) => invitation.status === 'pending'
-  );
-
   return (
     <div className="flex flex-col gap-6">
       {canInvite ? <InviteCard /> : null}
-      <Card>
-        <CardHeader>
-          <CardTitle>Pending invitations</CardTitle>
-          <CardDescription>
-            {pending.length === 0
-              ? 'No pending invitations.'
-              : 'Sent, not yet accepted.'}
-          </CardDescription>
-        </CardHeader>
-        {pending.length === 0 ? null : (
-          <CardContent>
-            <ul className="flex flex-col gap-3">
-              {pending.map((invitation) => (
-                <li key={invitation.id} className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback style={avatarStyle(invitation.email)}>
-                      {getInitials(invitation.email)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate">{invitation.email}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {invitation.role}
-                    </span>
-                  </div>
-                  {canCancel ? (
-                    <Button
-                      variant="ghost"
-                      disabled={cancelInvitation.isPending}
-                      onClick={() => cancelInvitation.mutate(invitation.id)}
-                    >
-                      {cancelInvitation.isPending &&
-                      cancelInvitation.variables === invitation.id
-                        ? 'Cancelling…'
-                        : 'Cancel'}
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        )}
-      </Card>
+      {canInvite ? <PendingInvitations canCancel={canCancel} /> : null}
       <Card>
         <CardHeader>
           <CardTitle>Members</CardTitle>
@@ -275,6 +222,67 @@ function OrganizationPanel() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function PendingInvitations({ canCancel }: { canCancel: boolean }) {
+  const invitations = useSuspenseQuery({
+    queryKey: ['organization', 'invitations'],
+    queryFn: () => authData(authClient.organization.listInvitations()),
+  });
+  const cancelInvitation = useOrganizationMutation(
+    (invitationId: string) =>
+      authClient.organization.cancelInvitation({ invitationId }),
+    'Could not cancel the invitation'
+  );
+  const pending = invitations.data.filter(
+    (invitation) => invitation.status === 'pending'
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pending invitations</CardTitle>
+        <CardDescription>
+          {pending.length === 0
+            ? 'No pending invitations.'
+            : 'Sent, not yet accepted.'}
+        </CardDescription>
+      </CardHeader>
+      {pending.length === 0 ? null : (
+        <CardContent>
+          <ul className="flex flex-col gap-3">
+            {pending.map((invitation) => (
+              <li key={invitation.id} className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarFallback style={avatarStyle(invitation.email)}>
+                    {getInitials(invitation.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{invitation.email}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {invitation.role}
+                  </span>
+                </div>
+                {canCancel ? (
+                  <Button
+                    variant="ghost"
+                    disabled={cancelInvitation.isPending}
+                    onClick={() => cancelInvitation.mutate(invitation.id)}
+                  >
+                    {cancelInvitation.isPending &&
+                    cancelInvitation.variables === invitation.id
+                      ? 'Cancelling…'
+                      : 'Cancel'}
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 

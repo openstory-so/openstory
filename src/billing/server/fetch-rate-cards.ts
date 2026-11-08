@@ -7,7 +7,7 @@
  */
 
 import { getEnv } from '#env';
-import { rateCardSchema } from '@modelschemas/rate-card';
+import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { getLogger } from '@/platform/logger';
 

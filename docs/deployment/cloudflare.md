@@ -143,7 +143,7 @@ bun db:migrate:prd         # flatten → wrangler d1 migrations apply DB --env=p
   configured deploy command — identical to `deploy` except the migrate step
   targets the `[env.production]` D1.
 - **PR previews**: CI applies migrations with `wrangler d1 migrations apply DB
---remote` after patching the PR's database id into the config, then seeds
+  --remote` after patching the PR's database id into the config, then seeds
   system templates through the D1 HTTP API before deploying the Worker.
 - **Local dev / e2e**: unchanged — drizzle-orm's migrator applies the nested
   files directly against the Miniflare binding (`bun db:migrate:local`).

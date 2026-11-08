@@ -434,8 +434,8 @@ production export (2026-10-07).
    different sheets of one look, the most recently updated cast look wins,
    a cast look that selected a sheet winning over one that did not.
 3. `20261009054728_unpin_sequence_cast` — generated: `DROP TABLE
-sequence_cast_looks` and a native `ALTER TABLE sequence_cast DROP COLUMN
-bible_version_id`. No rebuild, so the #612 trap does not apply.
+   sequence_cast_looks` and a native `ALTER TABLE sequence_cast DROP COLUMN
+   bible_version_id`. No rebuild, so the #612 trap does not apply.
 
 **Rendering** (this PR). `20261009063135_character_rendering` (generated,
 one `ADD COLUMN`) and `20261009063136_backfill_character_rendering`
