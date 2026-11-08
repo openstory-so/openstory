@@ -17,6 +17,19 @@ created them, so there is no organization BYOK and `'elevenlabs'` is not on
 `API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
 through `scopedDb.credentials.resolveKey('elevenlabs')`.
 
+**Concurrency (#2295).** The plan allows 2 concurrent requests across the
+account; a third gets `429 concurrent_limit_exceeded`. There is no queue.
+`retryOnRateLimit` (`elevenlabs-config.ts`) is the only retry on an
+ElevenLabs call: every call, SDK and TanStack adapter alike, is wrapped in it,
+and both clients are built with `maxRetries: 0`. A 429 never ran, so the call
+is re-run up to 8 times, waiting `Retry-After` or 1 s doubling (jittered) to a
+60 s cap, about 3 minutes; each attempt gets the client's own timeout, at most
+9 requests, and the wait stops on an abort signal. A ninth 429 throws that 429
+and the workflow step retries the whole call. Nothing else is retried in the
+call: a 5xx on a create may mean the voice was made and the reply lost, and a
+resend would leak an account-wide slot. A new ElevenLabs call goes through
+`retryOnRateLimit`.
+
 `ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack adapters and
 the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —
 paths include it). Playwright points it at the main aimock on `:4010`,
@@ -28,7 +41,10 @@ which dispatches `POST /v1/text-to-speech/{voice_id}` (`onElevenLabsTTS`),
 `ELEVENLABS_API_KEY=test-mock-key`; record uses the real key from
 `.env.local` and aimock's `providers.elevenlabs` proxy. Under `E2E_TEST` the
 via stays off unless the base URL is also set, so a laptop key cannot bill
-replay.
+replay. A recording of a 429 or 5xx is dropped and not saved
+(`e2e/mocks/recorded-errors.ts`), so the retry proxies again; replaying one
+would retry it forever. Recorded 4xx stay: the tape relies on
+`voice_limit_reached` answers.
 
 No Voice Design tape exists yet: nothing in the suite turns `generateVoices`
 on, and strict replay refuses all four routes without a fixture (aimock

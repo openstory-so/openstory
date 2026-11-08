@@ -48,6 +48,7 @@ vi.doMock('#storage', () => ({
   },
 }));
 vi.doMock('@/models/server/elevenlabs-config', () => ({
+  retryOnRateLimit: async <T>(call: () => Promise<T>) => call(),
   createElevenLabsSdk: async () => ({
     speechToSpeech: { convert: async () => new Response(converted).body },
   }),

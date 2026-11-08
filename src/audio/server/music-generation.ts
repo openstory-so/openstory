@@ -21,6 +21,7 @@ import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
   loadElevenLabsAudio,
+  retryOnRateLimit,
 } from '@/models/server/elevenlabs-config';
 import type { Microdollars } from '@/billing/money';
 import { generateId } from '@/platform/id';
@@ -248,20 +249,23 @@ async function callElevenLabsAudio(
     apiKeyInfo.key,
     {
       timeoutInSeconds: adapterConfig.timeoutInSeconds,
+      maxRetries: adapterConfig.maxRetries,
       ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
     }
   );
-  const result = await generateAudio({
-    adapter,
-    prompt: options.prompt,
-    threadId: generateId(),
-    duration: billedDuration,
-    modelOptions: {
-      forceInstrumental: options.instrumental ?? true,
-    },
-    timeout: FAL_GENERATION_TIMEOUT_MS,
-    debug: false,
-  });
+  const result = await retryOnRateLimit(() =>
+    generateAudio({
+      adapter,
+      prompt: options.prompt,
+      threadId: generateId(),
+      duration: billedDuration,
+      modelOptions: {
+        forceInstrumental: options.instrumental ?? true,
+      },
+      timeout: FAL_GENERATION_TIMEOUT_MS,
+      debug: false,
+    })
+  );
 
   const b64 = result.audio.b64Json;
   if (!b64) {

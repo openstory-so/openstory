@@ -19,6 +19,7 @@ import {
   createElevenLabsSdk,
   elevenLabsAdapterConfig,
   loadElevenLabsVoiceDesign,
+  retryOnRateLimit,
 } from '@/models/server/elevenlabs-config';
 
 export type DesignedPreview = {
@@ -48,20 +49,23 @@ export async function designVoicePreviews(
   const adapterConfig = elevenLabsAdapterConfig(apiKey, 120);
   const adapter = createElevenLabsVoiceDesign('eleven_ttv_v3', apiKey, {
     timeoutInSeconds: adapterConfig.timeoutInSeconds,
+    maxRetries: adapterConfig.maxRetries,
     ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
   });
-  const result = await generateVoice({
-    adapter,
-    prompt: voiceDescription,
-    threadId: generateId(),
-    modelOptions: {
-      autoGenerateText: true,
-      shouldEnhance: true,
-      guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
-      // 192 kbps needs the Creator tier; 128 does not.
-      outputFormat: 'mp3_44100_128',
-    },
-  });
+  const result = await retryOnRateLimit(() =>
+    generateVoice({
+      adapter,
+      prompt: voiceDescription,
+      threadId: generateId(),
+      modelOptions: {
+        autoGenerateText: true,
+        shouldEnhance: true,
+        guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+        // 192 kbps needs the Creator tier; 128 does not.
+        outputFormat: 'mp3_44100_128',
+      },
+    })
+  );
   return result.voices.map((voice) => {
     // `audio`/`contentType` are optional on the generic `GeneratedVoice`
     // shape, but ElevenLabs' design endpoint always returns both.
@@ -151,7 +155,8 @@ export async function saveDesignedVoice(
   }
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const voice = await client.textToVoice.create(args);
+  // Not abortable: a save cut off after ElevenLabs made the voice orphans a slot.
+  const voice = await retryOnRateLimit(() => client.textToVoice.create(args));
   return voice.voiceId;
 }
 
@@ -162,7 +167,7 @@ export async function deleteElevenLabsVoice(
 ): Promise<void> {
   const client = await createElevenLabsSdk(apiKey);
   try {
-    await client.voices.delete(voiceId);
+    await retryOnRateLimit(() => client.voices.delete(voiceId));
   } catch (error) {
     if (isElevenLabsVoiceMissing(error)) return;
     throw error;
@@ -171,11 +176,15 @@ export async function deleteElevenLabsVoice(
 
 export async function getElevenLabsVoice(
   apiKey: string,
-  voiceId: string
+  voiceId: string,
+  signal?: AbortSignal
 ): Promise<SavedVoiceMeta | null> {
   const client = await createElevenLabsSdk(apiKey);
   try {
-    const voice = await client.voices.get(voiceId);
+    const voice = await retryOnRateLimit(
+      () => client.voices.get(voiceId, {}, { abortSignal: signal }),
+      signal
+    );
     const category = voice.category ?? '';
     return {
       voiceId: voice.voiceId,
@@ -196,23 +205,31 @@ export async function listLibraryVoices(
     search?: string;
     page?: number;
     filters?: CatalogVoiceFilters;
-  } = {}
+  } = {},
+  signal?: AbortSignal
 ): Promise<CatalogVoicePage> {
   const client = await createElevenLabsSdk(apiKey);
   const page = args.page ?? 0;
   const filters = args.filters ?? {};
-  const result = await client.voices.getShared({
-    pageSize: 30,
-    page,
-    sort: args.search ? 'usage_character_count_1y' : 'trending',
-    includeCustomRates: false,
-    ...(args.search && { search: args.search }),
-    ...(filters.gender && { gender: filters.gender }),
-    ...(filters.age && { age: filters.age }),
-    ...(filters.language && { language: filters.language }),
-    ...(filters.accent && { accent: filters.accent }),
-    ...(filters.quality === 'studio' && { category: 'high_quality' }),
-  });
+  const result = await retryOnRateLimit(
+    () =>
+      client.voices.getShared(
+        {
+          pageSize: 30,
+          page,
+          sort: args.search ? 'usage_character_count_1y' : 'trending',
+          includeCustomRates: false,
+          ...(args.search && { search: args.search }),
+          ...(filters.gender && { gender: filters.gender }),
+          ...(filters.age && { age: filters.age }),
+          ...(filters.language && { language: filters.language }),
+          ...(filters.accent && { accent: filters.accent }),
+          ...(filters.quality === 'studio' && { category: 'high_quality' }),
+        },
+        { abortSignal: signal }
+      ),
+    signal
+  );
   return {
     voices: result.voices.map((voice) =>
       toCatalogVoiceFromLibrary({
@@ -240,9 +257,11 @@ async function addSharedVoice(
   args: { publicOwnerId: string; voiceId: string; name: string }
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const added = await client.voices.share(args.publicOwnerId, args.voiceId, {
-    newName: args.name,
-  });
+  const added = await retryOnRateLimit(() =>
+    client.voices.share(args.publicOwnerId, args.voiceId, {
+      newName: args.name,
+    })
+  );
   return added.voiceId;
 }
 
@@ -298,13 +317,15 @@ export async function transcribeSpeech(
   contentType: string
 ): Promise<{ text: string; words: HeardWord[]; seconds: number }> {
   const client = await createElevenLabsSdk(apiKey, 120);
-  const result = await client.speechToText.convert({
-    modelId: SCRIBE_MODEL,
-    file: new Blob([audio], { type: contentType }),
-    languageCode: 'en',
-    timestampsGranularity: 'word',
-    tagAudioEvents: false,
-  });
+  const result = await retryOnRateLimit(() =>
+    client.speechToText.convert({
+      modelId: SCRIBE_MODEL,
+      file: new Blob([audio], { type: contentType }),
+      languageCode: 'en',
+      timestampsGranularity: 'word',
+      tagAudioEvents: false,
+    })
+  );
   if (!('words' in result)) {
     throw new Error('Scribe returned no word timings');
   }
@@ -326,8 +347,10 @@ export async function isolateVoice(
   contentType: string
 ): Promise<Uint8Array<ArrayBuffer>> {
   const client = await createElevenLabsSdk(apiKey, 120);
-  const stream = await client.audioIsolation.convert({
-    audio: new Blob([audio], { type: contentType }),
-  });
+  const stream = await retryOnRateLimit(() =>
+    client.audioIsolation.convert({
+      audio: new Blob([audio], { type: contentType }),
+    })
+  );
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }

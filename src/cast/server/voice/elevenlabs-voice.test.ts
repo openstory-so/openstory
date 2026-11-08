@@ -21,6 +21,7 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
     voices: { get: mockGet, share: mockShare, delete: mockDelete },
   })),
   loadElevenLabsVoiceDesign: async () => createElevenLabsVoiceDesign,
+  retryOnRateLimit: async <T>(call: () => Promise<T>) => call(),
   elevenLabsAdapterConfig: (apiKey: string, timeoutInSeconds = 60) => ({
     apiKey,
     timeoutInSeconds,

@@ -47,6 +47,7 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 import { E2E_RECORDING } from '../recording-mode';
+import { isTransientElevenLabsRecording } from './recorded-errors';
 
 const AIMOCK_PORT = 4010;
 const FIXTURE_DIR = resolve(
@@ -210,6 +211,12 @@ function patchFixturesArray(fixtures: Fixture[]): void {
       if (isUnusableOpenRouterFixture(item)) {
         console.warn(
           '[e2e] aimock: dropping unusable OpenRouter recording so a workflow retry proxies instead of replaying it'
+        );
+        continue;
+      }
+      if (isTransientElevenLabsRecording(item)) {
+        console.warn(
+          '[e2e] aimock: dropping a recorded ElevenLabs 429/5xx so the retry proxies instead of replaying it'
         );
         continue;
       }
@@ -887,6 +894,14 @@ function sortStagingFixtures(): void {
       console.warn(
         `[e2e] aimock: discarding unusable OpenRouter recording ${name}`
       );
+      rmSync(src);
+      continue;
+    }
+    if (
+      name.startsWith('elevenlabs-') &&
+      loadFixtureFile(src).some(isTransientElevenLabsRecording)
+    ) {
+      console.warn(`[e2e] aimock: discarding ElevenLabs 429/5xx ${name}`);
       rmSync(src);
       continue;
     }

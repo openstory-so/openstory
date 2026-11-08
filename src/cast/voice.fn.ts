@@ -28,6 +28,7 @@ import {
 import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { ValidationError } from '@/platform/errors';
 import { createServerFn } from '@tanstack/react-start';
+import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
@@ -75,17 +76,21 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
   )
   .handler(async ({ data }) => {
     const apiKey = requireElevenLabsKey();
-    return listLibraryVoices(apiKey, {
-      search: data.search || undefined,
-      page: data.page,
-      filters: {
-        gender: data.gender,
-        age: data.age,
-        quality: data.quality,
-        language: data.language,
-        accent: data.accent,
+    return listLibraryVoices(
+      apiKey,
+      {
+        search: data.search || undefined,
+        page: data.page,
+        filters: {
+          gender: data.gender,
+          age: data.age,
+          quality: data.quality,
+          language: data.language,
+          accent: data.accent,
+        },
       },
-    });
+      getRequest().signal
+    );
   });
 
 export const getSavedVoiceFn = createServerFn({ method: 'GET' })
@@ -106,5 +111,5 @@ export const getSavedVoiceFn = createServerFn({ method: 'GET' })
       };
     }
     const apiKey = requireElevenLabsKey();
-    return getElevenLabsVoice(apiKey, data.voiceId);
+    return getElevenLabsVoice(apiKey, data.voiceId, getRequest().signal);
   });

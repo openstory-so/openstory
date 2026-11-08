@@ -12,6 +12,7 @@ const fetchRequest = vi.fn<typeof fetch>(async () =>
   })
 );
 vi.doMock('@/models/server/elevenlabs-config', () => ({
+  retryOnRateLimit: async <T>(call: () => Promise<T>) => call(),
   createElevenLabsSdk: async () =>
     new ElevenLabsClient({
       apiKey: 'test-key',

@@ -22,7 +22,10 @@ import { base64ToBytes } from '@/platform/base64';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
-import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
+import {
+  createElevenLabsSdk,
+  retryOnRateLimit,
+} from '@/models/server/elevenlabs-config';
 import {
   DIALOGUE_TTS_MODEL,
   DIALOGUE_TTS_STABILITY,
@@ -101,12 +104,14 @@ export async function generateDialogueSpeechCall(input: {
   );
 
   const client = await createElevenLabsSdk(input.apiKey);
-  const result = await client.textToDialogue.convertWithTimestamps({
-    modelId: DIALOGUE_TTS_MODEL,
-    outputFormat: 'wav_44100',
-    inputs,
-    settings: { stability: DIALOGUE_TTS_STABILITY },
-  });
+  const result = await retryOnRateLimit(() =>
+    client.textToDialogue.convertWithTimestamps({
+      modelId: DIALOGUE_TTS_MODEL,
+      outputFormat: 'wav_44100',
+      inputs,
+      settings: { stability: DIALOGUE_TTS_STABILITY },
+    })
+  );
   const wav = base64ToBytes(result.audioBase64);
   if (wav.byteLength === 0) {
     throw new Error('Dialogue TTS returned an empty audio body');

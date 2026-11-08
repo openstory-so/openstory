@@ -40,7 +40,10 @@ import { recordCheckedTake } from '@/cast/server/voice/seed-audio';
 import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
 import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
 import type { Microdollars } from '@/billing/money';
-import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
+import {
+  createElevenLabsSdk,
+  retryOnRateLimit,
+} from '@/models/server/elevenlabs-config';
 import { DIALOGUE_STS_MODEL } from '@/motion/dialogue-tts';
 import { generateId } from '@/platform/id';
 import type { DialogueSpeechTurn } from '@/platform/server/db/schema';
@@ -351,13 +354,15 @@ async function convertWithVoiceChanger(
     throw new NonRetryableError('The recorded take is not a PCM WAV');
   }
   const client = await createElevenLabsSdk(apiKey);
-  const stream = await client.speechToSpeech.convert(line.voiceId, {
-    audio: new Blob([take], { type: 'audio/wav' }),
-    modelId: DIALOGUE_STS_MODEL,
-    outputFormat: 'wav_44100',
-    // A laptop mic in a room: the take's noise is not part of the voice.
-    removeBackgroundNoise: true,
-  });
+  const stream = await retryOnRateLimit(() =>
+    client.speechToSpeech.convert(line.voiceId, {
+      audio: new Blob([take], { type: 'audio/wav' }),
+      modelId: DIALOGUE_STS_MODEL,
+      outputFormat: 'wav_44100',
+      // A laptop mic in a room: the take's noise is not part of the voice.
+      removeBackgroundNoise: true,
+    })
+  );
   const wav = new Uint8Array(await new Response(stream).arrayBuffer());
   if (wav.byteLength === 0) {
     throw new NonRetryableError('Voice Changer returned an empty audio body');
