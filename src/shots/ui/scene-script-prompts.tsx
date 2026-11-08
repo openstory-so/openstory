@@ -120,6 +120,7 @@ import { motionGenerateLabel } from '@/shots/packed-clip-window';
 import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
+import { useHydrated } from '@/ui/use-hydrated';
 import type { ShotView } from '@/shots/shot-view';
 import {
   keepPreviousData,
@@ -1525,6 +1526,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const motionBusy =
     isRegeneratingMotionPrompt || staleness?.motionPrompt === 'updating';
 
+  // A tab clicked before hydration does nothing; disabled until it can.
+  const hydrated = useHydrated();
+
   return (
     <Tabs
       value={selectedTab}
@@ -1594,7 +1598,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             }
           }}
         >
-          <SelectTrigger>
+          <SelectTrigger disabled={!hydrated}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1611,7 +1615,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           flex-1 trigger and spaces short labels too far apart. */}
       <TabsList className="hidden @[360px]/inspector:inline-flex">
         {visibleTabs.map((t) => (
-          <TabsTrigger key={t.value} value={t.value}>
+          <TabsTrigger key={t.value} value={t.value} disabled={!hydrated}>
             {t.label}
             {t.value === 'image-prompt' &&
               (staleness?.visualPrompt === 'stale' ||
