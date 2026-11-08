@@ -16,12 +16,56 @@ import {
 } from './reorder-preview-dump';
 
 export const REGISTRY_NAME = 'openstory-preview-registry';
+const PRODUCTION_NAME = 'openstory-prd';
+const PREVIEW_DB_NAME = /^openstory-pr-(\d+)$/;
 
 export function canPromote(
   forkRevision: number,
   baseRevision: number
 ): boolean {
   return forkRevision === baseRevision;
+}
+
+export type MergedPreviewPlan = 'promote' | 'discard' | 'conflict';
+
+/** A PR that did not touch `drizzle/migrations/` has no schema to hand on. */
+export function changesMigrations(paths: readonly string[]): boolean {
+  return paths.some(
+    (file) =>
+      file === 'drizzle/migrations' || file.startsWith('drizzle/migrations/')
+  );
+}
+
+/**
+ * No migration files: delete the preview D1. Migration files: promote only
+ * when this fork is still the base (or already is the base).
+ */
+export function planMergedPreviewClose(input: {
+  changesMigrations: boolean;
+  forkRevision: number;
+  baseRevision: number;
+  alreadyBase: boolean;
+}): MergedPreviewPlan {
+  if (!input.changesMigrations) return 'discard';
+  if (input.alreadyBase || canPromote(input.forkRevision, input.baseRevision))
+    return 'promote';
+  return 'conflict';
+}
+
+export type PullRequestState = 'open' | 'closed' | 'missing';
+
+/** Closed preview D1s that are not the live base. Never production or registry. */
+export function sweepCandidate(
+  name: string,
+  uuid: string,
+  baseId: string | null,
+  state: PullRequestState
+): number | undefined {
+  if (name === PRODUCTION_NAME || name === REGISTRY_NAME) return;
+  if (uuid === baseId) return;
+  const match = PREVIEW_DB_NAME.exec(name);
+  if (!match || state !== 'closed') return;
+  return Number(match[1]);
 }
 
 type QueryResult = {
@@ -238,25 +282,44 @@ export async function fork(pr: number, databaseId: string): Promise<void> {
   console.log(`Forked PR ${pr} from preview base revision ${base.revision}`);
 }
 
-export async function promote(pr: number): Promise<void> {
+export async function promote(
+  pr: number,
+  prChangesMigrations = true
+): Promise<void> {
   const db = await registry();
   const [forked] = await query<Fork>(
     db,
     'SELECT revision, database_id, ready FROM preview_forks WHERE pr = ?',
     [pr]
   );
+  const current = await baseOf(db);
+  const plan = planMergedPreviewClose({
+    changesMigrations: prChangesMigrations,
+    forkRevision: forked?.revision ?? -1,
+    baseRevision: current.revision,
+    alreadyBase:
+      forked !== undefined && current.database_id === forked.database_id,
+  });
+  // discard() refuses the active base, so a no-migration PR that is already
+  // the base fails closed instead of deleting it.
+  if (plan === 'discard') {
+    await discard(pr);
+    console.log(
+      `PR ${pr} changed no files under drizzle/migrations; deleted its preview D1`
+    );
+    return;
+  }
   if (!forked)
     throw new Error(`PR ${pr} has no completed fork; retaining its database`);
   if (forked.ready !== 1)
     throw new Error(
       `PR ${pr} preview was never deployed successfully; retaining its database`
     );
-  const current = await baseOf(db);
-  if (current.database_id === forked.database_id) {
+  if (plan === 'promote' && current.database_id === forked.database_id) {
     console.log(`PR ${pr} already promoted`);
     return;
   }
-  if (!canPromote(forked.revision, current.revision)) {
+  if (plan === 'conflict') {
     throw new Error(
       `Preview DB conflict: PR ${pr} forked revision ${forked.revision}, but the base is now revision ${current.revision}. The PR database is preserved; reconcile manually before promoting.`
     );
@@ -326,18 +389,113 @@ export async function discard(pr: number): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  const [mode, rawPr, databaseId] = process.argv.slice(2);
-  const pr = Number(rawPr);
-  if (!account || !token || !Number.isSafeInteger(pr) || pr <= 0) {
+const USAGE =
+  'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> --migrations|--no-migrations | discard <pr> | sweep [--delete] (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN; sweep also needs GH_TOKEN)';
+
+type ListedPage = {
+  success: boolean;
+  errors?: unknown;
+  result: ListedDatabase[];
+  result_info?: { page: number; per_page: number; total_count: number };
+};
+
+async function listDatabases(): Promise<ListedDatabase[]> {
+  const found: ListedDatabase[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const response = await fetch(`${root}?page=${page}&per_page=100`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // Cloudflare's HTTP response has no static type.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const body = (await response.json()) as ListedPage;
+    if (!response.ok || !body.success) {
+      throw new Error(
+        `Cloudflare D1 API ${response.status}: ${JSON.stringify(body.errors)}`
+      );
+    }
+    found.push(...body.result);
+    const info = body.result_info;
+    if (!info || info.page * info.per_page >= info.total_count) break;
+  }
+  return found;
+}
+
+async function pullRequestState(pr: number): Promise<PullRequestState> {
+  const ghToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPOSITORY ?? 'openstory-so/openstory';
+  if (!ghToken) throw new Error('sweep needs GH_TOKEN or GITHUB_TOKEN');
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/pulls/${pr}`,
+    {
+      headers: {
+        Authorization: `Bearer ${ghToken}`,
+        Accept: 'application/vnd.github+json',
+      },
+    }
+  );
+  if (response.status === 404) return 'missing';
+  // GitHub's pull response has no static type.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const body = (await response.json()) as { state?: string };
+  if (!response.ok || (body.state !== 'open' && body.state !== 'closed')) {
     throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> | discard <pr> (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN)'
+      `GitHub pull ${pr} state lookup failed: ${response.status}`
     );
   }
+  return body.state;
+}
+
+/** List closed `openstory-pr-*` databases that are not the preview base. */
+export async function sweep(deleteThem: boolean): Promise<void> {
+  const db = await registry();
+  const base = await baseOf(db);
+  const candidates: { pr: number; name: string; uuid: string }[] = [];
+  for (const item of await listDatabases()) {
+    const state = PREVIEW_DB_NAME.test(item.name)
+      ? await pullRequestState(Number(PREVIEW_DB_NAME.exec(item.name)?.[1]))
+      : 'missing';
+    const pr = sweepCandidate(item.name, item.uuid, base.database_id, state);
+    if (pr === undefined) {
+      if (PREVIEW_DB_NAME.test(item.name))
+        console.log(`keep ${item.name} (${item.uuid})`);
+      continue;
+    }
+    candidates.push({ pr, name: item.name, uuid: item.uuid });
+  }
+  console.log(`${candidates.length} closed preview database(s) to delete:`);
+  for (const item of candidates)
+    console.log(`  ${item.name} ${item.uuid} (PR ${item.pr})`);
+  if (!deleteThem) {
+    console.log('List only. Re-run with: preview-db.ts sweep --delete');
+    return;
+  }
+  for (const item of candidates) {
+    if (
+      item.name === PRODUCTION_NAME ||
+      item.name === REGISTRY_NAME ||
+      item.uuid === base.database_id
+    )
+      throw new Error(`Refusing to delete ${item.name}`);
+    await discard(item.pr);
+  }
+}
+
+async function main(): Promise<void> {
+  const [mode, rawPr, databaseId] = process.argv.slice(2);
+  if (!account || !token) throw new Error(USAGE);
+  if (mode === 'sweep') {
+    if (rawPr && rawPr !== '--delete') throw new Error(USAGE);
+    await sweep(rawPr === '--delete');
+    return;
+  }
+  const pr = Number(rawPr);
+  if (!Number.isSafeInteger(pr) || pr <= 0) throw new Error(USAGE);
   if (mode === 'fork' && databaseId && /^[0-9a-f-]{36}$/.test(databaseId)) {
     await fork(pr, databaseId);
-  } else if (mode === 'promote' && !databaseId) {
-    await promote(pr);
+  } else if (mode === 'promote' && databaseId === '--migrations') {
+    await promote(pr, true);
+  } else if (mode === 'promote' && databaseId === '--no-migrations') {
+    await promote(pr, false);
   } else if (mode === 'discard' && !databaseId) {
     await discard(pr);
   } else if (
@@ -347,9 +505,7 @@ async function main(): Promise<void> {
   ) {
     await markReady(pr, databaseId);
   } else {
-    throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> | discard <pr>'
-    );
+    throw new Error(USAGE);
   }
 }
 

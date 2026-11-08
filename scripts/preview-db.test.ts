@@ -9,7 +9,15 @@ vi.hoisted(() => {
 const exec = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ execFileSync: exec }));
 
-const { fork, promote, markReady, discard } = await import('./preview-db');
+const {
+  fork,
+  promote,
+  markReady,
+  discard,
+  changesMigrations,
+  planMergedPreviewClose,
+  sweepCandidate,
+} = await import('./preview-db');
 
 const base = { revision: 2, database_id: 'base-id' };
 let forked: {
@@ -190,9 +198,25 @@ describe('preview D1 lineage', () => {
     forked = { pr: 12, revision: 1, database_id: 'pr-db', ready: 1 };
     await expect(promote(12)).rejects.toThrow('Preview DB conflict');
     expect(base.database_id).toBe('base-id');
+    expect(previewExists).toBe(true);
     expect(queries).not.toContainEqual(
       expect.stringMatching(/^UPDATE preview_base/)
     );
+  });
+
+  it('deletes a merged preview that changed no migrations', async () => {
+    forked = { pr: 12, revision: 1, database_id: 'pr-db', ready: 1 };
+    await promote(12, false);
+    expect(previewExists).toBe(false);
+    expect(forked).toBeNull();
+    expect(base).toEqual({ revision: 2, database_id: 'base-id' });
+  });
+
+  it('still refuses to delete a no-migration preview that is the base', async () => {
+    forked = { pr: 12, revision: 2, database_id: 'pr-db', ready: 1 };
+    base.database_id = 'pr-db';
+    await expect(promote(12, false)).rejects.toThrow('active preview base');
+    expect(previewExists).toBe(true);
   });
 
   it('refuses to promote a preview with no completed fork', async () => {
@@ -214,6 +238,60 @@ describe('preview D1 lineage', () => {
     expect(forked).toBeNull();
     await fork(12, 'new-pr-db');
     expect(forked).toMatchObject({ revision: 2, database_id: 'new-pr-db' });
+  });
+
+  it('plans promotion from migration changes and fork freshness', () => {
+    expect(
+      changesMigrations(['src/app.ts', 'drizzle/migrations-wrangler/x.sql'])
+    ).toBe(false);
+    expect(
+      changesMigrations(['drizzle/migrations/20261108_x/migration.sql'])
+    ).toBe(true);
+    expect(
+      planMergedPreviewClose({
+        changesMigrations: false,
+        forkRevision: 1,
+        baseRevision: 4,
+        alreadyBase: false,
+      })
+    ).toBe('discard');
+    expect(
+      planMergedPreviewClose({
+        changesMigrations: true,
+        forkRevision: 1,
+        baseRevision: 4,
+        alreadyBase: false,
+      })
+    ).toBe('conflict');
+    expect(
+      planMergedPreviewClose({
+        changesMigrations: true,
+        forkRevision: 4,
+        baseRevision: 4,
+        alreadyBase: false,
+      })
+    ).toBe('promote');
+  });
+
+  it('sweeps only closed preview databases that are not the base', () => {
+    expect(
+      sweepCandidate('openstory-prd', 'prod', 'base', 'closed')
+    ).toBeUndefined();
+    expect(
+      sweepCandidate('openstory-preview-registry', 'reg', 'base', 'closed')
+    ).toBeUndefined();
+    expect(
+      sweepCandidate('openstory-pr-12', 'pr-db', 'pr-db', 'closed')
+    ).toBeUndefined();
+    expect(
+      sweepCandidate('openstory-pr-12', 'pr-db', 'base', 'open')
+    ).toBeUndefined();
+    expect(sweepCandidate('openstory-pr-120', 'other', 'base', 'closed')).toBe(
+      120
+    );
+    expect(sweepCandidate('openstory-pr-12', 'pr-db', 'base', 'closed')).toBe(
+      12
+    );
   });
 
   it('does not clear the record or delete the current base', async () => {
