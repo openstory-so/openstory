@@ -21,8 +21,10 @@ describe('cliVersionRefusal', () => {
 
   it('answers 426 to a lower version, naming the update', async () => {
     const response = cliVersionRefusal(withVersion('0.1.9'), '0.2.0');
-    expect(response?.status).toBe(426);
-    const body = await response?.json();
+    if (!response) throw new Error('expected a refusal');
+    expect(response.status).toBe(426);
+    const body: { error: { code: string; message: string } } =
+      await response.json();
     expect(body.error.code).toBe('CLI_TOO_OLD');
     expect(body.error.message).toContain('Update @openstory/cli');
   });

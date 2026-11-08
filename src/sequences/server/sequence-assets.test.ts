@@ -1,3 +1,4 @@
+import { createShotSpecVersionsMethods } from '@/shots/server/db/shot-spec-versions';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
@@ -50,6 +51,7 @@ function reads(organizationId: string): SequenceAssetDb {
     sequences: createSequencesMethods(db, organizationId, 'user-1'),
     scenes: createScenesMethods(db),
     shots: createShotsMethods(db),
+    shotSpecVersions: createShotSpecVersionsMethods(db),
     frames: createFramesMethods(db),
     frameVariants: createFrameVariantsMethods(db),
     renderSegments: createRenderSegmentsMethods(db),
@@ -192,7 +194,7 @@ describe('listSequenceAssets', () => {
     expect(selected.assets.map((asset) => asset.relativePath).sort()).toEqual([
       'elements/LOGO.png',
       'script.txt',
-      `segments/${videoId}.mp4`,
+      `segments/01-01.mp4`,
     ]);
     expect(selected.assets.find((asset) => asset.kind === 'video')?.url).toBe(
       `/r2/organization/${sequenceId}/v.mp4?download`

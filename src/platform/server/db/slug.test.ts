@@ -14,12 +14,22 @@ await db.insert(organization).values([
   { id: OTHER, name: 'B', slug: 'b' },
 ]);
 
+const CONFIG = {
+  mood: 'neutral',
+  artStyle: 'cinematic',
+  lighting: 'natural',
+  colorPalette: ['#000', '#fff'],
+  cameraWork: 'static',
+  referenceFilms: [],
+  colorGrading: 'neutral',
+};
+
 const addStyle = async (organizationId: string, name: string) => {
   const id = generateId();
   const slug = await freeSlug(db, styles, organizationId, name);
   await db
     .insert(styles)
-    .values({ id, organizationId, name, slug, config: { version: 1 } });
+    .values({ id, organizationId, name, slug, config: CONFIG });
   return { id, slug };
 };
 

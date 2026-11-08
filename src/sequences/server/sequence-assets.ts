@@ -35,7 +35,14 @@ export type SequenceAssetDb = {
   scenes: {
     listBySequence(
       sequenceId: string
-    ): Promise<{ id: string; orderIndex: number }[]>;
+    ): Promise<{ id: string; orderIndex: number; title: string | null }[]>;
+  };
+  shotSpecVersions: {
+    getSelectedByShotIds(
+      shotIds: readonly string[]
+    ): Promise<
+      Map<string, { spec: { framing: { shotSize: string }; action: string } }>
+    >;
   };
   shots: {
     listBySequence(sequenceId: string): Promise<
@@ -76,6 +83,7 @@ export type SequenceAssetDb = {
       {
         id: string;
         name: string;
+        slug: string;
         looks: {
           id: string;
           name: string;
@@ -116,6 +124,7 @@ export type SequenceAssetDb = {
       {
         id: string;
         name: string;
+        slug: string;
         selectedReferenceVersionId: string | null;
         referenceImageUrl: string | null;
         referenceImagePath: string | null;
@@ -170,6 +179,7 @@ export type SequenceAssetDb = {
   styles: {
     getById(styleId: string): Promise<{
       id: string;
+      slug: string;
       previewUrl: string | null;
       sampleVideos: { url: string; order: number }[] | null;
     } | null>;
@@ -180,6 +190,15 @@ export type SequenceAssetDb = {
     ): Promise<{ id: string; url: string; storagePath: string }[]>;
   };
 };
+
+/** A shot's folder words: its size and action, e.g. "wide marlowe runs". */
+function shotLabel(
+  spec: { framing: { shotSize: string }; action: string } | undefined
+): string | null {
+  if (!spec) return null;
+  const words = `${spec.framing.shotSize} ${spec.action}`.trim().split(/\s+/);
+  return words.slice(0, 6).join(' ') || null;
+}
 
 export async function listSequenceAssets(
   db: SequenceAssetDb,
@@ -226,7 +245,7 @@ export async function listSequenceAssets(
       ? db.sequenceExports.listBySequence(sequenceId)
       : Promise.resolve([]),
   ]);
-  const [sheets, locationSheets, photos] = await Promise.all([
+  const [sheets, locationSheets, photos, specs] = await Promise.all([
     db.characterSheetVariants.listStoredByCharacterIds(
       characters.map((character) => character.id),
       { includeDiscarded }
@@ -238,6 +257,7 @@ export async function listSequenceAssets(
     db.locations.listPhotosByLocationIds(
       locations.map((location) => location.id)
     ),
+    db.shotSpecVersions.getSelectedByShotIds(shots.map((shot) => shot.id)),
   ]);
   const source: SequenceAssetSource = {
     sequence,
@@ -251,6 +271,7 @@ export async function listSequenceAssets(
               sceneId: shot.sceneId,
               shotNumber: shot.shotNumber,
               renderSegmentId: shot.renderSegmentId,
+              label: shotLabel(specs.get(shot.id)?.spec),
             },
           ]
     ),
@@ -261,6 +282,7 @@ export async function listSequenceAssets(
     characters: characters.map((character) => ({
       id: character.id,
       name: character.name,
+      slug: character.slug,
       looks: character.looks.map((look) => ({
         id: look.id,
         name: look.name,
@@ -293,6 +315,7 @@ export async function listSequenceAssets(
     style: style
       ? {
           id: style.id,
+          slug: style.slug,
           previewUrl: style.previewUrl,
           sampleVideos: style.sampleVideos ?? [],
         }

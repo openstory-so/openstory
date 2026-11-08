@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { main } from '../packages/cli/src/cli.ts';
 
-const [dataDir, origin] = process.argv.slice(2);
+const [dataDir = '', origin = ''] = process.argv.slice(2);
 if (!dataDir || !origin) {
   console.error('Usage: bun scripts/sync-local.ts <dataDir> <origin>');
   process.exit(1);

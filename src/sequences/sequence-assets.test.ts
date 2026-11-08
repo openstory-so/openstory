@@ -70,18 +70,20 @@ describe('projectSequenceAssets', () => {
   it('keeps the selected still, the script and one segment file', () => {
     const assets = project({
       sequence: { id: 'seq', title: 'Pilot', script: 'INT. ROOM' },
-      scenes: [{ id: 'scene', orderIndex: 0 }],
+      scenes: [{ id: 'scene', orderIndex: 0, title: 'The Chase' }],
       shots: [
         {
           id: 'shot-a',
           sceneId: 'scene',
           shotNumber: 1,
+          label: 'Wide on car',
           renderSegmentId: 'seg',
         },
         {
           id: 'shot-b',
           sceneId: 'scene',
           shotNumber: 2,
+          label: 'Wide on car',
           renderSegmentId: 'seg',
         },
       ],
@@ -122,10 +124,10 @@ describe('projectSequenceAssets', () => {
       prompts: [{ id: 'prompt', shotId: 'shot-a', text: 'She looks up.' }],
     });
     expect(assets.map((asset) => asset.relativePath)).toEqual([
-      'scenes/1/shots/1/prompt.txt',
-      'scenes/1/shots/1/still.png',
+      'scenes/01-the-chase/shots/01-wide-on-car/prompt.txt',
+      'scenes/01-the-chase/shots/01-wide-on-car/still.png',
       'script.txt',
-      'segments/vid.mp4',
+      'segments/01-01-wide-on-car.mp4',
     ]);
     expect(assets.find((asset) => asset.kind === 'video')?.owners).toEqual([
       'shot-a',
@@ -136,12 +138,13 @@ describe('projectSequenceAssets', () => {
   it('adds discarded versions under their own names and keeps the stable still', () => {
     const assets = project(
       {
-        scenes: [{ id: 'scene', orderIndex: 0 }],
+        scenes: [{ id: 'scene', orderIndex: 0, title: 'The Chase' }],
         shots: [
           {
             id: 'shot',
             sceneId: 'scene',
             shotNumber: 1,
+            label: 'Wide on car',
             renderSegmentId: null,
           },
         ],
@@ -172,9 +175,9 @@ describe('projectSequenceAssets', () => {
       'history'
     );
     expect(assets.map((asset) => asset.relativePath)).toEqual([
-      'scenes/1/shots/1/still.png',
-      'scenes/1/shots/1/still.still-1.png',
-      'scenes/1/shots/1/still.still-old.png',
+      'scenes/01-the-chase/shots/01-wide-on-car/still.png',
+      'scenes/01-the-chase/shots/01-wide-on-car/still.still-1.png',
+      'scenes/01-the-chase/shots/01-wide-on-car/still.still-old.png',
     ]);
     expect(
       assets.find((asset) => asset.relativePath.endsWith('old.png'))
@@ -230,6 +233,7 @@ describe('projectSequenceAssets', () => {
         {
           id: 'ada',
           name: 'Ada',
+          slug: 'ada-lovelace',
           looks: [
             {
               id: 'ada',
@@ -258,6 +262,7 @@ describe('projectSequenceAssets', () => {
       ],
       style: {
         id: 'style',
+        slug: 'noir',
         previewUrl: 'https://cdn.example/preview.png',
         sampleVideos: [{ url: '/r2/organization/sample.mp4', order: 0 }],
       },
@@ -279,18 +284,18 @@ describe('projectSequenceAssets', () => {
     expect(
       assets.find((asset) => asset.kind === 'character_sheet')
     ).toMatchObject({
-      relativePath: 'cast/ada/looks/ada/sheet.png',
+      relativePath: 'cast/ada-lovelace/looks/default/sheet.png',
       shared: true,
       selected: true,
     });
     expect(
       assets.find((asset) => asset.kind === 'character_portrait')?.relativePath
-    ).toBe('cast/ada/looks/ada/portrait.png');
+    ).toBe('cast/ada-lovelace/looks/default/portrait.png');
     expect(
       assets.some((asset) => asset.kind === 'style' && asset.role === 'preview')
     ).toBe(false);
     expect(assets.map((asset) => asset.relativePath)).toContain(
-      'style/style/sample-0.mp4'
+      'style/noir/sample-0.mp4'
     );
     expect(assets.map((asset) => asset.relativePath)).toEqual(
       expect.arrayContaining(['elements/LOGO.png', 'elements/element-bad.mp3'])
@@ -319,20 +324,24 @@ describe('projectSequenceAssets', () => {
       sheetPortraitUrl: null,
     };
     const selected = project({
-      characters: [{ id: 'ada', name: 'Ada', looks: [look] }],
+      characters: [
+        { id: 'ada', name: 'Ada', slug: 'ada-lovelace', looks: [look] },
+      ],
       sheets: [sheet],
     });
     expect(
       selected.find((asset) => asset.kind === 'character_sheet')
     ).toMatchObject({
-      relativePath: 'cast/ada/looks/ada/sheet.png',
+      relativePath: 'cast/ada-lovelace/looks/default/sheet.png',
       selected: true,
       versionId: 'ada',
     });
 
     const otherLook = { ...look, id: 'gala', isDefault: false };
     const skipped = project({
-      characters: [{ id: 'ada', name: 'Ada', looks: [otherLook] }],
+      characters: [
+        { id: 'ada', name: 'Ada', slug: 'ada-lovelace', looks: [otherLook] },
+      ],
       sheets: [{ ...sheet, lookId: 'gala' }],
     });
     expect(skipped.some((asset) => asset.kind === 'character_sheet')).toBe(
@@ -346,6 +355,7 @@ describe('projectSequenceAssets', () => {
         {
           id: 'room',
           name: 'Room',
+          slug: 'the-room',
           selectedReferenceVersionId: null,
           referenceImageUrl: '/r2/organization/room.png',
           referenceImagePath: 'organization/room.png',
@@ -367,7 +377,7 @@ describe('projectSequenceAssets', () => {
     expect(
       assets.find((asset) => asset.kind === 'location_sheet')
     ).toMatchObject({
-      relativePath: 'locations/room/sheet.png',
+      relativePath: 'locations/the-room/sheet.png',
       selected: true,
       versionId: 'room',
     });

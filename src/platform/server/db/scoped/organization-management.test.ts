@@ -13,11 +13,13 @@ describe('getForUser', () => {
     await db
       .insert(user)
       .values({ id: userId, name: 'U', email: `${userId}@e.com` });
-    const orgs = [
-      { name: 'Mine', role: 'owner', at: 1 },
-      { name: 'Joined', role: 'member', at: 0 },
-      { name: 'Second', role: 'owner', at: 2 },
-    ].map((o) => ({ ...o, id: generateId() }));
+    const orgs = (
+      [
+        { name: 'Mine', role: 'owner', at: 1 },
+        { name: 'Joined', role: 'member', at: 0 },
+        { name: 'Second', role: 'owner', at: 2 },
+      ] as const
+    ).map((o) => ({ ...o, id: generateId() }));
     for (const o of orgs) {
       await db.insert(organization).values({
         id: o.id,
