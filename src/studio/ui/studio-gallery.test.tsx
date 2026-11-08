@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/ui/shadcn/tooltip';
 import {
   GenerationDetail,
   stepReferenceIndex,
+  studioNeighbours,
   studioShownFailure,
 } from './studio-gallery';
 
@@ -115,5 +116,27 @@ describe('GenerationDetail', () => {
     expect(stepReferenceIndex(0, -1, 4)).toBe(3);
     expect(stepReferenceIndex(3, 1, 4)).toBe(0);
     expect(stepReferenceIndex(1, 1, 4)).toBe(2);
+  });
+});
+
+describe('studioNeighbours', () => {
+  const assets = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('steps both ways from the middle', () => {
+    expect(studioNeighbours(assets, 'b')).toEqual({
+      open: { id: 'b' },
+      prev: { id: 'a' },
+      next: { id: 'c' },
+    });
+  });
+
+  it('has no neighbour past either end', () => {
+    expect(studioNeighbours(assets, 'a').prev).toBeUndefined();
+    expect(studioNeighbours(assets, 'c').next).toBeUndefined();
+  });
+
+  it('opens nothing for an unknown or closed id', () => {
+    expect(studioNeighbours(assets, null)).toEqual({});
+    expect(studioNeighbours(assets, 'z')).toEqual({});
   });
 });

@@ -556,6 +556,20 @@ function mentionItems(references: StudioShownReference[]): MentionItem[] {
   );
 }
 
+/** The opened generation and its gallery neighbours; none past either end. */
+export function studioNeighbours<T extends { id: string }>(
+  assets: readonly T[],
+  openId: string | null
+): { open?: T; prev?: T; next?: T } {
+  const index = assets.findIndex((asset) => asset.id === openId);
+  if (index === -1) return {};
+  return {
+    open: assets[index],
+    prev: assets[index - 1],
+    next: assets[index + 1],
+  };
+}
+
 /** Step through opened reference stills. Wraps at either end. */
 export function stepReferenceIndex(
   current: number,
@@ -951,7 +965,7 @@ export function GenerationDetail({
             variant="secondary"
             size="icon"
             aria-label="Previous generation"
-            className="absolute top-1/2 left-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
+            className="absolute top-1/2 left-4 z-40 -translate-y-1/2 rounded-full pointer-coarse:size-11"
             onClick={onPrev}
           >
             <ChevronLeft aria-hidden="true" />
@@ -963,7 +977,7 @@ export function GenerationDetail({
             variant="secondary"
             size="icon"
             aria-label="Next generation"
-            className="absolute top-1/2 right-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
+            className="absolute top-1/2 right-4 z-40 -translate-y-1/2 rounded-full pointer-coarse:size-11"
             onClick={onNext}
           >
             <ChevronRight aria-hidden="true" />
@@ -1174,10 +1188,11 @@ export function StudioGallery({
     const id = window.setTimeout(() => setCopied(false), 2000);
     return () => window.clearTimeout(id);
   }, [copied]);
-  const openIndex = assets.findIndex((asset) => asset.id === openId);
-  const openAsset = openIndex === -1 ? undefined : assets[openIndex];
-  const prevAsset = openIndex > 0 ? assets[openIndex - 1] : undefined;
-  const nextAsset = openAsset ? assets[openIndex + 1] : undefined;
+  const {
+    open: openAsset,
+    prev: prevAsset,
+    next: nextAsset,
+  } = studioNeighbours(assets, openId);
   const step = (target: StudioGalleryAsset | undefined) => {
     if (!target) return;
     setOpenId(target.id);
