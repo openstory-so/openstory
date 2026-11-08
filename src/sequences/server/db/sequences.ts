@@ -63,6 +63,7 @@ import {
 } from './sequence-events';
 import type { RecordEventInput } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
+import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
 import {
   deleteLocationLinksStatements,
   deleteLocationsStatements,
@@ -317,6 +318,10 @@ function createSequencesReadMethods(db: Database, organizationId: string) {
           asc(sequenceStyleVersions.createdAt),
           asc(sequenceStyleVersions.id)
         ),
+
+    /** A route's slug or ULID as the sequence's ULID (#2222). */
+    resolveId: (idOrSlug: string): Promise<string | null> =>
+      resolveSlugOrId(db, sequences, organizationId, idOrSlug),
 
     getById: async (sequenceId: string): Promise<Sequence | null> => {
       const result = await selectSequences().where(
@@ -663,6 +668,7 @@ export function createSequencesMethods(
         createdBy: userId,
         updatedBy: userId,
         title: params.title,
+        slug: await freeSlug(db, sequences, organizationId, params.title),
         script: params.script,
         styleId: params.styleId,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
@@ -828,7 +834,20 @@ export function createSequencesMethods(
       // Scoped by organizationId like every other write here — `workflowRunId` in
       // particular is the generation-mutex column (#839), so a cross-organization id
       // must never be able to stomp it.
-      const { id, ...values } = params;
+      const { id, ...fields } = params;
+      const values =
+        fields.title === undefined
+          ? fields
+          : {
+              ...fields,
+              slug: await freeSlug(
+                db,
+                sequences,
+                organizationId,
+                fields.title,
+                id
+              ),
+            };
       const styleConfig =
         params.styleId !== undefined
           ? await snapshotConfigForStyleId(db, params.styleId)
@@ -1042,7 +1061,17 @@ export function createSequencesMethods(
     updateTitle: async (sequenceId: string, title: string): Promise<void> => {
       await db
         .update(sequences)
-        .set({ title, updatedAt: new Date() })
+        .set({
+          title,
+          slug: await freeSlug(
+            db,
+            sequences,
+            organizationId,
+            title,
+            sequenceId
+          ),
+          updatedAt: new Date(),
+        })
         .where(eq(sequences.id, sequenceId));
     },
 

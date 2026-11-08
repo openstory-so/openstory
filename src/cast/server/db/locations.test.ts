@@ -1059,6 +1059,7 @@ const linked = (
     'id' | 'locationId' | 'name' | 'consistencyTag'
   >
 ): SequenceLocationWithReference => ({
+  slug: 'fixture',
   linkId: `link-${overrides.id}`,
   sequenceId: 'seq-1',
   organizationId: 'organization-1',

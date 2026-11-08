@@ -51,6 +51,12 @@ export const locations = snakeCase.table(
     // LEGACY bible columns (#1600) — the read fallback for a row with no
     // version, written only where NOT NULL forces it. See the `characters` twin.
     legacyName: text('name', { length: 255 }).notNull(),
+    // Unique per organization, from the name (#2222); never an identity.
+    slug: text()
+      .notNull()
+      .default('')
+      // Test inserts only: every app write sets the real slug.
+      .$defaultFn(() => generateId().toLowerCase()),
     legacyType: text('type'),
     legacyDescription: text('description'),
     legacyArchitecturalStyle: text('architectural_style'),
@@ -88,6 +94,10 @@ export const locations = snakeCase.table(
   },
   (table) => [
     index('idx_sequence_locations_organization').on(table.organizationId),
+    uniqueIndex('idx_sequence_locations_organization_slug').on(
+      table.organizationId,
+      table.slug
+    ),
   ]
 );
 

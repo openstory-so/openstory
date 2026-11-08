@@ -101,6 +101,7 @@ const NOW = new Date('2026-06-07T00:00:00.000Z');
 
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
+    slug: 'fixture',
     id: 'seq_1',
     organizationId: 't1',
     title: 'A sequence',

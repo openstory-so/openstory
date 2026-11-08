@@ -118,6 +118,10 @@ const sequenceModelsSchema = z
 export const sequenceSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
+  slug: z.string().meta({
+    description:
+      'Unique in the organization, from the title; changes on rename. Accepted wherever the path takes the id.',
+  }),
   status: z.enum(SEQUENCE_STATUSES),
   statusError: z.string().nullable(),
   aspectRatio: z.string(),
@@ -263,6 +267,7 @@ export function buildSequenceSummary(params: {
   return {
     id: sequence.id,
     title: sequence.title,
+    slug: sequence.slug,
     status: sequence.status,
     statusError: sequence.statusError ?? null,
     aspectRatio: sequence.aspectRatio,

@@ -73,6 +73,7 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { generateId } from '@/platform/id';
+import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
   loadSceneContextBySequenceFromDb,
@@ -724,7 +725,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
    * show a mark its writer had removed. Decided inside the insert, so a move
    * that lands between the read and this batch still wins.
    */
-  const bibleWrite = (
+  const bibleWrite = async (
     existing: CharacterBible & {
       legacyDistinguishingFeatures: string | null;
       id: string;
@@ -742,6 +743,9 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       return { moved, versionId: null, statements: [] };
     }
     const versionId = generateId();
+    const slug = moved.includes('name')
+      ? await freeSlug(db, characters, organizationId, after.name, existing.id)
+      : undefined;
     return {
       moved,
       /** The version appended; the event names the move from → to. */
@@ -760,7 +764,11 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         }),
         db
           .update(characters)
-          .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
+          .set({
+            selectedBibleVersionId: versionId,
+            ...(slug === undefined ? {} : { slug }),
+            updatedAt: new Date(),
+          })
           .where(eq(characters.id, existing.id)),
         ...(touchesSheet(moved)
           ? [demoteCharacterSheetClaims(db, eq(characters.id, existing.id))]
@@ -1027,10 +1035,12 @@ export function createCharactersMethods(db: Database, organizationId: string) {
       const current = await currentOf(id);
       if (!current) throw new NotFoundError(`Character ${id} not found`);
       const { voiceDescription, standardClothing, ...bibleData } = data;
-      const statements: BatchItem<'sqlite'>[] = bibleWrite(current, bibleData, {
-        source: opts.source,
-        createdBy: opts.actorId,
-      }).statements;
+      const statements: BatchItem<'sqlite'>[] = (
+        await bibleWrite(current, bibleData, {
+          source: opts.source,
+          createdBy: opts.actorId,
+        })
+      ).statements;
       if (standardClothing !== undefined) {
         const defaultLook = current.looks.find((look) => look.isDefault);
         if (!defaultLook)
@@ -1080,7 +1090,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     const { voiceDescription, standardClothing, ...bibleData } = data;
     // Appends a version and moves the pointer (#1600); an edit to a field
     // the sheet reads also revokes an in-flight sheet run's claim (#1113).
-    const { statements, versionId } = bibleWrite(existing, bibleData, {
+    const { statements, versionId } = await bibleWrite(existing, bibleData, {
       source: opts.source,
       createdBy: opts.actorId,
     });
@@ -1198,6 +1208,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           organizationId,
           selectedBibleVersionId: versionId,
           legacyName: bible.name,
+          slug: await freeSlug(db, characters, organizationId, bible.name),
         }),
         db.insert(characterBibleVersions).values({
           id: versionId,
@@ -1424,6 +1435,10 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           asc(characterBibleVersions.id)
         ),
 
+    /** A route's slug or ULID as the character's ULID (#2222). */
+    resolveId: (idOrSlug: string): Promise<string | null> =>
+      resolveSlugOrId(db, characters, organizationId, idOrSlug),
+
     /** These characters as `sequenceId` casts them. */
     getByIds: async (
       sequenceId: string,
@@ -1566,7 +1581,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
         // says, and over-registering is the safe direction. Decided here,
         // against the row this write already read. The form is how a
         // person turns it off again.
-        const bible = bibleWrite(
+        const bible = await bibleWrite(
           existing,
           {
             ...bibleOf(data),
@@ -1633,6 +1648,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
             organizationId,
             selectedBibleVersionId: versionId,
             legacyName: bible.name,
+            slug: await freeSlug(db, characters, organizationId, bible.name),
           }),
           db.insert(characterBibleVersions).values({
             id: versionId,

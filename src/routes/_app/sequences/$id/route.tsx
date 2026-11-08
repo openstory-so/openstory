@@ -5,8 +5,8 @@ import { getSequenceFn } from '@/sequences/sequences.fn';
 import { sequenceKeys, useSequence } from '@/sequences/ui/use-sequences';
 import { useUser } from '@/platform/ui/use-user';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
-import { isValidId } from '@/platform/id';
-import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
+import { redirectSlugToId } from '@/platform/ui/slug-redirect';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 
 function SequenceCrumbLabel({ id }: { id: string }) {
   const { data } = useSequence(id);
@@ -16,14 +16,17 @@ function SequenceCrumbLabel({ id }: { id: string }) {
 
 export const Route = createFileRoute('/_app/sequences/$id')({
   component: SequenceLayout,
-  beforeLoad: async ({ context: { queryClient }, location }) => {
+  beforeLoad: async ({ context: { queryClient }, location, params }) => {
     await requireSessionOrRedirect(queryClient, location.href);
+    await redirectSlugToId({
+      kind: 'sequence',
+      prefix: '/sequences',
+      param: params.id,
+      location,
+      queryClient,
+    });
   },
   loader: async ({ params, context: { queryClient } }) => {
-    if (!isValidId(params.id)) {
-      throw notFound();
-    }
-
     await queryClient.ensureQueryData({
       queryKey: sequenceKeys.detail(params.id),
       queryFn: () => getSequenceFn({ data: { sequenceId: params.id } }),

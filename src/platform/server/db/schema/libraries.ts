@@ -4,7 +4,13 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  snakeCase,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import z from 'zod';
 import { generateId } from '@/platform/id';
@@ -48,6 +54,12 @@ export const styles = snakeCase.table(
     // leaves it orphaned (unreachable, harmless).
     sequenceId: text(),
     name: text({ length: 255 }).notNull(),
+    // Unique per organization across every row, automatic ones too (#2222).
+    slug: text()
+      .notNull()
+      .default('')
+      // Test inserts only: every app write sets the real slug.
+      .$defaultFn(() => generateId().toLowerCase()),
     description: text(),
     // StoredStyleConfig (v1 | v2) until the backfill lands (#858): typing the
     // column as parsed v2 would compile direct `.look` access that crashes on
@@ -86,6 +98,10 @@ export const styles = snakeCase.table(
   (table) => [
     index('idx_styles_organization_id').on(table.organizationId),
     index('idx_styles_sequence_id').on(table.sequenceId),
+    uniqueIndex('idx_styles_organization_slug').on(
+      table.organizationId,
+      table.slug
+    ),
   ]
 );
 

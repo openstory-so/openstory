@@ -14,6 +14,10 @@ import { getLink, halLinksSchema, STYLES_PATH, withLinks } from './hal';
 export const styleDocumentSchema = z.object({
   id: z.string(),
   name: z.string(),
+  slug: z.string().meta({
+    description:
+      'Unique in the owning organization, from the name; changes on rename. Accepted wherever the path takes the id.',
+  }),
   description: z.string().nullable(),
   category: z.string().nullable(),
   tags: z.array(z.string()),
@@ -47,6 +51,7 @@ export function styleDocument(style: Style) {
     styleDocumentSchema.parse({
       id: style.id,
       name: style.name,
+      slug: style.slug,
       description: style.description,
       category: style.category,
       tags: style.tags ?? [],

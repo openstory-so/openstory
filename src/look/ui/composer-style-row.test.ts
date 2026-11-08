@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
+    slug: 'fixture',
     id: 'style_1',
     organizationId: 'team_1',
     sequenceId: null,

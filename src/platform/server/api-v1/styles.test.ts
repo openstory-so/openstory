@@ -35,6 +35,7 @@ describe('styleDocument', () => {
     const row = asStub<Style>({
       id: '01STYLE',
       name: 'Neon',
+      slug: 'neon',
       description: null,
       category: 'film',
       tags: ['noir'],

@@ -1,6 +1,7 @@
 import type { StyleConfig } from './style-config';
 import { styleSlug } from './style-slug';
 import { getPublicAssetsDomain } from '@/platform/public-assets';
+import { slugify } from '@/platform/slug';
 import type { Style } from '@/platform/server/db/schema';
 
 function getStylePreviewUrl(styleName: string): string {
@@ -16,6 +17,7 @@ type StyleTemplateEntry = Omit<
   Style,
   | 'id'
   | 'organizationId'
+  | 'slug'
   | 'sequenceId'
   | 'createdAt'
   | 'updatedAt'
@@ -3314,25 +3316,28 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
 // System styles without organizationId - organizationId will be added during seeding.
 // Templates are authored as v2; a test in style-config.test.ts parses every
 // entry so a bad template fails here instead of at seed time.
-export const DEFAULT_SYSTEM_STYLES: Omit<Style, 'id' | 'organizationId'>[] =
-  DEFAULT_STYLE_TEMPLATES.map((style) => ({
-    ...style,
-    sequenceId: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    createdBy: 'system',
-    sampleVideos: [],
-    recommendedImageModel: style.recommendedImageModel ?? null,
-    recommendedVideoModel: style.recommendedVideoModel ?? null,
-    defaultAspectRatio: style.defaultAspectRatio ?? null,
-    useCases: style.useCases ?? [],
-  }));
+export const DEFAULT_SYSTEM_STYLES: Omit<
+  Style,
+  'id' | 'organizationId' | 'slug'
+>[] = DEFAULT_STYLE_TEMPLATES.map((style) => ({
+  ...style,
+  sequenceId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  createdBy: 'system',
+  sampleVideos: [],
+  recommendedImageModel: style.recommendedImageModel ?? null,
+  recommendedVideoModel: style.recommendedVideoModel ?? null,
+  defaultAspectRatio: style.defaultAspectRatio ?? null,
+  useCases: style.useCases ?? [],
+}));
 
 // Mock styles for testing - includes mock IDs and organizationId
 export const MOCK_SYSTEM_STYLES: Style[] = DEFAULT_SYSTEM_STYLES.map(
   (style) => ({
     ...style,
     id: style.name.replace(/\s+/g, '-').toLowerCase(),
+    slug: slugify(style.name),
     organizationId: 'mock-system-organization-id', // Mock organization ID for testing
   })
 );

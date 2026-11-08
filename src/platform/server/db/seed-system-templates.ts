@@ -18,6 +18,7 @@ import type { Database } from './client';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
 import type { createD1HttpClient } from './client-d1-http';
 import { generateId } from '@/platform/id';
+import { slugify, uniqueSlug } from '@/platform/slug';
 import { appMetadata, styles, organization } from '@/platform/server/db/schema';
 
 export type SeedDb =
@@ -215,13 +216,23 @@ async function syncSystemTemplates(
     .where(eq(styles.organizationId, systemOrganization.id));
 
   const existingByName = new Map(existingTemplates.map((t) => [t.name, t]));
+  const takenSlugs = new Set(existingTemplates.map((t) => t.slug));
+  const nextSlug = (name: string) => {
+    const slug = uniqueSlug(slugify(name), takenSlugs);
+    takenSlugs.add(slug);
+    return slug;
+  };
 
   for (const [oldName, newName] of Object.entries(RENAMES)) {
     const existing = existingByName.get(oldName);
     if (existing && !existingByName.has(newName)) {
       await db
         .update(styles)
-        .set({ name: newName, updatedAt: new Date() })
+        .set({
+          name: newName,
+          slug: nextSlug(newName),
+          updatedAt: new Date(),
+        })
         .where(eq(styles.id, existing.id));
       existingByName.set(newName, { ...existing, name: newName });
       existingByName.delete(oldName);
@@ -265,6 +276,7 @@ async function syncSystemTemplates(
       await db.insert(styles).values({
         ...template,
         organizationId: systemOrganization.id,
+        slug: nextSlug(template.name),
         createdBy: null,
       });
       insertedCount++;

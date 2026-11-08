@@ -33,6 +33,7 @@ import { identityToken, nextIdentityToken } from '@/cast/bible-field';
 import { renderingForLocation } from '@/cast/rendering';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
+import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type { Database } from '@/platform/server/db/client';
@@ -454,7 +455,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
    * reference claim when a field the sheet reads moved (#1113). Empty when
    * nothing moved.
    */
-  const bibleWrite = (
+  const bibleWrite = async (
     existing: Location,
     patch: Partial<LocationBible>,
     opts: { source: BibleVersionSource; createdBy: string | null }
@@ -466,6 +467,9 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       return { moved, statements: [] };
     }
     const versionId = generateId();
+    const slug = moved.includes('name')
+      ? await freeSlug(db, locations, organizationId, after.name, existing.id)
+      : undefined;
     return {
       moved,
       statements: [
@@ -480,6 +484,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
           .update(locations)
           .set({
             selectedBibleVersionId: versionId,
+            ...(slug === undefined ? {} : { slug }),
             ...(touchesSheet(moved)
               ? { pendingPromoteReferenceVersionId: null }
               : {}),
@@ -491,7 +496,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
   };
 
   /** Statements that make a location with its first bible version. */
-  const insertLocation = (
+  const insertLocation = async (
     id: string,
     bible: LocationBible,
     opts: {
@@ -507,6 +512,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
         organizationId,
         selectedBibleVersionId: versionId,
         legacyName: bible.name,
+        slug: await freeSlug(db, locations, organizationId, bible.name),
         referenceStatus: opts.referenceStatus,
       }),
       db.insert(locationBibleVersions).values({
@@ -638,10 +644,10 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       await requireSequence(data.sequenceId);
       const id = data.id ?? generateId();
       await db.batch([
-        ...insertLocation(id, firstBible(data), {
+        ...(await insertLocation(id, firstBible(data), {
           ...opts,
           referenceStatus: data.referenceStatus ?? 'pending',
-        }),
+        })),
         db.insert(sequenceLocationLinks).values({
           sequenceId: data.sequenceId,
           locationId: id,
@@ -685,7 +691,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       };
     }
     // A field left out keeps its value, as the column upsert did.
-    const { statements } = bibleWrite(
+    const { statements } = await bibleWrite(
       await ownOf(existing.id),
       bibleOf(data),
       opts
@@ -943,6 +949,10 @@ export function createLocationsMethods(db: Database, organizationId: string) {
         ? await currentOf(id)
         : await linkedOf(sequenceId, id),
 
+    /** A route's slug or ULID as the location's ULID (#2222). */
+    resolveId: (idOrSlug: string): Promise<string | null> =>
+      resolveSlugOrId(db, locations, organizationId, idOrSlug),
+
     /** Every bible version of one location, oldest first. */
     listBibleVersions: async (id: string) =>
       await db
@@ -1128,7 +1138,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     ): Promise<LocationWithReference> => {
       const id = data.id ?? generateId();
       await db.batch(
-        insertLocation(id, firstBible(data), {
+        await insertLocation(id, firstBible(data), {
           source: 'edit',
           createdBy: opts.createdBy,
           referenceStatus: 'pending',
@@ -1427,7 +1437,7 @@ export function createLocationsMethods(db: Database, organizationId: string) {
       }
       // Appends a version (#1600); revokes an in-flight sheet run's claim
       // when a field it reads moved (#1113).
-      const { statements } = bibleWrite(existing, data, {
+      const { statements } = await bibleWrite(existing, data, {
         source: 'edit',
         createdBy: opts.actorId,
       });

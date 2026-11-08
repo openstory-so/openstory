@@ -7,6 +7,7 @@ import {
 } from '@/cast/ui/use-organization-characters';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
+import { redirectSlugToId } from '@/platform/ui/slug-redirect';
 import { routeParams } from '@/ui/layout/breadcrumbs';
 import { Button } from '@/ui/shadcn/button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
@@ -26,6 +27,14 @@ function CharacterCrumbLabel({ id }: { id: string }) {
 export const Route = createFileRoute('/_app/characters/$id')({
   // The sequence whose casting of the character the page shows.
   validateSearch: z.object({ sequence: z.string().min(1).optional() }),
+  beforeLoad: ({ context: { queryClient }, location, params }) =>
+    redirectSlugToId({
+      kind: 'character',
+      prefix: '/characters',
+      param: params.id,
+      location,
+      queryClient,
+    }),
   component: OrganizationCharacterPage,
   staticData: {
     breadcrumb: (match) => {

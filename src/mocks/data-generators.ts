@@ -170,6 +170,7 @@ const generateMockStyle = (overrides?: Partial<Style>): Style => {
   ];
 
   return {
+    slug: faker.lorem.slug(2),
     id: faker.string.ulid(),
     name: faker.lorem.words(2),
     description: faker.lorem.sentence(),

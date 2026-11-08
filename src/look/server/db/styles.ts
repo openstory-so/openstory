@@ -13,6 +13,7 @@ import {
 } from '@/look/server/style.schemas';
 import { stripServerManagedColumns } from '@/platform/server/db/scoped/server-managed';
 import { styleSlug } from '@/look/style-slug';
+import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
 import type { AutoStyleDraft } from '@/look/auto-style';
 import {
   and,
@@ -126,6 +127,10 @@ function createStylesReadMethods(db: Database, organizationId: string) {
       return result[0] ?? null;
     },
 
+    /** A route's slug (own organization only) or ULID as the style's ULID (#2222). */
+    resolveId: (idOrSlug: string): Promise<string | null> =>
+      resolveSlugOrId(db, styles, organizationId, idOrSlug),
+
     /**
      * Library rows resolve by id alone (a sequence may reference a public
      * style); a sequence-bound one is private to its organization.
@@ -208,6 +213,7 @@ export function createStylesMethods(
         .values({
           ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
           organizationId,
+          slug: await freeSlug(db, styles, organizationId, data.name),
           createdBy: userId,
         })
         .returning();
@@ -229,7 +235,20 @@ export function createStylesMethods(
       }
       const result = await db
         .update(styles)
-        .set(stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS))
+        .set({
+          ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
+          ...(data.name === undefined
+            ? {}
+            : {
+                slug: await freeSlug(
+                  db,
+                  styles,
+                  organizationId,
+                  data.name,
+                  styleId
+                ),
+              }),
+        })
         .where(
           and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
         )
@@ -262,6 +281,7 @@ export function createStylesMethods(
           ...params.draft,
           sequenceId: params.sequenceId,
           organizationId,
+          slug: await freeSlug(db, styles, organizationId, params.draft.name),
           createdBy: userId,
         })
         .returning();
@@ -286,7 +306,17 @@ export function createStylesMethods(
     }): Promise<boolean> => {
       const rows = await db
         .update(styles)
-        .set({ ...params.draft, updatedAt: new Date() })
+        .set({
+          ...params.draft,
+          slug: await freeSlug(
+            db,
+            styles,
+            organizationId,
+            params.draft.name,
+            params.styleId
+          ),
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(styles.id, params.styleId),
@@ -314,6 +344,13 @@ export function createStylesMethods(
         .set({
           sequenceId: null,
           name: params.name,
+          slug: await freeSlug(
+            db,
+            styles,
+            organizationId,
+            params.name,
+            params.styleId
+          ),
           previewUrl: params.previewUrl,
           updatedAt: new Date(),
         })

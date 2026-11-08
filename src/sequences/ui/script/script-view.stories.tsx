@@ -10,6 +10,7 @@ import { ScriptView } from './script-view';
 
 // Mock sequence for edit mode stories
 const mockSequence: Sequence = {
+  slug: 'fixture',
   id: 'demo-sequence-123',
   organizationId: 'demo-organization',
   title: 'Demo Video Sequence',

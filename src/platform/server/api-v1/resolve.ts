@@ -271,3 +271,23 @@ export async function ingestElements(
     })
   );
 }
+
+/** A path param (ULID or slug, #2222) as the sequence's ULID; 404 when the organization has none. */
+export async function requireSequenceId(
+  scopedDb: Pick<ScopedDb, 'sequences'>,
+  idOrSlug: string
+): Promise<string> {
+  const id = await scopedDb.sequences.resolveId(idOrSlug);
+  if (!id) throw new NotFoundError('Sequence not found');
+  return id;
+}
+
+/** A path param (ULID or slug, #2222) as the style's ULID; 404 when the organization has none. */
+export async function requireStyleId(
+  scopedDb: Pick<ScopedDb, 'styles'>,
+  idOrSlug: string
+): Promise<string> {
+  const id = await scopedDb.styles.resolveId(idOrSlug);
+  if (!id) throw new NotFoundError('Style not found');
+  return id;
+}

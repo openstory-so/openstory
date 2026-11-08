@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { filterStyles } from './style-filters';
 
 const baseStyle: Style = {
+  slug: 'fixture',
   id: 'fixture-base',
   organizationId: 'organization-test',
   sequenceId: null,

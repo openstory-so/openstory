@@ -6,7 +6,13 @@
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  snakeCase,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
 // NOTE: shots imported in index.ts to avoid circular dependency
@@ -49,6 +55,12 @@ export const sequences = snakeCase.table(
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
     title: text({ length: 500 }).notNull(),
+    // Unique per organization, from the title (#2222); never an identity.
+    slug: text()
+      .notNull()
+      .default('')
+      // Test inserts only: every app write sets the real slug.
+      .$defaultFn(() => generateId().toLowerCase()),
     script: text(),
     // used to track the status of the sequence
     status: text().$type<SequenceStatus>().default('draft').notNull(),
@@ -218,6 +230,10 @@ export const sequences = snakeCase.table(
     index('idx_sequences_status_updated').on(table.status, table.updatedAt),
     index('idx_sequences_style_id').on(table.styleId),
     index('idx_sequences_organization_id').on(table.organizationId),
+    uniqueIndex('idx_sequences_organization_slug').on(
+      table.organizationId,
+      table.slug
+    ),
   ]
 );
 

@@ -7,6 +7,7 @@ import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn'
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { styleDocument } from '@/platform/server/api-v1/styles';
 import { NotFoundError } from '@/platform/errors';
+import { requireStyleId } from '@/platform/server/api-v1/resolve';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/styles/$id')({
@@ -15,7 +16,9 @@ export const Route = createFileRoute('/api/v1/styles/$id')({
     handlers: {
       GET: async ({ params, context }) =>
         runApiV1Handler(async () => {
-          const style = await context.scopedDb.styles.getById(params.id);
+          const style = await context.scopedDb.styles.getById(
+            await requireStyleId(context.scopedDb, params.id)
+          );
           // getById also resolves a sequence-bound row the organization owns; those are
           // outside the library and not addressable here.
           if (!style || style.sequenceId) {

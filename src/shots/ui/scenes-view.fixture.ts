@@ -26,6 +26,7 @@ import {
 import type { Sequence, Style } from '@/platform/server/db/schema';
 
 export const fixtureSequence: Sequence = {
+  slug: 'fixture',
   id: '01KT2TPG5WYQ15H79SAV88EH45',
   organizationId: '01KT2QSNQVWYS0EHZX0K206Y2Y',
   title: 'MAKEUP AD — 30-SECOND SHORT FILM',
@@ -76,6 +77,7 @@ export const fixtureSequence: Sequence = {
 };
 
 export const fixtureStyle: Style = {
+  slug: 'fixture',
   id: '01KT2QRY2BWFJHT67CNQ3V9566',
   organizationId: '01KT2QRY14ZWQ9YS21GGMF6DV1',
   sequenceId: null,

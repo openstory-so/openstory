@@ -37,6 +37,7 @@ function makeCharacter(
   overrides: Partial<CastCharacterWithSheet> = {}
 ): CastCharacterWithSheet {
   const character: CastCharacterWithSheet = {
+    slug: 'fixture',
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
