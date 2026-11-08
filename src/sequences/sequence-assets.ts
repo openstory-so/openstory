@@ -451,8 +451,9 @@ function pushVideos(
           shared: false,
           ext,
         });
+      // The chosen version is the plain file; history adds the others by id.
       if (chosen) pushFile(assets, row(`segments/${name}.${ext}`));
-      if (history) {
+      else if (history) {
         pushFile(assets, row(`segments/${name}.${version.id}.${ext}`));
       }
     }
@@ -606,7 +607,7 @@ function pushMusic(
         ext,
       });
     if (chosen) pushFile(assets, row(`music/music.${ext}`));
-    if (history) pushFile(assets, row(`music/music.${track.id}.${ext}`));
+    else if (history) pushFile(assets, row(`music/music.${track.id}.${ext}`));
   }
 }
 

@@ -198,7 +198,12 @@ class Mirror {
     let path: string | null = '/api/v1/sequences?limit=100';
     while (path !== null) {
       const page = await this.json(path);
-      const rows = Array.isArray(page.sequences) ? page.sequences : [];
+      const rows = page.sequences;
+      if (!Array.isArray(rows)) {
+        throw new Error(
+          `OpenStory answered without a sequence list for ${path}`
+        );
+      }
       for (const value of rows) {
         const row = recordOf(value);
         found.push({

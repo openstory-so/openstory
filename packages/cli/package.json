@@ -32,6 +32,6 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@openstory/stitch": "^0.4.0"
+    "@openstory/stitch": "workspace:^"
   }
 }

@@ -41,7 +41,7 @@ One resolver, `scripts/state-dir.ts`. `vite.config.ts` (`persistState`) and `scr
 
 ## Readable paths
 
-The manifest (`docs/architecture/asset-download.md`) names folders by ordinal and title and by slug: `scenes/03-the-chase/shots/02-wide-marlowe-runs/still.png`, `cast/marlowe/looks/default/sheet.png`, `locations/the-docks/sheet.png`, `style/noir/preview.png`. A shot's words are its spec's shot size and action, at most six words. Versions keep their ids.
+The manifest (`docs/architecture/asset-download.md`) names folders by ordinal and title and by slug: `scenes/03-the-chase/shots/02-wide-marlowe-runs/still.png`, `cast/marlowe/looks/default/sheet.png`, `locations/the-docks/sheet.png`, `style/noir/preview.png`. A shot's words are its spec's shot size and action, at most six words. Versions keep their ids: the chosen one is the plain file, `history` adds every other completed version as `<name>.<versionId>.<ext>`.
 
 `pull` and `sync` remove a file the previous `manifest.json` listed and the new one does not, then any folder that leaves empty. Nothing else in the folder is touched, and a path a symlink leads outside the folder is skipped. So a scene reorder or a rename moves files rather than leaving copies.
 
