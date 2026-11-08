@@ -1,10 +1,10 @@
 /**
- * `stitch pull`: download one sequence's files into a folder.
+ * Download one sequence's files into a folder.
  *
  * The command asks the public API for the manifest, then writes each file.
  * A second run skips a path whose versionId is unchanged and whose file is
- * still there. Shared cast, location, and style files are stored once under
- * ~/.openstory/assets, named from the stored url, and linked into the folder.
+ * still there. Shared cast, location, and style files are stored once in the
+ * cache directory, named from the stored url, and linked into the folder.
  * This file does not import the app: the skip rule is copied here on purpose.
  */
 
@@ -26,7 +26,8 @@ import { dirname, extname, join } from 'node:path';
 export type DownloadAssetsOptions = {
   sequenceId: string;
   origin: string;
-  home: string;
+  /** Shared files live here once; `pull` passes ~/.openstory/assets. */
+  cacheDir: string;
   dest: string;
   history: boolean;
   includeExports: boolean;
@@ -105,7 +106,9 @@ export async function downloadSequenceAssets(
 
   for (const asset of todo) {
     const dest = join(options.dest, asset.relativePath);
-    const cache = asset.shared ? sharedCacheFile(options.home, asset) : null;
+    const cache = asset.shared
+      ? sharedCacheFile(options.cacheDir, asset)
+      : null;
     if (asset.text != null) {
       await writeCached(dest, cache, async (file) => {
         await mkdir(dirname(file), { recursive: true });
@@ -264,13 +267,13 @@ async function previousVersions(dest: string): Promise<Map<string, string>> {
 }
 
 /** One cache file per stored url. A sheet and its portrait must not collide. */
-function sharedCacheFile(home: string, asset: AssetRow): string {
+function sharedCacheFile(cacheDir: string, asset: AssetRow): string {
   const ext = extname(asset.relativePath);
   const identity = asset.url
     ? (asset.url.split('?')[0] ?? asset.url)
     : `${asset.versionId}${ext}`;
   const name = createHash('sha256').update(identity).digest('hex');
-  return join(home, '.openstory', 'assets', `${name}${ext}`);
+  return join(cacheDir, `${name}${ext}`);
 }
 
 function safeRelativePath(path: string): boolean {

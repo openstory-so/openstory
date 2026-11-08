@@ -18,6 +18,7 @@ import {
   resolveRequestPrincipal,
 } from '@/platform/server/auth/request-principal';
 import { requiredOAuthScope } from '@/platform/server/api-v1/oauth-scopes';
+import { cliVersionRefusal } from '@/platform/server/api-v1/cli-version';
 import {
   isSystemAdmin,
   requireSystemAdmin,
@@ -223,6 +224,15 @@ export const logContextMiddleware = createMiddleware().server(
  * client that sends a key instead of cookies starts on the primary, so its
  * first query already sees the call before it.
  */
+/** Every request: an @openstory/cli below the minimum gets 426 before any work. */
+export const cliVersionMiddleware = createMiddleware().server(
+  async ({ next, request }) => {
+    const refusal = cliVersionRefusal(request.headers);
+    if (refusal) throw refusal;
+    return next();
+  }
+);
+
 export const d1SessionMiddleware = createMiddleware().server(
   async ({ next, request }) => {
     const incoming = parseBookmark(request.headers.get('cookie'));

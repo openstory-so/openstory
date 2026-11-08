@@ -1,6 +1,6 @@
 /**
  * The CLI's cut.json must parse under the server's cut schema (#2127): the
- * one contract `stitch share` rests on. A field renamed on either side fails
+ * one contract `openstory share` rests on. A field renamed on either side fails
  * here instead of as a 400 on every share.
  */
 

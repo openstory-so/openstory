@@ -151,6 +151,16 @@
         "ws": "^8.22.1",
       },
     },
+    "packages/cli": {
+      "name": "@openstory/cli",
+      "version": "0.0.0",
+      "bin": {
+        "openstory": "./bin/openstory.mjs",
+      },
+      "dependencies": {
+        "@openstory/stitch": "^0.4.0",
+      },
+    },
     "packages/stitch": {
       "name": "@openstory/stitch",
       "version": "0.4.0",
@@ -629,6 +639,8 @@
     "@open-draft/until": ["@open-draft/until@3.0.1", "", {}, "sha512-s7/9ELP4aP9YZtW7RJaa0Xf3RISaRH9+EFN18FtykJYRHGNrl8f9ymvoNXzjhrjmftFvkQudtuDU9RYhk0xs3A=="],
 
     "@openrouter/sdk": ["@openrouter/sdk@0.13.20", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-fx4o19FHgadEldfrSOgSbXAi32hCE3O708q1nxcoxYrW6fP6/WggX3o5PmnlnObzmxrqLMkZpqg188K+Twguhg=="],
+
+    "@openstory/cli": ["@openstory/cli@workspace:packages/cli"],
 
     "@openstory/stitch": ["@openstory/stitch@workspace:packages/stitch"],
 

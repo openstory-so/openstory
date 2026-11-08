@@ -56,7 +56,7 @@ describe('sequence assets page', () => {
     expect(html).toContain('Download');
     expect(html).toContain('Current cut');
     expect(html).toContain('Download folder');
-    expect(html).toContain('npx @openstory/stitch pull SEQ');
+    expect(html).toContain('npx @openstory/cli@latest pull SEQ');
     expect(html).toContain('Copy Pull command');
     expect(html).toContain('# Run this to download these files.');
     expect(html).toContain('href="/r2/organization/still.png?download"');
@@ -77,7 +77,7 @@ describe('sequence assets page', () => {
         exports: false,
         origin: 'https://openstory.so',
       })
-    ).toBe('npx @openstory/stitch pull SEQ');
+    ).toBe('npx @openstory/cli@latest pull SEQ');
     expect(
       sequencePullCommand('SEQ', {
         history: true,
@@ -85,7 +85,7 @@ describe('sequence assets page', () => {
         origin: 'https://snappy-wombat.openstory.so',
       })
     ).toBe(
-      'npx @openstory/stitch pull SEQ --history --exports --origin https://snappy-wombat.openstory.so'
+      'npx @openstory/cli@latest pull SEQ --history --exports --origin https://snappy-wombat.openstory.so'
     );
   });
 

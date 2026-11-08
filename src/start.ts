@@ -1,5 +1,6 @@
 import { createCsrfMiddleware, createStart } from '@tanstack/react-start';
 import {
+  cliVersionMiddleware,
   d1SessionMiddleware,
   logContextMiddleware,
   loggerMiddleware,
@@ -27,6 +28,7 @@ const csrfMiddleware = createCsrfMiddleware({
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [
+    cliVersionMiddleware,
     csrfMiddleware,
     logContextMiddleware,
     d1SessionMiddleware,

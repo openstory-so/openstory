@@ -328,7 +328,7 @@ changing the area, and update it in the same PR.**
   `list_sequence_assets`). Default scope is the current cut; `scope=history`
   adds every completed stored version, including discarded. Rendered MP4s
   stay off unless `exports=true`. The asset page and
-  `npx @openstory/stitch pull` write that list. Do not zip in the Worker
+  `npx @openstory/cli@latest pull` write that list. Do not zip in the Worker
   and do not hand out R2 credentials. Preview frames and provider-CDN urls
   stay out. Dialogue is the speech file plus a cuts JSON. A scene reorder
   leaves the old files on disk.
@@ -346,7 +346,7 @@ changing the area, and update it in the same PR.**
   `packages/stitch` (#1853, published as `@openstory/stitch`): it knows clips and cues, never shots —
   the shot mapping and subtitles (`shotCues`) live in
   `src/sequences/ui/theatre/playback-clips.ts`. A CLI cut is shared without
-  the CLI (#2127): `stitch bundle` writes a static folder, `stitch share`
+  the CLI (#2127): `stitch bundle` writes a static folder, `openstory share`
   uploads it (`POST /api/v1/stitches`, media names only, rewritten to
   `/r2/stitches/<organization>/<id>/…`, then one PUT per file, then
   `POST …/$id/publish`, which checks every file is there and every image

@@ -1,0 +1,37 @@
+{
+  "name": "@openstory/cli",
+  "version": "0.0.0",
+  "description": "The OpenStory command line: sign in, download a sequence's files, and share a cut.",
+  "keywords": [
+    "cli",
+    "openstory",
+    "stitch",
+    "video"
+  ],
+  "homepage": "https://github.com/openstory-so/openstory/tree/main/packages/cli#readme",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openstory-so/openstory.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "openstory": "./bin/openstory.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "prepack": "bun run build"
+  },
+  "dependencies": {
+    "@openstory/stitch": "^0.4.0"
+  }
+}

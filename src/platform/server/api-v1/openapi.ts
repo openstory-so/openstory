@@ -687,7 +687,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['stitches'],
           summary: 'Share a stitch',
           description:
-            'Store a cut from `npx @openstory/stitch share`. Every media URL in the cut is a bundle name (`media/<n>.<ext>`); the response carries a templated `upload` link to PUT each file to, and `url`, the public player page. Anyone with the page URL can watch.',
+            'Store a cut from `npx @openstory/cli@latest share`. Every media URL in the cut is a bundle name (`media/<n>.<ext>`); the response carries a templated `upload` link to PUT each file to, and `url`, the public player page. Anyone with the page URL can watch.',
           requestBody: {
             required: true,
             content: {
@@ -724,7 +724,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['stitches'],
           summary: 'Publish a stitch',
           description:
-            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`stitch share --portrait-rights`). Idempotent once published.',
+            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`openstory share --portrait-rights`). Idempotent once published.',
           parameters: [
             {
               name: 'id',

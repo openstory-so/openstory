@@ -38,8 +38,15 @@ export default {
         'src/export.ts',
         // The stitch bin. Knip does not follow the plain JS shim.
         'src/cli.ts',
+        // Node-only cut pieces for @openstory/cli.
+        'src/bundle.ts',
       ],
       project: ['src/**/*.{ts,tsx}'],
+    },
+    // @openstory/cli: the bin is plain JS, so its entry is the module it imports.
+    'packages/cli': {
+      entry: ['src/cli.ts'],
+      project: ['src/**/*.ts'],
     },
   },
   ignore: [

@@ -536,6 +536,28 @@ describe('stitch main', () => {
     }
   });
 
+  it('passes pull and share through to @openstory/cli with a note', async () => {
+    const stderr: string[] = [];
+    const ran: string[][] = [];
+    const before = process.exitCode;
+    try {
+      await main(['pull', 'SEQ', '--dir', 'out'], {
+        stderr: { write: (text) => stderr.push(text) },
+        runCli: async (args) => {
+          ran.push(args);
+          return 3;
+        },
+      });
+      expect(ran).toEqual([['pull', 'SEQ', '--dir', 'out']]);
+      expect(stderr.join('')).toContain(
+        'stitch pull moved to `openstory pull`: npx @openstory/cli@latest pull'
+      );
+      expect(process.exitCode).toBe(3);
+    } finally {
+      process.exitCode = before;
+    }
+  });
+
   it('says when the preview page is not built', async () => {
     const cwd = await tempDir('stitch-unbuilt-');
     const stderr: string[] = [];

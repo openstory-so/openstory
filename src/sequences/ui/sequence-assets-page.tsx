@@ -188,7 +188,7 @@ export function sequencePullCommand(
   sequenceId: string,
   options: { history: boolean; exports: boolean; origin?: string }
 ): string {
-  const parts = ['npx @openstory/stitch pull', sequenceId];
+  const parts = ['npx @openstory/cli@latest pull', sequenceId];
   if (options.history) parts.push('--history');
   if (options.exports) parts.push('--exports');
   if (options.origin && options.origin !== 'https://openstory.so') {
