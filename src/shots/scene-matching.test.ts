@@ -80,10 +80,15 @@ describe('participant-owned remote locations', () => {
 
   it('switches between nested names without tagging the parent (#2289)', () => {
     const apartment = [
-      { name: 'Downtown Apartment', locationId: 'downtown_apartment' },
+      {
+        name: 'Downtown Apartment',
+        locationId: 'downtown_apartment',
+        consistencyTag: null,
+      },
       {
         name: 'Downtown Apartment Bathroom',
         locationId: 'downtown_apartment_bathroom',
+        consistencyTag: null,
       },
     ];
     expect(
