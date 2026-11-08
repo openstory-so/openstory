@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateId, isValidId } from './id';
-import { slugify, uniqueSlug } from './slug';
+import { slugify, testOnlySlug, uniqueSlug } from './slug';
 
 describe('slugify', () => {
   it('lowercases, strips diacritics and joins words with dashes', () => {
@@ -30,5 +30,12 @@ describe('uniqueSlug', () => {
     expect(uniqueSlug('a', new Set())).toBe('a');
     expect(uniqueSlug('a', new Set(['a']))).toBe('a-2');
     expect(uniqueSlug('a', new Set(['a', 'a-2']))).toBe('a-3');
+  });
+});
+
+describe('testOnlySlug', () => {
+  it('refuses outside Vitest so an insert cannot skip its slug', () => {
+    expect(() => testOnlySlug({})).toThrow('slug is required');
+    expect(testOnlySlug({ VITEST: 'true' })).toMatch(/^[0-9a-z]{26}$/);
   });
 });

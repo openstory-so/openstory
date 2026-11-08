@@ -1,3 +1,5 @@
+import { generateId } from './id';
+
 const MAX_LENGTH = 60;
 
 /** A title as a lowercase URL slug; lowercase so it can never pass `isValidId`. */
@@ -21,4 +23,12 @@ export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
     const candidate = `${base}-${n}`;
     if (!taken.has(candidate)) return candidate;
   }
+}
+
+/** Column default for `slug`: a random one under Vitest, an error anywhere else (#2222). */
+export function testOnlySlug(env = globalThis.process?.env): string {
+  if (!env?.VITEST) {
+    throw new Error('slug is required: set it with freeSlug on every insert');
+  }
+  return generateId().toLowerCase();
 }

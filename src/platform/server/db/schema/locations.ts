@@ -20,6 +20,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import type { LocationBible } from './bible-versions';
 import { sequences } from './sequences';
 import { organization } from './organization';
@@ -55,8 +56,7 @@ export const locations = snakeCase.table(
     slug: text()
       .notNull()
       .default('')
-      // Test inserts only: every app write sets the real slug.
-      .$defaultFn(() => generateId().toLowerCase()),
+      .$defaultFn(() => testOnlySlug()),
     legacyType: text('type'),
     legacyDescription: text('description'),
     legacyArchitecturalStyle: text('architectural_style'),

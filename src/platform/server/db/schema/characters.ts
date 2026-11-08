@@ -13,6 +13,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
 import type { CastScriptAlias } from './sequence-cast';
@@ -83,8 +84,7 @@ export const characters = snakeCase.table(
     slug: text()
       .notNull()
       .default('')
-      // Test inserts only: every app write sets the real slug.
-      .$defaultFn(() => generateId().toLowerCase()),
+      .$defaultFn(() => testOnlySlug()),
     legacyAge: text('age'),
     legacyGender: text('gender'),
     legacyEthnicity: text('ethnicity'),

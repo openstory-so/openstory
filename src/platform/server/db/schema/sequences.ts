@@ -14,6 +14,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import { user } from './auth';
 // NOTE: shots imported in index.ts to avoid circular dependency
 // shots.ts imports sequences for foreign key reference
@@ -59,8 +60,7 @@ export const sequences = snakeCase.table(
     slug: text()
       .notNull()
       .default('')
-      // Test inserts only: every app write sets the real slug.
-      .$defaultFn(() => generateId().toLowerCase()),
+      .$defaultFn(() => testOnlySlug()),
     script: text(),
     // used to track the status of the sequence
     status: text().$type<SequenceStatus>().default('draft').notNull(),

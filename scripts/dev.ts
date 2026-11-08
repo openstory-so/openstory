@@ -65,16 +65,20 @@ const child = spawn(
 );
 
 // Mirrors the library into the data folder while the app runs.
-if (dataDir) {
-  spawn(
-    'bun',
-    [
-      fileURLToPath(new URL('./sync-local.ts', import.meta.url)),
-      dataDir,
-      `http://localhost:${process.env.PORT ?? 3000}`,
-    ],
-    { stdio: 'inherit', env: process.env }
-  );
-}
+const sync = dataDir
+  ? spawn(
+      'bun',
+      [
+        fileURLToPath(new URL('./sync-local.ts', import.meta.url)),
+        dataDir,
+        `http://localhost:${process.env.PORT ?? 3000}`,
+      ],
+      { stdio: 'inherit', env: process.env }
+    )
+  : null;
 
-child.on('exit', (status, signal) => finish({ status, signal }));
+// The mirror lives only as long as the app; a vite crash must not orphan it.
+child.on('exit', (status, signal) => {
+  sync?.kill();
+  finish({ status, signal });
+});

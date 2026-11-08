@@ -14,6 +14,7 @@ import {
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import z from 'zod';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import { user } from './auth';
 import { organization } from './organization';
 
@@ -58,8 +59,7 @@ export const styles = snakeCase.table(
     slug: text()
       .notNull()
       .default('')
-      // Test inserts only: every app write sets the real slug.
-      .$defaultFn(() => generateId().toLowerCase()),
+      .$defaultFn(() => testOnlySlug()),
     description: text(),
     // StoredStyleConfig (v1 | v2) until the backfill lands (#858): typing the
     // column as parsed v2 would compile direct `.look` access that crashes on

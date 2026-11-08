@@ -97,12 +97,17 @@ async function writeSyncState(dir: string, state: SyncState): Promise<void> {
   await rename(`${file}.partial`, file);
 }
 
-/** Moves `from` to `to` under `dir` when only the old one exists. */
+/** Moves `from` to `to` under `dir`; both present is a clash the user settles. */
 async function renameFolder(dir: string, from: string, to: string) {
   if (from === to) return;
   const source = join(dir, from);
   const target = join(dir, to);
-  if (!existsSync(source) || existsSync(target)) return;
+  if (!existsSync(source)) return;
+  if (existsSync(target)) {
+    throw new Error(
+      `${source} was renamed to ${target}, which already exists. Move or delete one, then sync again.`
+    );
+  }
   await mkdir(dirname(target), { recursive: true });
   await rename(source, target);
 }

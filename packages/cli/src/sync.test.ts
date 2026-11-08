@@ -113,6 +113,19 @@ describe('openstory sync', () => {
     expect(state.sequences.S1?.folder).toBe(join('org-abc', 'the-long-chase'));
   });
 
+  it('refuses a rename onto a folder that already exists', async () => {
+    const dir = await home();
+    const world = {
+      personal: true,
+      orgSlug: 'o',
+      sequences: [{ id: 'S1', slug: 'the-chase' }],
+    };
+    await run(dir, server(world));
+    await mkdir(join(dir, 'openstory', 'personal', 'the-long-chase'));
+    world.sequences = [{ id: 'S1', slug: 'the-long-chase' }];
+    expect((await run(dir, server(world))).err).toContain('already exists');
+  });
+
   it('refuses a folder that mirrors another server', async () => {
     const dir = await home();
     const world = { personal: true, orgSlug: 'o', sequences: [] };
