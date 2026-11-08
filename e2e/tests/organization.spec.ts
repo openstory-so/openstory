@@ -29,6 +29,7 @@ test.describe('Organization membership', () => {
     testUser,
   }) => {
     const invitee = await createTestUser({ name: 'E2E Invitee' });
+    let passed = false;
     try {
       await page.goto('/settings/organization');
       await page.getByLabel('Email').fill(invitee.email);
@@ -78,8 +79,14 @@ test.describe('Organization membership', () => {
       // The owner sees the new member.
       await page.reload();
       await expect(page.getByText(invitee.email).first()).toBeVisible();
+      passed = true;
     } finally {
-      await cleanupTestUser(invitee.id, invitee.organizationId);
+      // A cleanup error must not replace the test's own failure.
+      await cleanupTestUser(invitee.id, invitee.organizationId).catch(
+        (error: unknown) => {
+          if (passed) throw error;
+        }
+      );
     }
   });
 });

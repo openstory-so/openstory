@@ -46,7 +46,18 @@ export const Route = createFileRoute('/api/test/user')({
             );
           }
 
-          await cleanupTestUser(userId, organizationId);
+          try {
+            await cleanupTestUser(userId, organizationId);
+          } catch (error) {
+            // The failing query and its D1 cause, for the e2e log.
+            return Response.json(
+              {
+                error: String(error),
+                cause: error instanceof Error ? String(error.cause) : undefined,
+              },
+              { status: 500 }
+            );
+          }
           return Response.json({ success: true });
         },
       }),
