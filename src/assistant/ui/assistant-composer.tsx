@@ -31,6 +31,7 @@ import {
   readText,
   type Attachment,
 } from './attachments';
+import type { ComposerHold } from './approvals';
 
 /** Only the picker needs the library; mounting it only while open keeps the
  * chat from fetching every generation on every page. */
@@ -57,14 +58,20 @@ const AttachmentPicker: React.FC<{
   );
 };
 
+/** Why the composer will not send while a run is paused. */
+export const HOLD_COPY: Record<Exclude<ComposerHold, 'none'>, string> = {
+  approval: 'Allow or deny the request above to send a message.',
+  stuck: 'This chat is paused on a request it cannot answer. Start a new chat.',
+};
+
 export type AssistantComposerProps = {
   context: PageContextItem[];
   onDismissContext: (item: PageContextItem) => void;
   /** Text a page handed over; placed, not sent. */
   initialPrompt?: string;
   busy: boolean;
-  /** The run waits on Allow or Deny; the client refuses a new message until then. */
-  awaitingApproval?: boolean;
+  /** A paused run; the client refuses a new message until it is answered. */
+  hold: ComposerHold;
   /** The model that answers; one pick for every thread. */
   model: AnalysisModelId;
   onModelChange: (model: AnalysisModelId) => void;
@@ -164,7 +171,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   onDismissContext,
   initialPrompt,
   busy,
-  awaitingApproval = false,
+  hold,
   model,
   onModelChange,
   onSend,
@@ -271,7 +278,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   // message never goes out with a file silently missing.
   const canSend =
     !busy &&
-    !awaitingApproval &&
+    hold === 'none' &&
     (text.trim().length > 0 || attachments.some((a) => a.status === 'ready')) &&
     attachments.every((a) => a.status === 'ready');
 
@@ -407,10 +414,8 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
           )}
         </div>
       </form>
-      {awaitingApproval && (
-        <p className="px-1 text-xs text-muted-foreground">
-          Allow or deny the request above to send a message.
-        </p>
+      {hold !== 'none' && (
+        <p className="px-1 text-xs text-muted-foreground">{HOLD_COPY[hold]}</p>
       )}
     </div>
   );

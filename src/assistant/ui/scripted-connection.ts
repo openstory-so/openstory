@@ -172,8 +172,7 @@ async function* play(
                     toolName: call.name,
                     toolCallId,
                     originalArgs: call.input,
-                    // Any non-empty hash: an empty one fails the client's
-                    // binding check and leaves nothing to answer.
+                    // Non-empty: an empty hash fails the client's binding check.
                     inputSchemaHash: 'scripted',
                     approvalSchemaHash: 'scripted',
                     responseSchemaHash: 'scripted',

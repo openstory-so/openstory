@@ -11,12 +11,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/ui/shadcn/button';
 import type { PageContextItem } from '../page-context';
 import {
-  answerApproval,
+  answerOpenApproval,
   approvalFor,
   approvalState,
-  type PendingInterrupt,
+  composerHold,
 } from './approvals';
-import { AssistantComposer } from './assistant-composer';
+import { AssistantComposer, HOLD_COPY } from './assistant-composer';
 import { AssistantMessage } from './assistant-message';
 import { setAssistantModel, useAssistantState } from './assistant-store';
 import { useAssistantChat } from './use-assistant-chat';
@@ -85,28 +85,29 @@ const Conversation: React.FC<
     getItemKey: (index) => messages[index]?.id ?? index,
   });
 
-  // The server tools are not registered on the client, so the typed list
-  // cannot name their approvals; widen to the shapes the stream carries.
-  const pending: ReadonlyArray<PendingInterrupt> = interrupts;
   const runBusy = isLoading || isHydrating || resuming;
+  const hold = composerHold(interrupts, resuming);
+  const answer = (toolCallId: string, approved: boolean) => {
+    if (answerOpenApproval(interrupts, toolCallId, runBusy, approved)) {
+      setSendError(undefined);
+    }
+  };
   const approvals = {
     stateOf: (toolCallId: string) =>
-      approvalState(approvalFor(pending, toolCallId), runBusy),
+      approvalState(approvalFor(interrupts, toolCallId), runBusy),
     errorOf: (toolCallId: string) =>
-      approvalFor(pending, toolCallId)?.errors[0]?.message,
+      approvalFor(interrupts, toolCallId)?.errors[0]?.message,
     approve: (toolCallId: string) => answer(toolCallId, true),
     deny: (toolCallId: string) => answer(toolCallId, false),
     reload: onReload,
   };
-  function answer(toolCallId: string, approved: boolean) {
-    const interrupt = approvalFor(pending, toolCallId);
-    if (interrupt && approvalState(interrupt, runBusy) === 'open') {
-      answerApproval(interrupt, approved);
-    }
-  }
-  const awaitingApproval = pending.length > 0 || resuming;
 
   const send = (content: Parameters<typeof sendMessage>[0]) => {
+    // A view can post while the run is paused; the composer gate does not cover it.
+    if (hold !== 'none') {
+      setSendError(new Error(HOLD_COPY[hold]));
+      return;
+    }
     setSendError(undefined);
     sendMessage(content).catch((cause: unknown) =>
       setSendError(cause instanceof Error ? cause : new Error(String(cause)))
@@ -204,7 +205,7 @@ const Conversation: React.FC<
         onDismissContext={onDismissContext}
         initialPrompt={initialPrompt}
         busy={isLoading}
-        awaitingApproval={awaitingApproval}
+        hold={hold}
         model={model}
         onModelChange={setAssistantModel}
         onSend={(content) => {

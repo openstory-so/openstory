@@ -91,12 +91,12 @@ export type ToolCallCardProps = {
   result?: ToolResultPart;
   /** "$1.20" from the plan that came before an execute call. */
   estimate?: string;
-  /** Whether the run still waits on this card's answer; buttons show only when it does. */
+  /** Where this card's approval stands; read only while the card is waiting. */
   approval: ApprovalState;
-  approvalError?: string;
-  onApprove?: () => void;
-  onDeny?: () => void;
-  onReload?: () => void;
+  approvalError: string | undefined;
+  onApprove: () => void;
+  onDeny: () => void;
+  onReload: () => void;
   /** Text a tool's view posts into the thread (`ui/message`). */
   onViewMessage?: (text: string) => void;
 };
@@ -175,6 +175,14 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
                 Reload chat
               </Button>
             </div>
+          ) : approval === 'stuck' ? (
+            <p className="text-xs text-muted-foreground">
+              This request cannot be answered here. Start a new chat.
+            </p>
+          ) : approval === 'staged' ? (
+            <p className="text-xs text-muted-foreground">
+              Answered. Answer the other request to continue.
+            </p>
           ) : (
             <div className="flex gap-2">
               <Button

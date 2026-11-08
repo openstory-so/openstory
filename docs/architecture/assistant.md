@@ -24,10 +24,16 @@ only assistant-side work per tool happens in
   The server tools are not registered on the client, so an approval reaches
   the browser as a generic interrupt, not a `tool-approval` one. The card finds
   it by the tool call id on its binding (`approvalFor` in
-  `src/assistant/ui/approvals.ts`) and answers `{ approved }`. The card shows
-  Allow / Deny only while a matching interrupt is open, disables them while
-  the run resumes, and offers Reload (hydrate again) when none matches. The
-  composer refuses a message while an approval waits: the client throws on one.
+  `src/assistant/ui/approvals.ts`) and answers `{ approved }`. The card
+  enables Allow / Deny while its interrupt waits, disables them while the
+  chat loads, hydrates or resumes, and says "answered" once staged: with
+  two approvals in one step the client sends nothing until both are
+  answered. With no matching interrupt it offers Reload (hydrate again).
+  An interrupt this tab cannot answer (unbound, or `canResolve` false)
+  gets no Reload, which would hydrate the same state: the card and the
+  composer say to start a new chat. While any interrupt waits the client
+  throws on a new message, so the composer and a view's `ui/message` refuse
+  one first, with that reason.
 - Tools outside `EAGER_TOOLS` are `lazy`: the model sees the name and the
   first sentence, and discovers a schema when it needs one.
 - The model calls a tool by `chatToolName`: `openstory_get_shot`, the MCP
