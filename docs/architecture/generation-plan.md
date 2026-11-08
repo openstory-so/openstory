@@ -222,7 +222,7 @@ refetch on focus, invalidated by realtime and by any refused continue —
   Recording the line still refuses.
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
-prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
+  prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images`,
   and a sheet the run points at instead of drawing is counted apart,
   `2 references (1 reused)` (`PlanUnit.reused`, #2017; the quote prices it

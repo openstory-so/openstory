@@ -27,10 +27,10 @@ vi.doMock('@/shots/server/scene-script', async (importOriginal) => ({
 }));
 const { loadStalenessForShots } = await import('./shot-staleness-batch');
 
+// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the methods the loader calls
 const scopedDb = {
   shotDialogue: { listShotIdsWithLiveClaim: async () => new Set() },
   frameVariants: { getSelectedByFrameIds: async () => new Map() },
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the methods the loader calls
 } as unknown as ScopedDb;
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the loader reads only status here
 const sequence = { id: 'q', status: 'completed' } as unknown as Parameters<
