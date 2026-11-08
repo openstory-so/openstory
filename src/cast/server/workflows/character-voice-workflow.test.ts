@@ -218,19 +218,24 @@ describe('CharacterVoiceWorkflow', () => {
       promoteVoiceClaimIfPending,
       stampVoiceClaimWorkflowRunId,
     } = makeScopedDb();
-    const step = makeStep();
+    const stepDo = vi.fn((_name: string, ...rest: unknown[]) => {
+      const fn = rest.at(-1);
+      if (typeof fn !== 'function') throw new Error('step.do needs a callback');
+      return fn({ attempt: 1, config: {} });
+    });
+    const step = asStub<WorkflowStep>({ do: stepDo });
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
       step,
       scopedDb
     );
 
-    expect(step.do).toHaveBeenCalledWith(
+    expect(stepDo).toHaveBeenCalledWith(
       'design-voice',
       ELEVENLABS_SLOT_STEP,
       expect.any(Function)
     );
-    expect(step.do).toHaveBeenCalledWith(
+    expect(stepDo).toHaveBeenCalledWith(
       'save-voice',
       ELEVENLABS_SLOT_STEP,
       expect.any(Function)
