@@ -10,8 +10,9 @@ import { prepareStateDir } from './state-dir.ts';
 await import('./ensure-env.ts');
 
 // Before migrations: set up ~/openstory once and move .wrangler/state into it.
+let dataDir: string | null = null;
 try {
-  prepareStateDir();
+  dataDir = prepareStateDir().dataDir;
 } catch (error) {
   console.error(
     `[state] ${error instanceof Error ? error.message : String(error)}`
@@ -61,5 +62,18 @@ const child = spawn(
   all ? ['run', '--parallel', 'dev:app', 'stripe:dev', 'dev:bunny'] : ['dev'],
   { stdio: 'inherit', env: process.env }
 );
+
+// Mirrors the library into the data folder while the app runs.
+if (dataDir) {
+  spawn(
+    'bun',
+    [
+      'scripts/sync-local.ts',
+      dataDir,
+      `http://localhost:${process.env.PORT ?? 3000}`,
+    ],
+    { stdio: 'inherit', env: process.env }
+  );
+}
 
 child.on('exit', (status, signal) => finish({ status, signal }));
