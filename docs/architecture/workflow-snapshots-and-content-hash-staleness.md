@@ -101,7 +101,7 @@ What this buys:
 - **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version
   live when the stale artifact was made (the newest created at or before
   it) and diffs it against the live one: `Character "Jack": clothing,
-sheet`. A row touched without a bible change (a claim, a voice) is not
+  sheet`. A row touched without a bible change (a claim, a voice) is not
   named. An artifact older than the row's history falls back to the old
   timestamp guess.
   Characters, locations and elements come from `resolveShotReferences`: the

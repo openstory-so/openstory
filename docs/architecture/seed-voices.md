@@ -88,7 +88,7 @@ a normal clip, so moods go in words only.
   whisper.
 - **The prompt**: booth, each speaker as "the exact voice and accent of
   @AudioN" (plus the mood clips) and their description, then `Name (tone):
-line` in order.
+  line` in order.
 - **Finding the lines** (`take-check.ts`, #1803). Every take is
   transcribed with Scribe and each line is found in what was heard. Lines
   are compared as letters, not words, so however a transcript spells a line

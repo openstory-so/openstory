@@ -4,6 +4,7 @@ import { dbSceneId } from '@/shots/scene-id';
 import { updateScene } from './scene-edit';
 
 function scopedDbWithNoScript(edit: ReturnType<typeof vi.fn>) {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the edit only reads these two tables
   return {
     scenes: {
       getById: async () => ({
@@ -14,7 +15,6 @@ function scopedDbWithNoScript(edit: ReturnType<typeof vi.fn>) {
       edit,
     },
     sceneScriptVersions: { getSelected: async () => null },
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the edit only reads these two tables
   } as unknown as ScopedDb;
 }
 
