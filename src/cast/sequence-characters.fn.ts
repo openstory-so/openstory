@@ -4,7 +4,6 @@
  */
 
 import { createServerFn } from '@tanstack/react-start';
-import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
@@ -353,15 +352,11 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     }
     let voiceId: string;
     try {
-      voiceId = await saveDesignedVoice(
-        apiKey,
-        {
-          voiceName: `${character.name} · ${character.id.slice(-6)}`,
-          voiceDescription: character.voiceDescription ?? '',
-          generatedVoiceId: take.generatedVoiceId,
-        },
-        getRequest().signal
-      );
+      voiceId = await saveDesignedVoice(apiKey, {
+        voiceName: `${character.name} · ${character.id.slice(-6)}`,
+        voiceDescription: character.voiceDescription ?? '',
+        generatedVoiceId: take.generatedVoiceId,
+      });
     } catch (error) {
       const status = elevenLabsStatus(error);
       if (isElevenLabsVoiceMissing(error)) {

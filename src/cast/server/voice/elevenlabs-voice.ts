@@ -152,14 +152,11 @@ export async function saveDesignedVoice(
     voiceName: string;
     voiceDescription: string;
     generatedVoiceId: string;
-  },
-  signal?: AbortSignal
+  }
 ): Promise<string> {
   const client = await createElevenLabsSdk(apiKey);
-  const voice = await retryOnRateLimit(
-    () => client.textToVoice.create(args, { abortSignal: signal }),
-    signal
-  );
+  // Not abortable: a save cut off after ElevenLabs made the voice orphans a slot.
+  const voice = await retryOnRateLimit(() => client.textToVoice.create(args));
   return voice.voiceId;
 }
 
