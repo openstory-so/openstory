@@ -10,7 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/ui/shadcn/alert-dialog';
-import { Button } from '@/ui/shadcn/button';
+import { Button, buttonVariants } from '@/ui/shadcn/button';
 import { draftBadgeLabel, draftTaskUsable } from '@/motion/draft-mode';
 import { seedanceUserFacingError } from '@/motion/seedance-edit';
 import {
@@ -540,6 +540,42 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   );
 }
 
+/** A full-height edge strip that steps the viewer; the circle is only its look. */
+function StepStrip({
+  side,
+  label,
+  onClick,
+  children,
+}: {
+  side: 'left' | 'right';
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        'group absolute inset-y-0 flex w-1/6 min-w-16 items-center px-4 outline-none',
+        side === 'left' ? 'left-0 justify-start' : 'right-0 justify-end'
+      )}
+    >
+      <span
+        className={buttonVariants({
+          variant: 'secondary',
+          size: 'icon',
+          className:
+            'rounded-full group-focus-visible:ring-[3px] group-focus-visible:ring-ring/50 group-hover:bg-secondary/80 pointer-coarse:size-11',
+        })}
+      >
+        {children}
+      </span>
+    </button>
+  );
+}
+
 function mentionItems(references: StudioShownReference[]): MentionItem[] {
   return references.flatMap((reference) =>
     reference.tag
@@ -946,28 +982,14 @@ export function GenerationDetail({
       <div className="relative flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
         <StudioViewer asset={asset} />
         {onPrev && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            aria-label="Previous generation"
-            className="absolute top-1/2 left-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
-            onClick={onPrev}
-          >
+          <StepStrip side="left" label="Previous generation" onClick={onPrev}>
             <ChevronLeft aria-hidden="true" />
-          </Button>
+          </StepStrip>
         )}
         {onNext && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            aria-label="Next generation"
-            className="absolute top-1/2 right-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
-            onClick={onNext}
-          >
+          <StepStrip side="right" label="Next generation" onClick={onNext}>
             <ChevronRight aria-hidden="true" />
-          </Button>
+          </StepStrip>
         )}
       </div>
       <aside className="flex max-h-[40%] w-full shrink-0 flex-col gap-3 overflow-y-auto border-t bg-popover p-4 md:max-h-full md:w-96 md:self-start md:overflow-hidden md:border-t-0 md:border-l md:pr-12">
