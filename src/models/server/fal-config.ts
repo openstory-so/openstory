@@ -11,11 +11,16 @@ const FAL_HOSTS = new Set([
 
 let configured = false;
 
+// Storage uploads go to real fal on purpose: aimock has no storage route (#2289).
+function proxiesFalUrl(url: URL): boolean {
+  return FAL_HOSTS.has(url.hostname) && !url.pathname.startsWith('/storage/');
+}
+
 function buildProxyMiddleware(proxyUrl: string): RequestMiddleware {
   const proxy = new URL(proxyUrl);
   return async (request) => {
     const original = new URL(request.url);
-    if (!FAL_HOSTS.has(original.hostname)) return request;
+    if (!proxiesFalUrl(original)) return request;
 
     const rewritten = new URL(proxy.toString());
     rewritten.pathname = proxy.pathname.replace(/\/$/, '') + original.pathname;
@@ -71,7 +76,7 @@ export function rewriteFalUrl(
   } catch {
     return undefined;
   }
-  if (!FAL_HOSTS.has(original.hostname)) return undefined;
+  if (!proxiesFalUrl(original)) return undefined;
   const proxy = new URL(proxyUrl);
   const rewritten = new URL(proxy.toString());
   rewritten.pathname = proxy.pathname.replace(/\/$/, '') + original.pathname;

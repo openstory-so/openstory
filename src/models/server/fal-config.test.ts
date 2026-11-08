@@ -25,6 +25,16 @@ describe('rewriteFalUrl', () => {
     ).toBeUndefined();
   });
 
+  it('leaves fal storage uploads on real fal (#2289)', async () => {
+    const { rewriteFalUrl } = await import('./fal-config');
+    expect(
+      rewriteFalUrl(
+        'https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3',
+        'http://localhost:4010/fal'
+      )
+    ).toBeUndefined();
+  });
+
   it('sends adapter fetch for fal hosts through FAL_PROXY_URL', async () => {
     vi.stubEnv('FAL_PROXY_URL', 'http://localhost:4010/fal');
     const seen: { url: string; host: string | null }[] = [];
