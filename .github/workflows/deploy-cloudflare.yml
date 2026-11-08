@@ -469,24 +469,47 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Promote merged preview database
+      - name: See whether the PR changed migrations
         if: github.event.pull_request.merged == true
+        id: migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if printf '%s\n' "$files" | grep -q '^drizzle/migrations/'; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Promote merged preview database
+        if: github.event.pull_request.merged == true && steps.migrations.outputs.changed == 'true'
         id: promotion
         continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: bun scripts/preview-db.ts promote "$PR_NUMBER"
+        run: bun scripts/preview-db.ts promote "$PR_NUMBER" --migrations
+
+      - name: Delete merged preview database with no migrations
+        if: github.event.pull_request.merged == true && steps.migrations.outputs.changed == 'false'
+        id: discard-schema-free
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun scripts/preview-db.ts promote "$PR_NUMBER" --no-migrations
 
       - name: Report promotion conflict or failure
-        if: github.event.pull_request.merged == true && steps.promotion.outcome != 'success'
+        if: github.event.pull_request.merged == true && steps.migrations.outputs.changed == 'true' && steps.promotion.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           echo '::error::Preview DB promotion failed. The PR database is preserved for manual reconciliation.'
-          gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body "Preview DB promotion failed (see [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)). The preview D1 is preserved; another PR may have advanced the base. Reconcile manually before promoting it. Production D1 is unaffected."
+          gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body "Preview DB promotion failed (see [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)). The preview D1 is preserved; this PR changed migrations and another PR may have advanced the base. Reconcile manually before promoting it. Production D1 is unaffected."
 
       - name: Delete unmerged D1 database
         if: github.event.pull_request.merged != true
@@ -527,10 +550,10 @@ jobs:
           edit-mode: replace
           body: |
             <!-- cf-preview -->
-            **Cloudflare Preview** torn down${{ github.event.pull_request.merged && (steps.promotion.outcome == 'success' && ' — D1 promoted as the next preview base' || ' — D1 preserved; promotion did not complete') || '' }}
+            **Cloudflare Preview** torn down${{ github.event.pull_request.merged && steps.promotion.outcome == 'success' && ' — D1 promoted as the next preview base' || '' }}${{ github.event.pull_request.merged && steps.discard-schema-free.outcome == 'success' && ' — D1 deleted; the PR changed no migrations' || '' }}${{ github.event.pull_request.merged && steps.promotion.outcome != 'success' && steps.discard-schema-free.outcome != 'success' && ' — D1 preserved; promotion did not complete' || '' }}
 
-            Worker `pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted. D1 `openstory-pr-${{ github.event.pull_request.number }}` was ${{ github.event.pull_request.merged && (steps.promotion.outcome == 'success' && 'retained as the next preview base' || 'preserved because promotion failed') || 'deleted' }}.
+            Worker `pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted. D1 `openstory-pr-${{ github.event.pull_request.number }}` was ${{ github.event.pull_request.merged && steps.promotion.outcome == 'success' && 'retained as the next preview base' || github.event.pull_request.merged && steps.discard-schema-free.outcome == 'success' && 'deleted because the PR changed no migrations' || github.event.pull_request.merged && 'preserved because promotion failed' || 'deleted' }}.
 
       - name: Fail the job when promotion did not succeed
-        if: github.event.pull_request.merged == true && steps.promotion.outcome != 'success'
+        if: github.event.pull_request.merged == true && steps.migrations.outputs.changed == 'true' && steps.promotion.outcome != 'success'
         run: exit 1
