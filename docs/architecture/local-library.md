@@ -35,6 +35,7 @@ One resolver, `scripts/state-dir.ts`. `vite.config.ts` (`persistState`) and `scr
 - `/api/v1/sequences/{id}`, its `assets` and `exports`, and `/api/v1/styles/{id}` take a slug or a ULID (`resolveId` on each scoped-db module). HAL links keep the ULID.
 - The sequence, character and location pages redirect a slug to the same URL with the ULID (`src/platform/ui/slug-redirect.ts`).
 - A slug resolves only inside the caller's organization; public style templates still resolve by id.
+- The backfill (`20261108062356_backfill_slugs`) is SQL, which cannot strip accents: it writes `Café Noir` as `caf-noir` where a new write gives `cafe-noir`. A rename fixes an old row.
 - The schema column has a DDL default of `''` (so the column could be added) and a `$defaultFn` of a lowercase ULID, so a test row needs no slug. Every app create path sets the real one.
 - The default organization's slug is `org-<user id, lowercased>`. It used the first 8 characters of the user id, which are only a timestamp, so two sign-ups in the same ~256 ms collided.
 
