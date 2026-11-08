@@ -229,6 +229,8 @@ export const CharacterLooksRow: React.FC<{
             variant="outline"
             size="sm"
             aria-expanded={panel === 'edit'}
+            // An add closes the panel and picks the new look once it lands.
+            disabled={createLook.isPending}
             onClick={() => setPanel(panel === 'edit' ? null : 'edit')}
           >
             Edit look

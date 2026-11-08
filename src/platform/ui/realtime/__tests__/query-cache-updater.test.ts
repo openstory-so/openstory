@@ -33,7 +33,10 @@ import {
   type ShotViewSources,
   toShotView,
 } from '@/shots/shot-view';
-import { updateQueryCacheFromEvent } from '@/platform/ui/realtime/query-cache-updater';
+import {
+  refetchMissedEvents,
+  updateQueryCacheFromEvent,
+} from '@/platform/ui/realtime/query-cache-updater';
 
 const SEQ = 'seq-1';
 const OLD_THUMB = 'https://cdn/old-thumb.jpg';
@@ -444,6 +447,20 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(keys).toContainEqual(shotPromptPreviewShotKey(SEQ, 'shot-1'));
       expect(keys).toContainEqual(shotKeys.dialogueVersions('shot-1'));
       expect(keys).toContainEqual(shotKeys.list(SEQ));
+    });
+
+    it('a connect refetches what an unseen event could have moved, once (#2326)', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      refetchMissedEvents(qc, SEQ);
+      refetchMissedEvents(qc, SEQ);
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(['shot-prompt-preview', SEQ]);
+      expect(keys).toContainEqual(shotKeys.all);
+      expect(keys).toContainEqual(sceneKeys.list(SEQ));
+      expect(new Set(keys.map((k) => JSON.stringify(k))).size).toBe(
+        keys.length
+      );
     });
 
     it.each(['generation.complete', 'generation.failed'])(

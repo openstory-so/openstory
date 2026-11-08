@@ -9,7 +9,10 @@ import {
   type GenerationPhaseConfig,
   type GenerationStreamAction,
 } from './generation-stream.reducer';
-import { updateQueryCacheFromEvent } from '@/platform/ui/realtime/query-cache-updater';
+import {
+  refetchMissedEvents,
+  updateQueryCacheFromEvent,
+} from '@/platform/ui/realtime/query-cache-updater';
 
 import { getLogger } from '@/platform/logger';
 import { toast } from 'sonner';
@@ -361,6 +364,7 @@ export function useGenerationStream(
       'generation.error',
     ] as const,
     onData: handleEvent,
+    onConnected: () => refetchMissedEvents(queryClient, sequenceId),
     enabled: true,
   });
 

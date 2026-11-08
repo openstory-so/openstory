@@ -185,7 +185,10 @@ export const Route = createFileRoute('/api/realtime')({
           }
         };
 
+        // `connected` means every channel is subscribed: a client resyncs on it.
+        let unsubscribed = channels.length;
         const pump = async (channel: string): Promise<void> => {
+          let first = true;
           // Re-subscribe if this channel's DO stream ends (overflow close
           // #1332, or an isolate reset). Live events only — missed frames
           // are not replayed from `/history`. Sibling pumps keep the merged
@@ -209,6 +212,13 @@ export const Route = createFileRoute('/api/realtime')({
                 delayMs = nextReconnectDelay(delayMs);
                 continue;
               }
+              if (first) {
+                first = false;
+                unsubscribed -= 1;
+                if (unsubscribed === 0) {
+                  sendJson({ type: 'connected', channels }, null);
+                }
+              }
               await drain(response.body);
               delayMs = nextReconnectDelay(delayMs);
             } catch {
@@ -227,8 +237,6 @@ export const Route = createFileRoute('/api/realtime')({
             })
           )
         ).then(close, close);
-
-        sendJson({ type: 'connected', channels }, null);
 
         return new Response(readable, {
           headers: {
