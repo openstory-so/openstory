@@ -66,6 +66,47 @@ describe('participant-owned remote locations', () => {
     }
   });
 
+  it('follows the scene location over a prompt written for the old one (#2289)', () => {
+    expect(
+      matchLocationsToScene(
+        locations,
+        'finns_kitchen_blue',
+        'Finn’s kitchen',
+        null,
+        "Wide shot, Nora's study, noras_study_warm"
+      )
+    ).toEqual([locations[1]]);
+  });
+
+  it('switches between nested names without tagging the parent (#2289)', () => {
+    const apartment = [
+      {
+        name: 'Downtown Apartment',
+        locationId: 'downtown_apartment',
+        consistencyTag: null,
+      },
+      {
+        name: 'Downtown Apartment Bathroom',
+        locationId: 'downtown_apartment_bathroom',
+        consistencyTag: null,
+      },
+    ];
+    expect(
+      matchLocationsToScene(
+        apartment,
+        'downtown_apartment_bathroom',
+        'Downtown Apartment Bathroom'
+      )
+    ).toEqual([apartment[1]]);
+    expect(
+      matchLocationsToScene(
+        apartment,
+        'downtown_apartment',
+        'Downtown Apartment'
+      )
+    ).toEqual([apartment[0]]);
+  });
+
   it('keeps an explicitly named physical location ahead of ownership inference', () => {
     expect(
       matchLocationsToScene(locations, '', '', 'NORA visits Finn’s kitchen.')

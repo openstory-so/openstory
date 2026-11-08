@@ -31,7 +31,9 @@ code now says "shot"; the file map in §7 is current.
    motion digest the motion prompt. Continuity tags pick the bibles only
    while that prompt is unwritten. Every stamp site passes the text it
    writes (`ShotPromptView` is required), and verify passes the selected
-   text, so stamp and verify hash the same set. Causes, the clip's
+   text, so stamp and verify hash the same set. A location is picked from
+   the scene's tagged rooms when the scene has any, so a prompt written for
+   the scene's old location does not outvote a new one (#2289). Causes, the clip's
    `referenceKeys` compare and the motion render's reference attachment use
    the same resolution. A digest stamped on the scene roster before #2012 is
    still accepted at verify until `LEGACY_HASH_UNTIL`, with every roster
