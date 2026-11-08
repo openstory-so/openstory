@@ -681,6 +681,8 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(result).toMatchObject({
       retryType: 'smart',
       retriedItems: ['1 image(s)'],
+      // Reported, so the toast can say a shot was left out (#2291).
+      skippedShots: 1,
     });
     expect(updateStatus).toHaveBeenCalledWith('completed');
   });

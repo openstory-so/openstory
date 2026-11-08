@@ -33,6 +33,11 @@ const planOutput = z.object({
     usd: z.number().nullable(),
   }),
   work: planWorkSchema,
+  skippedShots: z
+    .number()
+    .describe(
+      'Failed stills a retry leaves out: no image prompt and no spec to derive one.'
+    ),
   blockers: z.array(z.object({ code: z.string(), message: z.string() })),
 });
 
@@ -55,7 +60,11 @@ function planSummary(plan: z.output<typeof planOutput>) {
   const blocked = plan.blockers.length
     ? `; blocked: ${plan.blockers.map((b) => b.code).join(', ')}`
     : '';
-  return `Plan: estimate ${cost}${blocked}. Show it to the user before starting it.`;
+  const skipped =
+    plan.skippedShots > 0
+      ? ` Leaves out ${plan.skippedShots} shot${plan.skippedShots === 1 ? '' : 's'} with no image prompt.`
+      : '';
+  return `Plan: estimate ${cost}${blocked}.${skipped} Show it to the user before starting it.`;
 }
 
 export const planGenerationInput = sequenceInput

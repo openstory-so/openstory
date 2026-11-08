@@ -83,7 +83,7 @@ import {
 } from '@/motion/dialogue-tts';
 import { requireCredits } from '@/billing/server/preflight';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { isInsufficientCreditsError } from '@/platform/errors';
+import { ValidationError, isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import {
   buildMotionRender,
@@ -862,6 +862,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               modelOverride: model,
               reservationId: input.reservationId,
               refs: renderRefs,
+              deriveMissingPrompt: false,
             });
             return JSON.stringify({
               ...prepared,
@@ -881,6 +882,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 error instanceof Error ? error.message : String(error),
                 'InsufficientCreditsError'
               );
+            }
+            // No prompt to render: a retry cannot conjure one.
+            if (error instanceof ValidationError) {
+              throw new NonRetryableError(error.message, 'ValidationError');
             }
             throw error;
           }
