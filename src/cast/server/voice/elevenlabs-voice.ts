@@ -182,7 +182,7 @@ export async function getElevenLabsVoice(
   const client = await createElevenLabsSdk(apiKey);
   try {
     const voice = await retryOnRateLimit(
-      () => client.voices.get(voiceId, { abortSignal: signal }),
+      () => client.voices.get(voiceId, {}, { abortSignal: signal }),
       signal
     );
     const category = voice.category ?? '';
