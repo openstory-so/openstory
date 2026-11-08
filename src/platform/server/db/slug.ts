@@ -41,11 +41,41 @@ export async function freeSlug(
   if (own !== undefined && /^(-\d+)?$/.test(own.slice(base.length))) {
     return own;
   }
-  // ponytail: two concurrent writes can pick the same slug; the unique index refuses the second.
+  // Two concurrent writes can pick the same slug: callers go through retryOnSlugClash.
   return uniqueSlug(
     base,
     new Set(rows.filter((row) => row.id !== selfId).map((row) => row.slug))
   );
+}
+
+const SLUG_CLASH_RE =
+  /UNIQUE constraint failed: \w+\.organization_id, \w+\.slug/;
+const SLUG_ATTEMPTS = 5;
+
+/** A write lost a slug to a concurrent one; D1 says so only in the message, which drizzle wraps. */
+function isSlugClash(error: unknown): boolean {
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    if (SLUG_CLASH_RE.test(e.message)) return true;
+  }
+  return false;
+}
+
+/**
+ * Runs `write` again while a concurrent write takes the slug it picked.
+ * `write` must pick its slug with freeSlug and land in one statement or batch.
+ */
+export function retryOnSlugClash<A extends unknown[], R>(
+  write: (...args: A) => Promise<R>
+): (...args: A) => Promise<R> {
+  return async (...args) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await write(...args);
+      } catch (error) {
+        if (attempt >= SLUG_ATTEMPTS || !isSlugClash(error)) throw error;
+      }
+    }
+  };
 }
 
 /** The ULID a route param names: a ULID passes through, a slug is looked up in the organization. */

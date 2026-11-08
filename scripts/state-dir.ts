@@ -47,21 +47,34 @@ const lockFile = (dataDir: string) => join(dataDir, '.openstory', '.lock');
 const dataState = (dataDir: string) => join(dataDir, '.openstory', 'state');
 const repoState = (repoRoot: string) => join(repoRoot, '.wrangler', 'state');
 
-/** Git worktree: its git dir differs from the common one. */
+/**
+ * Git worktree: its git dir differs from the common one. Outside git (a
+ * downloaded copy) is not a worktree; any other git failure throws, since
+ * guessing "main checkout" would point a worktree at the library.
+ */
 export function isWorktree(cwd: string = REPO_ROOT): boolean {
+  let out: string;
   try {
-    const [gitDir, commonDir] = execFileSync(
-      'git',
-      ['rev-parse', '--git-dir', '--git-common-dir'],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-    )
-      .trim()
-      .split('\n')
-      .map((dir) => resolve(cwd, dir));
-    return gitDir !== commonDir;
-  } catch {
-    return false;
+    out = execFileSync('git', ['rev-parse', '--git-dir', '--git-common-dir'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const stderr =
+      typeof error === 'object' && error !== null && 'stderr' in error
+        ? String(error.stderr)
+        : '';
+    if (stderr.includes('not a git repository')) return false;
+    throw new Error(
+      `Could not tell whether ${cwd} is a git worktree: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
+  const [gitDir, commonDir] = out
+    .trim()
+    .split('\n')
+    .map((dir) => resolve(cwd, dir));
+  return gitDir !== commonDir;
 }
 
 function currentEnv(): StateEnv {

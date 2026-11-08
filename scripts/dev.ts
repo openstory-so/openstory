@@ -69,6 +69,8 @@ const sync = dataDir
   ? spawn(
       'bun',
       [
+        // The root paths map @openstory/stitch/bundle to source; its dist may not be built.
+        `--tsconfig-override=${fileURLToPath(new URL('../tsconfig.json', import.meta.url))}`,
         fileURLToPath(new URL('./sync-local.ts', import.meta.url)),
         dataDir,
         `http://localhost:${process.env.PORT ?? 3000}`,

@@ -18,7 +18,7 @@ import { recordOf, stringOf } from './api.js';
 import { downloadSequenceAssets } from './assets.js';
 import type { CliContext, Command } from './context.js';
 import { parseOrigin } from './context.js';
-import { openStoryApiKey, signIn } from './login.js';
+import { isMissingFile, openStoryApiKey, signIn } from './login.js';
 
 const SETTLE_MS = 2000;
 const RELIST_MS = 60_000;
@@ -64,10 +64,21 @@ export async function readSyncState(
   let text: string;
   try {
     text = await readFile(stateFile(dir), 'utf8');
-  } catch {
-    return { v: 1, origin, organizations: {}, sequences: {} };
+  } catch (error) {
+    // Only a missing file is a first run; anything else would lose the folder map.
+    if (isMissingFile(error)) {
+      return { v: 1, origin, organizations: {}, sequences: {} };
+    }
+    throw new Error(
+      `${stateFile(dir)} is unreadable: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
-  const parsed = recordOf(JSON.parse(text));
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = recordOf(JSON.parse(text));
+  } catch {
+    throw new Error(`${stateFile(dir)} is not JSON; fix or remove it`);
+  }
   if (parsed.origin !== origin) {
     throw new Error(
       `${dir} mirrors ${String(parsed.origin)}. Pick another --dir for ${origin}.`

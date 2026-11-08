@@ -92,7 +92,7 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-function isMissingFile(error: unknown): boolean {
+export function isMissingFile(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&

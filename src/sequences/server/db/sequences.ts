@@ -63,7 +63,11 @@ import {
 } from './sequence-events';
 import type { RecordEventInput } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
-import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
+import {
+  freeSlug,
+  resolveSlugOrId,
+  retryOnSlugClash,
+} from '@/platform/server/db/slug';
 import {
   deleteLocationLinksStatements,
   deleteLocationsStatements,
@@ -627,95 +631,99 @@ export function createSequencesMethods(
      * `sequence_style_versions` row in the same batch, unless the automatic
      * style defers it.
      */
-    create: async (params: {
-      /** Pre-allocated id, for callers that bind rows to the sequence first. */
-      id?: string;
-      title: string;
-      script?: string | null;
-      styleId: string;
-      /**
-       * Automatic style (#1213): the style row is a placeholder until the
-       * storyboard run derives the recipe, so no snapshot is taken here — a
-       * null `styleConfig` is what tells the launcher the derivation is still
-       * pending. The run writes the snapshot via `update({ styleId })`.
-       */
-      deferStyleSnapshot?: boolean;
-      aspectRatio?: AspectRatio;
-      resolution?: Resolution;
-      analysisModel?: string;
-      imageModel?: string;
-      videoModel?: string;
-      musicModel?: string;
-      generationStopAt: GenerationStage;
-      /** Opt-in to the frame-based workflow; off = reference-only (the default). */
-      generateStartFrames?: boolean;
-      /** Design a voice per speaking character (#1553); off by default. */
-      generateVoices?: boolean;
-      /** Render motion as Ark drafts (#1756); off by default. */
-      draftMotion?: boolean;
-      /** Film length asked for (#1593); absent / null = auto. */
-      targetDurationSeconds?: number | null;
-      suggestedLocationIds?: string[];
-    }): Promise<Sequence> => {
-      const styleConfig = params.deferStyleSnapshot
-        ? null
-        : await snapshotConfigForStyleId(db, params.styleId);
-      const id = params.id ?? generateId();
-      const styleVersionId = styleConfig ? generateId() : null;
-      const sequenceData: NewSequence = {
-        id,
-        organizationId,
-        createdBy: userId,
-        updatedBy: userId,
-        title: params.title,
-        slug: await freeSlug(db, sequences, organizationId, params.title),
-        script: params.script,
-        styleId: params.styleId,
-        aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
-        resolution: params.resolution ?? DEFAULT_RESOLUTION,
-        // The sequences SQL column defaults are stale literals
-        // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
-        // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
-        // can't be changed without a D1 table rebuild, so resolve the app's
-        // real defaults here instead of relying on the column default.
-        analysisModel: params.analysisModel ?? DEFAULT_ANALYSIS_MODEL,
-        imageModel: params.imageModel ?? DEFAULT_IMAGE_MODEL,
-        videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
-        musicModel: params.musicModel,
-        generationStopAt: params.generationStopAt,
-        generateStartFrames: params.generateStartFrames ?? false,
-        generateVoices: params.generateVoices ?? false,
-        targetDurationSeconds: params.targetDurationSeconds ?? null,
-        suggestedLocationIds: params.suggestedLocationIds ?? null,
-        status: 'draft',
-      };
+    create: retryOnSlugClash(
+      async (params: {
+        /** Pre-allocated id, for callers that bind rows to the sequence first. */
+        id?: string;
+        title: string;
+        script?: string | null;
+        styleId: string;
+        /**
+         * Automatic style (#1213): the style row is a placeholder until the
+         * storyboard run derives the recipe, so no snapshot is taken here — a
+         * null `styleConfig` is what tells the launcher the derivation is still
+         * pending. The run writes the snapshot via `update({ styleId })`.
+         */
+        deferStyleSnapshot?: boolean;
+        aspectRatio?: AspectRatio;
+        resolution?: Resolution;
+        analysisModel?: string;
+        imageModel?: string;
+        videoModel?: string;
+        musicModel?: string;
+        generationStopAt: GenerationStage;
+        /** Opt-in to the frame-based workflow; off = reference-only (the default). */
+        generateStartFrames?: boolean;
+        /** Design a voice per speaking character (#1553); off by default. */
+        generateVoices?: boolean;
+        /** Render motion as Ark drafts (#1756); off by default. */
+        draftMotion?: boolean;
+        /** Film length asked for (#1593); absent / null = auto. */
+        targetDurationSeconds?: number | null;
+        suggestedLocationIds?: string[];
+      }): Promise<Sequence> => {
+        const styleConfig = params.deferStyleSnapshot
+          ? null
+          : await snapshotConfigForStyleId(db, params.styleId);
+        const id = params.id ?? generateId();
+        const styleVersionId = styleConfig ? generateId() : null;
+        const sequenceData: NewSequence = {
+          id,
+          organizationId,
+          createdBy: userId,
+          updatedBy: userId,
+          title: params.title,
+          slug: await freeSlug(db, sequences, organizationId, params.title),
+          script: params.script,
+          styleId: params.styleId,
+          aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+          resolution: params.resolution ?? DEFAULT_RESOLUTION,
+          // The sequences SQL column defaults are stale literals
+          // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
+          // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
+          // can't be changed without a D1 table rebuild, so resolve the app's
+          // real defaults here instead of relying on the column default.
+          analysisModel: params.analysisModel ?? DEFAULT_ANALYSIS_MODEL,
+          imageModel: params.imageModel ?? DEFAULT_IMAGE_MODEL,
+          videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
+          musicModel: params.musicModel,
+          generationStopAt: params.generationStopAt,
+          generateStartFrames: params.generateStartFrames ?? false,
+          generateVoices: params.generateVoices ?? false,
+          targetDurationSeconds: params.targetDurationSeconds ?? null,
+          suggestedLocationIds: params.suggestedLocationIds ?? null,
+          status: 'draft',
+        };
 
-      const insert = db
-        .insert(sequences)
-        .values({ ...sequenceData, selectedStyleVersionId: styleVersionId });
-      if (styleConfig && styleVersionId) {
-        await db.batch([
-          insert,
-          insertStyleVersion(db, {
-            id: styleVersionId,
-            sequenceId: id,
-            styleId: params.styleId,
-            config: styleConfig,
-            source: 'created',
-            createdBy: userId,
-          }),
-        ]);
-      } else {
-        await insert;
+        const insert = db
+          .insert(sequences)
+          .values({ ...sequenceData, selectedStyleVersionId: styleVersionId });
+        if (styleConfig && styleVersionId) {
+          await db.batch([
+            insert,
+            insertStyleVersion(db, {
+              id: styleVersionId,
+              sequenceId: id,
+              styleId: params.styleId,
+              config: styleConfig,
+              source: 'created',
+              createdBy: userId,
+            }),
+          ]);
+        } else {
+          await insert;
+        }
+
+        const [data] = await selectSequencesFrom(db).where(
+          eq(sequences.id, id)
+        );
+        if (!data) {
+          throw new Error('No sequence returned from database');
+        }
+
+        return data;
       }
-
-      const [data] = await selectSequencesFrom(db).where(eq(sequences.id, id));
-      if (!data) {
-        throw new Error('No sequence returned from database');
-      }
-
-      return data;
-    },
+    ),
 
     /**
      * Compare-and-swap `workflowRunId` — the storyboard generation mutex
@@ -804,143 +812,145 @@ export function createSequencesMethods(
         );
     },
 
-    update: async (params: {
-      id: string;
-      title?: string;
-      script?: string | null;
-      styleId?: string;
-      status?: SequenceStatus;
-      workflowRunId?: string;
-      analysisModel?: string;
-      aspectRatio?: AspectRatio;
-      resolution?: Resolution;
-      imageModel?: string;
-      videoModel?: string;
-      musicModel?: string;
-      posterUrl?: string | null;
-      includeMusic?: boolean;
-      generationStopAt?: GenerationStage;
-      /**
-       * Continue-from before Images (#1698): the create-time default can
-       * still change because no stills exist yet.
-       */
-      generateStartFrames?: boolean;
-      /** Continue-from before Dialogue (#1698). */
-      generateVoices?: boolean;
-      /** Render motion as Ark drafts (#1756). */
-      draftMotion?: boolean;
-      targetDurationSeconds?: number | null;
-    }): Promise<Sequence> => {
-      // Scoped by organizationId like every other write here — `workflowRunId` in
-      // particular is the generation-mutex column (#839), so a cross-organization id
-      // must never be able to stomp it.
-      const { id, ...fields } = params;
-      const values =
-        fields.title === undefined
-          ? fields
-          : {
-              ...fields,
-              slug: await freeSlug(
-                db,
-                sequences,
-                organizationId,
-                fields.title,
-                id
-              ),
-            };
-      const styleConfig =
-        params.styleId !== undefined
-          ? await snapshotConfigForStyleId(db, params.styleId)
-          : undefined;
-      const scoped = and(
-        eq(sequences.id, id),
-        eq(sequences.organizationId, organizationId)
-      );
-      const [before] = await db
-        .select({
-          styleId: sequences.styleId,
-          aspectRatio: sequences.aspectRatio,
-          imageModel: sequences.imageModel,
-          videoModel: sequences.videoModel,
-          musicModel: sequences.musicModel,
-          analysisModel: sequences.analysisModel,
-          generationStopAt: sequences.generationStopAt,
-        })
-        .from(sequences)
-        .where(scoped);
-      const settingsChange = before
-        ? describeSettingsChange(before, values)
-        : null;
-      const settingsInsert = settingsChange
-        ? buildEventInsert(db, {
-            sequenceId: id,
-            actorId: userId,
-            kind: SETTINGS_CHANGED_EVENT,
-            targetType: 'sequence',
-            targetId: id,
-            summary: settingsChange.summary,
-            data: {
-              fields: settingsChange.fields,
-              changes: settingsChange.changes,
-            },
+    update: retryOnSlugClash(
+      async (params: {
+        id: string;
+        title?: string;
+        script?: string | null;
+        styleId?: string;
+        status?: SequenceStatus;
+        workflowRunId?: string;
+        analysisModel?: string;
+        aspectRatio?: AspectRatio;
+        resolution?: Resolution;
+        imageModel?: string;
+        videoModel?: string;
+        musicModel?: string;
+        posterUrl?: string | null;
+        includeMusic?: boolean;
+        generationStopAt?: GenerationStage;
+        /**
+         * Continue-from before Images (#1698): the create-time default can
+         * still change because no stills exist yet.
+         */
+        generateStartFrames?: boolean;
+        /** Continue-from before Dialogue (#1698). */
+        generateVoices?: boolean;
+        /** Render motion as Ark drafts (#1756). */
+        draftMotion?: boolean;
+        targetDurationSeconds?: number | null;
+      }): Promise<Sequence> => {
+        // Scoped by organizationId like every other write here — `workflowRunId` in
+        // particular is the generation-mutex column (#839), so a cross-organization id
+        // must never be able to stomp it.
+        const { id, ...fields } = params;
+        const values =
+          fields.title === undefined
+            ? fields
+            : {
+                ...fields,
+                slug: await freeSlug(
+                  db,
+                  sequences,
+                  organizationId,
+                  fields.title,
+                  id
+                ),
+              };
+        const styleConfig =
+          params.styleId !== undefined
+            ? await snapshotConfigForStyleId(db, params.styleId)
+            : undefined;
+        const scoped = and(
+          eq(sequences.id, id),
+          eq(sequences.organizationId, organizationId)
+        );
+        const [before] = await db
+          .select({
+            styleId: sequences.styleId,
+            aspectRatio: sequences.aspectRatio,
+            imageModel: sequences.imageModel,
+            videoModel: sequences.videoModel,
+            musicModel: sequences.musicModel,
+            analysisModel: sequences.analysisModel,
+            generationStopAt: sequences.generationStopAt,
           })
-        : null;
-      if (styleConfig !== undefined && params.styleId !== undefined) {
-        const [owned] = await db
-          .select({ id: sequences.id })
           .from(sequences)
           .where(scoped);
-        if (!owned) {
-          throw new ValidationError('Sequence not found');
-        }
-        // A style switch is a new snapshot (#1600): its version row and the
-        // pointer, in one batch. No sheet claim is revoked: a character or
-        // location sheet reads no style, only its bible's `rendering`.
-        const styleVersionId = generateId();
-        await db.batch([
-          insertStyleVersion(db, {
-            id: styleVersionId,
-            sequenceId: id,
-            styleId: params.styleId,
-            config: styleConfig,
-            source: 'switched',
-            createdBy: userId,
-          }),
-          db
-            .update(sequences)
-            .set({ ...values, selectedStyleVersionId: styleVersionId })
-            .where(scoped),
-          ...(settingsInsert ? [settingsInsert] : []),
-        ]);
-      } else if (settingsInsert) {
-        const [updated] = await db.batch([
-          db
+        const settingsChange = before
+          ? describeSettingsChange(before, values)
+          : null;
+        const settingsInsert = settingsChange
+          ? buildEventInsert(db, {
+              sequenceId: id,
+              actorId: userId,
+              kind: SETTINGS_CHANGED_EVENT,
+              targetType: 'sequence',
+              targetId: id,
+              summary: settingsChange.summary,
+              data: {
+                fields: settingsChange.fields,
+                changes: settingsChange.changes,
+              },
+            })
+          : null;
+        if (styleConfig !== undefined && params.styleId !== undefined) {
+          const [owned] = await db
+            .select({ id: sequences.id })
+            .from(sequences)
+            .where(scoped);
+          if (!owned) {
+            throw new ValidationError('Sequence not found');
+          }
+          // A style switch is a new snapshot (#1600): its version row and the
+          // pointer, in one batch. No sheet claim is revoked: a character or
+          // location sheet reads no style, only its bible's `rendering`.
+          const styleVersionId = generateId();
+          await db.batch([
+            insertStyleVersion(db, {
+              id: styleVersionId,
+              sequenceId: id,
+              styleId: params.styleId,
+              config: styleConfig,
+              source: 'switched',
+              createdBy: userId,
+            }),
+            db
+              .update(sequences)
+              .set({ ...values, selectedStyleVersionId: styleVersionId })
+              .where(scoped),
+            ...(settingsInsert ? [settingsInsert] : []),
+          ]);
+        } else if (settingsInsert) {
+          const [updated] = await db.batch([
+            db
+              .update(sequences)
+              .set(values)
+              .where(scoped)
+              .returning({ id: sequences.id }),
+            settingsInsert,
+          ]);
+          if (updated.length === 0) {
+            throw new ValidationError('Sequence not found');
+          }
+        } else {
+          const [updated] = await db
             .update(sequences)
             .set(values)
             .where(scoped)
-            .returning({ id: sequences.id }),
-          settingsInsert,
-        ]);
-        if (updated.length === 0) {
+            .returning({ id: sequences.id });
+          if (!updated) {
+            throw new ValidationError('Sequence not found');
+          }
+        }
+        const [data] = await selectSequencesFrom(db).where(scoped);
+        if (!data) {
           throw new ValidationError('Sequence not found');
         }
-      } else {
-        const [updated] = await db
-          .update(sequences)
-          .set(values)
-          .where(scoped)
-          .returning({ id: sequences.id });
-        if (!updated) {
-          throw new ValidationError('Sequence not found');
-        }
-      }
-      const [data] = await selectSequencesFrom(db).where(scoped);
-      if (!data) {
-        throw new ValidationError('Sequence not found');
-      }
 
-      return data;
-    },
+        return data;
+      }
+    ),
 
     /**
      * Snapshot an automatic style's derived recipe onto its sequence (#1213),
@@ -1058,22 +1068,24 @@ export function createSequencesMethods(
         );
     },
 
-    updateTitle: async (sequenceId: string, title: string): Promise<void> => {
-      await db
-        .update(sequences)
-        .set({
-          title,
-          slug: await freeSlug(
-            db,
-            sequences,
-            organizationId,
+    updateTitle: retryOnSlugClash(
+      async (sequenceId: string, title: string): Promise<void> => {
+        await db
+          .update(sequences)
+          .set({
             title,
-            sequenceId
-          ),
-          updatedAt: new Date(),
-        })
-        .where(eq(sequences.id, sequenceId));
-    },
+            slug: await freeSlug(
+              db,
+              sequences,
+              organizationId,
+              title,
+              sequenceId
+            ),
+            updatedAt: new Date(),
+          })
+          .where(eq(sequences.id, sequenceId));
+      }
+    ),
 
     updateAnalysisDurationMs: async (
       sequenceId: string,

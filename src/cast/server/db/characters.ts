@@ -73,7 +73,11 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { generateId } from '@/platform/id';
-import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
+import {
+  freeSlug,
+  resolveSlugOrId,
+  retryOnSlugClash,
+} from '@/platform/server/db/slug';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
   loadSceneContextBySequenceFromDb,
@@ -1014,139 +1018,153 @@ export function createCharactersMethods(db: Database, organizationId: string) {
     data: CharacterBibleUpdate,
     opts: BibleWriteOpts
   ): Promise<Character> {
-    // A rename from any sequence, or none, must stay free in every sequence that casts it (#2248).
-    if (data.name !== undefined) {
-      const casting = await db
-        .select({ sequenceId: sequenceCast.sequenceId })
-        .from(sequenceCast)
-        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
-        .where(
-          and(
-            eq(sequenceCast.characterId, id),
-            eq(characters.organizationId, organizationId),
-            isNull(sequenceCast.removedAt)
-          )
-        );
-      for (const link of casting) {
-        await assertNameFree(db, link.sequenceId, data.name, id);
+    return await updateBibleOnce(sequenceId, id, data, opts);
+  }
+  const updateBibleOnce = retryOnSlugClash(
+    async (
+      sequenceId: string | null,
+      id: string,
+      data: CharacterBibleUpdate,
+      opts: BibleWriteOpts
+    ): Promise<Character> => {
+      // A rename from any sequence, or none, must stay free in every sequence that casts it (#2248).
+      if (data.name !== undefined) {
+        const casting = await db
+          .select({ sequenceId: sequenceCast.sequenceId })
+          .from(sequenceCast)
+          .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+          .where(
+            and(
+              eq(sequenceCast.characterId, id),
+              eq(characters.organizationId, organizationId),
+              isNull(sequenceCast.removedAt)
+            )
+          );
+        for (const link of casting) {
+          await assertNameFree(db, link.sequenceId, data.name, id);
+        }
       }
-    }
-    if (sequenceId === null) {
-      const current = await currentOf(id);
-      if (!current) throw new NotFoundError(`Character ${id} not found`);
+      if (sequenceId === null) {
+        const current = await currentOf(id);
+        if (!current) throw new NotFoundError(`Character ${id} not found`);
+        const { voiceDescription, standardClothing, ...bibleData } = data;
+        const statements: BatchItem<'sqlite'>[] = (
+          await bibleWrite(current, bibleData, {
+            source: opts.source,
+            createdBy: opts.actorId,
+          })
+        ).statements;
+        if (standardClothing !== undefined) {
+          const defaultLook = current.looks.find((look) => look.isDefault);
+          if (!defaultLook)
+            throw new Error(`Character ${id} has no default look`);
+          statements.push(
+            ...(
+              await lookDefinitionWrite(
+                db,
+                defaultLook,
+                { clothing: standardClothing },
+                { source: 'edit', createdBy: opts.actorId, sequenceId: null }
+              )
+            ).statements
+          );
+        }
+        const [first, ...rest] = statements;
+        if (first) await db.batch([first, ...rest]);
+        if (voiceDescription !== undefined) {
+          const voice = await voiceOf(id);
+          if (voiceDescription !== voice.voiceDescription) {
+            await updateVoice(
+              id,
+              { voiceDescription },
+              'user-edit',
+              opts.actorId,
+              null
+            );
+          }
+        }
+        const updated = await currentOf(id);
+        if (!updated) throw new NotFoundError(`Character ${id} not found`);
+        return updated;
+      }
+      const existing = await castOf(sequenceId, id);
+      if (!existing) {
+        throw new Error(`SequenceCharacter ${id} not found`);
+      }
+      const prev: Record<string, string | boolean | null> = {};
+      for (const [key, value] of typedEntries(data)) {
+        if (value === undefined) continue;
+        prev[key] = existing[key] ?? null;
+      }
+      // A character an older worker wrote keeps its clothing on the legacy
+      // bible column, which the version appended below no longer carries
+      // (#2015): give it its default look first.
+      const defaultLook = await requireLook(
+        db,
+        organizationId,
+        existing.lookId
+      );
       const { voiceDescription, standardClothing, ...bibleData } = data;
-      const statements: BatchItem<'sqlite'>[] = (
-        await bibleWrite(current, bibleData, {
-          source: opts.source,
-          createdBy: opts.actorId,
-        })
-      ).statements;
-      if (standardClothing !== undefined) {
-        const defaultLook = current.looks.find((look) => look.isDefault);
-        if (!defaultLook)
-          throw new Error(`Character ${id} has no default look`);
-        statements.push(
-          ...(
-            await lookDefinitionWrite(
+      // Appends a version and moves the pointer (#1600); an edit to a field
+      // the sheet reads also revokes an in-flight sheet run's claim (#1113).
+      const { statements, versionId } = await bibleWrite(existing, bibleData, {
+        source: opts.source,
+        createdBy: opts.actorId,
+      });
+      // Clothing is the default look's (#2015): the same edit, written as a
+      // look version.
+      const look =
+        standardClothing === undefined
+          ? { statements: [] }
+          : await lookDefinitionWrite(
               db,
               defaultLook,
               { clothing: standardClothing },
-              { source: 'edit', createdBy: opts.actorId, sequenceId: null }
-            )
-          ).statements
+              {
+                source: lookSource(opts.source),
+                createdBy: opts.actorId,
+                sequenceId,
+              }
+            );
+      await db.batch([
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.updated',
+          targetType: 'character',
+          targetId: id,
+          summary: `Edited character ${data.name ?? existing.name}`,
+          data: {
+            prevState: prev,
+            // The version move, null when no version was appended.
+            bibleVersion:
+              versionId === null
+                ? null
+                : { from: existing.selectedBibleVersionId, to: versionId },
+          },
+        }),
+        ...statements,
+        ...look.statements,
+      ]);
+      // `voiceDescription` is the selected voice version's, so an edit to it
+      // is a voice write and belongs in the voice history (#1657). Only when it
+      // actually moved: the form posts every field, and a row per unrelated
+      // bible edit would bury the real takes.
+      if (
+        voiceDescription !== undefined &&
+        voiceDescription !== existing.voiceDescription
+      ) {
+        await updateVoice(
+          id,
+          { voiceDescription },
+          'user-edit',
+          opts.actorId,
+          null
         );
       }
-      const [first, ...rest] = statements;
-      if (first) await db.batch([first, ...rest]);
-      if (voiceDescription !== undefined) {
-        const voice = await voiceOf(id);
-        if (voiceDescription !== voice.voiceDescription) {
-          await updateVoice(
-            id,
-            { voiceDescription },
-            'user-edit',
-            opts.actorId,
-            null
-          );
-        }
-      }
-      const updated = await currentOf(id);
-      if (!updated) throw new NotFoundError(`Character ${id} not found`);
-      return updated;
+      return await reread(sequenceId, id);
     }
-    const existing = await castOf(sequenceId, id);
-    if (!existing) {
-      throw new Error(`SequenceCharacter ${id} not found`);
-    }
-    const prev: Record<string, string | boolean | null> = {};
-    for (const [key, value] of typedEntries(data)) {
-      if (value === undefined) continue;
-      prev[key] = existing[key] ?? null;
-    }
-    // A character an older worker wrote keeps its clothing on the legacy
-    // bible column, which the version appended below no longer carries
-    // (#2015): give it its default look first.
-    const defaultLook = await requireLook(db, organizationId, existing.lookId);
-    const { voiceDescription, standardClothing, ...bibleData } = data;
-    // Appends a version and moves the pointer (#1600); an edit to a field
-    // the sheet reads also revokes an in-flight sheet run's claim (#1113).
-    const { statements, versionId } = await bibleWrite(existing, bibleData, {
-      source: opts.source,
-      createdBy: opts.actorId,
-    });
-    // Clothing is the default look's (#2015): the same edit, written as a
-    // look version.
-    const look =
-      standardClothing === undefined
-        ? { statements: [] }
-        : await lookDefinitionWrite(
-            db,
-            defaultLook,
-            { clothing: standardClothing },
-            {
-              source: lookSource(opts.source),
-              createdBy: opts.actorId,
-              sequenceId,
-            }
-          );
-    await db.batch([
-      buildEventInsert(db, {
-        sequenceId: existing.sequenceId,
-        actorId: opts.actorId,
-        kind: 'character.updated',
-        targetType: 'character',
-        targetId: id,
-        summary: `Edited character ${data.name ?? existing.name}`,
-        data: {
-          prevState: prev,
-          // The version move, null when no version was appended.
-          bibleVersion:
-            versionId === null
-              ? null
-              : { from: existing.selectedBibleVersionId, to: versionId },
-        },
-      }),
-      ...statements,
-      ...look.statements,
-    ]);
-    // `voiceDescription` is the selected voice version's, so an edit to it
-    // is a voice write and belongs in the voice history (#1657). Only when it
-    // actually moved: the form posts every field, and a row per unrelated
-    // bible edit would bury the real takes.
-    if (
-      voiceDescription !== undefined &&
-      voiceDescription !== existing.voiceDescription
-    ) {
-      await updateVoice(
-        id,
-        { voiceDescription },
-        'user-edit',
-        opts.actorId,
-        null
-      );
-    }
-    return await reread(sequenceId, id);
-  }
+  );
 
   return {
     /**
@@ -1188,57 +1206,59 @@ export function createCharactersMethods(db: Database, organizationId: string) {
      * first version. No cast link: a sequence casts it later through
      * {@link attach}.
      */
-    createForOrganization: async (
-      data: Pick<CharacterBible, 'name'> &
-        Partial<Omit<CharacterBible, 'name'>> &
-        Pick<CharacterWithSheet, 'standardClothing'>,
-      opts: { createdBy: string }
-    ): Promise<CharacterWithSheet> => {
-      const { standardClothing, ...fields } = data;
-      const bible = mergeBible(
-        { ...NEW_CHARACTER_BIBLE, name: data.name },
-        fields
-      );
-      const id = generateId();
-      const versionId = generateId();
-      const lookVersionId = generateId();
-      await db.batch([
-        db.insert(characters).values({
-          id,
-          organizationId,
-          selectedBibleVersionId: versionId,
-          legacyName: bible.name,
-          slug: await freeSlug(db, characters, organizationId, bible.name),
-        }),
-        db.insert(characterBibleVersions).values({
-          id: versionId,
-          characterId: id,
-          ...bible,
-          source: 'edit',
-          createdBy: opts.createdBy,
-        }),
-        db.insert(characterLooks).values({
-          id,
-          characterId: id,
-          isDefault: true,
-          sortOrder: 0,
-          selectedLookVersionId: lookVersionId,
-          sheetStatus: 'pending',
-        }),
-        db.insert(characterLookVersions).values({
-          id: lookVersionId,
-          lookId: id,
-          name: DEFAULT_LOOK_NAME,
-          clothing: standardClothing,
-          styling: null,
-          source: 'edit',
-          createdBy: opts.createdBy,
-        }),
-      ]);
-      const character = await currentOf(id);
-      if (!character) throw new Error(`Character ${id} not found`);
-      return character;
-    },
+    createForOrganization: retryOnSlugClash(
+      async (
+        data: Pick<CharacterBible, 'name'> &
+          Partial<Omit<CharacterBible, 'name'>> &
+          Pick<CharacterWithSheet, 'standardClothing'>,
+        opts: { createdBy: string }
+      ): Promise<CharacterWithSheet> => {
+        const { standardClothing, ...fields } = data;
+        const bible = mergeBible(
+          { ...NEW_CHARACTER_BIBLE, name: data.name },
+          fields
+        );
+        const id = generateId();
+        const versionId = generateId();
+        const lookVersionId = generateId();
+        await db.batch([
+          db.insert(characters).values({
+            id,
+            organizationId,
+            selectedBibleVersionId: versionId,
+            legacyName: bible.name,
+            slug: await freeSlug(db, characters, organizationId, bible.name),
+          }),
+          db.insert(characterBibleVersions).values({
+            id: versionId,
+            characterId: id,
+            ...bible,
+            source: 'edit',
+            createdBy: opts.createdBy,
+          }),
+          db.insert(characterLooks).values({
+            id,
+            characterId: id,
+            isDefault: true,
+            sortOrder: 0,
+            selectedLookVersionId: lookVersionId,
+            sheetStatus: 'pending',
+          }),
+          db.insert(characterLookVersions).values({
+            id: lookVersionId,
+            lookId: id,
+            name: DEFAULT_LOOK_NAME,
+            clothing: standardClothing,
+            styling: null,
+            source: 'edit',
+            createdBy: opts.createdBy,
+          }),
+        ]);
+        const character = await currentOf(id);
+        if (!character) throw new Error(`Character ${id} not found`);
+        return character;
+      }
+    ),
 
     /**
      * Cast one of the organization's characters into `sequenceId` (#2050, #2065):
@@ -1489,226 +1509,228 @@ export function createCharactersMethods(db: Database, organizationId: string) {
      * new character gets one, under the character's own id, and a re-analysis
      * that moved the clothing appends a look version.
      */
-    create: async (
-      data: NewCharacter,
-      opts: { source: BibleVersionSource; createdBy: string | null }
-    ): Promise<CastCharacter> => {
-      const [found] = await selectCharacters(
-        data.sequenceId,
-        eq(sequenceCast.scriptCharacterId, data.characterId)
-      );
-      // A character the writer attached here, or another sequence has ever
-      // cast, is never written through analysis (#2050, #2065), whatever the
-      // payload said: a live
-      // link is returned as it is (the looks module links, see
-      // `syncFromAnalysis`), and a removed link stays removed — the entry
-      // becomes a new character under the next free script id. Decided here,
-      // on every call, so a snapshot that went stale mid-run cannot reach her.
-      const held = found
-        ? await analysisMayNotRewrite(
-            db,
-            organizationId,
-            found.id,
-            data.sequenceId
-          )
-        : false;
-      if (found && held && !found.deletedAt) {
-        // The references stage still marks her default look generating.
-        if (data.sheetStatus !== undefined) {
+    create: retryOnSlugClash(
+      async (
+        data: NewCharacter,
+        opts: { source: BibleVersionSource; createdBy: string | null }
+      ): Promise<CastCharacter> => {
+        const [found] = await selectCharacters(
+          data.sequenceId,
+          eq(sequenceCast.scriptCharacterId, data.characterId)
+        );
+        // A character the writer attached here, or another sequence has ever
+        // cast, is never written through analysis (#2050, #2065), whatever the
+        // payload said: a live
+        // link is returned as it is (the looks module links, see
+        // `syncFromAnalysis`), and a removed link stays removed — the entry
+        // becomes a new character under the next free script id. Decided here,
+        // on every call, so a snapshot that went stale mid-run cannot reach her.
+        const held = found
+          ? await analysisMayNotRewrite(
+              db,
+              organizationId,
+              found.id,
+              data.sequenceId
+            )
+          : false;
+        if (found && held && !found.deletedAt) {
+          // The references stage still marks her default look generating.
+          if (data.sheetStatus !== undefined) {
+            const defaultLook = await requireLook(
+              db,
+              organizationId,
+              found.lookId
+            );
+            await db
+              .update(characterLooks)
+              .set({ sheetStatus: data.sheetStatus, updatedAt: new Date() })
+              .where(eq(characterLooks.id, defaultLook.id));
+            return await reread(data.sequenceId, found.id);
+          }
+          return found;
+        }
+        const existing = found && !held ? found : undefined;
+        const scriptCharacterId =
+          found && held
+            ? nextIdentityToken(
+                data.characterId,
+                await scriptIdsOf(data.sequenceId)
+              )
+            : data.characterId;
+        const {
+          name: _n,
+          age: _a,
+          gender: _g,
+          ethnicity: _e,
+          physicalDescription: _pd,
+          standardClothing: clothing,
+          sheetStatus,
+          personality: _p,
+          movement: _m,
+          voiceOnly: _vo,
+          isPerson: _ip,
+          consistencyTag: _ct,
+          voiceId: incomingVoiceId,
+          voiceDescription: incomingVoiceDescription,
+          sequenceId,
+          characterId: _scriptCharacterId,
+          ...row
+        } = data;
+        const look = {
+          source: lookSource(opts.source),
+          createdBy: opts.createdBy,
+        };
+        const id = existing?.id ?? data.id ?? generateId();
+        if (existing) {
+          // An existing character with no look yet (an older worker's) gets its
+          // default filled in first.
           const defaultLook = await requireLook(
             db,
             organizationId,
-            found.lookId
+            existing.lookId
           );
-          await db
-            .update(characterLooks)
-            .set({ sheetStatus: data.sheetStatus, updatedAt: new Date() })
-            .where(eq(characterLooks.id, defaultLook.id));
-          return await reread(data.sequenceId, found.id);
-        }
-        return found;
-      }
-      const existing = found && !held ? found : undefined;
-      const scriptCharacterId =
-        found && held
-          ? nextIdentityToken(
-              data.characterId,
-              await scriptIdsOf(data.sequenceId)
-            )
-          : data.characterId;
-      const {
-        name: _n,
-        age: _a,
-        gender: _g,
-        ethnicity: _e,
-        physicalDescription: _pd,
-        standardClothing: clothing,
-        sheetStatus,
-        personality: _p,
-        movement: _m,
-        voiceOnly: _vo,
-        isPerson: _ip,
-        consistencyTag: _ct,
-        voiceId: incomingVoiceId,
-        voiceDescription: incomingVoiceDescription,
-        sequenceId,
-        characterId: _scriptCharacterId,
-        ...row
-      } = data;
-      const look = {
-        source: lookSource(opts.source),
-        createdBy: opts.createdBy,
-      };
-      const id = existing?.id ?? data.id ?? generateId();
-      if (existing) {
-        // An existing character with no look yet (an older worker's) gets its
-        // default filled in first.
-        const defaultLook = await requireLook(
-          db,
-          organizationId,
-          existing.lookId
-        );
-        const now = new Date();
-        const clothingWrite = await lookDefinitionWrite(
-          db,
-          defaultLook,
-          { clothing },
-          { ...look, sequenceId }
-        );
-        // A field left out keeps its value, as the column upsert did.
-        // A re-analysis may turn not-a-person into a person, never the
-        // reverse (#2065): the script's guess does not undo what the row
-        // says, and over-registering is the safe direction. Decided here,
-        // against the row this write already read. The form is how a
-        // person turns it off again.
-        const bible = await bibleWrite(
-          existing,
-          {
-            ...bibleOf(data),
-            ...(existing.isPerson ? { isPerson: true } : {}),
-          },
-          opts
-        );
-        await db.batch([
-          // A re-analysis re-extracting a removed character revives it — the
-          // script says the character exists again (#1108). Sheet OUTPUT is
-          // not re-written here (#1419).
-          db
-            .update(sequenceCast)
-            .set({ removedAt: null })
-            .where(eq(sequenceCast.id, existing.castId)),
-          // Cast again, so back in the organization too, as `restore` does (#2065).
-          db
-            .update(characters)
-            .set({ updatedAt: now, deletedAt: null })
-            .where(eq(characters.id, id)),
-          ...bible.statements,
-          ...(bible.versionId === null
-            ? []
-            : [
-                buildEventInsert(db, {
-                  sequenceId,
-                  actorId: opts.createdBy,
-                  kind: 'character.updated',
-                  targetType: 'character',
-                  targetId: id,
-                  summary: `Re-analysed character ${existing.name}`,
-                  data: {
-                    bibleVersion: {
-                      from: existing.selectedBibleVersionId,
-                      to: bible.versionId,
+          const now = new Date();
+          const clothingWrite = await lookDefinitionWrite(
+            db,
+            defaultLook,
+            { clothing },
+            { ...look, sequenceId }
+          );
+          // A field left out keeps its value, as the column upsert did.
+          // A re-analysis may turn not-a-person into a person, never the
+          // reverse (#2065): the script's guess does not undo what the row
+          // says, and over-registering is the safe direction. Decided here,
+          // against the row this write already read. The form is how a
+          // person turns it off again.
+          const bible = await bibleWrite(
+            existing,
+            {
+              ...bibleOf(data),
+              ...(existing.isPerson ? { isPerson: true } : {}),
+            },
+            opts
+          );
+          await db.batch([
+            // A re-analysis re-extracting a removed character revives it — the
+            // script says the character exists again (#1108). Sheet OUTPUT is
+            // not re-written here (#1419).
+            db
+              .update(sequenceCast)
+              .set({ removedAt: null })
+              .where(eq(sequenceCast.id, existing.castId)),
+            // Cast again, so back in the organization too, as `restore` does (#2065).
+            db
+              .update(characters)
+              .set({ updatedAt: now, deletedAt: null })
+              .where(eq(characters.id, id)),
+            ...bible.statements,
+            ...(bible.versionId === null
+              ? []
+              : [
+                  buildEventInsert(db, {
+                    sequenceId,
+                    actorId: opts.createdBy,
+                    kind: 'character.updated',
+                    targetType: 'character',
+                    targetId: id,
+                    summary: `Re-analysed character ${existing.name}`,
+                    data: {
+                      bibleVersion: {
+                        from: existing.selectedBibleVersionId,
+                        to: bible.versionId,
+                      },
                     },
-                  },
-                }),
-              ]),
-          // `sheetStatus` is the default look's: both callers pass an
-          // explicit lifecycle value ('generating' for re-analysis,
-          // 'pending' for a manual add).
-          ...(sheetStatus === undefined
-            ? []
-            : [
-                db
-                  .update(characterLooks)
-                  .set({ sheetStatus, updatedAt: now })
-                  .where(eq(characterLooks.id, defaultLook.id)),
-              ]),
-          ...clothingWrite.statements,
-        ]);
-      } else {
-        const bible = mergeBible(
-          { ...NEW_CHARACTER_BIBLE, name: data.name },
-          bibleOf(data)
-        );
-        const versionId = generateId();
-        const lookVersionId = generateId();
-        await db.batch([
-          db.insert(characters).values({
-            ...row,
-            id,
-            organizationId,
-            selectedBibleVersionId: versionId,
-            legacyName: bible.name,
-            slug: await freeSlug(db, characters, organizationId, bible.name),
-          }),
-          db.insert(characterBibleVersions).values({
-            id: versionId,
-            characterId: id,
-            ...bible,
-            source: opts.source,
-            createdBy: opts.createdBy,
-          }),
-          db.insert(sequenceCast).values({
-            sequenceId,
-            characterId: id,
-            scriptCharacterId,
-          }),
-          // The default look reuses the character's id, as the backfill's
-          // do, so a character has one whoever wrote it.
-          db.insert(characterLooks).values({
-            id,
-            characterId: id,
-            isDefault: true,
-            sortOrder: 0,
-            selectedLookVersionId: lookVersionId,
-            sheetStatus: sheetStatus ?? 'pending',
-          }),
-          db.insert(characterLookVersions).values({
-            id: lookVersionId,
-            lookId: id,
-            name: DEFAULT_LOOK_NAME,
-            clothing: clothing ?? null,
-            styling: null,
-            ...look,
-          }),
-        ]);
+                  }),
+                ]),
+            // `sheetStatus` is the default look's: both callers pass an
+            // explicit lifecycle value ('generating' for re-analysis,
+            // 'pending' for a manual add).
+            ...(sheetStatus === undefined
+              ? []
+              : [
+                  db
+                    .update(characterLooks)
+                    .set({ sheetStatus, updatedAt: now })
+                    .where(eq(characterLooks.id, defaultLook.id)),
+                ]),
+            ...clothingWrite.statements,
+          ]);
+        } else {
+          const bible = mergeBible(
+            { ...NEW_CHARACTER_BIBLE, name: data.name },
+            bibleOf(data)
+          );
+          const versionId = generateId();
+          const lookVersionId = generateId();
+          await db.batch([
+            db.insert(characters).values({
+              ...row,
+              id,
+              organizationId,
+              selectedBibleVersionId: versionId,
+              legacyName: bible.name,
+              slug: await freeSlug(db, characters, organizationId, bible.name),
+            }),
+            db.insert(characterBibleVersions).values({
+              id: versionId,
+              characterId: id,
+              ...bible,
+              source: opts.source,
+              createdBy: opts.createdBy,
+            }),
+            db.insert(sequenceCast).values({
+              sequenceId,
+              characterId: id,
+              scriptCharacterId,
+            }),
+            // The default look reuses the character's id, as the backfill's
+            // do, so a character has one whoever wrote it.
+            db.insert(characterLooks).values({
+              id,
+              characterId: id,
+              isDefault: true,
+              sortOrder: 0,
+              selectedLookVersionId: lookVersionId,
+              sheetStatus: sheetStatus ?? 'pending',
+            }),
+            db.insert(characterLookVersions).values({
+              id: lookVersionId,
+              lookId: id,
+              name: DEFAULT_LOOK_NAME,
+              clothing: clothing ?? null,
+              styling: null,
+              ...look,
+            }),
+          ]);
+        }
+        const character = await reread(sequenceId, id);
+        // The voice the cast arrived with fills only what the character does
+        // not already have (#1553): re-writing a voice would orphan an
+        // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
+        // one for a new character, so the analysed voice can be selected back —
+        // and an identical re-upsert appends nothing.
+        const voicePatch: CharacterVoiceUpdate = {
+          ...(!character.voiceId && incomingVoiceId
+            ? { voiceId: incomingVoiceId }
+            : {}),
+          ...(!character.voiceDescription && incomingVoiceDescription
+            ? { voiceDescription: incomingVoiceDescription }
+            : {}),
+        };
+        if (Object.keys(voicePatch).length > 0) {
+          await updateVoice(
+            character.id,
+            voicePatch,
+            voicePatch.voiceId ? 'library' : 'analysis',
+            // Seeded by the cast-records step, not by a person.
+            null,
+            null
+          );
+          return await reread(sequenceId, id);
+        }
+        return character;
       }
-      const character = await reread(sequenceId, id);
-      // The voice the cast arrived with fills only what the character does
-      // not already have (#1553): re-writing a voice would orphan an
-      // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
-      // one for a new character, so the analysed voice can be selected back —
-      // and an identical re-upsert appends nothing.
-      const voicePatch: CharacterVoiceUpdate = {
-        ...(!character.voiceId && incomingVoiceId
-          ? { voiceId: incomingVoiceId }
-          : {}),
-        ...(!character.voiceDescription && incomingVoiceDescription
-          ? { voiceDescription: incomingVoiceDescription }
-          : {}),
-      };
-      if (Object.keys(voicePatch).length > 0) {
-        await updateVoice(
-          character.id,
-          voicePatch,
-          voicePatch.voiceId ? 'library' : 'analysis',
-          // Seeded by the cast-records step, not by a person.
-          null,
-          null
-        );
-        return await reread(sequenceId, id);
-      }
-      return character;
-    },
+    ),
 
     update,
     updateVoice,

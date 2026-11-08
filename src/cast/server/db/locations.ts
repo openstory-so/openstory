@@ -33,7 +33,11 @@ import { identityToken, nextIdentityToken } from '@/cast/bible-field';
 import { renderingForLocation } from '@/cast/rendering';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
-import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
+import {
+  freeSlug,
+  resolveSlugOrId,
+  retryOnSlugClash,
+} from '@/platform/server/db/slug';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type { Database } from '@/platform/server/db/client';
@@ -621,98 +625,100 @@ export function createLocationsMethods(db: Database, organizationId: string) {
    * leaves `referenceStatus` to the sheet run that owns it; a single create
    * does the opposite.
    */
-  const upsertOne = async (
-    data: NewSequenceLocation,
-    opts: {
-      source: BibleVersionSource;
-      createdBy: string | null;
-      bulk: boolean;
-    }
-  ): Promise<SequenceLocationWithReference & { held: boolean }> => {
-    const [existing] = await selectLinked().where(
-      and(
-        inSequence(data.sequenceId),
-        eq(sequenceLocationLinks.scriptLocationId, data.locationId)
-      )
-    );
-    const firstMention = {
-      firstMentionSceneId: data.firstMentionSceneId ?? null,
-      firstMentionText: data.firstMentionText ?? null,
-      firstMentionLine: data.firstMentionLine ?? null,
-    };
-    if (!existing) {
-      await requireSequence(data.sequenceId);
-      const id = data.id ?? generateId();
+  const upsertOne = retryOnSlugClash(
+    async (
+      data: NewSequenceLocation,
+      opts: {
+        source: BibleVersionSource;
+        createdBy: string | null;
+        bulk: boolean;
+      }
+    ): Promise<SequenceLocationWithReference & { held: boolean }> => {
+      const [existing] = await selectLinked().where(
+        and(
+          inSequence(data.sequenceId),
+          eq(sequenceLocationLinks.scriptLocationId, data.locationId)
+        )
+      );
+      const firstMention = {
+        firstMentionSceneId: data.firstMentionSceneId ?? null,
+        firstMentionText: data.firstMentionText ?? null,
+        firstMentionLine: data.firstMentionLine ?? null,
+      };
+      if (!existing) {
+        await requireSequence(data.sequenceId);
+        const id = data.id ?? generateId();
+        await db.batch([
+          ...(await insertLocation(id, firstBible(data), {
+            ...opts,
+            referenceStatus: data.referenceStatus ?? 'pending',
+          })),
+          db.insert(sequenceLocationLinks).values({
+            sequenceId: data.sequenceId,
+            locationId: id,
+            scriptLocationId: data.locationId,
+            ...firstMention,
+            // A location the writer added (`source: 'edit'`) is attached, so a
+            // later analysis that reuses the script id cannot rewrite it.
+            // Analysis-made locations stay unattached.
+            attached: opts.source === 'edit',
+          }),
+        ]);
+        return { ...(await requireLinked(data.sequenceId, id)), held: false };
+      }
+      // A re-analysis re-extracting a removed location brings it back (#1108),
+      // and a deleted one too, as `restore` does: a live link never points at
+      // a deleted location.
+      const link = [
+        db
+          .update(sequenceLocationLinks)
+          .set({ removedAt: null, ...(opts.bulk ? firstMention : {}) })
+          .where(eq(sequenceLocationLinks.id, existing.linkId)),
+        db
+          .update(locations)
+          .set({ deletedAt: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(locations.id, existing.id),
+              inOrganization,
+              isNotNull(locations.deletedAt)
+            )
+          ),
+      ] as const;
+      if (await analysisMayNotRewrite(existing.id, data.sequenceId)) {
+        await db.batch(link);
+        // `held` is for the sheet fan-out: this sequence's link can stay
+        // unattached while another sequence uses the location. The bible
+        // above was dropped, so no sheet is drawn either.
+        return {
+          ...(await requireLinked(data.sequenceId, existing.id)),
+          held: true,
+        };
+      }
+      // A field left out keeps its value, as the column upsert did.
+      const { statements } = await bibleWrite(
+        await ownOf(existing.id),
+        bibleOf(data),
+        opts
+      );
       await db.batch([
-        ...(await insertLocation(id, firstBible(data), {
-          ...opts,
-          referenceStatus: data.referenceStatus ?? 'pending',
-        })),
-        db.insert(sequenceLocationLinks).values({
-          sequenceId: data.sequenceId,
-          locationId: id,
-          scriptLocationId: data.locationId,
-          ...firstMention,
-          // A location the writer added (`source: 'edit'`) is attached, so a
-          // later analysis that reuses the script id cannot rewrite it.
-          // Analysis-made locations stay unattached.
-          attached: opts.source === 'edit',
-        }),
+        ...link,
+        ...statements,
+        ...(opts.bulk || data.referenceStatus === undefined
+          ? []
+          : [
+              db
+                .update(locations)
+                .set({ referenceStatus: data.referenceStatus })
+                .where(and(eq(locations.id, existing.id), inOrganization)),
+            ]),
       ]);
-      return { ...(await requireLinked(data.sequenceId, id)), held: false };
-    }
-    // A re-analysis re-extracting a removed location brings it back (#1108),
-    // and a deleted one too, as `restore` does: a live link never points at
-    // a deleted location.
-    const link = [
-      db
-        .update(sequenceLocationLinks)
-        .set({ removedAt: null, ...(opts.bulk ? firstMention : {}) })
-        .where(eq(sequenceLocationLinks.id, existing.linkId)),
-      db
-        .update(locations)
-        .set({ deletedAt: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(locations.id, existing.id),
-            inOrganization,
-            isNotNull(locations.deletedAt)
-          )
-        ),
-    ] as const;
-    if (await analysisMayNotRewrite(existing.id, data.sequenceId)) {
-      await db.batch(link);
-      // `held` is for the sheet fan-out: this sequence's link can stay
-      // unattached while another sequence uses the location. The bible
-      // above was dropped, so no sheet is drawn either.
       return {
         ...(await requireLinked(data.sequenceId, existing.id)),
-        held: true,
+        held: false,
       };
     }
-    // A field left out keeps its value, as the column upsert did.
-    const { statements } = await bibleWrite(
-      await ownOf(existing.id),
-      bibleOf(data),
-      opts
-    );
-    await db.batch([
-      ...link,
-      ...statements,
-      ...(opts.bulk || data.referenceStatus === undefined
-        ? []
-        : [
-            db
-              .update(locations)
-              .set({ referenceStatus: data.referenceStatus })
-              .where(and(eq(locations.id, existing.id), inOrganization)),
-          ]),
-    ]);
-    return {
-      ...(await requireLinked(data.sequenceId, existing.id)),
-      held: false,
-    };
-  };
+  );
 
   /**
    * The organization's locations for the Locations page and the pickers: one grouped
@@ -1132,20 +1138,22 @@ export function createLocationsMethods(db: Database, organizationId: string) {
     },
 
     /** A location made on the Locations page: no link, no event. */
-    createForOrganization: async (
-      data: NewOrganizationLocation,
-      opts: { createdBy: string }
-    ): Promise<LocationWithReference> => {
-      const id = data.id ?? generateId();
-      await db.batch(
-        await insertLocation(id, firstBible(data), {
-          source: 'edit',
-          createdBy: opts.createdBy,
-          referenceStatus: 'pending',
-        })
-      );
-      return await requireCurrent(id);
-    },
+    createForOrganization: retryOnSlugClash(
+      async (
+        data: NewOrganizationLocation,
+        opts: { createdBy: string }
+      ): Promise<LocationWithReference> => {
+        const id = data.id ?? generateId();
+        await db.batch(
+          await insertLocation(id, firstBible(data), {
+            source: 'edit',
+            createdBy: opts.createdBy,
+            referenceStatus: 'pending',
+          })
+        );
+        return await requireCurrent(id);
+      }
+    ),
 
     /**
      * Use one of the organization's locations in `sequenceId`: one link. Nothing is
@@ -1398,69 +1406,71 @@ export function createLocationsMethods(db: Database, organizationId: string) {
      * undo/audit) in the same batch. From no sequence (null) the same write
      * with no event. Staleness flips by derivation in every sequence.
      */
-    updateBible: async (
-      sequenceId: string | null,
-      id: string,
-      data: LocationBibleUpdate,
-      opts: { actorId: string | null }
-    ): Promise<LocationWithReference> => {
-      // Found through the sequence when there is one, then diffed against the
-      // location's own bible.
-      if (sequenceId === null) await requireCurrent(id);
-      else await requireLinked(sequenceId, id);
-      // A rename from any sequence, or none, must stay free in every sequence that uses it (#2248).
-      if (data.name !== undefined) {
-        const using = await db
-          .select({ sequenceId: sequenceLocationLinks.sequenceId })
-          .from(sequenceLocationLinks)
-          .innerJoin(
-            locations,
-            eq(locations.id, sequenceLocationLinks.locationId)
-          )
-          .where(
-            and(
-              eq(sequenceLocationLinks.locationId, id),
-              inOrganization,
-              isNull(sequenceLocationLinks.removedAt)
+    updateBible: retryOnSlugClash(
+      async (
+        sequenceId: string | null,
+        id: string,
+        data: LocationBibleUpdate,
+        opts: { actorId: string | null }
+      ): Promise<LocationWithReference> => {
+        // Found through the sequence when there is one, then diffed against the
+        // location's own bible.
+        if (sequenceId === null) await requireCurrent(id);
+        else await requireLinked(sequenceId, id);
+        // A rename from any sequence, or none, must stay free in every sequence that uses it (#2248).
+        if (data.name !== undefined) {
+          const using = await db
+            .select({ sequenceId: sequenceLocationLinks.sequenceId })
+            .from(sequenceLocationLinks)
+            .innerJoin(
+              locations,
+              eq(locations.id, sequenceLocationLinks.locationId)
             )
-          );
-        for (const link of using) {
-          await assertNameFree(link.sequenceId, data.name, id);
+            .where(
+              and(
+                eq(sequenceLocationLinks.locationId, id),
+                inOrganization,
+                isNull(sequenceLocationLinks.removedAt)
+              )
+            );
+          for (const link of using) {
+            await assertNameFree(link.sequenceId, data.name, id);
+          }
         }
+        const existing = await ownOf(id);
+        const prev: Record<string, string | null> = {};
+        for (const key of LOCATION_BIBLE_FIELDS) {
+          const value = data[key];
+          if (value === undefined) continue;
+          prev[key] = existing[key] ?? null;
+        }
+        // Appends a version (#1600); revokes an in-flight sheet run's claim
+        // when a field it reads moved (#1113).
+        const { statements } = await bibleWrite(existing, data, {
+          source: 'edit',
+          createdBy: opts.actorId,
+        });
+        const event =
+          sequenceId === null
+            ? []
+            : [
+                buildEventInsert(db, {
+                  sequenceId,
+                  actorId: opts.actorId,
+                  kind: 'location.updated',
+                  targetType: 'location',
+                  targetId: id,
+                  summary: `Edited location ${data.name ?? existing.name}`,
+                  data: { prevState: prev },
+                }),
+              ];
+        const [first, ...rest] = [...event, ...statements];
+        if (first) await db.batch([first, ...rest]);
+        return sequenceId === null
+          ? await requireCurrent(id)
+          : await requireLinked(sequenceId, id);
       }
-      const existing = await ownOf(id);
-      const prev: Record<string, string | null> = {};
-      for (const key of LOCATION_BIBLE_FIELDS) {
-        const value = data[key];
-        if (value === undefined) continue;
-        prev[key] = existing[key] ?? null;
-      }
-      // Appends a version (#1600); revokes an in-flight sheet run's claim
-      // when a field it reads moved (#1113).
-      const { statements } = await bibleWrite(existing, data, {
-        source: 'edit',
-        createdBy: opts.actorId,
-      });
-      const event =
-        sequenceId === null
-          ? []
-          : [
-              buildEventInsert(db, {
-                sequenceId,
-                actorId: opts.actorId,
-                kind: 'location.updated',
-                targetType: 'location',
-                targetId: id,
-                summary: `Edited location ${data.name ?? existing.name}`,
-                data: { prevState: prev },
-              }),
-            ];
-      const [first, ...rest] = [...event, ...statements];
-      if (first) await db.batch([first, ...rest]);
-      return sequenceId === null
-        ? await requireCurrent(id)
-        : await requireLinked(sequenceId, id);
-    },
+    ),
 
     /**
      * Remove from the sequence (undoable): the link's `removedAt`. The

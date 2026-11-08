@@ -13,7 +13,11 @@ import {
 } from '@/look/server/style.schemas';
 import { stripServerManagedColumns } from '@/platform/server/db/scoped/server-managed';
 import { styleSlug } from '@/look/style-slug';
-import { freeSlug, resolveSlugOrId } from '@/platform/server/db/slug';
+import {
+  freeSlug,
+  resolveSlugOrId,
+  retryOnSlugClash,
+} from '@/platform/server/db/slug';
 import type { AutoStyleDraft } from '@/look/auto-style';
 import {
   and,
@@ -204,57 +208,64 @@ export function createStylesMethods(
     // alone doesn't stop a non-literal object from carrying extra keys, and
     // drizzle writes any key that matches a table column. Admin paths (the
     // system template seeder) insert via raw drizzle instead.
-    create: async (
-      data: Omit<NewStyle, ServerManagedStyleColumn>
-    ): Promise<Style> => {
-      await assertSlugAvailable(db, organizationId, data.name);
-      const result = await db
-        .insert(styles)
-        .values({
-          ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
-          organizationId,
-          slug: await freeSlug(db, styles, organizationId, data.name),
-          createdBy: userId,
-        })
-        .returning();
-      const style = result[0];
-      if (!style) {
-        throw new Error(
-          `Failed to create Style for organization ${organizationId}`
-        );
+    create: retryOnSlugClash(
+      async (
+        data: Omit<NewStyle, ServerManagedStyleColumn>
+      ): Promise<Style> => {
+        await assertSlugAvailable(db, organizationId, data.name);
+        const result = await db
+          .insert(styles)
+          .values({
+            ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
+            organizationId,
+            slug: await freeSlug(db, styles, organizationId, data.name),
+            createdBy: userId,
+          })
+          .returning();
+        const style = result[0];
+        if (!style) {
+          throw new Error(
+            `Failed to create Style for organization ${organizationId}`
+          );
+        }
+        return style;
       }
-      return style;
-    },
+    ),
 
-    update: async (
-      styleId: string,
-      data: Partial<Omit<Style, ServerManagedStyleColumn>>
-    ): Promise<Style | undefined> => {
-      if (data.name !== undefined) {
-        await assertSlugAvailable(db, organizationId, data.name, styleId);
+    update: retryOnSlugClash(
+      async (
+        styleId: string,
+        data: Partial<Omit<Style, ServerManagedStyleColumn>>
+      ): Promise<Style | undefined> => {
+        if (data.name !== undefined) {
+          await assertSlugAvailable(db, organizationId, data.name, styleId);
+        }
+        const result = await db
+          .update(styles)
+          .set({
+            ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
+            ...(data.name === undefined
+              ? {}
+              : {
+                  slug: await freeSlug(
+                    db,
+                    styles,
+                    organizationId,
+                    data.name,
+                    styleId
+                  ),
+                }),
+          })
+          .where(
+            and(
+              eq(styles.id, styleId),
+              eq(styles.organizationId, organizationId)
+            )
+          )
+          .returning();
+        return Array.isArray(result) ? result[0] : undefined;
       }
-      const result = await db
-        .update(styles)
-        .set({
-          ...stripServerManagedColumns(data, SERVER_MANAGED_STYLE_COLUMNS),
-          ...(data.name === undefined
-            ? {}
-            : {
-                slug: await freeSlug(
-                  db,
-                  styles,
-                  organizationId,
-                  data.name,
-                  styleId
-                ),
-              }),
-        })
-        .where(
-          and(eq(styles.id, styleId), eq(styles.organizationId, organizationId))
-        )
-        .returning();
-      return Array.isArray(result) ? result[0] : undefined;
-    },
+    ),
 
     delete: async (styleId: string): Promise<void> => {
       await db
@@ -271,105 +282,111 @@ export function createStylesMethods(
      * Inserted before the sequence row exists (the id is pre-allocated) —
      * safe only because `sequenceId` has no FK.
      */
-    createForSequence: async (params: {
-      sequenceId: string;
-      draft: AutoStyleDraft;
-    }): Promise<Style> => {
-      const result = await db
-        .insert(styles)
-        .values({
-          ...params.draft,
-          sequenceId: params.sequenceId,
-          organizationId,
-          slug: await freeSlug(db, styles, organizationId, params.draft.name),
-          createdBy: userId,
-        })
-        .returning();
-      const style = result[0];
-      if (!style) {
-        throw new Error(
-          `Failed to create automatic style for sequence ${params.sequenceId}`
-        );
+    createForSequence: retryOnSlugClash(
+      async (params: {
+        sequenceId: string;
+        draft: AutoStyleDraft;
+      }): Promise<Style> => {
+        const result = await db
+          .insert(styles)
+          .values({
+            ...params.draft,
+            sequenceId: params.sequenceId,
+            organizationId,
+            slug: await freeSlug(db, styles, organizationId, params.draft.name),
+            createdBy: userId,
+          })
+          .returning();
+        const style = result[0];
+        if (!style) {
+          throw new Error(
+            `Failed to create automatic style for sequence ${params.sequenceId}`
+          );
+        }
+        return style;
       }
-      return style;
-    },
+    ),
 
     /**
      * Write the script-derived recipe onto a sequence-bound style. Scoped to
      * the binding so a stale run can never rewrite a promoted (library) row.
      * Returns false when the row is no longer bound to that sequence.
      */
-    setGeneratedForSequence: async (params: {
-      styleId: string;
-      sequenceId: string;
-      draft: AutoStyleDraft;
-    }): Promise<boolean> => {
-      const rows = await db
-        .update(styles)
-        .set({
-          ...params.draft,
-          slug: await freeSlug(
-            db,
-            styles,
-            organizationId,
-            params.draft.name,
-            params.styleId
-          ),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(styles.id, params.styleId),
-            eq(styles.sequenceId, params.sequenceId),
-            eq(styles.organizationId, organizationId)
+    setGeneratedForSequence: retryOnSlugClash(
+      async (params: {
+        styleId: string;
+        sequenceId: string;
+        draft: AutoStyleDraft;
+      }): Promise<boolean> => {
+        const rows = await db
+          .update(styles)
+          .set({
+            ...params.draft,
+            slug: await freeSlug(
+              db,
+              styles,
+              organizationId,
+              params.draft.name,
+              params.styleId
+            ),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(styles.id, params.styleId),
+              eq(styles.sequenceId, params.sequenceId),
+              eq(styles.organizationId, organizationId)
+            )
           )
-        )
-        .returning({ id: styles.id });
-      return rows.length > 0;
-    },
+          .returning({ id: styles.id });
+        return rows.length > 0;
+      }
+    ),
 
     /**
      * Promote a sequence-bound style into the organization library: clears the
      * binding under the library's slug-uniqueness rule. The sequence keeps
      * pointing at the same row, so nothing downstream re-snapshots.
      */
-    promoteToLibrary: async (params: {
-      styleId: string;
-      name: string;
-      previewUrl: string | null;
-    }): Promise<Style> => {
-      await assertSlugAvailable(db, organizationId, params.name);
-      const rows = await db
-        .update(styles)
-        .set({
-          sequenceId: null,
-          name: params.name,
-          slug: await freeSlug(
-            db,
-            styles,
-            organizationId,
-            params.name,
-            params.styleId
-          ),
-          previewUrl: params.previewUrl,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(styles.id, params.styleId),
-            eq(styles.organizationId, organizationId),
-            isNotNull(styles.sequenceId)
+    promoteToLibrary: retryOnSlugClash(
+      async (params: {
+        styleId: string;
+        name: string;
+        previewUrl: string | null;
+      }): Promise<Style> => {
+        await assertSlugAvailable(db, organizationId, params.name);
+        const rows = await db
+          .update(styles)
+          .set({
+            sequenceId: null,
+            name: params.name,
+            slug: await freeSlug(
+              db,
+              styles,
+              organizationId,
+              params.name,
+              params.styleId
+            ),
+            previewUrl: params.previewUrl,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(styles.id, params.styleId),
+              eq(styles.organizationId, organizationId),
+              isNotNull(styles.sequenceId)
+            )
           )
-        )
-        .returning();
-      const style = rows[0];
-      if (!style) {
-        throw new ValidationError(
-          'Only an automatic style that is still bound to a sequence can be added to the library'
-        );
+          .returning();
+        const style = rows[0];
+        if (!style) {
+          throw new ValidationError(
+            'Only an automatic style that is still bound to a sequence can be added to the library'
+          );
+        }
+        return style;
       }
-      return style;
-    },
+    ),
 
     incrementUsage: async (styleId: string): Promise<void> => {
       const rows = await db
