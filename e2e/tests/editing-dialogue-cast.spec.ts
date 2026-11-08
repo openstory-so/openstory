@@ -236,12 +236,9 @@ async function openShot(sequenceId: string, shotId: string): Promise<void> {
   });
 }
 
-// A click before hydration does nothing; retry until what it opens is there.
-async function clickUntil(button: Locator, next: Locator): Promise<void> {
-  await expect(async () => {
-    if (!(await next.isVisible())) await button.click();
-    await expect(next).toBeVisible({ timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
+async function clickAndSee(button: Locator, next: Locator): Promise<void> {
+  await button.click({ timeout: 30_000 });
+  await expect(next).toBeVisible();
 }
 
 const editButtons = () =>
@@ -349,7 +346,7 @@ test.describe('Editing dialogue and cast', () => {
 
     const dev = page.getByRole('button', { name: "Edit DEV's line" });
     const words = page.getByRole('textbox', { name: /^Line \d+ words$/ });
-    await clickUntil(dev, words);
+    await clickAndSee(dev, words);
     await words.fill(EDITED);
     await saveLine();
     await expectLines(
@@ -408,7 +405,7 @@ test.describe('Editing dialogue and cast', () => {
     await openShot(firstId, from.id);
     const at = from.lines.indexOf(moved);
     const remove = page.getByRole('button', { name: 'Remove', exact: true });
-    await clickUntil(editButtons().nth(at), remove);
+    await clickAndSee(editButtons().nth(at), remove);
     await remove.click();
     await expectLines(
       from.id,
@@ -418,7 +415,7 @@ test.describe('Editing dialogue and cast', () => {
     // ...and put it on the other, first by the wrong speaker.
     await openShot(firstId, to.id);
     const newWords = page.getByRole('textbox', { name: /^Line \d+ words$/ });
-    await clickUntil(page.getByRole('button', { name: 'Add line' }), newWords);
+    await clickAndSee(page.getByRole('button', { name: 'Add line' }), newWords);
     await newWords.fill(words);
     await page.getByRole('combobox', { name: /^Line \d+ character$/ }).click();
     await page.getByRole('option', { name: 'DEV' }).click();

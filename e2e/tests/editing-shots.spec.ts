@@ -441,15 +441,10 @@ test.describe('Editing shots', () => {
     const optimised = page.getByRole('button', { name: /Optimised prompt/ });
     const openOptimised = async () => {
       await page.getByRole('tab', { name: 'Video' }).click();
-      // A click before hydration does nothing, so retry until it opens.
-      await expect(async () => {
-        if ((await optimised.getAttribute('aria-expanded')) !== 'true') {
-          await optimised.click();
-        }
-        await expect(optimised).toHaveAttribute('aria-expanded', 'true', {
-          timeout: 2_000,
-        });
-      }).toPass({ timeout: 20_000 });
+      if ((await optimised.getAttribute('aria-expanded')) !== 'true') {
+        await optimised.click();
+      }
+      await expect(optimised).toHaveAttribute('aria-expanded', 'true');
     };
     await openOptimised();
     const panel = page.getByRole('tabpanel', { name: 'Video' });
@@ -536,12 +531,10 @@ test.describe('Editing shots', () => {
     await openShot(target);
     await page.getByRole('tab', { name: 'Video' }).click();
     const toggle = page.getByRole('checkbox', { name: 'Use start frame' });
-    // Saved through a mutation; a click before hydration does nothing, so retry.
-    const setToggle = (on: boolean) =>
-      expect(async () => {
-        if ((await toggle.isChecked()) !== on) await toggle.click();
-        await expect(toggle).toBeChecked({ checked: on, timeout: 5_000 });
-      }).toPass({ timeout: 30_000 });
+    const setToggle = async (on: boolean) => {
+      await toggle.click({ timeout: 30_000 });
+      await expect(toggle).toBeChecked({ checked: on });
+    };
     await expect(toggle).toBeChecked();
     await setToggle(false);
 

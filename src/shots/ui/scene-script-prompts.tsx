@@ -2294,6 +2294,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 setUseStartFrame.mutate(checked === true)
               }
               disabled={
+                !hydrated ||
                 !shot ||
                 setUseStartFrame.isPending ||
                 isGeneratingMotion ||

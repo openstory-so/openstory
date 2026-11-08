@@ -127,13 +127,10 @@ testWithUser.describe('Variant Selection', () => {
       });
       await expect(renameTitle).toBeHidden();
       const drawer = page.getByRole('dialog');
-      // Retried: a click before hydration is dropped.
-      await expect(async () => {
-        await page
-          .getByRole('button', { name: 'Open settings' })
-          .click({ timeout: 1000 });
-        await expect(renameTitle).toBeVisible({ timeout: 1000 });
-      }).toPass({ timeout: 15000 });
+      await page
+        .getByRole('button', { name: 'Open settings' })
+        .click({ timeout: 15000 });
+      await expect(renameTitle).toBeVisible();
 
       // Popovers work from inside the drawer: rename the sequence...
       await renameTitle.click();
@@ -224,15 +221,9 @@ testWithUser.describe('Variant Selection', () => {
       exact: true,
     });
     await expect(variantsButton).toBeVisible({ timeout: 10000 });
-    // Selecting the scene above is a real <a href> navigation, so this button
-    // renders server-side and stays inert until React hydrates it — a single
-    // click lands on nothing. Click until the dialog is actually up (the open
-    // dialog aria-hides the button, so ask the dialog, not the button).
     const variantsDialog = page.getByRole('dialog', { name: 'Frame variants' });
-    await expect(async () => {
-      if (!(await variantsDialog.isVisible())) await variantsButton.click();
-      await expect(variantsDialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 20_000 });
+    await variantsButton.click({ timeout: 20_000 });
+    await expect(variantsDialog).toBeVisible();
 
     const variantGrid = page.getByRole('grid', { name: 'Variant selection' });
 
