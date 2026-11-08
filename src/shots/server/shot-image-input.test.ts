@@ -87,6 +87,7 @@ function baseArgs(scopedDb: ReturnType<typeof makeScopedDb>['scopedDb']) {
     scene: null,
     scriptExtract: 'INT. HALLWAY — NIGHT',
     userId: 'usr_1',
+    deriveMissingPrompt: true,
     // Sequence-scoped refs supplied, so the bible reads don't run either.
     refs: { characters: [], locations: [], elements: [] },
   };
@@ -285,6 +286,19 @@ describe('prepareShotImageWorkflowInput never prompts a still with the script (#
     });
     expect(input.prompt).toContain('MARA leans over the dough');
     expect(input.prompt).not.toContain(LINE);
+  });
+
+  it('a workflow step never reads the spec pointer mid-run', async () => {
+    const scopedDb = promptlessDb(true);
+    await expect(
+      prepareShotImageWorkflowInput({
+        ...baseArgs(scopedDb),
+        scene,
+        scriptExtract: scene.originalScript.extract,
+        deriveMissingPrompt: false,
+      })
+    ).rejects.toThrow(NO_STILL_PROMPT_MESSAGE);
+    expect(scopedDb.shotSpecVersions.getSelected).not.toHaveBeenCalled();
   });
 
   it('refuses a shot with no prompt and no spec', async () => {

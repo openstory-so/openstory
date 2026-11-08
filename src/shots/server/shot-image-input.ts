@@ -125,6 +125,11 @@ export async function prepareShotImageWorkflowInput(args: {
   /** True only when `promptOverride` came from a user edit (drives rescan upstream). */
   userEditedPrompt?: boolean;
   /**
+   * Derive a missing prompt from the selected spec (#2291). False in a
+   * workflow step: the spec pointer is mutable state it may not read mid-run.
+   */
+  deriveMissingPrompt: boolean;
+  /**
    * Sequence-scoped rows for reference matching. Callers preparing several
    * shots of one sequence resolve them once so every render in the run matches
    * against the same cast/locations/elements.
@@ -143,6 +148,7 @@ export async function prepareShotImageWorkflowInput(args: {
     promptVersionOverride,
     modelOverride,
     userEditedPrompt = false,
+    deriveMissingPrompt,
     refs,
   } = args;
 
@@ -166,11 +172,12 @@ export async function prepareShotImageWorkflowInput(args: {
   const prompt =
     promptOverride ||
     selectedPrompt?.text ||
-    (await derivedStillPrompt(scopedDb, {
-      shotId: shot.id,
-      scene,
-      styleConfig: lazySequenceStyle(scopedDb, sequence),
-    }));
+    (deriveMissingPrompt &&
+      (await derivedStillPrompt(scopedDb, {
+        shotId: shot.id,
+        scene,
+        styleConfig: lazySequenceStyle(scopedDb, sequence),
+      })));
   if (!prompt || !prompt.trim()) {
     throw new ValidationError(NO_STILL_PROMPT_MESSAGE);
   }

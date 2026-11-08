@@ -96,6 +96,7 @@ export async function generateShotImage(
     promptOverride: data.prompt,
     modelOverride: data.model,
     userEditedPrompt,
+    deriveMissingPrompt: true,
   });
 
   // Server-side dedup (#1085): a live claim for exactly this snapshot hash
