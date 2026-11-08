@@ -3,9 +3,9 @@
  * organization plugin (#813).
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
-import { member, user } from '@/platform/server/db/schema';
+import { member, organization, user } from '@/platform/server/db/schema';
 
 export function createOrganizationManagementMethods(
   db: Database,
@@ -46,5 +46,37 @@ export function createOrganizationManagementMethods(
     return row?.email ?? null;
   }
 
-  return { getOwnerEmail, getMemberEmail };
+  /**
+   * This organization, and whether it is the user's sign-up one: the first
+   * organization they own (#2222). Null when the organization is gone.
+   */
+  async function getForUser(userId: string): Promise<{
+    id: string;
+    name: string;
+    slug: string;
+    personal: boolean;
+  } | null> {
+    const [current, [first]] = await Promise.all([
+      db
+        .select({
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        })
+        .from(organization)
+        .where(eq(organization.id, organizationId))
+        .limit(1),
+      db
+        .select({ id: organization.id })
+        .from(member)
+        .innerJoin(organization, eq(member.organizationId, organization.id))
+        .where(and(eq(member.userId, userId), eq(member.role, 'owner')))
+        .orderBy(asc(organization.createdAt), asc(organization.id))
+        .limit(1),
+    ]);
+    const row = current[0];
+    return row ? { ...row, personal: first?.id === row.id } : null;
+  }
+
+  return { getOwnerEmail, getMemberEmail, getForUser };
 }
