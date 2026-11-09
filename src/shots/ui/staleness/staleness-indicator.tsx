@@ -7,7 +7,7 @@ import {
   AlertTitle,
 } from '@/ui/shadcn/alert';
 import { Button } from '@/ui/shadcn/button';
-import { UpdateAllDialog } from './update-all-dialog';
+import { UpdateAllDialog, describeCauses } from './update-all-dialog';
 import type { ShotStaleness } from '@/shots/ui/use-shot-staleness';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 import { cn } from '@/ui/utils';
@@ -172,7 +172,10 @@ export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (
   }
 
   if (props.density === 'status-line') {
-    const message = props.message ?? 'Out of date since your last edit';
+    const message =
+      props.message ??
+      (props.staleness && describeCauses([props.staleness])) ??
+      'Out of date since your last edit';
     const actionLabel = props.actionLabel ?? 'Update all';
     const unknown = props.tone === 'unknown';
     return (
@@ -193,7 +196,9 @@ export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (
             unknown ? 'bg-muted-foreground/50' : 'bg-amber-500'
           )}
         />
-        <span className="min-w-0 truncate">{message}</span>
+        <span className="min-w-0 truncate" title={message}>
+          {message}
+        </span>
         {props.children}
         {props.onRegenerateDepth ? (
           <>
