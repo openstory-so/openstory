@@ -1,5 +1,11 @@
 # @openstory/cli
 
+## 0.1.1
+
+### Patch Changes
+
+- 189c0b3: Depend on `@openstory/stitch` with a plain version range. 0.1.0 shipped `workspace:^`, which npm refuses to install.
+
 ## 0.1.0
 
 ### Minor Changes
