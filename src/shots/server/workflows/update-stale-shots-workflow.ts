@@ -2160,18 +2160,28 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // The trigger's refusal (#2272), asked per model: the prompt is
           // final only now, and a refused model must not stop its siblings.
           const refused = batchRefusalLines(
-            (input.coveredShots ?? [{ shotId }]).map((member) => ({
-              model,
-              references: input.referenceImages ?? [],
-              job: {
-                hasStartFrame: !input.referenceOnly,
-                prompt: input.prompt,
-                onArk: renderOnArk,
-              },
-              dialogue: plan.targets.find((t) => t.shotId === member.shotId)
-                ?.dialogue,
-              elements: renderRefs.elements,
-            }))
+            (input.coveredShots ?? [{ shotId }]).map((member) => {
+              const target = plan.targets.find(
+                (t) => t.shotId === member.shotId
+              );
+              if (!target) {
+                throw new NonRetryableError(
+                  `Shot ${member.shotId} renders but is not in the plan`,
+                  'WorkflowValidationError'
+                );
+              }
+              return {
+                model,
+                references: input.referenceImages ?? [],
+                job: {
+                  hasStartFrame: !input.referenceOnly,
+                  prompt: input.prompt,
+                  onArk: renderOnArk,
+                },
+                dialogue: target.dialogue,
+                elements: renderRefs.elements,
+              };
+            })
           );
           if (refused.length > 0) {
             throw new NonRetryableError(
