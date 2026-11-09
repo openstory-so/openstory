@@ -318,6 +318,47 @@ describe('Motion Service', () => {
       );
     });
 
+    // Packed Kling drops `prompt` beside `multi_prompt` on the queue body.
+    // The adapter still requires a prompt string, and copies that string back
+    // onto the body, so the fetch has to take it off again (#2271).
+    it('sends a packed Kling 4 clip with the longest shot as the adapter prompt and no prompt on the wire', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'packed-kling-4',
+        model: 'kling/v4/image-to-video',
+      });
+
+      await submitMotionJob({
+        heldSeedanceEditSeconds: null,
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'opens the door\n\nthe hallway beyond the door',
+        model: 'kling_v4',
+        duration: 10,
+        multiPrompt: [
+          { prompt: 'opens the door', duration: 4 },
+          { prompt: 'the hallway beyond the door', duration: 6 },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'the hallway beyond the door',
+          modelOptions: expect.objectContaining({
+            multi_prompt: [
+              { prompt: 'opens the door', duration: 4 },
+              { prompt: 'the hallway beyond the door', duration: 6 },
+            ],
+          }),
+        })
+      );
+      const modelOptions = mockGenerateVideo.mock.calls[0]?.[0]?.modelOptions;
+      expect(modelOptions).not.toHaveProperty('prompt');
+      expect(mockFalVideo).toHaveBeenCalledWith(
+        'kling/v4/image-to-video',
+        expect.objectContaining({ fetch: expect.any(Function) })
+      );
+    });
+
     it('should submit job with Seedance 2.5 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'test-seedance-request-id',

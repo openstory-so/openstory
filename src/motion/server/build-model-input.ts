@@ -147,16 +147,17 @@ export function buildModelInput<T extends ImageToVideoModel>(
       }),
   });
 
-  return applyKlingMultiPrompt(result, options.multiPrompt);
+  return result;
 }
 
 /**
  * The string the schema's `prompt.maxLength` should be measured against.
  *
- * A packed Kling job ships `multi_prompt[]` and `applyKlingMultiPrompt`
- * deletes `prompt`, so asserting the combined text would refuse a clip on
- * the length of a string fal never sees (#1754). Measure the longest element
- * instead — the per-element budget `packedPromptFitsLimit` already packs to.
+ * A packed Kling job ships `multi_prompt[]` and the queue body drops
+ * `prompt` (`klingWireInput`), so asserting the combined text would refuse a
+ * clip on the length of a string fal never sees (#1754). Measure the longest
+ * element instead — the per-element budget `packedPromptFitsLimit` already
+ * packs to, and the string `generateVideo` is given (#2271).
  */
 function promptForSchema(
   prompt: string,
@@ -170,33 +171,18 @@ function promptForSchema(
   );
 }
 
-/**
- * Kling rejects `prompt` and `multi_prompt` together. The transform always
- * requires a prompt string, so a packed job still parses one and then this
- * drops it. `multi_prompt` and `shot_type` are the parsed values: v3 keeps
- * `shot_type: 'customize'`, and v4, which has no such field, has it stripped.
- */
-function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
-  input: T,
-  multiPrompt: GenerateMotionOptions['multiPrompt']
-): T {
-  if (!multiPrompt?.length) return input;
-  const { prompt: _prompt, ...rest } = input;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- packed Kling body is T minus prompt
-  return rest as unknown as T;
-}
-
 /** Output of any registered fal transform: the reference-to-video and
  *  text-to-video rows `MOTION_REFERENCE_ENDPOINTS` names are typed
  *  `MotionEndpointId`, so this can never drift from the map. */
 type RegisteredMotionOutput = ReturnType<MotionTransform<MotionEndpointId>>;
 
 /**
- * Resolve the endpoint and build the exact fal request body for a motion run
- * (#873). Shared by `submitMotionJob` and the scene editor's optimised-prompt
- * preview, so what the user sees is what fal receives — the only difference at
- * submit time is that locally-served `/r2/` URLs are swapped for externally
- * fetchable ones first.
+ * Resolve the endpoint and build the fal request for a motion run (#873).
+ * Shared by `submitMotionJob` and the scene editor's optimised-prompt
+ * preview. A packed Kling job keeps `prompt` here — the longest shot, for
+ * the adapter — and `klingWireInput` is what fal receives. The only other
+ * difference at submit time is that locally-served `/r2/` URLs are swapped
+ * for externally fetchable ones first.
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
  * endpoint (Seedance / H3 Max / Kling O3 / Omni Flash with cast/element
@@ -283,7 +269,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     });
     return {
       endpointId,
-      input: applyKlingMultiPrompt(input, options.multiPrompt),
+      input,
     };
   }
 
@@ -360,6 +346,6 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
 
   return {
     endpointId: endpoint.endpointId,
-    input: applyKlingMultiPrompt(input, options.multiPrompt),
+    input,
   };
 }

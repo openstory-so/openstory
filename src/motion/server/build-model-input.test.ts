@@ -7,6 +7,7 @@ import {
 } from '@/models/models';
 import { typedEntries } from '@/platform/typed-object';
 import { buildModelInput, buildMotionRequest } from './build-model-input';
+import { klingWireInput } from './kling-wire-body';
 import {
   buildPackedMotionPrompt,
   packedPromptFitsLimit,
@@ -64,7 +65,7 @@ describe('buildModelInput', () => {
       expect(result.generate_audio).toBe(false);
     });
 
-    it('sends multi_prompt and omits prompt for a packed clip (#1510)', () => {
+    it('keeps the longest shot as prompt for a packed clip (#1510, #2271)', () => {
       const result = build('kling_v3_pro', {
         multiPrompt: [
           { prompt: 'opens the door', duration: '4' },
@@ -77,7 +78,8 @@ describe('buildModelInput', () => {
         { prompt: 'the hallway', duration: '6' },
       ]);
       expect(result.shot_type).toBe('customize');
-      expect(result).not.toHaveProperty('prompt');
+      expect(result.prompt).toBe('opens the door');
+      expect(klingWireInput(result)).not.toHaveProperty('prompt');
     });
 
     // The combined text is over Kling's 2500, but it is never sent: each
@@ -124,18 +126,19 @@ describe('buildModelInput', () => {
       );
     });
 
-    it('packs multi_prompt with integer durations and no prompt', () => {
+    it('packs multi_prompt with integer durations and keeps the longest shot', () => {
       const result = build('kling_v4', {
         multiPrompt: [
           { prompt: 'Shot one', duration: 4 },
-          { prompt: 'Shot two', duration: 6 },
+          { prompt: 'Shot two is longer', duration: 6 },
         ],
       });
       expect(result.multi_prompt).toEqual([
         { prompt: 'Shot one', duration: 4 },
-        { prompt: 'Shot two', duration: 6 },
+        { prompt: 'Shot two is longer', duration: 6 },
       ]);
-      expect(result).not.toHaveProperty('prompt');
+      expect(result.prompt).toBe('Shot two is longer');
+      expect(klingWireInput(result)).not.toHaveProperty('prompt');
       expect(result).not.toHaveProperty('shot_type');
     });
 
