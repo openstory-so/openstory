@@ -5,8 +5,15 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  snakeCase,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
 import type { CastScriptAlias } from './sequence-cast';
@@ -73,6 +80,11 @@ export const characters = snakeCase.table(
     // column names but make every raw reader a compile error. Drop them once
     // a deploy has run with no writer and a second backfill.
     legacyName: text('name', { length: 255 }).notNull(),
+    // Unique per organization, from the name (#2222); never an identity.
+    slug: text()
+      .notNull()
+      .default('')
+      .$defaultFn(() => testOnlySlug()),
     legacyAge: text('age'),
     legacyGender: text('gender'),
     legacyEthnicity: text('ethnicity'),
@@ -140,7 +152,13 @@ export const characters = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [index('idx_characters_organization').on(table.organizationId)]
+  (table) => [
+    index('idx_characters_organization').on(table.organizationId),
+    uniqueIndex('idx_characters_organization_slug').on(
+      table.organizationId,
+      table.slug
+    ),
+  ]
 );
 
 // Type exports

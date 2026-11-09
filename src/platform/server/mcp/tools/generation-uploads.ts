@@ -42,7 +42,10 @@ import {
 } from '@/motion/server/shot-motion-generation';
 import { ValidationError } from '@/platform/errors';
 import { VARIANT_TYPES } from '@/platform/server/db/schema/shot-variants';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import {
   fromShareableUrl,
   r2KeyFromUrl,
@@ -87,7 +90,7 @@ const writeAnnotations = {
 /** Starts paid provider work. */
 const paid = { ...writeAnnotations, openWorldHint: true };
 
-const sequenceId = ulidSchema;
+const sequenceId = idOrSlugSchema;
 const shotInput = z.strictObject({
   sequenceId,
   shotId: ulidSchema.describe('Shot ID (list_shots / get_shot).'),
@@ -702,7 +705,7 @@ const setCharacterSheetFromUploadTool = openstoryTool({
   annotations: writeAnnotations,
   inputSchema: z.strictObject({
     sequenceId,
-    characterId: ulidSchema.describe(
+    characterId: idOrSlugSchema.describe(
       'Database character ID (list_characters).'
     ),
     lookId: ulidSchema
@@ -747,7 +750,9 @@ const setLocationSheetFromUploadTool = openstoryTool({
   annotations: writeAnnotations,
   inputSchema: z.strictObject({
     sequenceId,
-    locationId: ulidSchema.describe('Database location ID (list_locations).'),
+    locationId: idOrSlugSchema.describe(
+      'Database location ID (list_locations).'
+    ),
     upload: uploadRef,
   }),
   outputSchema: z.object({ locationId: z.string() }),

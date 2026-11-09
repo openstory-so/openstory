@@ -35,6 +35,10 @@ export default defineConfig({
           import.meta.url
         )
       ),
+      // packages/cli has its own tsconfig without paths; CI never builds stitch's dist.
+      '@openstory/stitch/bundle': fileURLToPath(
+        new URL('./packages/stitch/src/bundle.ts', import.meta.url)
+      ),
     },
   },
   plugins: [viteReact()],

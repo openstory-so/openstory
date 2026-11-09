@@ -13,6 +13,8 @@ bun explorer                       # Open the local CF Explorer (KV/R2/D1/DOs/Wo
 bun db:studio:local                # Inspect local D1 tables (wrangler d1 execute)
 bun tunnel:provision               # Once per laptop: 10 random *.openstory.so names → ports 3000–3009
 bun tunnel                         # Print ~/.openstory/dev-tunnels.json + Google OAuth URIs
+bun setup                          # AI keys + the data folder (default ~/openstory)
+npx @openstory/cli@latest login --origin http://localhost:3000   # Once: lets bun dev mirror the library
 
 # Quality
 bun lint                           # oxlint (type-aware)
@@ -328,7 +330,7 @@ changing the area, and update it in the same PR.**
   `list_sequence_assets`). Default scope is the current cut; `scope=history`
   adds every completed stored version, including discarded. Rendered MP4s
   stay off unless `exports=true`. The asset page and
-  `npx @openstory/stitch pull` write that list. Do not zip in the Worker
+  `npx @openstory/cli@latest pull` write that list. Do not zip in the Worker
   and do not hand out R2 credentials. Preview frames and provider-CDN urls
   stay out. Dialogue is the speech file plus a cuts JSON. A scene reorder
   leaves the old files on disk.
@@ -345,8 +347,10 @@ changing the area, and update it in the same PR.**
   the current cut; "Render MP4 on server" makes one. The player itself is
   `packages/stitch` (#1853, published as `@openstory/stitch`): it knows clips and cues, never shots —
   the shot mapping and subtitles (`shotCues`) live in
-  `src/sequences/ui/theatre/playback-clips.ts`. A CLI cut is shared without
-  the CLI (#2127): `stitch bundle` writes a static folder, `stitch share`
+  `src/sequences/ui/theatre/playback-clips.ts`. stitch never talks to
+  openstory.so: `login`, `pull`, `share` and `sync` live in `packages/cli`
+  (`@openstory/cli`, bin `openstory`; docs say `npx @openstory/cli@latest`). A CLI cut is shared without
+  the CLI (#2127): `stitch bundle` writes a static folder, `openstory share`
   uploads it (`POST /api/v1/stitches`, media names only, rewritten to
   `/r2/stitches/<organization>/<id>/…`, then one PUT per file, then
   `POST …/$id/publish`, which checks every file is there and every image
@@ -422,7 +426,9 @@ bun db:migrate   # Apply migrations to local.db
 - Production deploys run on **Workers Builds** (dashboard-connected to `main`, #900): build command `bun run build` with `CLOUDFLARE_ENV=production` as a build env var, deploy command `bun run deploy:production`. Manual fallback: `bun cf:deploy:prd`. Don't deploy a build made without `CLOUDFLARE_ENV=production` — it bakes the default block (placeholder D1) and fails loudly.
 - PR-preview deploys patch the default block at runtime in `.github/workflows/deploy-cloudflare.yml` and deploy without `--env`. Each PR gets its own real D1 named `openstory-pr-<n>`.
 
-**Local guardrail:** `bun dev` prints a wrangler-bindings banner on startup showing each binding's `local` / `REMOTE` status. If `DB` ever shows REMOTE, kill the server immediately and fix the config before any write lands in prod.
+**Local guardrail:** `bun dev` prints a wrangler-bindings banner on startup showing each binding's `local` / `REMOTE` status and the full local state path (`DATA state`). If `DB` ever shows REMOTE, kill the server immediately and fix the config before any write lands in prod.
+
+**Local state (#2222)** — `docs/architecture/local-library.md`. A main checkout keeps D1/R2/DO state in `~/openstory/.openstory/state` (or `OPENSTORY_DATA_DIR`), so `git clean -fdx` cannot wipe it; a worktree, CI and e2e keep `.wrangler/state`, and a worktree ignores `OPENSTORY_DATA_DIR`. Only `scripts/state-dir.ts` picks a persist path (pinned by its test): a new script that opens local D1 goes through `getLocalPlatformProxy`, never a hard-coded `.wrangler/state`. `~/openstory` is the library (state plus the `openstory sync` mirror); `~/.openstory` is per-machine (logins, tunnels) and does not move. `bun dev` refuses a data folder another live dev server holds.
 
 **Reproducing a prod bug locally:** temporarily set the default D1's `database_id` to the real prod value, restart `bun dev`, and revert when done. **Never commit a real prod D1 id into the default block.**
 

@@ -1,10 +1,11 @@
 /**
- * `stitch pull`: download one sequence's files into a folder.
+ * Download one sequence's files into a folder.
  *
  * The command asks the public API for the manifest, then writes each file.
  * A second run skips a path whose versionId is unchanged and whose file is
- * still there. Shared cast, location, and style files are stored once under
- * ~/.openstory/assets, named from the stored url, and linked into the folder.
+ * still there, and a path the previous manifest listed but this one does not
+ * is removed. Shared cast, location, and style files are stored once in the
+ * cache directory, named from the stored url, and linked into the folder.
  * This file does not import the app: the skip rule is copied here on purpose.
  */
 
@@ -16,17 +17,20 @@ import {
   link,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 
 export type DownloadAssetsOptions = {
   sequenceId: string;
   origin: string;
-  home: string;
+  /** Shared files live here once; `pull` passes ~/.openstory/assets. */
+  cacheDir: string;
   dest: string;
   history: boolean;
   includeExports: boolean;
@@ -45,7 +49,7 @@ type AssetRow = {
 
 export async function downloadSequenceAssets(
   options: DownloadAssetsOptions
-): Promise<{ saved: number; skipped: number }> {
+): Promise<{ saved: number; skipped: number; removed: number }> {
   const fetchFn = options.fetch ?? fetch;
   const manifestUrl = new URL(
     `/api/v1/sequences/${encodeURIComponent(options.sequenceId)}/assets`,
@@ -105,7 +109,9 @@ export async function downloadSequenceAssets(
 
   for (const asset of todo) {
     const dest = join(options.dest, asset.relativePath);
-    const cache = asset.shared ? sharedCacheFile(options.home, asset) : null;
+    const cache = asset.shared
+      ? sharedCacheFile(options.cacheDir, asset)
+      : null;
     if (asset.text != null) {
       await writeCached(dest, cache, async (file) => {
         await mkdir(dirname(file), { recursive: true });
@@ -119,13 +125,40 @@ export async function downloadSequenceAssets(
     }
   }
 
+  // Only paths an earlier manifest listed: anything else in the folder is the user's.
+  const listedNow = new Set(assets.map((asset) => asset.relativePath));
+  let removed = 0;
+  const root = await realpath(options.dest).catch(() => null);
+  for (const path of previous.keys()) {
+    if (root === null) break;
+    if (listedNow.has(path) || !safeRelativePath(path)) continue;
+    if (!(await fileExists(options.dest, path))) continue;
+    // A symlinked folder inside dest must not lead the delete outside it.
+    const target = await realpath(join(options.dest, path));
+    if (!target.startsWith(`${root}${sep}`)) continue;
+    await rm(target);
+    await pruneEmptyDirs(options.dest, dirname(path));
+    removed += 1;
+  }
+
   await mkdir(options.dest, { recursive: true });
   await writeFile(
     join(options.dest, 'manifest.json'),
     `${JSON.stringify(manifest, null, 2)}\n`
   );
   const skipped = assets.length - todo.length;
-  return { saved: todo.length, skipped };
+  return { saved: todo.length, skipped, removed };
+}
+
+/** Removes `dir` and its parents while empty, stopping at `root`. */
+async function pruneEmptyDirs(root: string, dir: string): Promise<void> {
+  for (let rel = dir; rel !== '.' && rel !== ''; rel = dirname(rel)) {
+    try {
+      await rmdir(join(root, rel));
+    } catch {
+      return;
+    }
+  }
 }
 
 async function writeCached(
@@ -264,13 +297,13 @@ async function previousVersions(dest: string): Promise<Map<string, string>> {
 }
 
 /** One cache file per stored url. A sheet and its portrait must not collide. */
-function sharedCacheFile(home: string, asset: AssetRow): string {
+function sharedCacheFile(cacheDir: string, asset: AssetRow): string {
   const ext = extname(asset.relativePath);
   const identity = asset.url
     ? (asset.url.split('?')[0] ?? asset.url)
     : `${asset.versionId}${ext}`;
   const name = createHash('sha256').update(identity).digest('hex');
-  return join(home, '.openstory', 'assets', `${name}${ext}`);
+  return join(cacheDir, `${name}${ext}`);
 }
 
 function safeRelativePath(path: string): boolean {

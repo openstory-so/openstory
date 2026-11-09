@@ -10,7 +10,10 @@ import { isValidImageToVideoModel } from '@/models/models';
 import { isValidAnalysisModelId } from '@/models/models.config';
 import { runOneShotCreate } from '@/platform/server/api-v1/create';
 import { apiCreateSequenceSchema } from '@/platform/server/api-v1/input-schema';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import { createSequences } from '@/sequences/server/create-sequences';
 import { productionAccess } from '@/sequences/server/production-access';
 import {
@@ -45,7 +48,7 @@ const writeAnnotations = {
 };
 const destructiveAnnotations = { ...writeAnnotations, destructiveHint: true };
 
-const sequenceId = ulidSchema;
+const sequenceId = idOrSlugSchema;
 const sceneId = ulidSchema.describe(
   'Database scene ID (list_scenes / get_scene).'
 );

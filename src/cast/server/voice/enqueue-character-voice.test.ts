@@ -8,6 +8,7 @@ function character(
   overrides: Partial<CastCharacterWithSheet> = {}
 ): CastCharacterWithSheet {
   return {
+    slug: 'fixture',
     id: 'char-1',
     sequenceId: 'seq-1',
     characterId: 'maya',

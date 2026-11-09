@@ -1,10 +1,10 @@
 name: Release
 
-# Versions and publishes @openstory/stitch from main.
+# Versions and publishes @openstory/stitch and @openstory/cli from main.
 # A changeset in a merged pull request opens a version pull request.
 # Merging that pull request publishes. Auth is npm trusted publishing for
 # this workflow file only. There is no npm token.
-# On the package, trust openstory-so/openstory, workflow file release.yml,
+# On each package, trust openstory-so/openstory, workflow file release.yml,
 # and allow npm publish. The link has to succeed within two days.
 # Repository setting required: Actions → General → Allow GitHub Actions to
 # create and approve pull requests.
@@ -112,18 +112,23 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
-        run: bun run test packages/stitch
+        run: bun run test packages/stitch packages/cli
 
+      # The CLI compiles against stitch's built `./bundle` types: stitch first.
       - name: Build
-        run: bun run --cwd packages/stitch build
+        run: bun run --cwd packages/stitch build && bun run --cwd packages/cli build
 
       - name: The built package imports under Node
         working-directory: packages/stitch
-        run: node --input-type=module -e "await import('./dist/index.js'); await import('./dist/export.js'); await import('./dist/videojs.js'); await import('./dist/react.js'); await import('./dist/cli.js')"
+        run: node --input-type=module -e "await import('./dist/index.js'); await import('./dist/export.js'); await import('./dist/videojs.js'); await import('./dist/react.js'); await import('./dist/cli.js'); await import('./dist/bundle.js')"
 
       - name: The bin can describe itself
         working-directory: packages/stitch
         run: node bin/stitch.mjs --help
+
+      - name: The CLI bin can describe itself
+        working-directory: packages/cli
+        run: node bin/openstory.mjs --help
 
       - name: Publish
         uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2

@@ -20,7 +20,10 @@ import {
 } from '@/cast/seed-voice';
 import { generateMusic, rewriteMusicPrompt } from '@/audio/server/music-edit';
 import { AUDIO_MODELS } from '@/models/models';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import { productionAccess } from '@/sequences/server/production-access';
 import {
   cancelShotDialogueClaim,
@@ -42,11 +45,11 @@ const writeAnnotations = {
 const generateAnnotations = { ...writeAnnotations, openWorldHint: true };
 const idempotent = { ...writeAnnotations, idempotentHint: true };
 
-const sequenceId = ulidSchema;
-const characterId = ulidSchema.describe(
+const sequenceId = idOrSlugSchema;
+const characterId = idOrSlugSchema.describe(
   'Database character ID (list_characters / get_character), not the char_* token.'
 );
-const locationId = ulidSchema.describe(
+const locationId = idOrSlugSchema.describe(
   'Database location ID (list_locations / get_location; the same id list_library_locations gives), not the loc_* token.'
 );
 const shotInput = z.strictObject({

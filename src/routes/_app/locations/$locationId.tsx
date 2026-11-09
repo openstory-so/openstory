@@ -6,6 +6,7 @@ import {
 } from '@/cast/ui/use-organization-locations';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
+import { redirectSlugToId } from '@/platform/ui/slug-redirect';
 import { routeParams } from '@/ui/layout/breadcrumbs';
 import { Button } from '@/ui/shadcn/button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
@@ -24,6 +25,14 @@ function LocationCrumbLabel({ id }: { id: string }) {
 export const Route = createFileRoute('/_app/locations/$locationId')({
   // The sequence whose use of the location the page shows.
   validateSearch: z.object({ sequence: z.string().min(1).optional() }),
+  beforeLoad: ({ context: { queryClient }, location, params }) =>
+    redirectSlugToId({
+      kind: 'location',
+      prefix: '/locations',
+      param: params.locationId,
+      location,
+      queryClient,
+    }),
   component: OrganizationLocationPage,
   staticData: {
     breadcrumb: (match) => {

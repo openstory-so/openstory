@@ -84,6 +84,7 @@ import { Route as ApiTestUserRouteImport } from './routes/api/test/user'
 import { Route as ApiTestVerifyRouteImport } from './routes/api/test/verify'
 import { Route as ApiV1IndexRouteImport } from './routes/api/v1/index'
 import { Route as ApiV1OpenapiDotjsonRouteImport } from './routes/api/v1/openapi[.]json'
+import { Route as ApiV1OrganizationRouteImport } from './routes/api/v1/organization'
 import { Route as ApiV1SequencesRouteImport } from './routes/api/v1/sequences'
 import { Route as ApiV1StitchesRouteImport } from './routes/api/v1/stitches'
 import { Route as ApiV1StylesRouteImport } from './routes/api/v1/styles'
@@ -487,6 +488,11 @@ const ApiV1OpenapiDotjsonRoute = ApiV1OpenapiDotjsonRouteImport.update({
   path: '/api/v1/openapi.json',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1OrganizationRoute = ApiV1OrganizationRouteImport.update({
+  id: '/api/v1/organization',
+  path: '/api/v1/organization',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1SequencesRoute = ApiV1SequencesRouteImport.update({
   id: '/api/v1/sequences',
   path: '/api/v1/sequences',
@@ -697,6 +703,7 @@ export interface FileRoutesByFullPath {
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
+  '/api/v1/organization': typeof ApiV1OrganizationRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
@@ -797,6 +804,7 @@ export interface FileRoutesByTo {
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
+  '/api/v1/organization': typeof ApiV1OrganizationRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
@@ -902,6 +910,7 @@ export interface FileRoutesById {
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
+  '/api/v1/organization': typeof ApiV1OrganizationRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
@@ -1007,6 +1016,7 @@ export interface FileRouteTypes {
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
+    | '/api/v1/organization'
     | '/api/v1/sequences'
     | '/api/v1/stitches'
     | '/api/v1/styles'
@@ -1107,6 +1117,7 @@ export interface FileRouteTypes {
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
+    | '/api/v1/organization'
     | '/api/v1/sequences'
     | '/api/v1/stitches'
     | '/api/v1/styles'
@@ -1211,6 +1222,7 @@ export interface FileRouteTypes {
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
+    | '/api/v1/organization'
     | '/api/v1/sequences'
     | '/api/v1/stitches'
     | '/api/v1/styles'
@@ -1279,6 +1291,7 @@ export interface RootRouteChildren {
   ApiStorageMultipartRoute: typeof ApiStorageMultipartRoute
   ApiStorageUploadRoute: typeof ApiStorageUploadRoute
   ApiV1OpenapiDotjsonRoute: typeof ApiV1OpenapiDotjsonRoute
+  ApiV1OrganizationRoute: typeof ApiV1OrganizationRoute
   ApiV1SequencesRoute: typeof ApiV1SequencesRouteWithChildren
   ApiV1StitchesRoute: typeof ApiV1StitchesRouteWithChildren
   ApiV1StylesRoute: typeof ApiV1StylesRouteWithChildren
@@ -1816,6 +1829,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OpenapiDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/organization': {
+      id: '/api/v1/organization'
+      path: '/api/v1/organization'
+      fullPath: '/api/v1/organization'
+      preLoaderRoute: typeof ApiV1OrganizationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/sequences': {
       id: '/api/v1/sequences'
       path: '/api/v1/sequences'
@@ -2302,6 +2322,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStorageMultipartRoute: ApiStorageMultipartRoute,
   ApiStorageUploadRoute: ApiStorageUploadRoute,
   ApiV1OpenapiDotjsonRoute: ApiV1OpenapiDotjsonRoute,
+  ApiV1OrganizationRoute: ApiV1OrganizationRoute,
   ApiV1SequencesRoute: ApiV1SequencesRouteWithChildren,
   ApiV1StitchesRoute: ApiV1StitchesRouteWithChildren,
   ApiV1StylesRoute: ApiV1StylesRouteWithChildren,

@@ -35,6 +35,8 @@ export const SERVER_MANAGED_STYLE_COLUMNS = {
   sortOrder: true,
   // Sequence binding is set by sequence creation and cleared by promotion.
   sequenceId: true,
+  // Derived from the name on every write (#2222).
+  slug: true,
 } as const;
 
 export type ServerManagedStyleColumn =

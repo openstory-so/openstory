@@ -50,6 +50,10 @@
     "./export": {
       "types": "./dist/export.d.ts",
       "default": "./dist/export.js"
+    },
+    "./bundle": {
+      "types": "./dist/bundle.d.ts",
+      "default": "./dist/bundle.js"
     }
   },
   "publishConfig": {

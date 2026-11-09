@@ -338,7 +338,7 @@ export async function createDefaultOrganization(input: {
     .insert(organization)
     .values({
       name: input.organizationName,
-      slug: `org-${input.userId.slice(0, 8)}`,
+      slug: `org-${input.userId.toLowerCase()}`,
     })
     .returning();
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined

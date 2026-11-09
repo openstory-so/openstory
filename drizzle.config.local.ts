@@ -1,14 +1,15 @@
 import { createHash, createHmac } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { defineConfig } from 'drizzle-kit';
+import { proxyPersistPath, resolveStateDir } from './scripts/state-dir';
 
 /**
  * Drizzle Studio against the local Miniflare-backed D1.
  *
- * `bun dev` (and `wrangler dev`) stash the local D1 SQLite under
- * `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<id>.sqlite`, where `<id>`
+ * `bun dev` stashes the local D1 SQLite under
+ * `<state>/v3/d1/miniflare-D1DatabaseObject/<id>.sqlite` (`scripts/state-dir.ts`), where `<id>`
  * is derived from the D1 binding's `database_id` via Miniflare's DO-namespace
  * hash. We mirror that derivation so Studio opens the exact file the worker
  * reads/writes — no out-of-band sync.
@@ -62,8 +63,9 @@ if (!dbBinding) {
   );
 }
 
-const sqlitePath = resolve(
-  '.wrangler/state/v3/d1/miniflare-D1DatabaseObject',
+const sqlitePath = join(
+  proxyPersistPath(resolveStateDir()),
+  'd1/miniflare-D1DatabaseObject',
   miniflareD1FileName(dbBinding.database_id)
 );
 

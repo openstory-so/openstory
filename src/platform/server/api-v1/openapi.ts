@@ -28,6 +28,7 @@ import {
 import { errorEnvelopeSchema, rootDocumentSchema } from './discovery';
 import { styleListResultSchema } from './styles';
 import { sequenceAssetsResultSchema } from './sequence-assets';
+import { organizationResultSchema } from './organization';
 import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
 import { z, type ZodType } from 'zod';
@@ -168,6 +169,10 @@ export function buildOpenApiDocument(): JsonObject {
       { name: 'sequences', description: 'Create and watch video sequences.' },
       { name: 'scripts', description: 'Enhance scripts without generating.' },
       { name: 'styles', description: 'Create and browse organization styles.' },
+      {
+        name: 'organization',
+        description: 'The organization a key belongs to.',
+      },
       {
         name: 'stitches',
         description: 'Share a cut from the stitch CLI as a public page.',
@@ -423,6 +428,27 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/organization`]: {
+        get: {
+          tags: ['organization'],
+          summary: 'Get the organization',
+          description:
+            "The organization the key belongs to. `personal` is true for the user's sign-up organization.",
+          responses: {
+            '200': {
+              description: 'The organization.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/OrganizationResult' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse('No organization associated with the key.'),
+            '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
+          },
+        },
+      },
       [`${API_V1_BASE}/styles`]: {
         get: {
           tags: ['styles'],
@@ -488,7 +514,7 @@ export function buildOpenApiDocument(): JsonObject {
               name: 'id',
               in: 'path',
               required: true,
-              description: 'The style id (ULID).',
+              description: 'The style id (ULID) or its slug.',
               schema: { type: 'string' },
             },
           ],
@@ -519,7 +545,7 @@ export function buildOpenApiDocument(): JsonObject {
               name: 'id',
               in: 'path',
               required: true,
-              description: 'The sequence id (ULID).',
+              description: 'The sequence id (ULID) or its slug.',
               schema: { type: 'string' },
             },
             waitParam,
@@ -558,7 +584,7 @@ export function buildOpenApiDocument(): JsonObject {
               name: 'id',
               in: 'path',
               required: true,
-              description: 'The sequence id (ULID).',
+              description: 'The sequence id (ULID) or its slug.',
               schema: { type: 'string' },
             },
             waitParam,
@@ -595,7 +621,7 @@ export function buildOpenApiDocument(): JsonObject {
               name: 'id',
               in: 'path',
               required: true,
-              description: 'The sequence id (ULID).',
+              description: 'The sequence id (ULID) or its slug.',
               schema: { type: 'string' },
             },
           ],
@@ -648,7 +674,7 @@ export function buildOpenApiDocument(): JsonObject {
               name: 'id',
               in: 'path',
               required: true,
-              description: 'The sequence id (ULID).',
+              description: 'The sequence id (ULID) or its slug.',
               schema: { type: 'string' },
             },
             {
@@ -687,7 +713,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['stitches'],
           summary: 'Share a stitch',
           description:
-            'Store a cut from `npx @openstory/stitch share`. Every media URL in the cut is a bundle name (`media/<n>.<ext>`); the response carries a templated `upload` link to PUT each file to, and `url`, the public player page. Anyone with the page URL can watch.',
+            'Store a cut from `npx @openstory/cli@latest share`. Every media URL in the cut is a bundle name (`media/<n>.<ext>`); the response carries a templated `upload` link to PUT each file to, and `url`, the public player page. Anyone with the page URL can watch.',
           requestBody: {
             required: true,
             content: {
@@ -724,7 +750,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['stitches'],
           summary: 'Publish a stitch',
           description:
-            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`stitch share --portrait-rights`). Idempotent once published.',
+            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`openstory share --portrait-rights`). Idempotent once published.',
           parameters: [
             {
               name: 'id',
@@ -805,6 +831,7 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(sequenceExportsResultSchema),
         ...componentDefs(sequenceExportAcceptedSchema),
         ...componentDefs(sequenceAssetsResultSchema),
+        ...componentDefs(organizationResultSchema),
         ...componentDefs(styleListResultSchema),
         ...componentDefs(rootDocumentSchema),
         ...componentDefs(errorEnvelopeSchema),

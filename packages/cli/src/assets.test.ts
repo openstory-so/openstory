@@ -6,13 +6,15 @@ import {
   stat,
   writeFile,
   mkdir,
+  symlink,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { downloadSequenceAssets } from './assets.js';
-import { main, parseArgs } from './cli.js';
+import { main } from './cli.js';
+import { parsePull } from './pull.js';
 
 const origin = 'https://os.test';
 
@@ -32,43 +34,34 @@ function manifest(assets: unknown[]) {
   };
 }
 
-describe('stitch pull', () => {
-  it('parses flags before the global help short-circuit', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
-    try {
-      expect(await parseArgs(['pull', '--help'], cwd)).toEqual({
-        kind: 'help',
-      });
-      expect(
-        await parseArgs(
-          [
-            'pull',
-            'SEQ',
-            '--history',
-            '--exports',
-            '--origin',
-            'http://localhost:3000/ignored',
-            '--dir',
-            'out',
-          ],
-          cwd
-        )
-      ).toEqual({
-        kind: 'pull',
-        sequenceId: 'SEQ',
-        origin: 'http://localhost:3000',
-        dir: join(cwd, 'out'),
-        history: true,
-        exports: true,
-      });
-      await expect(parseArgs(['pull'], cwd)).rejects.toThrow('sequence id');
-    } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
+describe('openstory pull', () => {
+  it('parses its flags', () => {
+    const cwd = '/work';
+    expect(
+      parsePull(
+        [
+          'SEQ',
+          '--history',
+          '--exports',
+          '--origin',
+          'http://localhost:3000/ignored',
+          '--dir',
+          'out',
+        ],
+        cwd
+      )
+    ).toEqual({
+      sequenceId: 'SEQ',
+      origin: 'http://localhost:3000',
+      dir: join(cwd, 'out'),
+      history: true,
+      exports: true,
+    });
+    expect(() => parsePull([], cwd)).toThrow('sequence id');
   });
 
   it('writes files, links a shared file, skips a second run, and refuses ..', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-assets-'));
     try {
       const home = join(cwd, 'home');
       const dest = join(cwd, 'out');
@@ -108,7 +101,7 @@ describe('stitch pull', () => {
       const first = await downloadSequenceAssets({
         sequenceId: 'SEQ',
         origin,
-        home,
+        cacheDir: join(home, '.openstory', 'assets'),
         dest,
         history: false,
         includeExports: false,
@@ -119,7 +112,7 @@ describe('stitch pull', () => {
           return token;
         },
       });
-      expect(first).toEqual({ saved: 2, skipped: 0 });
+      expect(first).toEqual({ saved: 2, skipped: 0, removed: 0 });
       expect(await readFile(join(dest, 'script.txt'), 'utf8')).toBe(
         'INT. ROOM'
       );
@@ -142,7 +135,7 @@ describe('stitch pull', () => {
       const second = await downloadSequenceAssets({
         sequenceId: 'SEQ',
         origin,
-        home,
+        cacheDir: join(home, '.openstory', 'assets'),
         dest,
         history: false,
         includeExports: false,
@@ -150,14 +143,14 @@ describe('stitch pull', () => {
         key: async () => 'new',
         refresh: async () => 'newer',
       });
-      expect(second).toEqual({ saved: 0, skipped: 2 });
+      expect(second).toEqual({ saved: 0, skipped: 2, removed: 0 });
       expect(calls.filter((path) => path.startsWith('/r2/'))).toEqual([]);
 
       await expect(
         downloadSequenceAssets({
           sequenceId: 'SEQ',
           origin,
-          home,
+          cacheDir: join(home, '.openstory', 'assets'),
           dest,
           history: false,
           includeExports: false,
@@ -182,8 +175,70 @@ describe('stitch pull', () => {
     }
   });
 
-  it('runs without the preview page', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
+  it('removes only paths the previous manifest listed', async () => {
+    const dest = await mkdtemp(join(tmpdir(), 'openstory-assets-'));
+    try {
+      let listed = [
+        { relativePath: 'scenes/01-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      const fetchFn: typeof fetch = async () => Response.json(manifest(listed));
+      const run = () =>
+        downloadSequenceAssets({
+          sequenceId: 'SEQ',
+          origin,
+          cacheDir: join(dest, 'cache'),
+          dest,
+          history: false,
+          includeExports: false,
+          fetch: fetchFn,
+          key: async () => 'key',
+          refresh: async () => 'key',
+        });
+      await run();
+      await writeFile(join(dest, 'scenes', '01-old', 'notes.md'), 'mine');
+      await writeFile(join(dest, 'mine.txt'), 'mine');
+      listed = [
+        { relativePath: 'scenes/02-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      expect((await run()).removed).toBe(1);
+      await expect(
+        stat(join(dest, 'scenes', '01-old', 'prompt.txt'))
+      ).rejects.toThrow();
+      // The user's files, and the folder holding one, stay.
+      expect(
+        await readFile(join(dest, 'scenes', '01-old', 'notes.md'), 'utf8')
+      ).toBe('mine');
+      expect(await readFile(join(dest, 'mine.txt'), 'utf8')).toBe('mine');
+      // A listed path reached through a symlink out of the folder stays put.
+      const outside = await mkdtemp(join(tmpdir(), 'openstory-outside-'));
+      await writeFile(join(outside, 'prompt.txt'), 'theirs');
+      await rm(join(dest, 'scenes', '02-old'), { recursive: true });
+      await symlink(outside, join(dest, 'scenes', '02-old'));
+      listed = [{ relativePath: 'keep.txt', versionId: 'k', text: 'k' }];
+      await run();
+      expect(await readFile(join(outside, 'prompt.txt'), 'utf8')).toBe(
+        'theirs'
+      );
+      await rm(outside, { recursive: true });
+      await rm(join(dest, 'scenes', '02-old'));
+      listed = [
+        { relativePath: 'scenes/02-old/prompt.txt', versionId: 'a', text: 'a' },
+        { relativePath: 'keep.txt', versionId: 'k', text: 'k' },
+      ];
+      await run();
+      listed = [{ relativePath: 'keep.txt', versionId: 'k', text: 'k' }];
+      await rm(join(dest, 'scenes', '01-old', 'notes.md'));
+      await run();
+      await expect(stat(join(dest, 'scenes', '02-old'))).rejects.toThrow();
+    } finally {
+      await rm(dest, { recursive: true, force: true });
+    }
+  });
+
+  it('runs from main with a key stitch stored, and moves that key file', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-assets-'));
     try {
       const home = join(cwd, 'home');
       await mkdir(join(home, '.openstory'), { recursive: true });
@@ -198,7 +253,7 @@ describe('stitch pull', () => {
         home,
         stdout: { write: (text) => stdout.push(text) },
         stderr: { write: (text) => stderr.push(text) },
-        packageRoot: join(cwd, 'missing-package'),
+        open: () => {},
         fetch: async (input) => {
           const url = new URL(requestUrl(input));
           if (url.pathname === '/api/v1/sequences/SEQ/assets') {
@@ -215,7 +270,7 @@ describe('stitch pull', () => {
         home,
         stdout: { write: () => {} },
         stderr: { write: () => {} },
-        packageRoot: join(cwd, 'missing-package'),
+        open: () => {},
         fetch: async (input) => {
           const url = new URL(requestUrl(input));
           expect(url.searchParams.get('scope')).toBe('history');
@@ -226,13 +281,19 @@ describe('stitch pull', () => {
       expect(
         await readFile(join(cwd, 'out', 'manifest.json'), 'utf8')
       ).toContain('"assets": []');
+      expect(
+        await readFile(join(home, '.openstory', 'credentials.json'), 'utf8')
+      ).toContain('osk_1');
+      await expect(
+        stat(join(home, '.openstory', 'stitch.json'))
+      ).rejects.toThrow();
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it('keeps a portrait out of the sheet cache and refuses a path that leaves the folder', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-assets-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-assets-'));
     try {
       const home = join(cwd, 'home');
       const dest = join(cwd, 'out');
@@ -271,7 +332,7 @@ describe('stitch pull', () => {
       await downloadSequenceAssets({
         sequenceId: 'SEQ',
         origin,
-        home,
+        cacheDir: join(home, '.openstory', 'assets'),
         dest,
         history: false,
         includeExports: false,
@@ -290,7 +351,7 @@ describe('stitch pull', () => {
         downloadSequenceAssets({
           sequenceId: 'SEQ',
           origin,
-          home,
+          cacheDir: join(home, '.openstory', 'assets'),
           dest,
           history: false,
           includeExports: false,
@@ -315,7 +376,7 @@ describe('stitch pull', () => {
         downloadSequenceAssets({
           sequenceId: 'SEQ',
           origin,
-          home,
+          cacheDir: join(home, '.openstory', 'assets'),
           dest,
           history: false,
           includeExports: false,

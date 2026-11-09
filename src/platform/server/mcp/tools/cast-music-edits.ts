@@ -57,7 +57,10 @@ import {
   selectMusicTrack,
   undiscardMusicTrack,
 } from '@/audio/server/music-edit';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import { productionAccess } from '@/sequences/server/production-access';
 import { openstoryTool, productionRead } from '../tool-context';
 
@@ -70,11 +73,11 @@ const writeAnnotations = {
 const idempotent = { ...writeAnnotations, idempotentHint: true };
 const destructive = { ...writeAnnotations, destructiveHint: true };
 
-const sequenceId = ulidSchema;
-const characterId = ulidSchema.describe(
+const sequenceId = idOrSlugSchema;
+const characterId = idOrSlugSchema.describe(
   'Database character ID (list_characters / get_character, or list_library_characters for any of the organization’s), not the char_* token.'
 );
-const locationId = ulidSchema.describe(
+const locationId = idOrSlugSchema.describe(
   'Database location ID (list_locations / get_location; the same id list_library_locations gives), not the loc_* token.'
 );
 const elementId = ulidSchema.describe(

@@ -8,7 +8,10 @@ import { z } from 'zod';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { projectRead } from '@/platform/server/read-projection';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import { dbSceneId } from '@/shots/scene-id';
 import { productionAccess } from '@/sequences/server/production-access';
 import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
@@ -41,7 +44,7 @@ const writeAnnotations = {
 };
 
 const shotInput = z.strictObject({
-  sequenceId: ulidSchema,
+  sequenceId: idOrSlugSchema,
   shotId: ulidSchema.describe('Shot ID (list_shots / get_shot).'),
 });
 const promptType = z

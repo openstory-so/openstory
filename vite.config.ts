@@ -14,8 +14,15 @@ import viteReact from '@vitejs/plugin-react';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
 import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 import { latin1ServerChunks } from './scripts/latin1-server-chunks.ts';
+import {
+  acquireLock,
+  resolveStateDir,
+  vitePersistPath,
+} from './scripts/state-dir.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
+// Local D1/R2/DO state (#2222): ~/openstory on a main checkout, .wrangler otherwise.
+const stateDir = isDev ? resolveStateDir() : null;
 
 // Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual
 // `import.meta.env.VITE_*` replacement ships it into the worker the same way
@@ -83,6 +90,7 @@ function wranglerBindingsBanner(): Plugin {
     name: 'wrangler-bindings-banner',
     apply: 'serve',
     configureServer(server) {
+      if (stateDir?.dataDir) acquireLock(stateDir.dataDir);
       server.httpServer?.once('listening', () => {
         type Binding = { binding: string; remote?: boolean };
         type WranglerConfig = {
@@ -122,6 +130,11 @@ function wranglerBindingsBanner(): Plugin {
             : `${DIM}local${RESET}   (Miniflare)`;
           process.stdout.write(
             `    ${kind} ${name.padEnd(nameWidth)}  →  ${status}\n`
+          );
+        }
+        if (stateDir) {
+          process.stdout.write(
+            `    DATA ${'state'.padEnd(nameWidth - 2)}  →  ${stateDir.state}\n`
           );
         }
         if (authCookiePrefix) {
@@ -315,6 +328,9 @@ export default defineConfig({
     process.env.E2E_COVERAGE === 'true' && e2eServerCoverage(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
+      ...(stateDir
+        ? { persistState: { path: vitePersistPath(stateDir) } }
+        : {}),
       // Named tunnel only — `tunnel: true` is a Quick Tunnel that auto-starts
       // on listen (`*.trycloudflare.com`). Omit the option entirely when there
       // is no ~/.openstory/dev-tunnels.json so `bun dev` stays loopback-only.

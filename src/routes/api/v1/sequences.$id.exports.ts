@@ -27,6 +27,7 @@ import {
 } from '@/platform/server/api-v1/hal';
 import { getWaitMs, longPoll } from '@/platform/server/api-v1/wait';
 import { NotFoundError } from '@/platform/errors';
+import { requireSequenceId } from '@/platform/server/api-v1/resolve';
 import {
   formatExport,
   resolveExportCut,
@@ -57,21 +58,18 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
         runApiV1Handler(async () => {
           const waitMs = getWaitMs(request);
           const origin = new URL(request.url).origin;
+          const id = await requireSequenceId(context.scopedDb, params.id);
 
           const { value, changed, done } = await longPoll({
             waitMs,
             signal: request.signal,
             load: async () => {
-              const sequence = await context.scopedDb.sequences.getById(
-                params.id
-              );
+              const sequence = await context.scopedDb.sequences.getById(id);
               if (!sequence) throw new NotFoundError('Sequence not found');
               const exports =
-                await context.scopedDb.sequenceExports.listAllBySequence(
-                  params.id
-                );
+                await context.scopedDb.sequenceExports.listAllBySequence(id);
               return {
-                sequenceId: params.id,
+                sequenceId: id,
                 exports: exports.map((e) => formatExport(e, origin)),
               };
             },
@@ -80,7 +78,7 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
             done: (v) => v.exports.every((e) => e.status !== 'processing'),
           });
 
-          return Response.json(withLinks(value, exportsLinks(params.id)), {
+          return Response.json(withLinks(value, exportsLinks(id)), {
             headers:
               waitMs > 0
                 ? {
@@ -94,11 +92,12 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
       POST: async ({ params, context, request }) =>
         runApiV1Handler(async () => {
           const origin = new URL(request.url).origin;
-          const cut = await resolveExportCut(context.scopedDb, params.id);
+          const id = await requireSequenceId(context.scopedDb, params.id);
+          const cut = await resolveExportCut(context.scopedDb, id);
           const { row, workflowRunId } = await startExport(context.scopedDb, {
             userId: context.user.id,
             organizationId: context.organizationId,
-            sequenceId: params.id,
+            sequenceId: id,
             cut,
           });
           // 200: a ready MP4 of this cut, reused. 202: a new render, or the
@@ -110,7 +109,7 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
                   ? { ...formatExport(row, origin), workflowRunId }
                   : formatExport(row, origin),
               },
-              exportsLinks(params.id)
+              exportsLinks(id)
             ),
             { status: row.status === 'ready' ? 200 : 202 }
           );

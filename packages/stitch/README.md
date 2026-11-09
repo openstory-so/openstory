@@ -121,34 +121,21 @@ npx @openstory/stitch \
 
 ## Sharing a cut
 
-A stitch is two things the other person does not have: the cut and the files. `stitch bundle` writes both into a folder that plays from any static host. `stitch share` uploads that folder to OpenStory and prints a link.
+A stitch is two things the other person does not have: the cut and the files. `stitch bundle` writes both into a folder that plays from any static host.
 
 ```sh
 npx @openstory/stitch bundle ./cut --music score.mp3 shot.mp4 board.png --audio line.wav
 ```
 
-The folder holds the player page, `cut.json`, and every file under `media/`. A URL is downloaded, so a signed URL that expires tomorrow is kept today. Open `index.html` from any web server; the page reads `cut.json` and `media/…` relative to itself, so a sub-path works too.
+The folder holds the player page, `cut.json`, and every file under `media/`. A URL is downloaded, so a signed URL that expires tomorrow is kept today. Open `index.html` from any web server; the page reads `cut.json` and `media/…` relative to itself, so a sub-path works too. It takes every cut option of the play command and does not open a browser on the cut.
 
-```sh
-npx @openstory/stitch share --music score.mp3 shot.mp4 board.png --audio line.wav
-```
+To upload the cut to OpenStory and get a link anyone can open, use the OpenStory CLI: `npx @openstory/cli@latest share …` takes the same cut options. See [`@openstory/cli`](https://github.com/openstory-so/openstory/tree/main/packages/cli#readme).
 
-The first share signs you in: the command prints a short code and opens the approval page in your browser. The key it gets is kept in `~/.openstory/stitch.json`. Every file is uploaded to your organization's storage and the command prints `https://openstory.so/stitch/<id>`, a page anyone with the link can watch: the same player, captions, music switch and Download. `--origin` points at another OpenStory server. Every still is checked for a real person; one who is needs `--portrait-rights <basis>`, the basis for using their likeness (a release reference, `self`, a contract id).
-
-Both take every cut option of the play command. Neither opens a browser on the cut itself.
+An agent with no shell can share the same cut through the OpenStory MCP server's `create_stitch` tool: each media slot is a URL the server fetches or a small file as base64.
 
 ## Sequence files
 
-`npx @openstory/stitch pull <sequenceId>` downloads the current cut into `./<sequenceId>`. `bunx @openstory/stitch pull <sequenceId>` is the same command. The first run signs in the same way as share. A later run skips a file that is already there at the same version.
-
-```sh
-npx @openstory/stitch pull 01JSEQUENCE --dir ./room
-bunx @openstory/stitch pull 01JSEQUENCE --history --exports
-```
-
-`--history` adds every completed version, including ones you discarded. `--exports` adds rendered MP4s of the cut. `--origin` points at another OpenStory server. Shared cast, location, and style files are kept once in `~/.openstory/assets` and linked into the folder.
-
-An agent with no shell can share the same cut through the OpenStory MCP server's `create_stitch` tool: each media slot is a URL the server fetches or a small file as base64.
+`npx @openstory/cli@latest pull <sequenceId>` downloads a sequence's files. It moved out of stitch in 0.5.0: stitch never talks to OpenStory. `stitch pull` and `stitch share` still print where they went and run the CLI for you until the next minor version.
 
 ## Skill
 

@@ -28,6 +28,7 @@ const {
 
 function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
+    slug: 'fixture',
     id: 'style-1',
     organizationId: 'organization-1',
     sequenceId: null,

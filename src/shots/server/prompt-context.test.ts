@@ -459,6 +459,7 @@ describe('character bible round-trip — stamp matches verify (#867)', () => {
   // Simulate the row the character-bible workflow persists, then read it back
   // the way `getShotStalenessFn` does at verify time.
   const makeCharacter = (b: CharacterBibleEntry): CastCharacterWithSheet => ({
+    slug: 'fixture',
     id: `row_${b.characterId}`,
     sequenceId: 'seq_1',
     characterId: b.characterId,
@@ -570,6 +571,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
   const makeLocationRow = (
     l: LocationBibleEntry
   ): SequenceLocationWithReference => ({
+    slug: 'fixture',
     id: `row_${l.locationId}`,
     organizationId: 'team_1',
     legacyLibraryReferenceHash: null,

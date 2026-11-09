@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import {
+  idOrSlugSchema,
+  ulidSchema,
+} from '@/platform/server/schemas/id.schemas';
 import { dbSceneId } from '@/shots/scene-id';
 import { sceneNarrativeFieldsSchema } from '@/shots/scene-narrative';
 import { updateScene } from '@/shots/server/scene-edit';
@@ -22,7 +25,7 @@ const MUTATION_FIELDS = [
 
 const updateSceneInput = z
   .strictObject({
-    sequenceId: ulidSchema,
+    sequenceId: idOrSlugSchema,
     sceneId: ulidSchema.describe(
       'Database scene ID (get_scene / list_scenes). A shot ID is not accepted.'
     ),

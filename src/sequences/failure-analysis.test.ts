@@ -85,6 +85,7 @@ function makeShot(
 
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
+    slug: 'fixture',
     id: 'seq-1',
     organizationId: 'organization-1',
     title: 'Test Sequence',

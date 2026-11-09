@@ -33,7 +33,8 @@
       "@openstory/stitch": ["./packages/stitch/src/index.ts"],
       "@openstory/stitch/videojs": ["./packages/stitch/src/videojs.ts"],
       "@openstory/stitch/react": ["./packages/stitch/src/react.tsx"],
-      "@openstory/stitch/export": ["./packages/stitch/src/export.ts"]
+      "@openstory/stitch/export": ["./packages/stitch/src/export.ts"],
+      "@openstory/stitch/bundle": ["./packages/stitch/src/bundle.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

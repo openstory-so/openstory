@@ -66,14 +66,15 @@ const writeAnnotations = {
 
 async function run(
   spec: Parameters<typeof openstoryTool>[0],
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  ctx: Partial<ReadToolContext> = {}
 ) {
   const tool = openstoryTool(spec);
   if (!tool.execute) throw new Error('tool has no execute');
   return resultSchema.parse(
     await tool.execute(
       input,
-      asStub({ context: { scoped: () => asStub<ReadToolContext>({}) } })
+      asStub({ context: { scoped: () => asStub<ReadToolContext>(ctx) } })
     )
   );
 }
@@ -153,6 +154,33 @@ describe('runTool', () => {
     });
     expect(result.content).toHaveLength(1);
     expect(result.content[0]?.text).not.toMatch(/retry/i);
+  });
+
+  it('resolves a slug in sequenceId to its ULID, and 404s an unknown one', async () => {
+    const ulid = '01HF5Z8XKQYC5N8Z3KQXR6TBQM';
+    const ctx = asStub<ReadToolContext>({
+      scopedDb: asStub({
+        sequences: {
+          resolveId: async (s: string) => (s === 'noir-chase' ? ulid : null),
+          getById: async () => null,
+        },
+      }),
+    });
+    const spec: Parameters<typeof run>[0] = {
+      ...base,
+      inputSchema: z.strictObject({ sequenceId: z.string() }),
+      run: async (input) => ({
+        data: { id: input.sequenceId },
+        summary: 'ran',
+      }),
+    };
+    expect(await run(spec, { sequenceId: 'noir-chase' }, ctx)).toMatchObject({
+      structuredContent: { id: ulid },
+    });
+    expect(await run(spec, { sequenceId: 'nope' }, ctx)).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
   });
 
   it('still asks a read over the cap to page', async () => {

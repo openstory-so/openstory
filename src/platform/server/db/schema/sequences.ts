@@ -6,8 +6,15 @@
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  snakeCase,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { testOnlySlug } from '@/platform/slug';
 import { user } from './auth';
 // NOTE: shots imported in index.ts to avoid circular dependency
 // shots.ts imports sequences for foreign key reference
@@ -49,6 +56,11 @@ export const sequences = snakeCase.table(
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
     title: text({ length: 500 }).notNull(),
+    // Unique per organization, from the title (#2222); never an identity.
+    slug: text()
+      .notNull()
+      .default('')
+      .$defaultFn(() => testOnlySlug()),
     script: text(),
     // used to track the status of the sequence
     status: text().$type<SequenceStatus>().default('draft').notNull(),
@@ -126,9 +138,7 @@ export const sequences = snakeCase.table(
     // db:generate stays clean. The app must NOT rely on this default: the
     // scoped create (db/scoped/sequences.ts) substitutes DEFAULT_VIDEO_MODEL
     // for an omitted videoModel, and create-sequences always passes the
-    // user's resolved selection. drizzle inlines `.default()` and ignores
-    // `$defaultFn` when both are set, so an app-level grok default can't live
-    // here.
+    // user's resolved selection.
     videoModel: text({ length: 100 }).default('kling_v3_pro').notNull(),
     workflow: text({ length: 100 }),
 
@@ -218,6 +228,10 @@ export const sequences = snakeCase.table(
     index('idx_sequences_status_updated').on(table.status, table.updatedAt),
     index('idx_sequences_style_id').on(table.styleId),
     index('idx_sequences_organization_id').on(table.organizationId),
+    uniqueIndex('idx_sequences_organization_slug').on(
+      table.organizationId,
+      table.slug
+    ),
   ]
 );
 

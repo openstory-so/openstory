@@ -21,6 +21,7 @@ import {
 } from '@/platform/server/api-v1/state';
 import { getWaitMs, longPoll } from '@/platform/server/api-v1/wait';
 import { NotFoundError } from '@/platform/errors';
+import { requireSequenceId } from '@/platform/server/api-v1/resolve';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/sequences/$id')({
@@ -31,14 +32,13 @@ export const Route = createFileRoute('/api/v1/sequences/$id')({
         runApiV1Handler(async () => {
           const waitMs = getWaitMs(request);
           const origin = new URL(request.url).origin;
+          const id = await requireSequenceId(context.scopedDb, params.id);
 
           const { value, changed, done } = await longPoll({
             waitMs,
             signal: request.signal,
             load: async () => {
-              const sequence = await context.scopedDb.sequences.getById(
-                params.id
-              );
+              const sequence = await context.scopedDb.sequences.getById(id);
               if (!sequence) {
                 throw new NotFoundError('Sequence not found');
               }

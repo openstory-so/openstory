@@ -7,7 +7,7 @@
  */
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { idOrSlugSchema } from '@/platform/server/schemas/id.schemas';
 import {
   openstoryTool,
   registeredWriteCatalog,
@@ -66,7 +66,7 @@ export function createApplySequenceEdits() {
       openWorldHint: false,
     },
     inputSchema: z.strictObject({
-      sequenceId: ulidSchema,
+      sequenceId: idOrSlugSchema,
       changes: z
         .array(z.discriminatedUnion('tool', [first, ...rest]))
         .min(1)

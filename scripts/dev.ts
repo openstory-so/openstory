@@ -5,8 +5,21 @@
  * command inherits the stale value.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { prepareStateDir } from './state-dir.ts';
 
 await import('./ensure-env.ts');
+
+// Before migrations: set up ~/openstory once and move .wrangler/state into it.
+let dataDir: string | null = null;
+try {
+  dataDir = prepareStateDir().dataDir;
+} catch (error) {
+  console.error(
+    `[state] ${error instanceof Error ? error.message : String(error)}`
+  );
+  process.exit(1);
+}
 
 const all = process.argv.includes('--all');
 if (all) {
@@ -51,4 +64,23 @@ const child = spawn(
   { stdio: 'inherit', env: process.env }
 );
 
-child.on('exit', (status, signal) => finish({ status, signal }));
+// Mirrors the library into the data folder while the app runs.
+const sync = dataDir
+  ? spawn(
+      'bun',
+      [
+        // The root paths map @openstory/stitch/bundle to source; its dist may not be built.
+        `--tsconfig-override=${fileURLToPath(new URL('../tsconfig.json', import.meta.url))}`,
+        fileURLToPath(new URL('./sync-local.ts', import.meta.url)),
+        dataDir,
+        `http://localhost:${process.env.PORT ?? 3000}`,
+      ],
+      { stdio: 'inherit', env: process.env }
+    )
+  : null;
+
+// The mirror lives only as long as the app; a vite crash must not orphan it.
+child.on('exit', (status, signal) => {
+  sync?.kill();
+  finish({ status, signal });
+});

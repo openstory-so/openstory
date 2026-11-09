@@ -9,6 +9,7 @@
  */
 
 import { generateId } from '@/platform/id';
+import { freeSlug } from '@/platform/server/db/slug';
 import {
   DEFAULT_LOOK_NAME,
   assistantInterrupts,
@@ -399,6 +400,7 @@ export async function createTestStyle(
     id: styleId,
     organizationId,
     name: 'E2E Test Style',
+    slug: await freeSlug(db, styles, organizationId, 'E2E Test Style'),
     config: styleConfig,
     createdAt: now,
     updatedAt: now,
@@ -424,6 +426,7 @@ export async function createTestSequence(
     id: sequenceId,
     organizationId,
     title,
+    slug: await freeSlug(db, sequences, organizationId, title),
     status: 'completed',
     styleId: style.id,
     generationStopAt: 'images',
@@ -550,6 +553,7 @@ export async function createTestLocation(
     id,
     organizationId,
     legacyName: name,
+    slug: await freeSlug(db, locations, organizationId, name),
     selectedBibleVersionId: id,
     referenceStatus: 'completed',
     createdAt: now,
@@ -610,6 +614,7 @@ export async function createScarlettTestCharacter(organizationId: string) {
     id,
     organizationId,
     legacyName: name,
+    slug: await freeSlug(db, characters, organizationId, name),
     selectedBibleVersionId: id,
     createdAt: now,
     updatedAt: now,
@@ -689,6 +694,7 @@ export async function createTestCharacter(
     id,
     organizationId: sequence.organizationId,
     legacyName: name,
+    slug: await freeSlug(db, characters, sequence.organizationId, name),
     selectedBibleVersionId: id,
     createdAt: now,
     updatedAt: now,

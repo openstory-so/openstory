@@ -1,18 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import type { ServedCut } from '@openstory/stitch/bundle';
+import { describe, expect, it } from 'vitest';
 
-vi.mock('./video-size.js', () => ({
-  isHttpUrl: (file: string) => /^https?:\/\//i.test(file),
-  readVideoDisplaySize: async () => ({
-    width: 480,
-    height: 854,
-    durationSeconds: 4,
-  }),
-  readAudioDuration: async () => 5,
-}));
-import { buildCut, bundledMediaUrl, parseArgs, writeBundle } from './cli.js';
 import { shareCut } from './share.js';
 
 const png = Buffer.from(
@@ -20,66 +11,37 @@ const png = Buffer.from(
   'base64'
 );
 
-async function cutIn(cwd: string) {
+/** The cut stitch builds for `board.png --audio line.wav shot.mp4 --music line.wav`. */
+async function cutIn(cwd: string): Promise<ServedCut> {
   await writeFile(join(cwd, 'board.png'), png);
   await writeFile(join(cwd, 'line.wav'), 'line');
   await writeFile(join(cwd, 'shot.mp4'), 'video');
-  const request = await parseArgs(
-    ['board.png', '--audio', 'line.wav', 'shot.mp4', '--music', 'line.wav'],
-    cwd
-  );
-  if (request.kind !== 'play') throw new Error('expected a cut');
-  return buildCut(request, bundledMediaUrl);
+  return {
+    clips: [
+      {
+        imageUrl: 'media/0.png',
+        fallbackImageUrl: null,
+        durationSeconds: 4,
+        audioUrls: ['media/1.wav'],
+        width: 1,
+        height: 1,
+        cues: [],
+      },
+      { videoUrl: 'media/2.mp4', posterUrl: null, cues: [] },
+    ],
+    frameWidth: 1,
+    frameHeight: 1,
+    musicUrl: 'media/1.wav',
+    musicGainDb: 0,
+    files: new Map([
+      ['0', join(cwd, 'board.png')],
+      ['1', join(cwd, 'line.wav')],
+      ['2', join(cwd, 'shot.mp4')],
+    ]),
+  };
 }
 
-describe('stitch bundle', () => {
-  it('parses the directory and names media by extension', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-bundle-'));
-    try {
-      await writeFile(join(cwd, 'board.png'), png);
-      const request = await parseArgs(['bundle', 'out', 'board.png'], cwd);
-      expect(request).toMatchObject({ kind: 'bundle', dir: join(cwd, 'out') });
-      const cut = await cutIn(cwd);
-      expect(cut.clips[0]).toMatchObject({
-        imageUrl: 'media/0.png',
-        audioUrls: ['media/1.wav'],
-      });
-      expect(cut.clips[1]).toMatchObject({ videoUrl: 'media/2.mp4' });
-      // The music is the same file as the line: one copy, one URL.
-      expect(cut.musicUrl).toBe('media/1.wav');
-    } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
-  });
-
-  it('writes the page, cut.json, and every file under media/', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-bundle-'));
-    try {
-      const pageDir = join(cwd, 'page');
-      await writeFile(join(cwd, 'x'), '');
-      await rm(join(cwd, 'x'));
-      await writeFile(join(cwd, 'board.png'), png);
-      const { mkdir } = await import('node:fs/promises');
-      await mkdir(pageDir);
-      await writeFile(join(pageDir, 'index.html'), '<p>stitch</p>');
-      const cut = await cutIn(cwd);
-      const dir = join(cwd, 'out');
-      await writeBundle({ cut, dir, pageDir });
-      expect(await readFile(join(dir, 'index.html'), 'utf8')).toBe(
-        '<p>stitch</p>'
-      );
-      expect(await readFile(join(dir, 'media', '2.mp4'), 'utf8')).toBe('video');
-      const written = JSON.parse(await readFile(join(dir, 'cut.json'), 'utf8'));
-      expect(written.clips[0].imageUrl).toBe('media/0.png');
-      expect(written.frameWidth).toBe(1);
-      expect(written.files).toBeUndefined();
-    } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('stitch share', () => {
+describe('openstory share', () => {
   function fakeOpenStory(options: {
     approvedAfter: number;
     reject?: boolean;
@@ -171,7 +133,7 @@ describe('stitch share', () => {
   }
 
   it('signs in once, uploads every file, and prints the link', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-share-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-share-'));
     try {
       const cut = await cutIn(cwd);
       const home = join(cwd, 'home');
@@ -202,7 +164,7 @@ describe('stitch share', () => {
       ]);
       expect(first.calls[6]?.type).toBe('video/mp4');
       const stored = JSON.parse(
-        await readFile(join(home, '.openstory', 'stitch.json'), 'utf8')
+        await readFile(join(home, '.openstory', 'credentials.json'), 'utf8')
       );
       expect(stored.keys['https://os.test']).toBe('osk_1');
 
@@ -224,15 +186,13 @@ describe('stitch share', () => {
   });
 
   it('signs in again when the stored key is refused, then stops', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-share-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-share-'));
     try {
       const cut = await cutIn(cwd);
       const home = join(cwd, 'home');
-      await writeFile(join(cwd, 'k.json'), '');
-      const { mkdir } = await import('node:fs/promises');
       await mkdir(join(home, '.openstory'), { recursive: true });
       await writeFile(
-        join(home, '.openstory', 'stitch.json'),
+        join(home, '.openstory', 'credentials.json'),
         JSON.stringify({ keys: { 'https://os.test': 'osk_old' } })
       );
       const fake = fakeOpenStory({ approvedAfter: 0 });
@@ -266,7 +226,7 @@ describe('stitch share', () => {
   });
 
   it('sends --portrait-rights to publish, and names the flag when a still is a person', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-share-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-share-'));
     try {
       const cut = await cutIn(cwd);
       const home = join(cwd, 'home');
@@ -304,7 +264,7 @@ describe('stitch share', () => {
   });
 
   it('refuses a file the shared player cannot play before talking to the server', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'stitch-share-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'openstory-share-'));
     try {
       // A signed URL with no extension would be named media/0, which the
       // server cannot type: refused here, with the file named.

@@ -11,6 +11,7 @@
 import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { API_V1_BASE, getLink, withLinks } from '@/platform/server/api-v1/hal';
+import { requireSequenceId } from '@/platform/server/api-v1/resolve';
 import { assetScopeSchema } from '@/sequences/sequence-assets';
 import { listSequenceAssets } from '@/sequences/server/sequence-assets';
 import { createFileRoute } from '@tanstack/react-router';
@@ -33,11 +34,12 @@ export const Route = createFileRoute('/api/v1/sequences/$id/assets')({
           const parsed = assetScopeSchema.safeParse(
             url.searchParams.get('scope') ?? 'selected'
           );
-          const body = await listSequenceAssets(context.scopedDb, params.id, {
+          const id = await requireSequenceId(context.scopedDb, params.id);
+          const body = await listSequenceAssets(context.scopedDb, id, {
             scope: parsed.success ? parsed.data : 'selected',
             includeExports: url.searchParams.get('exports') === 'true',
           });
-          return Response.json(withLinks(body, assetLinks(params.id)));
+          return Response.json(withLinks(body, assetLinks(id)));
         }),
     },
   },

@@ -12,7 +12,7 @@ import {
   styleDocument,
   styleDocumentSchema,
 } from '@/platform/server/api-v1/styles';
-import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { idOrSlugSchema } from '@/platform/server/schemas/id.schemas';
 import { openstoryTool } from '../tool-context';
 
 const writeAnnotations = {
@@ -22,7 +22,7 @@ const writeAnnotations = {
   openWorldHint: false,
 };
 
-const styleId = ulidSchema.describe('Style ID (list_styles).');
+const styleId = idOrSlugSchema.describe('Style ID (list_styles).');
 
 const createStyleTool = openstoryTool({
   name: 'create_style',

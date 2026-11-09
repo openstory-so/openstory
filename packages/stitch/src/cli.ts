@@ -25,10 +25,8 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
-import { downloadSequenceAssets } from './assets.js';
 import { readImageSize } from './image-size.js';
 import { extensionOf, mediaType, readBytes } from './media-file.js';
-import { openStoryApiKey, refreshOpenStoryApiKey, shareCut } from './share.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
 import { placeTimelineCues } from './place-cues.js';
 import { parseSubtitles } from './subtitles.js';
@@ -48,8 +46,6 @@ export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-g
              <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
        stitch bundle <dir> [cut options] <file>...
-       stitch share [--origin url] [--portrait-rights basis] [cut options] <file>...
-       stitch pull <sequenceId> [--history] [--exports] [--origin url] [--dir dir]
        stitch skill [--global]
 
 Play stills and videos in the browser. Each file is a path or an http(s) URL;
@@ -63,17 +59,9 @@ Without it the first clip sets the shape. Every clip is fitted into that box.
 
 stitch bundle writes the player page, cut.json, and a copy of every file
 (a URL is downloaded) into <dir>. Put that folder on any static host.
-stitch share uploads the same bundle to OpenStory and prints a link anyone
-can open. The first share signs in with a device code and keeps the key in
-~/.openstory/stitch.json. --origin picks the OpenStory server. Every still is
-checked for a real person; one who is needs --portrait-rights with the basis
-for using their likeness (a release reference, "self", a contract id).
 
-stitch pull downloads a sequence into ./<sequenceId> (or --dir). The first
-run signs in the same way as share. A later run skips a file that is already
-there at the same version. --history adds every completed version.
---exports adds rendered MP4s. Run it with npx @openstory/stitch pull or
-bunx @openstory/stitch pull.
+stitch pull and stitch share moved to the OpenStory CLI:
+npx @openstory/cli@latest pull, npx @openstory/cli@latest share.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -129,28 +117,14 @@ type SkillRequest = { kind: 'skill'; global: boolean };
 type HelpRequest = { kind: 'help' };
 type PlayRequest = { kind: 'play' } & LocalCut;
 type BundleRequest = { kind: 'bundle'; dir: string } & LocalCut;
-type ShareRequest = {
-  kind: 'share';
-  origin: string;
-  portraitRights: string | null;
-} & LocalCut;
-type PullRequest = {
-  kind: 'pull';
-  sequenceId: string;
-  origin: string;
-  dir: string;
-  history: boolean;
-  exports: boolean;
-};
 export type CliRequest =
   | SkillRequest
   | HelpRequest
   | PlayRequest
-  | BundleRequest
-  | ShareRequest
-  | PullRequest;
+  | BundleRequest;
 
-export const DEFAULT_ORIGIN = 'https://openstory.so';
+/** Commands that moved to @openstory/cli; passed through for one minor version. */
+const MOVED_COMMANDS = new Set(['pull', 'share']);
 
 export function packageRoot(): string {
   return dirname(dirname(fileURLToPath(import.meta.url)));
@@ -160,7 +134,6 @@ export async function parseArgs(
   argv: string[],
   cwd: string
 ): Promise<CliRequest> {
-  if (argv[0] === 'pull') return parsePull(argv.slice(1), cwd);
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
   if (argv[0] === 'skill') return parseSkill(argv.slice(1));
   if (argv[0] === 'bundle') {
@@ -174,82 +147,7 @@ export async function parseArgs(
       ...(await parseCut(argv.slice(2), cwd)),
     };
   }
-  if (argv[0] === 'share') {
-    let origin = DEFAULT_ORIGIN;
-    let portraitRights: string | null = null;
-    const rest: string[] = [];
-    const args = argv.slice(1);
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i] ?? '';
-      if (arg === '--origin') {
-        const value = args[i + 1];
-        if (value === undefined || !isHttpUrl(value)) {
-          throw new Error('--origin needs an http(s) URL');
-        }
-        origin = new URL(value).origin;
-        i += 1;
-      } else if (arg === '--portrait-rights') {
-        const value = args[i + 1]?.trim();
-        if (value === undefined || value === '' || value.startsWith('-')) {
-          throw new Error(
-            '--portrait-rights needs the basis for using the person’s likeness (a release reference, "self", a contract id)'
-          );
-        }
-        portraitRights = value;
-        i += 1;
-      } else rest.push(arg);
-    }
-    return {
-      kind: 'share',
-      origin,
-      portraitRights,
-      ...(await parseCut(rest, cwd)),
-    };
-  }
   return { kind: 'play', ...(await parseCut(argv, cwd)) };
-}
-
-function parsePull(argv: string[], cwd: string): CliRequest {
-  if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
-  let origin = DEFAULT_ORIGIN;
-  let dir: string | null = null;
-  let history = false;
-  let exportsFlag = false;
-  const rest: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i] ?? '';
-    if (arg === '--origin') {
-      const value = argv[i + 1];
-      if (value === undefined || !isHttpUrl(value)) {
-        throw new Error('--origin needs an http(s) URL');
-      }
-      origin = new URL(value).origin;
-      i += 1;
-    } else if (arg === '--dir') {
-      const value = argv[i + 1];
-      if (value === undefined || value.startsWith('-')) {
-        throw new Error('--dir needs a directory');
-      }
-      dir = resolve(cwd, value);
-      i += 1;
-    } else if (arg === '--history') history = true;
-    else if (arg === '--exports') exportsFlag = true;
-    else if (arg.startsWith('-')) throw new Error(`Unknown argument: ${arg}`);
-    else rest.push(arg);
-  }
-  const sequenceId = rest[0];
-  if (sequenceId === undefined) {
-    throw new Error('stitch pull needs a sequence id');
-  }
-  if (rest.length > 1) throw new Error(`Unknown argument: ${rest[1]}`);
-  return {
-    kind: 'pull',
-    sequenceId,
-    origin,
-    dir: dir ?? resolve(cwd, sequenceId),
-    history,
-    exports: exportsFlag,
-  };
 }
 
 function parseSkill(argv: string[]): SkillRequest {
@@ -261,7 +159,7 @@ function parseSkill(argv: string[]): SkillRequest {
   return { kind: 'skill', global };
 }
 
-async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
+export async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   const clips: LocalClip[] = [];
   let music: string | null = null;
   let musicGainDb = 0;
@@ -933,6 +831,27 @@ export function openUrl(url: string, stderr: Writer = process.stderr): void {
   child.unref();
 }
 
+/** stitch never talks to OpenStory itself: the moved commands run the CLI from npm. */
+function runOpenStoryCli(args: string[]): Promise<number> {
+  // Windows can only start npx.cmd through cmd.exe, which would parse the args.
+  if (process.platform === 'win32') {
+    process.stderr.write(
+      `Run: npx @openstory/cli@latest ${args.map((arg) => JSON.stringify(arg)).join(' ')}\n`
+    );
+    return Promise.resolve(1);
+  }
+  const child = spawn('npx', ['--yes', '@openstory/cli@latest', ...args], {
+    stdio: 'inherit',
+  });
+  return new Promise((resolveExit) => {
+    child.on('error', (error) => {
+      process.stderr.write(`Could not run npx: ${error.message}\n`);
+      resolveExit(1);
+    });
+    child.on('exit', (code) => resolveExit(code ?? 1));
+  });
+}
+
 export async function main(
   argv: string[],
   io: {
@@ -941,13 +860,22 @@ export async function main(
     stderr?: Writer;
     home?: string;
     open?: (url: string) => void;
-    fetch?: typeof fetch;
     packageRoot?: string;
+    /** Runs `npx @openstory/cli@latest <args>`; resolves to its exit code. */
+    runCli?: (args: string[]) => Promise<number>;
   } = {}
 ): Promise<void> {
   const stdout = io.stdout ?? process.stdout;
   const stderr = io.stderr ?? process.stderr;
   const cwd = io.cwd ?? process.cwd();
+  const moved = argv[0];
+  if (moved !== undefined && MOVED_COMMANDS.has(moved)) {
+    stderr.write(
+      `stitch ${moved} moved to \`openstory ${moved}\`: npx @openstory/cli@latest ${moved}. stitch will drop it in the next minor version.\n`
+    );
+    process.exitCode = await (io.runCli ?? runOpenStoryCli)(argv);
+    return;
+  }
   try {
     const request = await parseArgs(argv, cwd);
     if (request.kind === 'help') {
@@ -964,59 +892,18 @@ export async function main(
       stdout.write(dests.map((dest) => `${dest}\n`).join(''));
       return;
     }
-    if (request.kind === 'pull') {
-      const home = io.home ?? homedir();
-      const open = io.open ?? ((target: string) => openUrl(target, stderr));
-      const auth = {
-        origin: request.origin,
-        home,
-        stderr,
-        open,
-        fetch: io.fetch,
-      };
-      const result = await downloadSequenceAssets({
-        sequenceId: request.sequenceId,
-        origin: request.origin,
-        home,
-        dest: request.dir,
-        history: request.history,
-        includeExports: request.exports,
-        fetch: io.fetch,
-        key: () => openStoryApiKey(auth),
-        refresh: () => refreshOpenStoryApiKey(auth),
-      });
-      stdout.write(
-        `Saved ${result.saved} files. Skipped ${result.skipped} already there.\n`
-      );
-      return;
-    }
     const pageDir = join(io.packageRoot ?? packageRoot(), 'dist', 'page');
-    if (request.kind !== 'share') {
-      try {
-        await stat(join(pageDir, 'index.html'));
-      } catch {
-        throw new Error(
-          'The preview page is not built. Run bun run --cwd packages/stitch build'
-        );
-      }
+    try {
+      await stat(join(pageDir, 'index.html'));
+    } catch {
+      throw new Error(
+        'The preview page is not built. Run bun run --cwd packages/stitch build'
+      );
     }
     if (request.kind === 'bundle') {
       const cut = await buildCut(request, bundledMediaUrl);
       await writeBundle({ cut, dir: request.dir, pageDir });
       stdout.write(`${request.dir}\n`);
-      return;
-    }
-    if (request.kind === 'share') {
-      const cut = await buildCut(request, bundledMediaUrl);
-      const url = await shareCut({
-        cut,
-        origin: request.origin,
-        portraitRights: request.portraitRights,
-        home: io.home ?? homedir(),
-        stderr,
-        open: io.open ?? ((target) => openUrl(target, stderr)),
-      });
-      stdout.write(`${url}\n`);
       return;
     }
     const served = await serveCut(request);

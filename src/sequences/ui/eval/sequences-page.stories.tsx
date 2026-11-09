@@ -12,6 +12,7 @@ import { DEFAULT_SEQUENCES_LIST_PREFS } from '../list-prefs';
 import { EvalView } from './eval-view';
 
 const baseSequence: Sequence = {
+  slug: 'fixture',
   id: 'demo-sequence-123',
   organizationId: 'demo-organization',
   title: 'Demo Video Sequence',

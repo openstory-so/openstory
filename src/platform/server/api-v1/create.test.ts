@@ -58,6 +58,7 @@ const { runOneShotCreate } = await import('./create');
 
 function makeStyle(): Style {
   return {
+    slug: 'fixture',
     id: 'style-1',
     organizationId: 'organization-1',
     sequenceId: null,

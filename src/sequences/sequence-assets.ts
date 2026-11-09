@@ -9,6 +9,7 @@
  * fills {@link SequenceAssetSource}.
  */
 import { z } from 'zod';
+import { slugify, uniqueSlug } from '@/platform/slug';
 
 export const assetScopeSchema = z.enum(['selected', 'history']);
 export type AssetScope = z.infer<typeof assetScopeSchema>;
@@ -134,12 +135,14 @@ type StoredFile = {
 
 export type SequenceAssetSource = {
   sequence: { id: string; title: string; script: string | null };
-  scenes: { id: string; orderIndex: number }[];
+  scenes: { id: string; orderIndex: number; title: string | null }[];
   shots: {
     id: string;
     sceneId: string;
     shotNumber: number | null;
     renderSegmentId: string | null;
+    /** Folder words for the shot (size and action); null keeps the number alone. */
+    label: string | null;
   }[];
   frames: {
     id: string;
@@ -152,6 +155,7 @@ export type SequenceAssetSource = {
   characters: {
     id: string;
     name: string;
+    slug: string;
     looks: {
       id: string;
       name: string;
@@ -183,6 +187,7 @@ export type SequenceAssetSource = {
   locations: {
     id: string;
     name: string;
+    slug: string;
     selectedReferenceVersionId: string | null;
     referenceImageUrl: string | null;
     referenceImagePath: string | null;
@@ -217,6 +222,7 @@ export type SequenceAssetSource = {
   prompts: { id: string; shotId: string; text: string }[];
   style: {
     id: string;
+    slug: string;
     previewUrl: string | null;
     sampleVideos: { url: string; order: number }[];
   } | null;
@@ -234,7 +240,13 @@ export function projectSequenceAssets(
   const sceneNumber = new Map(
     [...source.scenes]
       .sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id))
-      .map((scene) => [scene.id, scene.orderIndex + 1])
+      .map((scene) => [
+        scene.id,
+        {
+          number: scene.orderIndex + 1,
+          name: ordinalName(scene.orderIndex + 1, scene.title),
+        },
+      ])
   );
   const shotsByScene = new Map<string, SequenceAssetSource['shots']>();
   for (const shot of source.shots) {
@@ -242,7 +254,7 @@ export function projectSequenceAssets(
     list.push(shot);
     shotsByScene.set(shot.sceneId, list);
   }
-  const shotPlace = new Map<string, { scene: number; shot: number }>();
+  const shotPlace = new Map<string, ShotPlace>();
   for (const [sceneId, shots] of shotsByScene) {
     const scene = sceneNumber.get(sceneId);
     if (scene === undefined) continue;
@@ -251,7 +263,15 @@ export function projectSequenceAssets(
         (a.shotNumber ?? 0) - (b.shotNumber ?? 0) || a.id.localeCompare(b.id)
     );
     ordered.forEach((shot, index) => {
-      shotPlace.set(shot.id, { scene, shot: shot.shotNumber ?? index + 1 });
+      const number = shot.shotNumber ?? index + 1;
+      const name = ordinalName(number, shot.label);
+      shotPlace.set(shot.id, {
+        scene: scene.number,
+        shot: number,
+        sceneName: scene.name,
+        folder: `scenes/${scene.name}/shots/${name}`,
+        clipName: `${pad(scene.number)}-${name}`,
+      });
     });
   }
   const framesByShot = new Map<string, SequenceAssetSource['frames']>();
@@ -265,9 +285,9 @@ export function projectSequenceAssets(
   for (const element of source.elements)
     pushFile(assets, elementAsset(element));
   pushStills(assets, source, framesByShot, shotPlace, history);
-  pushVideos(assets, source, history);
+  pushVideos(assets, source, shotPlace, history);
   pushPrompts(assets, source, shotPlace);
-  pushDialogue(assets, source, history);
+  pushDialogue(assets, source, shotPlace, history);
   pushMusic(assets, source, history);
   pushCast(assets, source, history);
   pushLocations(assets, source, history);
@@ -276,6 +296,23 @@ export function projectSequenceAssets(
 
   assets.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   return assets;
+}
+
+/** One place per shot: its numbers and the folder names built from them. */
+type ShotPlace = {
+  scene: number;
+  shot: number;
+  sceneName: string;
+  folder: string;
+  /** `03-02-wide-on-car`: names a segment by its first shot. */
+  clipName: string;
+};
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** `03-the-chase`: a number to sort by and the title to read. */
+function ordinalName(n: number, title: string | null): string {
+  return title?.trim() ? `${pad(n)}-${slugify(title)}` : pad(n);
 }
 
 function scriptAsset(source: SequenceAssetSource): SequenceAsset | null {
@@ -326,7 +363,7 @@ function pushStills(
   assets: SequenceAsset[],
   source: SequenceAssetSource,
   framesByShot: Map<string, SequenceAssetSource['frames']>,
-  shotPlace: Map<string, { scene: number; shot: number }>,
+  shotPlace: Map<string, ShotPlace>,
   history: boolean
 ) {
   const byFrame = new Map<string, SequenceAssetSource['stills']>();
@@ -345,9 +382,7 @@ function pushStills(
       const pointer = versions.find(
         (version) => version.id === frame.selectedImageVersionId
       );
-      const folder = many
-        ? `scenes/${place.scene}/shots/${place.shot}/frames/${frame.id}`
-        : `scenes/${place.scene}/shots/${place.shot}`;
+      const folder = many ? `${place.folder}/frames/${frame.id}` : place.folder;
       const group = `Scene ${place.scene}`;
       const label = `Scene ${place.scene} shot ${place.shot} still`;
       emitVersioned(assets, {
@@ -372,6 +407,7 @@ function pushStills(
 function pushVideos(
   assets: SequenceAsset[],
   source: SequenceAssetSource,
+  shotPlace: Map<string, ShotPlace>,
   history: boolean
 ) {
   const shotsBySegment = new Map<string, string[]>();
@@ -388,40 +424,66 @@ function pushVideos(
     bySegment.set(video.renderSegmentId, list);
   }
   for (const segment of source.segments) {
-    const versions = bySegment.get(segment.id) ?? [];
-    for (const version of versions) {
+    const owners = shotsBySegment.get(segment.id) ?? [];
+    const first = firstPlace(owners, shotPlace);
+    const name = first?.clipName ?? segment.id;
+    for (const version of bySegment.get(segment.id) ?? []) {
       if (!downloadable(version)) continue;
-      const chosen = version.id === segment.selectedVideoVersionId;
       const discarded = version.discardedAt != null;
-      if (!history && (!chosen || discarded)) continue;
+      const chosen =
+        version.id === segment.selectedVideoVersionId && !discarded;
+      if (!history && !chosen) continue;
       const url = assetDownloadUrl(version);
       if (!url) continue;
       const ext = fileExtension(version.url, version.storagePath, 'mp4');
-      pushFile(
-        assets,
+      const row = (relativePath: string) =>
         fileAsset({
           kind: 'video',
           role: 'clip',
           group: 'Video',
           label: 'Segment clip',
-          relativePath: `segments/${version.id}.${ext}`,
+          relativePath,
           url,
           versionId: version.id,
-          owners: shotsBySegment.get(segment.id) ?? [],
-          selected: chosen && !discarded,
+          owners,
+          selected: chosen,
           discarded,
           shared: false,
           ext,
-        })
-      );
+        });
+      // The chosen version is the plain file; history adds the others by id.
+      if (chosen) pushFile(assets, row(`segments/${name}.${ext}`));
+      else if (history) {
+        pushFile(assets, row(`segments/${name}.${version.id}.${ext}`));
+      }
     }
   }
+}
+
+/** The earliest place among `shotIds`, by scene then shot. */
+function firstPlace(
+  shotIds: readonly string[],
+  shotPlace: Map<string, ShotPlace>
+): ShotPlace | null {
+  let best: ShotPlace | null = null;
+  for (const id of shotIds) {
+    const place = shotPlace.get(id);
+    if (
+      place &&
+      (!best ||
+        place.scene < best.scene ||
+        (place.scene === best.scene && place.shot < best.shot))
+    ) {
+      best = place;
+    }
+  }
+  return best;
 }
 
 function pushPrompts(
   assets: SequenceAsset[],
   source: SequenceAssetSource,
-  shotPlace: Map<string, { scene: number; shot: number }>
+  shotPlace: Map<string, ShotPlace>
 ) {
   for (const prompt of source.prompts) {
     const place = shotPlace.get(prompt.shotId);
@@ -435,7 +497,7 @@ function pushPrompts(
         role: 'prompt',
         group: `Scene ${place.scene}`,
         label: `Scene ${place.scene} shot ${place.shot} prompt`,
-        relativePath: `scenes/${place.scene}/shots/${place.shot}/prompt.txt`,
+        relativePath: `${place.folder}/prompt.txt`,
         text: `${text}\n`,
         versionId: prompt.id,
         owners: [prompt.shotId],
@@ -448,6 +510,7 @@ function pushPrompts(
 function pushDialogue(
   assets: SequenceAsset[],
   source: SequenceAssetSource,
+  shotPlace: Map<string, ShotPlace>,
   history: boolean
 ) {
   const sectionsBySpeech = new Map<string, SequenceAssetSource['sections']>();
@@ -460,6 +523,11 @@ function pushDialogue(
     const sections = sectionsBySpeech.get(speech.id) ?? [];
     const selected = sections.some((section) => section.selected);
     if (!history && !selected) continue;
+    const scene = firstPlace(
+      sections.map((section) => section.shotId),
+      shotPlace
+    );
+    const folder = scene ? `dialogue/${scene.sceneName}` : 'dialogue';
     const url = assetDownloadUrl({
       url: speech.url,
       storagePath: speech.storageKey,
@@ -473,7 +541,7 @@ function pushDialogue(
           role: 'speech',
           group: 'Dialogue',
           label: 'Dialogue',
-          relativePath: `dialogue/${speech.id}.${ext}`,
+          relativePath: `${folder}/${speech.id}.${ext}`,
           url,
           versionId: speech.id,
           owners: [...new Set(sections.map((section) => section.shotId))],
@@ -500,7 +568,7 @@ function pushDialogue(
         role: 'cuts',
         group: 'Dialogue',
         label: 'Dialogue cuts',
-        relativePath: `dialogue/${speech.id}.cuts.json`,
+        relativePath: `${folder}/${speech.id}.cuts.json`,
         text,
         versionId: textVersionId(text),
         owners: [...new Set(cuts.map((cut) => cut.shotId))],
@@ -517,29 +585,29 @@ function pushMusic(
 ) {
   for (const track of source.music) {
     if (!downloadable(track)) continue;
-    const chosen = track.id === source.selectedMusicVariantId;
     const discarded = track.discardedAt != null;
-    if (!history && (!chosen || discarded)) continue;
+    const chosen = track.id === source.selectedMusicVariantId && !discarded;
+    if (!history && !chosen) continue;
     const url = assetDownloadUrl(track);
     if (!url) continue;
     const ext = fileExtension(track.url, track.storagePath, 'mp3');
-    pushFile(
-      assets,
+    const row = (relativePath: string) =>
       fileAsset({
         kind: 'music',
         role: 'track',
         group: 'Music',
         label: 'Music',
-        relativePath: `music/${track.id}.${ext}`,
+        relativePath,
         url,
         versionId: track.id,
         owners: [],
-        selected: chosen && !discarded,
+        selected: chosen,
         discarded,
         shared: false,
         ext,
-      })
-    );
+      });
+    if (chosen) pushFile(assets, row(`music/music.${ext}`));
+    else if (history) pushFile(assets, row(`music/music.${track.id}.${ext}`));
   }
 }
 
@@ -556,9 +624,13 @@ function pushCast(
   }
   for (const character of source.characters) {
     const sheets = sheetsByCharacter.get(character.id) ?? [];
+    const lookNames = new Set<string>();
     for (const look of character.looks) {
       if (!history && look.deleted) continue;
       const lookId = look.id;
+      const lookName = uniqueSlug(slugify(look.name), lookNames);
+      lookNames.add(lookName);
+      const lookFolder = `cast/${character.slug}/looks/${lookName}`;
       const versions = sheets.filter(
         (sheet) => (sheet.lookId ?? character.id) === lookId
       );
@@ -569,7 +641,7 @@ function pushCast(
         pointerId:
           look.selectedSheetVersionId ?? (look.isDefault ? character.id : null),
         history,
-        folder: `cast/${character.id}/looks/${lookId}`,
+        folder: lookFolder,
         stem: 'sheet',
         fallbackExt: 'png',
         kind: 'character_sheet',
@@ -585,7 +657,7 @@ function pushCast(
         look.selectedSheetVersionId == null &&
         versions.length === 0
       ) {
-        pushLookFallback(assets, character, look);
+        pushLookFallback(assets, character, look, lookFolder);
       }
     }
     for (const take of source.voiceTakes) {
@@ -607,7 +679,7 @@ function pushCast(
             role: 'take',
             group: 'Cast',
             label: `${character.name} voice take ${takeNumber}`,
-            relativePath: `cast/${character.id}/voices/${take.id}-${takeNumber}.${ext}`,
+            relativePath: `cast/${character.slug}/voices/${take.id}-${takeNumber}.${ext}`,
             url,
             versionId: `${take.id}:${takeNumber}`,
             owners: [character.id],
@@ -625,7 +697,8 @@ function pushCast(
 function pushLookFallback(
   assets: SequenceAsset[],
   character: SequenceAssetSource['characters'][number],
-  look: SequenceAssetSource['characters'][number]['looks'][number]
+  look: SequenceAssetSource['characters'][number]['looks'][number],
+  folder: string
 ) {
   const url = assetDownloadUrl({
     url: look.sheetImageUrl,
@@ -640,7 +713,7 @@ function pushLookFallback(
       role: 'sheet',
       group: 'Cast',
       label: `${character.name} ${look.name} sheet`,
-      relativePath: `cast/${character.id}/looks/${look.id}/sheet.${ext}`,
+      relativePath: `${folder}/sheet.${ext}`,
       url,
       versionId: look.id,
       owners: [character.id],
@@ -654,7 +727,7 @@ function pushLookFallback(
     kind: 'character_portrait',
     url: look.sheetPortraitUrl,
     storagePath: null,
-    folder: `cast/${character.id}/looks/${look.id}`,
+    folder,
     stem: 'portrait',
     versionId: look.id,
     label: `${character.name} ${look.name} portrait`,
@@ -683,7 +756,7 @@ function pushLocations(
       // A null pointer is the row the backfill stored under the location's id.
       pointerId: location.selectedReferenceVersionId ?? location.id,
       history,
-      folder: `locations/${location.id}`,
+      folder: `locations/${location.slug}`,
       stem: 'sheet',
       fallbackExt: 'png',
       kind: 'location_sheet',
@@ -716,7 +789,7 @@ function pushLocations(
             role: 'sheet',
             group: 'Locations',
             label: `${location.name} sheet`,
-            relativePath: `locations/${location.id}/sheet.${ext}`,
+            relativePath: `locations/${location.slug}/sheet.${ext}`,
             url,
             versionId: location.id,
             owners: [location.id],
@@ -740,7 +813,7 @@ function pushLocations(
           role: 'photo',
           group: 'Locations',
           label: `${location.name} photo`,
-          relativePath: `locations/${location.id}/photos/${photo.id}.${ext}`,
+          relativePath: `locations/${location.slug}/photos/${photo.id}.${ext}`,
           url,
           versionId: photo.id,
           owners: [location.id],
@@ -772,7 +845,7 @@ function pushStyle(
         role: 'preview',
         group: 'Style',
         label: 'Style preview',
-        relativePath: `style/${style.id}/preview.${ext}`,
+        relativePath: `style/${style.slug}/preview.${ext}`,
         url: preview,
         versionId: style.id,
         owners: [style.id],
@@ -794,7 +867,7 @@ function pushStyle(
         role: 'sample',
         group: 'Style',
         label: `Style sample ${sample.order}`,
-        relativePath: `style/${style.id}/sample-${sample.order}.${ext}`,
+        relativePath: `style/${style.slug}/sample-${sample.order}.${ext}`,
         url,
         versionId: `${style.id}:${sample.order}`,
         owners: [style.id],

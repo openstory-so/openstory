@@ -1,5 +1,7 @@
 /**
- * Copy local Wrangler D1 + R2 state between the main repo and a worktree.
+ * Copy local Wrangler D1 + R2 state between the main checkout and a worktree.
+ * The main checkout's state is its data folder (~/openstory) when it has one
+ * (#2222); --fork clones from there, and --promote refuses to overwrite it.
  *
  *   bun scripts/db-worktree.ts --fork      # main repo  → current worktree
  *   bun scripts/db-worktree.ts --promote   # current worktree → main repo
@@ -18,13 +20,15 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
+import { resolveStateDir } from './state-dir';
 
 // D1 is required (the whole point of the script); R2 is best-effort.
 const STATE_SUBDIRS = [
-  { subdir: '.wrangler/state/v3/d1', label: 'D1', required: true },
-  { subdir: '.wrangler/state/v3/r2', label: 'R2', required: false },
+  { subdir: 'v3/d1', label: 'D1', required: true },
+  { subdir: 'v3/r2', label: 'R2', required: false },
 ];
 
 const mode = process.argv[2];
@@ -46,10 +50,26 @@ if (mainRepoRoot === here) {
   process.exit(1);
 }
 
+// The main checkout's state: its data folder when it has one.
+const main = resolveStateDir({
+  env: { OPENSTORY_DATA_DIR: process.env.OPENSTORY_DATA_DIR },
+  home: homedir(),
+  repoRoot: mainRepoRoot,
+  worktree: false,
+});
+const worktreeState = path.join(here, '.wrangler', 'state');
+
+if (mode === '--promote' && main.dataDir) {
+  console.error(
+    `[db-worktree] the main checkout uses the data folder ${main.dataDir}. Promote would overwrite your library; copy what you need by hand.`
+  );
+  process.exit(1);
+}
+
 const [srcRoot, destRoot, verb] =
   mode === '--promote'
-    ? [here, mainRepoRoot, 'promoted']
-    : [mainRepoRoot, here, 'forked'];
+    ? [worktreeState, main.state, 'promoted']
+    : [main.state, worktreeState, 'forked'];
 
 for (const { subdir, label, required } of STATE_SUBDIRS) {
   const src = path.join(srcRoot, subdir);
@@ -67,6 +87,12 @@ for (const { subdir, label, required } of STATE_SUBDIRS) {
   }
 
   rmSync(dest, { recursive: true, force: true });
-  cpSync(src, dest, { recursive: true });
+  mkdirSync(path.dirname(dest), { recursive: true });
+  // APFS clone: instant, and the worktree's writes never touch the library.
+  if (process.platform === 'darwin') {
+    execFileSync('cp', ['-c', '-R', src, dest]);
+  } else {
+    cpSync(src, dest, { recursive: true });
+  }
   console.log(`[db-worktree] ${verb} ${label} state: ${src} → ${dest}`);
 }

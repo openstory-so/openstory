@@ -32,6 +32,7 @@ type ScenesViewStoryProps = React.ComponentProps<typeof ScenesView> & {
 };
 
 const mockSequence: Sequence = {
+  slug: 'fixture',
   id: 'demo-sequence-123',
   organizationId: 'org-1',
   title: 'Demo Sequence',

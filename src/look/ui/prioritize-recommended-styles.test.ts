@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 function makeStyle(id: string): Style {
   return {
+    slug: 'fixture',
     id,
     organizationId: 'organization-1',
     sequenceId: null,
