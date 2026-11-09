@@ -52,6 +52,7 @@ export async function buildUserEditProvenance(
 ): Promise<UserEditProvenance> {
   const { scopedDb, sequence, scene } = args;
   if (!scene) return { inputHash: null, analysisModel: null };
+  let computed: UserEditProvenance;
   try {
     const { shot: ctx } = await loadNarrowShotPromptContext({
       scopedDb,
@@ -72,8 +73,7 @@ export async function buildUserEditProvenance(
       args.kind === 'motion'
         ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
         : await hashVisualPromptInput(ctx);
-    await scopedDb.inputManifests.record([inputHash]);
-    return { inputHash, analysisModel: ctx.analysisModel };
+    computed = { inputHash, analysisModel: ctx.analysisModel };
   } catch (err) {
     // Recording the edit with a null hash beats losing the edit.
     logger.warn(
@@ -82,4 +82,6 @@ export async function buildUserEditProvenance(
     );
     return { inputHash: null, analysisModel: null };
   }
+  await scopedDb.inputManifests.record([computed.inputHash]);
+  return computed;
 }

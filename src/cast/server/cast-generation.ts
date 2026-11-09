@@ -363,6 +363,9 @@ export async function recastLocation(
       aspectRatio: sequence.aspectRatio,
       subject: null,
     });
+  await scopedDb.inputManifests.record(
+    shotSnapshots.map((s) => s.snapshotInputHash)
+  );
 
   const workflowRunId = await triggerWorkflow('/recast-location', {
     locationDbId: location.id,

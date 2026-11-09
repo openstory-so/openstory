@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { InputManifest } from '@/shots/input-hash';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
@@ -44,6 +44,20 @@ vi.doMock('@/shots/input-hash', () => ({
   manifestOfHash,
   diffManifests: realInputHash.diffManifests,
 }));
+
+const logError = vi.fn();
+vi.doMock('@/platform/logger', async () => {
+  const real = await import('@/platform/logger');
+  return {
+    ...real,
+    getLogger: () => ({
+      error: logError,
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
 
 const { computeShotStaleness, loadShotStalenessReads } =
   await import('./shot-staleness');
@@ -499,6 +513,124 @@ describe('computeShotStaleness', () => {
     });
 
     expect(result.thumbnail).toBe('untracked');
+  });
+});
+
+describe('exact causes from manifests (#2344)', () => {
+  const woman = {
+    name: 'Woman',
+    characterId: 'woman',
+    lookId: 'c-woman',
+    looks: [],
+    consistencyTag: null,
+    updatedAt: new Date('2026-01-02T00:00:00Z'),
+    sheetGeneratedAt: null,
+  };
+  const refs = asStub<ShotStalenessRefs>({
+    characters: [woman],
+    locations: [],
+    elements: [],
+    style: null,
+  });
+  const guessReads = {
+    scenes: {
+      getById: vi.fn().mockResolvedValue({ updatedAt: woman.updatedAt }),
+    },
+    sceneScriptVersions: {
+      getSelected: vi.fn().mockResolvedValue({ createdAt: woman.updatedAt }),
+      listBySequence: vi.fn().mockResolvedValue([]),
+    },
+    sequenceEvents: {
+      listPinMoves: vi.fn().mockResolvedValue([]),
+      listByTarget: vi.fn().mockResolvedValue([]),
+    },
+  };
+  const still = asStub<FrameVariant>({
+    id: 'fv-1',
+    inputHash: 'image-old',
+    model: null,
+    url: null,
+    generatedAt: new Date('2026-01-01T00:00:00Z'),
+  });
+
+  // Seeded manifests must not leak into the legacy-guess tests below.
+  afterEach(() => {
+    storedManifests.clear();
+    manifestOfHash.mockReset();
+  });
+  beforeEach(() => {
+    logError.mockReset();
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+  });
+
+  const run = (scopedDb: ScopedDb) =>
+    computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: still,
+      scene,
+      refs,
+    });
+
+  it('names exactly the keys whose digest moved, and runs no guess', async () => {
+    storedManifests.set('image-old', {
+      'character:woman/standardClothing': 'a',
+      imageModel: 'm',
+    });
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live'
+        ? { 'character:woman/standardClothing': 'b', imageModel: 'm' }
+        : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.causes).toEqual(['Character "Woman": clothing']);
+    expect(guessReads.sequenceEvents.listByTarget).not.toHaveBeenCalled();
+  });
+
+  it('keeps the timestamp guess only for a stale artifact with no stored manifest', async () => {
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live' ? { imageModel: 'm' } : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(guessReads.sequenceEvents.listByTarget).toHaveBeenCalled();
+    expect(result.causes).toEqual(['Script']);
+  });
+
+  it('logs a stale verdict whose manifests do not differ and names nothing', async () => {
+    storedManifests.set('image-old', { imageModel: 'm' });
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live' ? { imageModel: 'm' } : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.causes).toEqual([]);
+    expect(logError).toHaveBeenCalledWith(
+      expect.stringContaining('stamp and verify disagree'),
+      { stored: 'image-old', live: 'image-live' }
+    );
+    expect(guessReads.sequenceEvents.listByTarget).not.toHaveBeenCalled();
   });
 });
 

@@ -8,15 +8,15 @@ import { inArray } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { inputManifests } from '@/platform/server/db/schema';
 import { selectInChunks } from '@/platform/server/db/select-in-chunks';
-import { getLogger } from '@/platform/logger';
 import { manifestOfHash, type InputManifest } from '@/shots/input-hash';
 
-const logger = getLogger(['openstory', 'shots', 'input-manifests']);
+/** Rows per insert: 3 bindings each under D1's 100-variable cap. */
+const INSERT_CHUNK = 33;
 
 /**
  * Insert-or-ignore the manifest of each hash this isolate just stamped. A
- * hash with no manifest in memory was computed elsewhere (or evicted): the
- * artifact then falls back to the timestamp guess, and the log says so.
+ * hash with no manifest in memory was stamped in another pass (or evicted):
+ * that is a programming error at the call site, never a legacy row.
  */
 export async function recordInputManifests(
   db: Database,
@@ -26,11 +26,29 @@ export async function recordInputManifests(
   for (const hash of new Set(hashes)) {
     if (!hash) continue;
     const manifest = manifestOfHash(hash);
-    if (manifest) rows.push({ hash, manifest });
-    else logger.warn('no manifest in memory for input hash', { hash });
+    if (!manifest) {
+      throw new Error(
+        `input-manifests: no manifest in memory for ${hash}; stamp and record in one pass`
+      );
+    }
+    rows.push({ hash, manifest });
   }
-  if (rows.length === 0) return;
-  await db.insert(inputManifests).values(rows).onConflictDoNothing();
+  const inserts = [];
+  for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
+    inserts.push(
+      db
+        .insert(inputManifests)
+        .values(rows.slice(i, i + INSERT_CHUNK))
+        .onConflictDoNothing()
+    );
+  }
+  const [first, ...rest] = inserts;
+  if (!first) return;
+  if (rest.length === 0) {
+    await first;
+    return;
+  }
+  await db.batch([first, ...rest]);
 }
 
 export function createInputManifestsMethods(db: Database) {

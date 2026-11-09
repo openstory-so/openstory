@@ -242,7 +242,11 @@ changing the area, and update it in the same PR.**
   motion render all resolve references per shot and per prompt channel
   through `resolveShotReferences` (`src/shots/scene-matching.ts`), never
   from the scene roster; `narrowShotPromptContext` takes a required
-  `ShotPromptView` so a stamp site cannot hash the wrong set. Continuity
+  `ShotPromptView` so a stamp site cannot hash the wrong set. A hash is
+  stamped with `stampInputHash`, never bare `sha256Hex`, and the stamp site
+  records its manifest (`scopedDb.inputManifests.record`) in the same pass;
+  causes are the manifest diff (`describeManifestCauses`), the timestamp
+  guess only for pre-manifest shot rows (#2344). Continuity
   tags apply only while the prompt is unwritten. A digest stamped on the
   scene roster before #2012 is accepted until `LEGACY_HASH_UNTIL`. Design
   rationale:

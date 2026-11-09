@@ -24,38 +24,53 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'music', 'staleness']);
 
 /**
- * Track length a regeneration asks for: `generateMusicFn`'s rule (shot
- * durations, 10s each when unset, 30s floor for an empty sequence). Rounded,
- * so a fractional sum hashes the same from the plan and from this read.
- */
-/**
  * What moved between a stale stamp and now (#2344): the stored manifest
- * against the live one. Empty for a row stamped before manifests; a stale
- * verdict whose manifests match is a stamp ≠ verify bug, logged and unnamed.
+ * against the live one. Empty for a row stamped before manifests (logged); a
+ * stale verdict whose manifests match is a stamp ≠ verify bug, logged and unnamed.
  */
 async function musicCauses(
   scopedDb: Pick<ScopedDb, 'inputManifests'>,
   artifact: ManifestArtifact,
+  sequenceId: string,
   stored: string,
   live: string
 ): Promise<string[]> {
   const was = (await scopedDb.inputManifests.getByHashes([stored])).get(stored);
   const now = manifestOfHash(live);
-  if (!was || !now) return [];
+  if (!now) {
+    logger.error(
+      `live manifest missing for ${artifact} on sequence ${sequenceId}`,
+      {
+        live,
+      }
+    );
+    return [];
+  }
+  if (!was) {
+    logger.warn(
+      `no stored manifest for ${artifact} on sequence ${sequenceId}`,
+      {
+        stored,
+      }
+    );
+    return [];
+  }
   const moved = diffManifests(was, now);
   if (moved.length === 0) {
     logger.error(
-      `stale ${artifact} with no differing input: stamp and verify disagree`,
-      {
-        stored,
-        live,
-      }
+      `stale ${artifact} on sequence ${sequenceId} with no differing input: stamp and verify disagree`,
+      { stored, live }
     );
     return [];
   }
   return describeManifestCauses(artifact, moved);
 }
 
+/**
+ * Track length a regeneration asks for: `generateMusicFn`'s rule (shot
+ * durations, 10s each when unset, 30s floor for an empty sequence). Rounded,
+ * so a fractional sum hashes the same from the plan and from this read.
+ */
 export function musicRequestDurationSeconds(
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
 ): number {
@@ -71,7 +86,7 @@ async function readMusicTrackStaleness(
   scopedDb: Pick<ScopedDb, 'sequenceVariants' | 'inputManifests'>,
   sequence: Pick<
     Sequence,
-    'selectedMusicVariantId' | 'musicPrompt' | 'musicTags'
+    'id' | 'selectedMusicVariantId' | 'musicPrompt' | 'musicTags'
   >,
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
 ): Promise<{ status: MusicTrackStaleness; causes: string[] }> {
@@ -92,7 +107,13 @@ async function readMusicTrackStaleness(
     status,
     causes:
       status === 'stale' && track.inputHash && live
-        ? await musicCauses(scopedDb, 'music-track', track.inputHash, live)
+        ? await musicCauses(
+            scopedDb,
+            'music-track',
+            sequence.id,
+            track.inputHash,
+            live
+          )
         : [],
   };
 }
@@ -173,6 +194,7 @@ export async function readMusicPromptStaleness(
         : await musicCauses(
             scopedDb,
             'music-prompt',
+            sequence.id,
             stored,
             await computeMusicPromptInputHash({ sceneSummaries, analysisModel })
           ),

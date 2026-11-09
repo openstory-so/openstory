@@ -1124,7 +1124,20 @@ function exactStalenessCauses(
   for (const compare of stale) {
     const was = compare.stored ? stored.get(compare.stored) : undefined;
     const now = compare.live ? manifestOfHash(compare.live) : null;
+    if (compare.live && !now) {
+      // The live hash was computed in this call: a miss is a bug, not legacy.
+      logger.error(
+        `live manifest missing for ${compare.artifact} on shot ${shotId}`,
+        { live: compare.live }
+      );
+    }
     if (!was || !now) {
+      if (!was) {
+        logger.warn(
+          `no stored manifest for ${compare.artifact} on shot ${shotId}; timestamp guess`,
+          { stored: compare.stored }
+        );
+      }
       guessed.add(compare.artifact);
       continue;
     }

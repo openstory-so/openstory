@@ -35,6 +35,13 @@ import {
   type ManifestArtifact,
 } from '@/shots/staleness-causes';
 import { getLogger } from '@/platform/logger';
+import {
+  characterSheetHashMatchesStored,
+  uploadedCharacterSheetHashMatchesStored,
+  finishCharacterSheetPayload,
+  locationSheetHashMatchesStored,
+  uploadedLocationSheetHashMatchesStored,
+} from './workflows/sheet-snapshots';
 
 const logger = getLogger(['openstory', 'cast', 'sheet-staleness']);
 
@@ -47,38 +54,36 @@ export type SheetVerdict = {
 
 /**
  * The stored manifest for `stored` against the one `live` left in memory.
- * No stored manifest is a sheet stamped before #2344: no cause. Matching
- * manifests under a stale verdict is a stamp ≠ verify bug: logged, unnamed.
+ * No stored manifest is a sheet stamped before #2344: no cause, logged.
+ * Matching manifests under a stale verdict is a stamp ≠ verify bug: logged, unnamed.
  */
 function sheetCauses(
   manifests: ReadonlyMap<string, InputManifest>,
   artifact: ManifestArtifact,
+  owner: string,
   stored: string,
   live: string
 ): string[] {
   const was = manifests.get(stored);
   const now = manifestOfHash(live);
-  if (!was || !now) return [];
+  if (!now) {
+    logger.error(`live manifest missing for ${artifact} ${owner}`, { live });
+    return [];
+  }
+  if (!was) {
+    logger.warn(`no stored manifest for ${artifact} ${owner}`, { stored });
+    return [];
+  }
   const moved = diffManifests(was, now);
   if (moved.length === 0) {
     logger.error(
-      `stale ${artifact} with no differing input: stamp and verify disagree`,
-      {
-        stored,
-        live,
-      }
+      `stale ${artifact} ${owner} with no differing input: stamp and verify disagree`,
+      { stored, live }
     );
     return [];
   }
   return describeManifestCauses(artifact, moved);
 }
-import {
-  characterSheetHashMatchesStored,
-  uploadedCharacterSheetHashMatchesStored,
-  finishCharacterSheetPayload,
-  locationSheetHashMatchesStored,
-  uploadedLocationSheetHashMatchesStored,
-} from './workflows/sheet-snapshots';
 
 /** What a sheet verdict takes of the sequence; null from the organization pages. */
 type SheetSequence = Pick<
@@ -175,6 +180,7 @@ export async function locationSheetStaleness(args: {
       : sheetCauses(
           manifests,
           'location-sheet',
+          location.id,
           stored,
           payload.snapshotInputHash
         ),
@@ -292,6 +298,7 @@ export async function lookSheetStaleness(args: {
       : sheetCauses(
           manifests,
           'character-sheet',
+          lookId,
           stored,
           payload.snapshotInputHash
         ),

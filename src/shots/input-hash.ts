@@ -168,7 +168,10 @@ export function diffManifests(
  * entry is impossible; the cap only bounds memory.
  */
 const stampedManifests = new Map<string, InputManifest>();
-const STAMPED_MANIFEST_CAP = 2048;
+// ponytail: isolate-global FIFO (~20 KB a prompt manifest); a stamp evicted
+// before its record throws there. Upgrade: return { hash, manifest } from the
+// hashers and pass the pair to record, then delete this map.
+const STAMPED_MANIFEST_CAP = 1024;
 
 /** The manifest of a hash this isolate stamped; null once evicted or never computed here. */
 export function manifestOfHash(hash: string): InputManifest | null {

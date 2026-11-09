@@ -98,8 +98,8 @@ What this buys:
 - **A sheet records the bible it was made from.** The trigger snapshots
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
-- **Causes are a manifest diff (#2344).** Every hash goes through
-  `sha256Hex`, which also keeps a manifest of the canonical body: leaf path
+- **Causes are a manifest diff (#2344).** Every current-shape hash goes through
+  `stampInputHash`, which also keeps a manifest of the canonical body: leaf path
   → short digest (`character:<id>/standardClothing`, `styleConfig/lighting`,
   `scene/metadata/timeOfDay`, `still`). A stamp site records it in
   `input_manifests(hash PRIMARY KEY, manifest)` through

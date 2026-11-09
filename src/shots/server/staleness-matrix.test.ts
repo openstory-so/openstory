@@ -302,11 +302,11 @@ function shotDb(
   const none = () => Promise.resolve(null);
   const empty = () => Promise.resolve([]);
   return asStub<ScopedDb>({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     framePromptVersions: {
-      inputManifests: {
-        record: async () => undefined,
-        getByHashes: async () => new Map(),
-      },
       getSelected: () =>
         Promise.resolve({
           text: world.visualPrompt,
