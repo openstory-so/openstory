@@ -63,6 +63,10 @@ import {
   seedanceRunsOnArk,
 } from '@/motion/server/motion-generation';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import {
+  missingVoiceLines,
+  unusableShotReferenceLines,
+} from '@/motion/reference-support';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
@@ -501,6 +505,22 @@ export async function addModelToSequence(
         resolution: sequence.resolution,
       };
     });
+
+    // No fallback (#1559, #2272): refuse before reserving if the added model
+    // cannot use a clip or voice line a shot attaches.
+    const unusable = new Set([
+      ...shots.flatMap((s) =>
+        unusableShotReferenceLines(model, s.referenceImages ?? [], {
+          hasStartFrame: !s.referenceOnly,
+          prompt: s.prompt,
+          onArk: seedanceOnArk,
+        })
+      ),
+      ...eligible.flatMap((f) =>
+        missingVoiceLines(model, dialogueOf(f), elements)
+      ),
+    ]);
+    if (unusable.size > 0) throw new ValidationError([...unusable].join(' '));
 
     const pricing = await getEffectiveFalPricing();
     const reservationId = await reserveRunCredits(

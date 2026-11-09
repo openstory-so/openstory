@@ -45,6 +45,7 @@ import {
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import { unusableShotReferenceLines } from '@/motion/reference-support';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
@@ -379,6 +380,7 @@ export async function executeSmartRetry(
   // Smart retry: only retry failed parts
   const retried: string[] = [];
   let skippedShots = 0;
+  const unusableLines = new Set<string>();
 
   // Model identity lives on the version that produced each asset (#1066).
   // Every shot here is in a failed state, so the FAILED attempt's model is the
@@ -594,8 +596,19 @@ export async function executeSmartRetry(
         referenceOnly,
         locations: motionLocations,
       });
-      // No refusal here: images above may already be running, so a clip this
-      // model cannot use fails its own shot at the submit, at once.
+      // A clip this model cannot use failed the same way last time (#2272):
+      // skip the shot rather than re-run it. Images above may already be
+      // running, so it does not refuse the whole retry.
+      const unusable = unusableShotReferenceLines(
+        shotVideoModel,
+        referenceImages,
+        { hasStartFrame: !referenceOnly, prompt, onArk: seedanceOnArk }
+      );
+      if (unusable.length > 0) {
+        for (const line of unusable) unusableLines.add(line);
+        skippedShots++;
+        continue;
+      }
       const editSeconds = seedanceEditSeconds({
         model: shotVideoModel,
         onArk: seedanceOnArk,
@@ -814,7 +827,9 @@ export async function executeSmartRetry(
   // about.
   if (retried.length === 0) {
     throw new ValidationError(
-      'None of the failed items can be retried automatically — regenerate the sequence instead.'
+      unusableLines.size > 0
+        ? [...unusableLines].join(' ')
+        : 'None of the failed items can be retried automatically — regenerate the sequence instead.'
     );
   }
 

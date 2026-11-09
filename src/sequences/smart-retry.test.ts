@@ -783,6 +783,43 @@ describe('executeSmartRetry — partial retry status reset', () => {
     }
   );
 
+  test('skips a shot whose model cannot take its reference audio (#2272)', async () => {
+    resetMocks();
+    const shot = makeShot({
+      videoStatus: 'failed',
+      motionPrompt: {
+        fullPrompt: 'The crowd cheers to FESTIVAL',
+        dialogue: null,
+        audio: null,
+      },
+    });
+    const { context } = makeContext(makeSequence({ videoModel: 'kling_v4' }), [
+      shot,
+    ]);
+    // test stub
+    asStub<{ sequenceElements: { list: () => Promise<unknown> } }>(
+      context.scopedDb
+    ).sequenceElements.list = () =>
+      Promise.resolve([
+        {
+          id: 'el-festival',
+          token: 'FESTIVAL',
+          description: null,
+          imageUrl: 'https://cdn.example/festival.wav',
+          consistencyTag: null,
+          kind: 'audio',
+          durationSeconds: 4,
+          personInMedia: false,
+        },
+      ]);
+
+    await expect(executeSmartRetry(context)).rejects.toThrow(
+      "Kling 4.0 can't use FESTIVAL — it takes no reference audio"
+    );
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
+    expect(reserveRunCreditsMock).not.toHaveBeenCalled();
+  });
+
   test('two failed shots in one scene record the conversation once (#1703)', async () => {
     resetMocks();
     const shotA = makeShot({
