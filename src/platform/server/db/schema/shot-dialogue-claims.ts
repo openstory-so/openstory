@@ -65,6 +65,12 @@ export const shotDialogueClaims = snakeCase.table(
       table.shotId,
       table.createdAt
     ),
+    // Live claims for a shot or a batch of shots (#2347).
+    index('idx_shot_dialogue_claims_shot_status_created').on(
+      table.shotId,
+      table.status,
+      table.createdAt
+    ),
     index('idx_shot_dialogue_claims_status_created').on(
       table.status,
       table.createdAt

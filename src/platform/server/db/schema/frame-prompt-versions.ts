@@ -110,6 +110,12 @@ export const framePromptVersions = snakeCase.table(
       table.frameId,
       table.createdAt
     ),
+    // Latest completed row per frame (#2347). The status sweep index stays.
+    index('idx_frame_prompt_versions_frame_status_created').on(
+      table.frameId,
+      table.status,
+      table.createdAt
+    ),
     // Retry idempotency is (frame, input_hash, text) — same context AND same
     // output. As a UNIQUE index on (frame_id, input_hash) it forced a
     // force-regen (same context, new text) to insert with a null input_hash to

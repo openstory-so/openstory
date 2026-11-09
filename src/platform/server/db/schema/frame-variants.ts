@@ -172,7 +172,19 @@ export const frameVariants = snakeCase.table(
       table.kind,
       table.model
     ),
-    index('idx_frame_variants_sequence').on(table.sequenceId),
+    // Latest completed preview per frame (#2347). Kind stays ahead of status.
+    index('idx_frame_variants_frame_kind_status').on(
+      table.frameId,
+      table.kind,
+      table.status
+    ),
+    // Frame-scoped status reads that do not bind kind (retire, idempotent append).
+    index('idx_frame_variants_frame_status').on(table.frameId, table.status),
+    // Stored stills of one sequence. Covers the sequence-only index.
+    index('idx_frame_variants_sequence_status').on(
+      table.sequenceId,
+      table.status
+    ),
     // At most ONE live direct-regen claim per (frame, live-hash) (#1085).
     // Chained claims start with pendingInputHash null and are excluded from
     // this index. App code reuses a live row with dependsOnVersionId === our
