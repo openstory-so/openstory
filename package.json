@@ -96,7 +96,7 @@
     "deploy": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "deploy:production": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --env=production --remote && wrangler deploy",
     "changeset": "changeset",
-    "changeset:version": "changeset version",
+    "changeset:version": "changeset version && bun install --lockfile-only",
     "changeset:publish": "changeset publish",
     "changeset:check": "changeset status"
   },
