@@ -49,10 +49,6 @@ function sequenceIdOf(input: unknown): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 const SLUGGED_FIELDS = {
   sequenceId: 'sequences',
   characterId: 'characters',
@@ -65,8 +61,10 @@ const SLUGGED_FIELDS = {
  * takes `noir-chase` where it takes a sequence id. A slug the organisation
  * has none of is not found; a ULID passes through untouched.
  */
-async function resolveSlugs(scopedDb: ScopedDb, input: unknown): Promise<void> {
-  if (!isRecord(input)) return;
+async function resolveSlugs(
+  scopedDb: ScopedDb,
+  input: Record<string, unknown>
+): Promise<void> {
   for (const [field, module] of Object.entries(SLUGGED_FIELDS)) {
     const value = input[field];
     if (typeof value !== 'string' || isValidId(value)) continue;
