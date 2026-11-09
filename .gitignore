@@ -23,7 +23,6 @@
 
 # production
 /build
-package.json.prepack
 
 # misc
 .DS_Store
