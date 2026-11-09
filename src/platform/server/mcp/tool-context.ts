@@ -63,13 +63,12 @@ const SLUGGED_FIELDS = {
  */
 async function resolveSlugs(scopedDb: ScopedDb, input: unknown): Promise<void> {
   if (typeof input !== 'object' || input === null) return;
-  const fields = input as Record<string, unknown>;
   for (const [field, module] of Object.entries(SLUGGED_FIELDS)) {
-    const value = fields[field];
+    const value: unknown = Reflect.get(input, field);
     if (typeof value !== 'string' || isValidId(value)) continue;
     const id = await scopedDb[module].resolveId(value);
     if (!id) throw new NotFoundError(`No ${module.slice(0, -1)} "${value}"`);
-    fields[field] = id;
+    Reflect.set(input, field, id);
   }
 }
 
