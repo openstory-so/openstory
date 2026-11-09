@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DIALOGUE_CLIP_TOKEN, VIDEO_MODEL_VOICE_TOKEN } from './dialogue-tts';
 import {
   assertReferencesUsable,
+  batchRefusalLines,
   missingVoiceLines,
   motionReferenceSupport,
   referenceUsability,
@@ -465,5 +466,47 @@ describe('combined reference length (#1651)', () => {
         { hasStartFrame: true, prompt: null, onArk: true }
       )
     ).toThrow(/16\.2s, over its 15s limit/);
+  });
+});
+
+describe('batchRefusalLines (#2272)', () => {
+  const job = { hasStartFrame: true, prompt: null, onArk: true };
+  const festival = {
+    token: 'FESTIVAL',
+    kind: 'audio' as const,
+    durationSeconds: 4,
+  };
+
+  it('names an element once however many shots carry it', () => {
+    const shot = {
+      model: 'kling_v4' as const,
+      references: [festival],
+      job,
+      dialogue: null,
+      elements: [],
+    };
+    const lines = batchRefusalLines([shot, shot]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(
+      "Kling 4.0 can't use FESTIVAL — it takes no reference audio"
+    );
+  });
+
+  it('adds a deleted voice to what the model refuses', () => {
+    expect(
+      batchRefusalLines([
+        {
+          model: 'seedance_v2_5',
+          references: [festival],
+          job,
+          dialogue: {
+            lines: [{ character: 'SARAH', voiceToken: 'GONE_VOICE' }],
+          },
+          elements: [],
+        },
+      ])
+    ).toEqual([
+      "GONE_VOICE, the voice on SARAH's line, was deleted — pick another voice.",
+    ]);
   });
 });

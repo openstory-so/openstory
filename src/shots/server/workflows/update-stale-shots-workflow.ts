@@ -69,6 +69,7 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { batchRefusalLines } from '@/motion/reference-support';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import {
   estimateLipsyncCost,
@@ -1281,6 +1282,29 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               `Dialogue audio is not ready for shot ${target.shotId}; motion is blocked.`
             );
           }
+          // The prompt is final only here, so this is the earliest the
+          // trigger's refusal can be asked (#2272); it fails this shot before
+          // any credit check or child. Every model the shot renders on.
+          const onArk = await seedanceRunsOnArk(scopedDb.credentials);
+          const unusable = batchRefusalLines(
+            (!leftoverGrok.has(target.shotId) &&
+            plan.renderOptions?.videoModels?.length
+              ? plan.renderOptions.videoModels
+              : [model]
+            ).map((renderModel) => ({
+              model: renderModel,
+              references: referenceImages,
+              job: { hasStartFrame: target.usesStartFrame, prompt, onArk },
+              dialogue: target.dialogue,
+              elements: renderRefs.elements,
+            }))
+          );
+          if (unusable.length > 0) {
+            throw new NonRetryableError(
+              unusable.join(' '),
+              'WorkflowValidationError'
+            );
+          }
           const motionInput: MotionRenderShot = {
             shotId: shot.id,
             sceneId: target.motionRender.sceneId,
@@ -1293,7 +1317,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // (#2036). The via is a credential, read through its hatch.
             seedanceEditSeconds: seedanceEditSeconds({
               model,
-              onArk: await seedanceRunsOnArk(scopedDb.credentials),
+              onArk,
               prompt,
               references: referenceImages,
             }),

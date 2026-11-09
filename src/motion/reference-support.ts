@@ -425,6 +425,32 @@ export function missingVoiceLines(
   );
 }
 
+/** One shot as a trigger is about to send it. */
+export type ShotRefusalCheck = {
+  model: ImageToVideoModel;
+  references: AttachedReference[];
+  job: ShotJob;
+  dialogue: Parameters<typeof missingVoiceLines>[1];
+  elements: { token: string }[];
+};
+
+/**
+ * Everything that refuses this shot before it renders: references the model
+ * cannot use, and voices that no longer exist. Every motion trigger asks this
+ * (#2272), so none of them reaches a credit hold the submit would refuse.
+ */
+export function shotRefusalLines(shot: ShotRefusalCheck): string[] {
+  return [
+    ...unusableShotReferenceLines(shot.model, shot.references, shot.job),
+    ...missingVoiceLines(shot.model, shot.dialogue, shot.elements),
+  ];
+}
+
+/** `shotRefusalLines` across a batch, each line once: one element often sits on many shots. */
+export function batchRefusalLines(shots: Iterable<ShotRefusalCheck>): string[] {
+  return [...new Set([...shots].flatMap(shotRefusalLines))];
+}
+
 /**
  * Refuse a render whose model cannot use what the shot attaches. Shared by
  * the submit path (the last word) and the server fns that trigger renders,

@@ -45,7 +45,7 @@ import {
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
-import { unusableShotReferenceLines } from '@/motion/reference-support';
+import { shotRefusalLines } from '@/motion/reference-support';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
@@ -599,11 +599,13 @@ export async function executeSmartRetry(
       // A clip this model cannot use failed the same way last time (#2272):
       // skip the shot rather than re-run it. Images above may already be
       // running, so it does not refuse the whole retry.
-      const unusable = unusableShotReferenceLines(
-        shotVideoModel,
-        referenceImages,
-        { hasStartFrame: !referenceOnly, prompt, onArk: seedanceOnArk }
-      );
+      const unusable = shotRefusalLines({
+        model: shotVideoModel,
+        references: referenceImages,
+        job: { hasStartFrame: !referenceOnly, prompt, onArk: seedanceOnArk },
+        dialogue: shotDialogue,
+        elements: motionElements,
+      });
       if (unusable.length > 0) {
         for (const line of unusable) unusableLines.add(line);
         skippedShots++;
