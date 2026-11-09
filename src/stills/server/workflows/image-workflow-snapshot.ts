@@ -12,7 +12,8 @@
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
+import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
 
 const NO_SNAPSHOT_SENTINEL = '';
 
@@ -30,10 +31,22 @@ function requireAspectRatio(
 export function computeImageWorkflowHashFromDto(
   input: ImageWorkflowInput
 ): Promise<string> | string {
-  if (!input.sceneSnapshot) {
+  const { sceneSnapshot } = input;
+  if (!sceneSnapshot) {
     return input.snapshotInputHash ?? NO_SNAPSHOT_SENTINEL;
   }
-  return computeShotImageSceneHash(
+  return stampImageWorkflowSnapshot({ ...input, sceneSnapshot }).then(
+    (stamp) => stamp.hash
+  );
+}
+
+/** The still stamp of a payload that carries a scene snapshot. */
+export function stampImageWorkflowSnapshot(
+  input: ImageWorkflowInput & {
+    sceneSnapshot: NonNullable<ImageWorkflowInput['sceneSnapshot']>;
+  }
+): Promise<Stamped<ShotImageInputHash>> {
+  return stampShotImageScene(
     input.sceneSnapshot,
     input.model ?? DEFAULT_IMAGE_MODEL,
     requireAspectRatio(input)

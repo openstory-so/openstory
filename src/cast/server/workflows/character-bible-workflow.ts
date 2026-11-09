@@ -14,7 +14,7 @@ import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
 import {
   assertQueuedWithLooks,
-  computeCharacterSheetHashFromDto,
+  stampCharacterSheetFromDto,
 } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
@@ -208,11 +208,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // claim is conditional (#1863): an edit between the snapshot above and
       // this write found no claim to revoke, so the claim is not taken and
       // the run parks its sheet.
-      const unclaimed = {
-        ...unclaimedFields,
-        snapshotInputHash:
-          await computeCharacterSheetHashFromDto(unclaimedFields),
-      };
+      const stamp = await stampCharacterSheetFromDto(unclaimedFields);
+      const unclaimed = { ...unclaimedFields, snapshotInputHash: stamp.hash };
+      await scopedDb.inputManifests.record([stamp]);
       const sheetVersionId = await step.do(
         `claim-character-sheet-${index}`,
         async () =>

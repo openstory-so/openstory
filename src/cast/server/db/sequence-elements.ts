@@ -38,7 +38,8 @@ import {
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { promoteLegacyMotionDialogue } from '@/shots/server/db/shot-prompt-versions';
 import { shotPromptDialogueResolver } from '@/shots/server/shot-dialogue';
-import { hashShotSpecInput } from '@/shots/shot-spec-currency';
+import { stampShotSpecInput } from '@/shots/shot-spec-currency';
+import { recordInputManifests } from '@/shots/server/db/input-manifests';
 import { canonicalStoredShotSpec } from '@/shots/shot-list.schema';
 import { generateId } from '@/platform/id';
 import { sceneNarrativeOf } from '@/shots/scene-narrative';
@@ -550,13 +551,15 @@ export function createSequenceElementsMethods(db: Database) {
           line: line.line,
           tone: line.tone,
         }));
-        const inputHash = await hashShotSpecInput({
+        const stamp = await stampShotSpecInput({
           scriptExtract: rewrittenExtract ?? '',
           lines,
           characterTags: continuity?.characterTags ?? [],
           elementTags: continuity?.elementTags ?? [],
           environmentTag: continuity?.environmentTag ?? '',
         });
+        await recordInputManifests(db, [stamp]);
+        const inputHash = stamp.hash;
         const textUnchanged =
           JSON.stringify(canonicalStoredShotSpec(nextSpec)) ===
           JSON.stringify(canonicalStoredShotSpec(version.spec));

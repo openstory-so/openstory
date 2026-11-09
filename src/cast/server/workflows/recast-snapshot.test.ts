@@ -17,7 +17,12 @@ import type {
   SequenceLocationWithReference,
   Shot,
 } from '@/platform/server/db/schema';
-import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { buildRegenerateShotSnapshot as buildRegenerateShotStamp } from '@/shots/server/workflows/regenerate-shots-snapshot';
+
+/** The snapshot half; these tests never read the stamp. */
+const buildRegenerateShotSnapshot = async (
+  params: Parameters<typeof buildRegenerateShotStamp>[0]
+) => (await buildRegenerateShotStamp(params)).snapshot;
 import {
   mergeRecastSheetIntoSnapshots,
   PENDING_SHEET_HASH,

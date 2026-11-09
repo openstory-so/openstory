@@ -9,10 +9,11 @@ import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import type { FramePromptVersion } from '@/platform/server/db/schema/frame-prompt-versions';
 import type { ShotPromptVersion } from '@/platform/server/db/schema/shot-prompt-versions';
 import {
-  hashMotionPromptInput,
-  hashVisualPromptInput,
+  stampMotionPromptInput,
+  stampVisualPromptInput,
   type MotionPromptHashInput,
   type MotionPromptInputHash,
+  type Stamped,
   type VisualPromptInputHash,
 } from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
@@ -69,6 +70,9 @@ export type DerivedPromptDb = {
       versionId: string,
       inputHash: string
     ) => Promise<void>;
+  };
+  inputManifests: {
+    record: (stamps: readonly (Stamped | null | undefined)[]) => Promise<void>;
   };
 };
 
@@ -132,16 +136,19 @@ export async function completeDerivedPrompts(
   const motion = deriveMotionPrompt(input.spec, {
     referenceOnly: input.referenceOnly,
   });
-  const visualHash = await hashVisualPromptInput(
+  const visualStamp = await stampVisualPromptInput(
     narrowShotPromptContext(full, { channel: 'visual', prompt: stillText })
   );
-  const motionHash = await hashMotionPromptInput(
+  const motionStamp = await stampMotionPromptInput(
     narrowShotPromptContext(full, {
       channel: 'motion',
       prompt: motion.text,
       referenceOnly: input.referenceOnly,
     })
   );
+  await db.inputManifests.record([visualStamp, motionStamp]);
+  const visualHash = visualStamp.hash;
+  const motionHash = motionStamp.hash;
 
   let visualVersionId: string | null = null;
   const writeStill =

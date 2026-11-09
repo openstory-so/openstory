@@ -140,6 +140,30 @@ export const StaleStatusLine: Story = {
   ],
 };
 
+/** With causes (#2344): the line names what moved instead of the generic text. */
+export const StaleStatusLineWithCauses: Story = {
+  args: {
+    density: 'status-line',
+    entityType: 'shot',
+    onRegenerate: () => {},
+    staleness: {
+      thumbnail: 'stale',
+      visualPrompt: 'stale',
+      motionPrompt: 'stale',
+      dialogue: 'fresh',
+      video: 'fresh',
+      causes: ['Character "Jack": clothing', 'Style: lighting'],
+    },
+  },
+  decorators: [
+    (Story) => (
+      <div className="max-w-xl">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
 /** The comparison itself failed — muted dot, no amber, no action. */
 export const StalenessUnknown: Story = {
   args: {

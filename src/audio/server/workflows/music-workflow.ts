@@ -3,7 +3,7 @@
  */
 
 import { generateId } from '@/platform/id';
-import { computeSequenceMusicInputHash } from '@/shots/input-hash';
+import { stampSequenceMusicInput } from '@/shots/input-hash';
 import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { uploadAudioToStorage } from '@/audio/server/audio-storage';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
@@ -199,12 +199,14 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
       if (!storagePath) {
         throw new Error('Audio storage path missing from generation result');
       }
-      const inputHash = await computeSequenceMusicInputHash({
+      const stamp = await stampSequenceMusicInput({
         prompt,
         tags,
         durationSeconds: actualDuration,
         audioModel: model,
       });
+      await scopedDb.inputManifests.record([stamp]);
+      const inputHash = stamp.hash;
 
       if (!variantId) {
         throw new Error('Music variant row missing for a sequence run');

@@ -40,6 +40,7 @@ const segment = (id: string, shotIds: string[]): SequenceSegment => ({
   versions: [],
   model: null,
   stale: false,
+  causes: [],
 });
 
 describe('groupShotsBySegment', () => {

@@ -12,8 +12,9 @@
 
 import type { MotionDialogue, Scene } from '@/shots/scene-analysis.schema';
 import {
-  hashMotionPromptInput,
-  hashVisualPromptInput,
+  stampMotionPromptInput,
+  stampVisualPromptInput,
+  type Stamped,
 } from '@/shots/input-hash';
 import {
   loadNarrowShotPromptContext,
@@ -29,7 +30,11 @@ export async function buildUserEditProvenance(
   args: {
     scopedDb: Pick<
       ScopedDb,
-      'characters' | 'locations' | 'sequenceElements' | 'styles'
+      | 'characters'
+      | 'locations'
+      | 'sequenceElements'
+      | 'styles'
+      | 'inputManifests'
     >;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
@@ -48,6 +53,7 @@ export async function buildUserEditProvenance(
 ): Promise<UserEditProvenance> {
   const { scopedDb, sequence, scene } = args;
   if (!scene) return { inputHash: null, analysisModel: null };
+  let computed: { stamp: Stamped; analysisModel: string | null };
   try {
     const { shot: ctx } = await loadNarrowShotPromptContext({
       scopedDb,
@@ -64,13 +70,11 @@ export async function buildUserEditProvenance(
             }
           : { channel: 'visual', prompt: args.prompt },
     });
-    return {
-      inputHash:
-        args.kind === 'motion'
-          ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
-          : await hashVisualPromptInput(ctx),
-      analysisModel: ctx.analysisModel,
-    };
+    const stamp =
+      args.kind === 'motion'
+        ? await stampMotionPromptInput({ ...ctx, dialogue: args.dialogue })
+        : await stampVisualPromptInput(ctx);
+    computed = { stamp, analysisModel: ctx.analysisModel };
   } catch (err) {
     // Recording the edit with a null hash beats losing the edit.
     logger.warn(
@@ -79,4 +83,9 @@ export async function buildUserEditProvenance(
     );
     return { inputHash: null, analysisModel: null };
   }
+  await scopedDb.inputManifests.record([computed.stamp]);
+  return {
+    inputHash: computed.stamp.hash,
+    analysisModel: computed.analysisModel,
+  };
 }

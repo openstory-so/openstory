@@ -12,7 +12,8 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { renderingForLocation } from '@/cast/rendering';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import type { LocationSheetWorkflowInput } from '@/platform/server/workflow/types';
-import { computeLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import { stampLocationSheetFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { LocationSheetInputHash, Stamped } from '@/shots/input-hash';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 
 /** Narrow DB text column to the typed union, defaulting to 'interior'. */
@@ -89,7 +90,10 @@ export async function buildRegenerateLocationSheetPayload(params: {
   imageModel?: string | null;
   /** Already read for this location; omitted, they are read here (#2082). */
   preloaded?: LocationSheetPayloadRows;
-}): Promise<Omit<LocationSheetWorkflowInput, 'referenceVersionId'>> {
+}): Promise<{
+  payload: Omit<LocationSheetWorkflowInput, 'referenceVersionId'>;
+  stamp: Stamped<LocationSheetInputHash>;
+}> {
   const { scopedDb, userId, organizationId, sequence, location } = params;
 
   const { liveVersion, photos } =
@@ -111,8 +115,10 @@ export async function buildRegenerateLocationSheetPayload(params: {
     }),
     referencePhotoUrls: photos.map((photo) => photo.url).sort(),
   };
+  // Verify draws this payload too; the run-start sites record the stamp.
+  const stamp = await stampLocationSheetFromDto(partialFields);
   return {
-    ...partialFields,
-    snapshotInputHash: await computeLocationSheetHashFromDto(partialFields),
+    payload: { ...partialFields, snapshotInputHash: stamp.hash },
+    stamp,
   };
 }

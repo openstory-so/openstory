@@ -10,9 +10,11 @@
  */
 
 import {
-  computeShotImageInputHash,
   sha256Hex,
+  stampShotImageInput,
   type ShotImageHashInput,
+  type ShotImageInputHash,
+  type Stamped,
 } from '@/shots/input-hash';
 import type { TextToImageModel } from '@/models/models';
 import type { Scene } from '@/shots/scene-analysis.schema';
@@ -59,7 +61,11 @@ export async function buildRegenerateShotSnapshot(params: {
   elements: SequenceElement[];
   imageModel: TextToImageModel;
   aspectRatio: AspectRatio;
-}): Promise<RegenerateShotSnapshot> {
+}): Promise<{
+  snapshot: RegenerateShotSnapshot;
+  /** The still's hash with its manifest: a trigger records it, a verify diffs it. */
+  stamp: Stamped<ShotImageInputHash>;
+}> {
   const {
     shot,
     scene,
@@ -114,19 +120,22 @@ export async function buildRegenerateShotSnapshot(params: {
     elementReferenceHashes: refs.elementReferenceHashes,
   };
 
-  const snapshotInputHash = await computeShotImageInputHash(hashInput);
+  const stamp = await stampShotImageInput(hashInput);
 
   return {
-    shotId: shot.id,
-    imagePrompt: effectivePrompt,
-    imagePromptVersionId: imagePromptVersionId ?? null,
-    frameId: frameId ?? null,
-    characterSheetHashes: refs.characterSheetHashes,
-    locationSheetHashes: refs.locationSheetHashes,
-    elementReferenceHashes: refs.elementReferenceHashes,
-    characterRefs,
-    locationRefs,
-    snapshotInputHash,
+    stamp,
+    snapshot: {
+      shotId: shot.id,
+      imagePrompt: effectivePrompt,
+      imagePromptVersionId: imagePromptVersionId ?? null,
+      frameId: frameId ?? null,
+      characterSheetHashes: refs.characterSheetHashes,
+      locationSheetHashes: refs.locationSheetHashes,
+      elementReferenceHashes: refs.elementReferenceHashes,
+      characterRefs,
+      locationRefs,
+      snapshotInputHash: stamp.hash,
+    },
   };
 }
 

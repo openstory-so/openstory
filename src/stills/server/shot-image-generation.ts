@@ -88,6 +88,7 @@ export async function generateShotImage(
     }
   }
 
+  // The hash is the trigger's; the run only carries it (#2344).
   const workflowInput = await prepareShotImageWorkflowInput({
     scopedDb: context.scopedDb,
     sequence: shotPromptSequence(sequence, shot),

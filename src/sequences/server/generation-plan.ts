@@ -20,6 +20,7 @@ import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import type { StyleConfig } from '@/look/style-config';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import type { InputManifest } from '@/shots/input-hash';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { resolveStopAt } from '@/sequences/pipeline';
@@ -411,6 +412,18 @@ async function loadSheetVerdicts(
       const config = sequenceStyleFromRow(sequence, refs.style) ?? null;
       return { config, hash: await computeStyleConfigHash(config) };
     })());
+  // One read for every sheet's stored manifest (#2344), so causes do not
+  // grow the query count with the cast (#2082).
+  const manifests = await scopedDb.inputManifests
+    .getByHashes([
+      ...wornLooks.map(({ owner, look }) => (look ?? owner).sheetInputHash),
+      ...locations.map((l) => l.referenceInputHash),
+    ])
+    .catch((error: unknown) => {
+      // Causes are a hint: an unreadable manifest table never fails the plan.
+      logger.warn('sheet manifests unreadable; causes left empty', { error });
+      return new Map<string, InputManifest>();
+    });
   const [characterSheets, locationSheets] = await Promise.all([
     Promise.all(
       wornLooks.map(async ({ owner, look }) => {
@@ -431,6 +444,7 @@ async function loadSheetVerdicts(
                 owner,
                 lookId: look ? look.id : owner.lookId,
                 styleConfigHash: (await sequenceStyle()).hash,
+                manifests,
                 rows: {
                   liveVersion: worn.selectedSheetVersionId
                     ? (sheetVersionById.get(worn.selectedSheetVersionId) ??
@@ -455,6 +469,7 @@ async function loadSheetVerdicts(
               sequence,
               location: l,
               styleConfig: (await sequenceStyle()).config,
+              manifests,
               rows: {
                 liveVersion: l.selectedReferenceVersionId
                   ? (locationVersionById.get(l.selectedReferenceVersionId) ??

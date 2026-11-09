@@ -3,9 +3,10 @@ import type { StyleConfig } from '@/look/style-config';
 import type { Scene } from '@/shots/scene-analysis.schema';
 // Hash stability is pinned in fresh-plan-persistence; here only the writes matter.
 vi.mock('@/shots/input-hash', () => ({
-  hashVisualPromptInput: async () => 'visual-hash',
-  hashMotionPromptInput: async () => 'motion-hash',
+  stampVisualPromptInput: async () => ({ hash: 'visual-hash', manifest: {} }),
+  stampMotionPromptInput: async () => ({ hash: 'motion-hash', manifest: {} }),
   sha256Hex: async () => 'spec-input-hash',
+  stampInputHash: async () => ({ hash: 'spec-input-hash', manifest: {} }),
 }));
 
 import { persistShotSpec } from './persist-shot-spec';
@@ -82,6 +83,7 @@ const fakeDb = () => {
   const motion = vi.fn(async (_input: object) => ({}));
   // only the write methods persistShotSpec calls
   const db = asStub<Parameters<typeof persistShotSpec>[0]>({
+    inputManifests: { record: async () => undefined },
     shotSpecVersions: { write: spec },
     framePromptVersions: { write: frame },
     shotPromptVersions: { write: motion },

@@ -19,7 +19,7 @@ import {
 const logger = getLogger(['openstory', 'shots', 'shot-staleness-batch']);
 
 /**
- * The client-facing slice of a staleness result. `liveHashes` is a server-side
+ * The client-facing slice of a staleness result. `liveStamps` is a server-side
  * convenience for the enqueue paths (#1085) and stays off the wire.
  */
 const toWireStaleness = (
@@ -27,6 +27,7 @@ const toWireStaleness = (
   media?: {
     dialogue: ShotStalenessResult['thumbnail'];
     video: ShotStalenessResult['thumbnail'];
+    videoCauses: string[];
   }
 ) => {
   const overlaid = overlayMediaStaleness(result, media);

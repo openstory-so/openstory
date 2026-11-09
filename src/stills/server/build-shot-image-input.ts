@@ -30,7 +30,8 @@ import {
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
+import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
 
 function sortedHashes(
   values: ReadonlyArray<string | null | undefined>
@@ -71,7 +72,10 @@ export async function buildShotImageWorkflowInput(opts: {
    * `shot_variants` row, never the primary columns. Set by the add-model path.
    */
   variantOnly?: boolean;
-}): Promise<ImageWorkflowInput | null> {
+}): Promise<{
+  input: ImageWorkflowInput;
+  stamp: Stamped<ShotImageInputHash>;
+} | null> {
   const {
     shot,
     model,
@@ -132,30 +136,29 @@ export async function buildShotImageWorkflowInput(opts: {
       matchedElements.map((e) => e.imageUrl)
     ),
   };
-  const snapshotInputHash = await computeShotImageSceneHash(
-    sceneSnapshot,
-    model,
-    aspectRatio
-  );
+  const stamp = await stampShotImageScene(sceneSnapshot, model, aspectRatio);
 
   return {
-    userId,
-    organizationId,
-    prompt,
-    model,
-    imageSize: aspectRatioToImageSize(aspectRatio),
-    numImages: 1,
-    shotId: shot.id,
-    sequenceId,
-    aspectRatio,
-    resolution,
-    sceneSnapshot,
-    snapshotInputHash,
-    referenceImages: [
-      ...characterReferences,
-      ...locationReferences,
-      ...elementReferences,
-    ],
-    variantOnly: opts.variantOnly ?? false,
+    stamp,
+    input: {
+      userId,
+      organizationId,
+      prompt,
+      model,
+      imageSize: aspectRatioToImageSize(aspectRatio),
+      numImages: 1,
+      shotId: shot.id,
+      sequenceId,
+      aspectRatio,
+      resolution,
+      sceneSnapshot,
+      snapshotInputHash: stamp.hash,
+      referenceImages: [
+        ...characterReferences,
+        ...locationReferences,
+        ...elementReferences,
+      ],
+      variantOnly: opts.variantOnly ?? false,
+    },
   };
 }

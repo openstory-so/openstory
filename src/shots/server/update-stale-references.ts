@@ -134,13 +134,15 @@ export async function buildPlanReferences(args: {
       return draft;
     })
   );
-  const locationSheets = await Promise.all(
+  const locationBuilds = await Promise.all(
     locations
       .filter((l) => locationIds.has(l.id))
       .map((location) =>
         buildRegenerateLocationSheetPayload({ ...context, location })
       )
   );
+  await scopedDb.inputManifests.record(locationBuilds.map((b) => b.stamp));
+  const locationSheets = locationBuilds.map((b) => b.payload);
 
   const owedElements = elements.filter((el) => elementIds.has(el.id));
   let elementSheets: ElementSheetWorkflowInput | null = null;

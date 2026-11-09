@@ -700,11 +700,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
           const payload = await step.do(
             `finish-look-sheet-${draft.lookId}`,
-            () =>
-              finishCharacterSheetPayload(draft, {
+            async () => {
+              const finished = await finishCharacterSheetPayload(draft, {
                 url: landed.sheetImageUrl,
                 versionId,
-              })
+              });
+              await scopedDb.inputManifests.record([finished.stamp]);
+              return finished.payload;
+            }
           );
           await spawnCharacterSheet(payload, sheetVersionId);
         })

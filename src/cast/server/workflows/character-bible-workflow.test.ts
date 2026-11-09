@@ -92,6 +92,10 @@ const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'husk-1' }));
 function makeScopedDb(): WorkflowScopedDb {
   // stub covering only the scoped-db surface runImpl touches
   return asStub<WorkflowScopedDb>({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     characters: {
       create: characterCreate,
       createPendingVoiceClaim,

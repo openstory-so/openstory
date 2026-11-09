@@ -1,5 +1,4 @@
 import { isValidTextToImageModel } from '@/models/models';
-import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { locationBibleFieldsSchema } from './bible-field';
 import {
   attachLocation,
@@ -9,7 +8,10 @@ import {
   updateLocation,
 } from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { readReferenceStaleness } from '@/cast/server/production-staleness';
+import {
+  readReferenceStaleness,
+  type SheetVerdict,
+} from '@/cast/server/production-staleness';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -207,16 +209,13 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
 export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([castAccessMiddleware])
   .validator(zodValidator(castLocationInput))
-  .handler(
-    async ({ context, data }): Promise<SheetStaleness> =>
-      (
-        await readReferenceStaleness(
-          context.scopedDb,
-          context.sequence?.id ?? null,
-          'location',
-          data.locationDbId
-        )
-      ).status
+  .handler(({ context, data }): Promise<SheetVerdict> =>
+    readReferenceStaleness(
+      context.scopedDb,
+      context.sequence?.id ?? null,
+      'location',
+      data.locationDbId
+    )
   );
 
 /**
