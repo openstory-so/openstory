@@ -69,6 +69,7 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { batchRefusalLines } from '@/motion/reference-support';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import {
   estimateLipsyncCost,
@@ -2139,6 +2140,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           reservationId: input.reservationId,
           shots: renderShots,
         });
+    const renderOnArk =
+      renderJobs.length > 0
+        ? await step.do('render-on-ark', () =>
+            seedanceRunsOnArk(scopedDb.credentials)
+          )
+        : false;
     await Promise.all(
       renderJobs.map(async ({ input }) => {
         const shotId = input.shotId;
@@ -2150,6 +2157,38 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         const suffix = variant ? `-${input.model}` : '';
         try {
           const model = input.model;
+          // The trigger's refusal (#2272), asked per model: the prompt is
+          // final only now, and a refused model must not stop its siblings.
+          const refused = batchRefusalLines(
+            (input.coveredShots ?? [{ shotId }]).map((member) => {
+              const target = plan.targets.find(
+                (t) => t.shotId === member.shotId
+              );
+              if (!target) {
+                throw new NonRetryableError(
+                  `Shot ${member.shotId} renders but is not in the plan`,
+                  'WorkflowValidationError'
+                );
+              }
+              return {
+                model,
+                references: input.referenceImages ?? [],
+                job: {
+                  hasStartFrame: !input.referenceOnly,
+                  prompt: input.prompt,
+                  onArk: renderOnArk,
+                },
+                dialogue: target.dialogue,
+                elements: renderRefs.elements,
+              };
+            })
+          );
+          if (refused.length > 0) {
+            throw new NonRetryableError(
+              refused.join(' '),
+              'WorkflowValidationError'
+            );
+          }
           const voicedLines = input.voicedLines ?? [];
           const audioClips = input.audioClips ?? [];
           await step.do(`preflight-video-${shotId}${suffix}`, async () => {

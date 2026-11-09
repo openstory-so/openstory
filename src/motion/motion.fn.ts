@@ -4,10 +4,7 @@ import { loadSequenceStyle } from '@/look/server/sequence-style';
  * Shot motion (image-to-video) generation operations.
  */
 
-import {
-  missingVoiceLines,
-  unusableShotReferenceLines,
-} from '@/motion/reference-support';
+import { batchRefusalLines } from '@/motion/reference-support';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
@@ -357,26 +354,20 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // No fallback (#1559): refuse the batch before reserving if any shot's
     // model cannot use a clip or voice line it attaches. The same element
     // usually sits on several shots, so each problem is named once.
-    const unusable = new Set(
-      eligibleShots.flatMap((shot) =>
-        unusableShotReferenceLines(
-          resolveShotVideoModel(shot),
-          referencesFor(shot),
-          {
-            hasStartFrame: !shotIsReferenceOnly(shot),
-            prompt: payloadPromptFor(shot),
-            onArk: seedanceOnArk,
-          }
-        ).concat(
-          missingVoiceLines(
-            resolveShotVideoModel(shot),
-            batchDialogueOf(shot),
-            elements
-          )
-        )
-      )
+    const unusable = batchRefusalLines(
+      eligibleShots.map((shot) => ({
+        model: resolveShotVideoModel(shot),
+        references: referencesFor(shot),
+        job: {
+          hasStartFrame: !shotIsReferenceOnly(shot),
+          prompt: payloadPromptFor(shot),
+          onArk: seedanceOnArk,
+        },
+        dialogue: batchDialogueOf(shot),
+        elements,
+      }))
     );
-    if (unusable.size > 0) throw new Error([...unusable].join(' '));
+    if (unusable.length > 0) throw new Error(unusable.join(' '));
 
     // Dialogue is recorded ONCE PER SCENE, before the fan-out (#1657): every
     // shot that speaks and holds no matching clip puts its scene on the list,
