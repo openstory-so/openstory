@@ -49,6 +49,10 @@ function sequenceIdOf(input: unknown): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 const SLUGGED_FIELDS = {
   sequenceId: 'sequences',
   characterId: 'characters',
@@ -62,13 +66,13 @@ const SLUGGED_FIELDS = {
  * has none of is not found; a ULID passes through untouched.
  */
 async function resolveSlugs(scopedDb: ScopedDb, input: unknown): Promise<void> {
-  if (typeof input !== 'object' || input === null) return;
+  if (!isRecord(input)) return;
   for (const [field, module] of Object.entries(SLUGGED_FIELDS)) {
-    const value: unknown = Reflect.get(input, field);
+    const value = input[field];
     if (typeof value !== 'string' || isValidId(value)) continue;
     const id = await scopedDb[module].resolveId(value);
     if (!id) throw new NotFoundError(`No ${module.slice(0, -1)} "${value}"`);
-    Reflect.set(input, field, id);
+    input[field] = id;
   }
 }
 
