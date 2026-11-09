@@ -177,7 +177,11 @@ export const videoVariants = snakeCase.table(
     // List a variant group's versions by time: filter on
     // (renderSegmentId, model), order by id (ULID ≈ creation time).
     index('idx_video_variants_group').on(table.renderSegmentId, table.model),
-    index('idx_video_variants_sequence').on(table.sequenceId),
+    // Clips of one sequence that also bind status. Covers the sequence-only index.
+    index('idx_video_variants_sequence_status').on(
+      table.sequenceId,
+      table.status
+    ),
     // Reconcile sweep (#2235). Bound status, so not a partial index.
     index('idx_video_variants_status_updated').on(
       table.status,

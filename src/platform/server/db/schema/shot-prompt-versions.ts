@@ -214,6 +214,13 @@ export const shotPromptVersions = snakeCase.table(
       table.promptType,
       table.createdAt
     ),
+    // Latest completed row per shot and prompt type (#2347).
+    index('idx_shot_prompt_versions_shot_type_status_created').on(
+      table.shotId,
+      table.promptType,
+      table.status,
+      table.createdAt
+    ),
     // Retry idempotency is (shot, type, input_hash, text) — see the frame-side
     // twin. This is just the lookup index.
     index('idx_shot_prompt_versions_shot_type_hash').on(
