@@ -3,6 +3,14 @@ import { falVideo } from '@tanstack/ai-fal';
 import { describe, expect, it, vi } from 'vitest';
 import { klingWireInput, stripPackedKlingPrompt } from './kling-wire-body';
 
+function sentBody(fetchImpl: {
+  mock: { calls: Array<Parameters<typeof fetch>> };
+}): string {
+  const body = fetchImpl.mock.calls[0]?.[1]?.body;
+  if (typeof body !== 'string') throw new Error('expected a string body');
+  return body;
+}
+
 describe('klingWireInput', () => {
   it('drops prompt only when multi_prompt is present', () => {
     expect(
@@ -39,8 +47,7 @@ describe('stripPackedKlingPrompt', () => {
         start_image_url: 'https://example.com/image.jpg',
       }),
     });
-    const body = inner.mock.calls[0]?.[1]?.body;
-    expect(JSON.parse(String(body))).toEqual({
+    expect(JSON.parse(sentBody(inner))).toEqual({
       multi_prompt: [{ prompt: 'opens the door', duration: 4 }],
       start_image_url: 'https://example.com/image.jpg',
     });
@@ -57,7 +64,7 @@ describe('stripPackedKlingPrompt', () => {
       method: 'POST',
       body: raw,
     });
-    expect(inner.mock.calls[0]?.[1]?.body).toBe(raw);
+    expect(sentBody(inner)).toBe(raw);
   });
 });
 
