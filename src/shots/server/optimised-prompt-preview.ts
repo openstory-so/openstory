@@ -47,6 +47,7 @@ import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { buildGeminiVideoRequest } from '@/motion/server/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';
 import { buildMotionRequest } from '@/motion/server/build-model-input';
+import { klingWireInput } from '@/motion/server/kling-wire-body';
 import {
   buildMotionReferenceImages,
   buildShotImageReferenceImages,
@@ -686,12 +687,15 @@ function buildMotionPreview(input: {
     // the prompt does not use would make the preview lie about the binding.
     const refConfig = getMotionReferenceEndpoint(input.model);
     const onRefEndpoint = refConfig?.endpointId === request.endpointId;
-    const shownPrompt = promptFromFalInput(request.input, modelPrompt);
+    // The parsed request keeps the longest shot as `prompt` for the adapter.
+    // The preview JSON is the queue body, which omits it beside multi_prompt.
+    const wire = klingWireInput(request.input);
+    const shownPrompt = promptFromFalInput(wire, modelPrompt);
     return {
       modelName: config.name,
       endpointId: request.endpointId,
       prompt: shownPrompt,
-      json: JSON.stringify(request.input, null, 2),
+      json: JSON.stringify(wire, null, 2),
       ...promptLengthFields(shownPrompt, config),
       images: boundPromptImages(
         imageUrlsFromFalInput(request.input),

@@ -88,6 +88,7 @@ import {
   buildMotionRequest,
   pinsDedicatedStartFrame,
 } from './build-model-input';
+import { klingWireInput, stripPackedKlingPrompt } from './kling-wire-body';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 
 const logger = getLogger(['openstory', 'motion', 'generation']);
@@ -133,8 +134,10 @@ export type GenerateMotionOptions = {
    */
   referenceOnly?: boolean;
   /**
-   * Kling v3 packed multi-shot (#1510). When set, the fal request sends
-   * `multi_prompt[]` + `shot_type: customize` and omits `prompt`.
+   * Kling packed multi-shot (#1510). When set, the fal queue body sends
+   * `multi_prompt[]` (+ `shot_type: customize` on v3) and omits `prompt`.
+   * `generateVideo` still receives the longest shot as its prompt string
+   * (#2271).
    */
   multiPrompt?: Array<{ prompt: string; duration: string | number }>;
   /**
@@ -393,7 +396,12 @@ async function submitFalMotionJob(
   }
 
   const job = await generateVideo({
-    adapter: falVideo(endpoint.endpointId, { apiKey: key.key }),
+    adapter: falVideo(endpoint.endpointId, {
+      apiKey: key.key,
+      // The adapter writes `prompt` back onto the body. Kling rejects that
+      // field beside `multi_prompt`, so the queue fetch takes it off (#2271).
+      fetch: stripPackedKlingPrompt(workersSafeFetch),
+    }),
     prompt: optimisedPrompt,
     modelOptions,
     threadId,
@@ -1103,17 +1111,18 @@ export function calculateMotionMetadata(
   }
 
   const { endpointId, input } = buildMotionRequest(options, modelKey);
+  const wire = klingWireInput(input);
   // A draft is always 480p (#1756), whatever tier the sequence asks for.
   const resolution =
     options.draft && supportsDraftMode(modelKey)
       ? DRAFT_RESOLUTION
-      : 'resolution' in input && typeof input.resolution === 'string'
-        ? input.resolution
+      : 'resolution' in wire && typeof wire.resolution === 'string'
+        ? wire.resolution
         : undefined;
   const cost = estimateFalCost(
     endpointId,
     {
-      request: input,
+      request: wire,
       usage: { duration: validatedDuration },
       durationSeconds: validatedDuration,
       resolution,
