@@ -29,7 +29,8 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
-    "prepack": "bun run build"
+    "prepack": "bun run build && node scripts/prepare-publish.mjs",
+    "postpack": "node scripts/prepare-publish.mjs --restore"
   },
   "dependencies": {
     "@openstory/stitch": "workspace:^"
