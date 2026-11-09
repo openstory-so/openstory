@@ -381,10 +381,19 @@ Key consequences of the shape:
   `model` (`resolveSheetImageModel`), and the clip pointer compare ignores the
   video model entirely. So a model id only ever differs when the artifact
   itself was re-made. A sequence switch applies to
-  the next generation. `findStalenessCauses` therefore never names "Image
-  model" or "Script model" (they are not in `SETTINGS_CHANGED_LABELS`). One
+  the next generation. A manifest diff therefore never names "Image
+  model" or "Script model", and neither does the legacy `findStalenessCauses`
+  guess (they are not in `SETTINGS_CHANGED_LABELS`). One
   exception: an uploaded sheet has no model of its own, so its verify uses
   the sequence model and a switch does re-stale it.
+
+**Causes are exact (#2344).** Each hash also stores what it read, keyed by
+the hash (`input_manifests`), and a stale verdict names the leaf paths whose
+digest moved. Every node on this page that is "in the hash" is a manifest
+key, so the chips name exactly the edges of this graph that fired. The
+timestamp guess answers only for rows stamped before the table existed.
+See `workflow-snapshots-and-content-hash-staleness.md` § Causes are a
+manifest diff.
 
 ---
 
@@ -1008,24 +1017,25 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
 
 ## 7. Quick reference — file map
 
-| Concern                                  | File                                                                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Hash helpers + `sceneInputContext`       | `src/shots/input-hash.ts`                                                                                                         |
-| Prompt context load + narrowing          | `src/shots/server/prompt-context.ts`                                                                                              |
-| Bible builders (DB → bible, verify side) | `src/cast/server/bibles-from-scoped.ts`                                                                                           |
-| Casting transform                        | `src/cast/character-prompt.ts` (`buildCastingAttributes`, `buildCastCharacterBible`)                                              |
-| Prompt stamp — derived                   | `src/shots/server/persist-shot-spec.ts`, `src/shots/server/rebuild-shot-prompts.ts`, `src/shots/server/regenerate-shot-prompt.ts` |
-| Rewrite shot                             | `src/shots/server/workflows/shot-spec-rewrite-workflow.ts`                                                                        |
-| Spec edit (inspector)                    | `src/shots/shot-spec.fn.ts` (`saveShotSpecFn`)                                                                                    |
-| Bible persistence (cast)                 | `src/cast/server/workflows/character-bible-workflow.ts`, `location-bible-workflow.ts`                                             |
-| Pipeline orchestration                   | `src/sequences/server/workflows/analyze-script-workflow.ts`                                                                       |
-| Staleness verify (prompts + still)       | `src/shots/server/shot-staleness.ts` (`computeShotStaleness`, `findStalenessCauses`)                                              |
-| Staleness verify (clip)                  | `src/shots/scene-segments.ts` (`isSelectedVersionStale`)                                                                          |
-| Staleness verify (sheets)                | `src/cast/server/production-staleness.ts` (`readReferenceStaleness`)                                                              |
-| Staleness verify (music)                 | `src/audio/server/music-staleness.ts` (`readMusicPromptStaleness`)                                                                |
-| Verdict matrix (every edge, as verdicts) | `src/shots/server/staleness-matrix.test.ts`                                                                                       |
-| Still snapshot hash                      | `src/stills/server/workflows/image-workflow-snapshot.ts`, `src/shots/server/workflows/regenerate-shots-snapshot.ts`               |
-| Design rationale                         | `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`                                                              |
+| Concern                                  | File                                                                                                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hash helpers + `sceneInputContext`       | `src/shots/input-hash.ts`                                                                                                                             |
+| Prompt context load + narrowing          | `src/shots/server/prompt-context.ts`                                                                                                                  |
+| Bible builders (DB → bible, verify side) | `src/cast/server/bibles-from-scoped.ts`                                                                                                               |
+| Casting transform                        | `src/cast/character-prompt.ts` (`buildCastingAttributes`, `buildCastCharacterBible`)                                                                  |
+| Prompt stamp — derived                   | `src/shots/server/persist-shot-spec.ts`, `src/shots/server/rebuild-shot-prompts.ts`, `src/shots/server/regenerate-shot-prompt.ts`                     |
+| Rewrite shot                             | `src/shots/server/workflows/shot-spec-rewrite-workflow.ts`                                                                                            |
+| Spec edit (inspector)                    | `src/shots/shot-spec.fn.ts` (`saveShotSpecFn`)                                                                                                        |
+| Bible persistence (cast)                 | `src/cast/server/workflows/character-bible-workflow.ts`, `location-bible-workflow.ts`                                                                 |
+| Pipeline orchestration                   | `src/sequences/server/workflows/analyze-script-workflow.ts`                                                                                           |
+| Staleness verify (prompts + still)       | `src/shots/server/shot-staleness.ts` (`computeShotStaleness`; `findStalenessCauses` only for pre-manifest rows)                                       |
+| Staleness causes (manifest diff)         | `src/shots/input-hash.ts` (`sha256Hex`, `manifestOfHash`, `diffManifests`), `src/shots/staleness-causes.ts`, `src/shots/server/db/input-manifests.ts` |
+| Staleness verify (clip)                  | `src/shots/scene-segments.ts` (`isSelectedVersionStale`, `selectedVersionDriftDetail` for causes)                                                     |
+| Staleness verify (sheets)                | `src/cast/server/production-staleness.ts` (`readReferenceStaleness`)                                                                                  |
+| Staleness verify (music)                 | `src/audio/server/music-staleness.ts` (`readMusicPromptStaleness`)                                                                                    |
+| Verdict matrix (every edge, as verdicts) | `src/shots/server/staleness-matrix.test.ts`                                                                                                           |
+| Still snapshot hash                      | `src/stills/server/workflows/image-workflow-snapshot.ts`, `src/shots/server/workflows/regenerate-shots-snapshot.ts`                                   |
+| Design rationale                         | `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`                                                                                  |
 
 ### Field ownership update (#1889)
 

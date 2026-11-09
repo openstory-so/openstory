@@ -187,6 +187,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             snapshotInputHash:
               await computeLocationSheetHashFromDto(unclaimedFields),
           };
+          await scopedDb.inputManifests.record([unclaimed.snapshotInputHash]);
           claimed = await step.do(`claim-location-sheet-${index}`, async () => {
             const claim = await scopedDb.locations.claimReferenceIfUnmoved(
               locationDbId,

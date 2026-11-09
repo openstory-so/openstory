@@ -205,6 +205,7 @@ async function appendUploadedStill(args: {
     elements,
     aspectRatio: args.aspectRatio,
   });
+  await scopedDb.inputManifests.record([inputHash]);
 
   const version = await scopedDb.frameVariants.appendUploadedVersion({
     frameId: args.frameId,
@@ -318,6 +319,7 @@ export async function replaceFrameContent(
           prompt: newPromptText,
         })
       );
+      await scopedDb.inputManifests.record([promptInputHash]);
       analysisModel = ctx.analysisModel;
     } catch (error) {
       logger.warn(
@@ -338,6 +340,7 @@ export async function replaceFrameContent(
     elements,
     aspectRatio: sequence.aspectRatio,
   });
+  await scopedDb.inputManifests.record([imageInputHash]);
 
   const { promptVersion, imageVersion } =
     await scopedDb.frameVariants.replaceContent({
@@ -607,6 +610,7 @@ export async function setCharacterSheetFromUpload(
     styleConfigHash: null,
     imageModel,
   });
+  await scopedDb.inputManifests.record([inputHash]);
 
   // The upload's likeness verdict is a bible edit (#1600): its own version
   // row, only when it moved.
@@ -779,6 +783,7 @@ export async function setLocationSheetFromUpload(
     referencePhotoHashes: photos.map((photo) => photo.url).sort(),
     imageModel: USER_UPLOAD_MODEL,
   });
+  await scopedDb.inputManifests.record([inputHash]);
 
   const { version: variant } =
     await scopedDb.locationSheetVariants.applyConvergent({

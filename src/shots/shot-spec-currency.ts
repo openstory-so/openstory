@@ -7,7 +7,7 @@
  */
 
 import type { Scene } from '@/shots/scene-analysis.schema';
-import { sha256Hex } from '@/shots/input-hash';
+import { stampInputHash } from '@/shots/input-hash';
 
 export type ShotSpecCurrencyInput = {
   scriptExtract: string;
@@ -25,7 +25,7 @@ function sorted(tags: readonly string[]): string[] {
 export async function hashShotSpecInput(
   input: ShotSpecCurrencyInput
 ): Promise<string> {
-  return sha256Hex({
+  return stampInputHash({
     artifact: 'shot:spec',
     scriptExtract: input.scriptExtract.trim(),
     lines: input.lines.map((line) => ({

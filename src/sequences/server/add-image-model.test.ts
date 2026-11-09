@@ -37,6 +37,7 @@ describe('add image model (#2291)', () => {
         styleConfig: null,
       },
       scopedDb: {
+        inputManifests: { record: vi.fn(async () => undefined) },
         apiKeys: { hasUsableKey: vi.fn(async () => false) },
         frameVariants: { listModelsForSequence: vi.fn(async () => []) },
         shots: {

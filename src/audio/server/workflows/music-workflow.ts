@@ -205,6 +205,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         durationSeconds: actualDuration,
         audioModel: model,
       });
+      await scopedDb.inputManifests.record([inputHash]);
 
       if (!variantId) {
         throw new Error('Music variant row missing for a sequence run');

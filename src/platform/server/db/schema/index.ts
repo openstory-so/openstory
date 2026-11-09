@@ -80,6 +80,7 @@ import {
 } from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
 import { shotSpecVersions } from './shot-spec-versions';
+import { inputManifests } from './input-manifests';
 import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
@@ -189,6 +190,7 @@ export { shots };
 export {
   shotDialogueVersions,
   shotSpecVersions,
+  inputManifests,
   dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
@@ -202,6 +204,7 @@ export type {
 export type { DialogueSpeech, DialogueSpeechTurn } from './dialogue-speeches';
 export type { ShotDialogueSection } from './shot-dialogue-sections';
 export type { ShotSpecSource, ShotSpecVersion } from './shot-spec-versions';
+export type { InputManifestRow } from './input-manifests';
 export type { ShotDialogueClaim } from './shot-dialogue-claims';
 
 export type { NewShot, Shot } from './shots';

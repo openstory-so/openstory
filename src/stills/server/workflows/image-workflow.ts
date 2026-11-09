@@ -136,6 +136,8 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'
           );
         }
+        // The same digest the trigger stamped, recomputed here (#2344).
+        await scopedDb.inputManifests.record([recomputed]);
       });
     }
 

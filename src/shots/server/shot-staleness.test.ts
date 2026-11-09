@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
+import type { InputManifest } from '@/shots/input-hash';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotStalenessRefs } from './shot-staleness';
@@ -17,6 +18,10 @@ const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
 const hashVisualPromptInput = vi.fn();
 const hashMotionPromptInput = vi.fn();
+/** Live manifests by hash (#2344); the real cache is bypassed with the hashers. */
+const manifestOfHash = vi.fn((_hash: string) => null as InputManifest | null);
+/** Stored manifests by hash, as `inputManifests.getByHashes` answers. */
+const storedManifests = new Map<string, InputManifest>();
 
 vi.doMock('@/shots/server/workflows/regenerate-shots-snapshot', () => ({
   buildRegenerateShotSnapshot,
@@ -35,6 +40,9 @@ vi.doMock('@/shots/input-hash', () => ({
       stored === (await hashMotionPromptInput(input))
   ),
   sha256Hex: realInputHash.sha256Hex,
+  stampInputHash: realInputHash.stampInputHash,
+  manifestOfHash,
+  diffManifests: realInputHash.diffManifests,
 }));
 
 const { computeShotStaleness, loadShotStalenessReads } =
@@ -95,6 +103,16 @@ function makeScopedDb(overrides: {
   motionText?: string;
 }) {
   return asStub<ScopedDb>({
+    inputManifests: {
+      getByHashes: vi.fn(async (hashes: readonly (string | null)[]) => {
+        const out = new Map<string, InputManifest>();
+        for (const hash of hashes) {
+          const manifest = hash ? storedManifests.get(hash) : undefined;
+          if (hash && manifest) out.set(hash, manifest);
+        }
+        return out;
+      }),
+    },
     characters: {
       list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi

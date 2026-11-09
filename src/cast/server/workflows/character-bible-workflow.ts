@@ -213,6 +213,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         snapshotInputHash:
           await computeCharacterSheetHashFromDto(unclaimedFields),
       };
+      await scopedDb.inputManifests.record([unclaimed.snapshotInputHash]);
       const sheetVersionId = await step.do(
         `claim-character-sheet-${index}`,
         async () =>

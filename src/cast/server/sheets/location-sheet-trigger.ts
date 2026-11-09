@@ -111,8 +111,8 @@ export async function buildRegenerateLocationSheetPayload(params: {
     }),
     referencePhotoUrls: photos.map((photo) => photo.url).sort(),
   };
-  return {
-    ...partialFields,
-    snapshotInputHash: await computeLocationSheetHashFromDto(partialFields),
-  };
+  // Verify draws this payload too; the run-start sites record its manifest.
+  const snapshotInputHash =
+    await computeLocationSheetHashFromDto(partialFields);
+  return { ...partialFields, snapshotInputHash };
 }

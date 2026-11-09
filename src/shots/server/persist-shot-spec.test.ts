@@ -6,6 +6,7 @@ vi.mock('@/shots/input-hash', () => ({
   hashVisualPromptInput: async () => 'visual-hash',
   hashMotionPromptInput: async () => 'motion-hash',
   sha256Hex: async () => 'spec-input-hash',
+  stampInputHash: async () => 'spec-input-hash',
 }));
 
 import { persistShotSpec } from './persist-shot-spec';
@@ -82,6 +83,7 @@ const fakeDb = () => {
   const motion = vi.fn(async (_input: object) => ({}));
   // only the write methods persistShotSpec calls
   const db = asStub<Parameters<typeof persistShotSpec>[0]>({
+    inputManifests: { record: async () => undefined },
     shotSpecVersions: { write: spec },
     framePromptVersions: { write: frame },
     shotPromptVersions: { write: motion },

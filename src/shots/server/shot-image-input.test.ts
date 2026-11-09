@@ -45,6 +45,7 @@ function makeScopedDb() {
   const getSelectedVariant = vi.fn(async () => ({ model: 'flux_2_max' }));
   const getLastFailed = vi.fn(async () => ({ model: 'seedream_v5' }));
   const stub = {
+    inputManifests: { record: async () => undefined },
     framePromptVersions: { getSelected: getSelectedPrompt, write: writePrompt },
     frameVariants: {
       getSelected: getSelectedVariant,
@@ -264,6 +265,7 @@ describe('prepareShotImageWorkflowInput never prompts a still with the script (#
     return asStub<
       Parameters<typeof prepareShotImageWorkflowInput>[0]['scopedDb']
     >({
+      inputManifests: { record: vi.fn(async () => undefined) },
       framePromptVersions: { getSelected: vi.fn(async () => null) },
       frameVariants: {
         getSelected: vi.fn(async () => null),

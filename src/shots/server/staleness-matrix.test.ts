@@ -303,6 +303,10 @@ function shotDb(
   const empty = () => Promise.resolve([]);
   return asStub<ScopedDb>({
     framePromptVersions: {
+      inputManifests: {
+        record: async () => undefined,
+        getByHashes: async () => new Map(),
+      },
       getSelected: () =>
         Promise.resolve({
           text: world.visualPrompt,
@@ -1318,6 +1322,10 @@ const CAST_BASE: CastWorld = {
 function castDb(world: CastWorld) {
   return asStub<ScopedDb>({
     userId: 'user-1',
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     organizationId: 'org-1',
     sequences: { getById: () => Promise.resolve(world.sequence) },
     characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
@@ -1917,6 +1925,7 @@ async function musicVerdicts(world: MusicWorld) {
     audioModel: AUDIO_MODEL,
   });
   const scopedDb = asStub<ScopedDb>({
+    inputManifests: { getByHashes: async () => new Map() },
     shots: { listBySequence: () => Promise.resolve(world.shots) },
     scenes: { listBySequence: () => Promise.resolve(world.scenes) },
     sequenceVariants: {
@@ -1931,7 +1940,7 @@ async function musicVerdicts(world: MusicWorld) {
       getSelected: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
     },
   });
-  return readMusicPromptStaleness(
+  const { musicPrompt, musicTrack } = await readMusicPromptStaleness(
     scopedDb,
     asStub({
       id: 'seq',
@@ -1943,6 +1952,7 @@ async function musicVerdicts(world: MusicWorld) {
       musicPromptInputHash: world.promptStamped ? promptStamp : null,
     })
   );
+  return { musicPrompt, musicTrack };
 }
 
 type MusicRow = {

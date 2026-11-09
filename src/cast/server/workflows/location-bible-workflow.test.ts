@@ -90,6 +90,10 @@ function makeScopedDb(selectedBibleVersionId: string | null): WorkflowScopedDb {
     )
   );
   return asStub<WorkflowScopedDb>({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     locations: {
       createBulk,
       claimReference,

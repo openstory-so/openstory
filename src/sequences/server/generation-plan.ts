@@ -411,6 +411,12 @@ async function loadSheetVerdicts(
       const config = sequenceStyleFromRow(sequence, refs.style) ?? null;
       return { config, hash: await computeStyleConfigHash(config) };
     })());
+  // One read for every sheet's stored manifest (#2344), so causes do not
+  // grow the query count with the cast (#2082).
+  const manifests = await scopedDb.inputManifests.getByHashes([
+    ...wornLooks.map(({ owner, look }) => (look ?? owner).sheetInputHash),
+    ...locations.map((l) => l.referenceInputHash),
+  ]);
   const [characterSheets, locationSheets] = await Promise.all([
     Promise.all(
       wornLooks.map(async ({ owner, look }) => {
@@ -431,6 +437,7 @@ async function loadSheetVerdicts(
                 owner,
                 lookId: look ? look.id : owner.lookId,
                 styleConfigHash: (await sequenceStyle()).hash,
+                manifests,
                 rows: {
                   liveVersion: worn.selectedSheetVersionId
                     ? (sheetVersionById.get(worn.selectedSheetVersionId) ??
@@ -455,6 +462,7 @@ async function loadSheetVerdicts(
               sequence,
               location: l,
               styleConfig: (await sequenceStyle()).config,
+              manifests,
               rows: {
                 liveVersion: l.selectedReferenceVersionId
                   ? (locationVersionById.get(l.selectedReferenceVersionId) ??

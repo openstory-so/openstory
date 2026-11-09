@@ -90,6 +90,8 @@ export type SequenceSegment = {
    * Absent on a segment built before the field: treat a stale row as picture.
    */
   drift?: SelectedVersionDrift;
+  /** The pointers that moved, as display labels (#2344). Empty when current. */
+  causes: string[];
 };
 
 /**
@@ -331,6 +333,17 @@ const NO_REFERENCES: ReadonlySet<string> = new Set();
 /** `audio`: only the bound dialogue moved. `picture`: re-render. */
 export type SelectedVersionDrift = 'current' | 'audio' | 'picture';
 
+/** Plain words for the clip pointers a cause names (#2344). */
+const CLIP_CAUSES = {
+  motion: 'Clip: motion prompt',
+  frame: 'Clip: image',
+  dialogue: 'Clip: dialogue',
+  references: 'Clip: references',
+  duration: 'Clip: duration',
+  voice: 'Clip: voice',
+  reading: 'Clip: reading',
+} as const;
+
 /**
  * Same comparisons as {@link isSelectedVersionStale}, split so Update all
  * can lip-sync a clip whose picture still matches (#2263). Unknown
@@ -343,7 +356,28 @@ export function selectedVersionDrift(
   currentFrameByShot: ReadonlyMap<string, string | null>,
   live: LiveShotInputs
 ): SelectedVersionDrift {
-  if (!selected) return 'current';
+  return selectedVersionDriftDetail(
+    selected,
+    currentMotionByShot,
+    currentFrameByShot,
+    live
+  ).drift;
+}
+
+/**
+ * The drift and which pointers moved (#2344): the compare already knows,
+ * so the cause is exact. Every entry is walked so a packed clip names each
+ * moved member's pointer.
+ */
+function selectedVersionDriftDetail(
+  selected: SegmentVersionInput | undefined,
+  currentMotionByShot: ReadonlyMap<string, string | null>,
+  currentFrameByShot: ReadonlyMap<string, string | null>,
+  live: LiveShotInputs
+): { drift: SelectedVersionDrift; causes: string[] } {
+  if (!selected) return { drift: 'current', causes: [] };
+  const causes = new Set<string>();
+  let picture = false;
   let audio = false;
   for (const [index, entry] of selected.manifest.entries()) {
     // Both ids null = unknown provenance (pre-#1380 storyboard clips, or a
@@ -363,24 +397,49 @@ export function selectedVersionDrift(
       !modelTakesDialogueAudio(selected.model)
         ? null
         : (live.audioSourceKeyByShot.get(entry.shotId) ?? null);
-    const picture =
-      entry.motionPromptVersionId !== currentMotion ||
-      entry.frameVersionId !== currentFrame ||
-      dialogueMoved(entry, selected.model, currentMotion, live) ||
-      referenceKeysMoved(
+    const moved = {
+      [CLIP_CAUSES.motion]: entry.motionPromptVersionId !== currentMotion,
+      [CLIP_CAUSES.frame]: entry.frameVersionId !== currentFrame,
+      [CLIP_CAUSES.dialogue]: dialogueMoved(
+        entry,
+        selected.model,
+        currentMotion,
+        live
+      ),
+      [CLIP_CAUSES.references]: referenceKeysMoved(
         entry.referenceKeys,
         live.referenceIdentity,
         live.referencedEntitiesByShot.get(entry.shotId) ?? NO_REFERENCES
-      ) ||
-      durationMoved(entry, selected.model, live, selected.manifest.length > 1);
-    if (picture) return 'picture';
-    const audioMoved =
-      ((entry.audioSourceKey ?? null) !== currentAudio &&
-        !legacyPackedAudioMatches(selected, index, live)) ||
-      audioClipsMoved(entry, live);
-    if (audioMoved) audio = true;
+      ),
+      [CLIP_CAUSES.duration]: durationMoved(
+        entry,
+        selected.model,
+        live,
+        selected.manifest.length > 1
+      ),
+    };
+    for (const [cause, did] of Object.entries(moved)) {
+      if (did) {
+        picture = true;
+        causes.add(cause);
+      }
+    }
+    if (
+      (entry.audioSourceKey ?? null) !== currentAudio &&
+      !legacyPackedAudioMatches(selected, index, live)
+    ) {
+      audio = true;
+      causes.add(CLIP_CAUSES.voice);
+    }
+    if (audioClipsMoved(entry, live)) {
+      audio = true;
+      causes.add(CLIP_CAUSES.reading);
+    }
   }
-  return audio ? 'audio' : 'current';
+  return {
+    drift: picture ? 'picture' : audio ? 'audio' : 'current',
+    causes: [...causes],
+  };
 }
 
 export function isSelectedVersionStale(
@@ -584,7 +643,7 @@ export function assembleSequenceSegments(input: {
         ? segVersions.find((v) => v.id === segment.selectedVideoVersionId)
         : undefined;
     const newest = segVersions[segVersions.length - 1];
-    const drift = selectedVersionDrift(
+    const { drift, causes } = selectedVersionDriftDetail(
       selected,
       currentMotionByShot,
       currentFrameByShot,
@@ -600,6 +659,7 @@ export function assembleSequenceSegments(input: {
       model: selected?.model ?? newest?.model ?? null,
       stale: drift !== 'current',
       drift,
+      causes,
     };
   });
 }

@@ -29,7 +29,11 @@ export async function buildUserEditProvenance(
   args: {
     scopedDb: Pick<
       ScopedDb,
-      'characters' | 'locations' | 'sequenceElements' | 'styles'
+      | 'characters'
+      | 'locations'
+      | 'sequenceElements'
+      | 'styles'
+      | 'inputManifests'
     >;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
@@ -64,13 +68,12 @@ export async function buildUserEditProvenance(
             }
           : { channel: 'visual', prompt: args.prompt },
     });
-    return {
-      inputHash:
-        args.kind === 'motion'
-          ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
-          : await hashVisualPromptInput(ctx),
-      analysisModel: ctx.analysisModel,
-    };
+    const inputHash =
+      args.kind === 'motion'
+        ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
+        : await hashVisualPromptInput(ctx);
+    await scopedDb.inputManifests.record([inputHash]);
+    return { inputHash, analysisModel: ctx.analysisModel };
   } catch (err) {
     // Recording the edit with a null hash beats losing the edit.
     logger.warn(

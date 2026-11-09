@@ -27,6 +27,7 @@ const toWireStaleness = (
   media?: {
     dialogue: ShotStalenessResult['thumbnail'];
     video: ShotStalenessResult['thumbnail'];
+    videoCauses: string[];
   }
 ) => {
   const overlaid = overlayMediaStaleness(result, media);

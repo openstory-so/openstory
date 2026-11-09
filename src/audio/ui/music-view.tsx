@@ -58,6 +58,9 @@ type MusicViewProps = {
   /** Banner rendered above the audio player while `musicStatus === 'completed'`. */
   divergentBanner?: React.ReactNode;
   isMusicPromptStale?: boolean;
+  /** What moved under each stale verdict (#2344). */
+  musicPromptCauses?: readonly string[];
+  musicTrackCauses?: readonly string[];
   /**
    * The playing track's `sequence_music_variants.inputHash` no longer matches
    * the sequence's prompt / tags / shot durations (#1657). Regenerating is
@@ -187,6 +190,8 @@ export const MusicView: React.FC<MusicViewProps> = ({
   divergentBanner,
   isMusicPromptStale,
   isMusicTrackStale,
+  musicPromptCauses,
+  musicTrackCauses,
   onRegenerateMusicPrompt,
   isRegeneratingMusicPrompt,
   onIncludeMusicChange,
@@ -224,6 +229,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
         artifact="music-prompt"
         entityType="sequence"
         density="inline"
+        causes={musicPromptCauses}
         onRegenerate={onRegenerateMusicPrompt}
         isRegenerating={isRegeneratingMusicPrompt}
       />
@@ -234,6 +240,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
       artifact="music"
       entityType="sequence"
       density="inline"
+      causes={musicTrackCauses}
       onRegenerate={handleGenerate}
       isRegenerating={isGeneratingMusic}
     />

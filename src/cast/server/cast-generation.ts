@@ -248,6 +248,7 @@ export async function regenerateLocationSheet(
     location,
     imageModel: data.imageModel,
   });
+  await scopedDb.inputManifests.record([payload.snapshotInputHash]);
 
   // The claim (#1113): last kickoff wins, and any edit to the location's
   // inputs before this run lands revokes it.

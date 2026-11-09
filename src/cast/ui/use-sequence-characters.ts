@@ -27,7 +27,7 @@ import {
   softDeleteSequenceCharacterFn,
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
-import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
+import type { SheetVerdict } from '@/cast/server/production-staleness';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
@@ -347,7 +347,7 @@ export function useCharacterSheetStaleness(
   characterId: string,
   lookId?: string
 ) {
-  return useQuery<SheetStaleness>({
+  return useQuery<SheetVerdict>({
     queryKey: [
       ...sequenceCharacterKeys.sheetStaleness(sequenceId, characterId),
       lookId ?? 'default',

@@ -74,6 +74,7 @@ describe('readMusicPromptStaleness (#1783)', () => {
       analysisModel: 'm',
     });
     const scopedDb = asScopedDb({
+      inputManifests: { getByHashes: async () => new Map() },
       shots: { listBySequence: () => Promise.resolve(shotRows) },
       scenes: { listBySequence: () => Promise.resolve(sceneRows) },
       sequenceVariants: { getMusicById: () => Promise.resolve(null) },

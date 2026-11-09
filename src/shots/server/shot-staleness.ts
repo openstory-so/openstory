@@ -12,12 +12,24 @@ import {
 import { z } from 'zod';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
+  diffManifests,
+  type InputManifest,
   hashMotionPromptInput,
   hashVisualPromptInput,
+  manifestOfHash,
   motionPromptInputHashMatches,
   visualPromptInputHashMatches,
   voiceOnlyMovedSince,
 } from '@/shots/input-hash';
+import {
+  CHARACTER_LABELS,
+  describeManifestCauses,
+  LOCATION_LABELS,
+  LOOK_LABELS,
+  SCENE_LABELS,
+  STYLE_LABELS,
+  type ManifestArtifact,
+} from '@/shots/staleness-causes';
 import {
   hashShotSpecInput,
   specCurrencyFromScene,
@@ -42,17 +54,14 @@ import {
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
-  CharacterBible,
   CharacterBibleVersion,
   CharacterLookVersion,
   DbSceneId,
-  SceneNarrative,
   SceneScriptVersion,
   SequenceStyleVersion,
   Frame,
   FramePromptVersion,
   FrameVariant,
-  LocationBible,
   LocationBibleVersion,
   SequenceEvent,
   Shot,
@@ -128,7 +137,12 @@ export type ShotStalenessResult = {
   /** The shot's spec. `'untracked'` when the shot has none (#1923). */
   spec: ArtifactStaleness;
   liveHashes: ShotLiveHashes;
-  /** Inputs edited since the stale artifacts were generated (#1194), as display labels. Empty when fresh or undeterminable. */
+  /**
+   * What moved since the stale artifacts were generated, as display labels.
+   * Exact from the stored input manifest (#2344); a row stamped before
+   * manifests gets the timestamp guess (#1194). Empty when fresh or
+   * undeterminable.
+   */
   causes: string[];
 };
 
@@ -253,6 +267,8 @@ export type ShotStalenessReads = {
   selectedSpecByShot: ReadonlyMap<string, ShotSpecVersion>;
   /** Input history for the causes, loaded once and only when one is stale. */
   inputHistory: () => Promise<InputHistory>;
+  /** Stored manifests for every hash this batch can be stale against (#2344), loaded once and only when one is stale. */
+  manifests: () => Promise<ReadonlyMap<string, InputManifest>>;
 };
 
 /**
@@ -326,6 +342,7 @@ export async function loadShotStalenessReads(
     | 'sequenceEvents'
     | 'shotDialogue'
     | 'shotSpecVersions'
+    | 'inputManifests'
   > &
     InputHistoryDb,
   sequenceId: string,
@@ -385,9 +402,24 @@ export async function loadShotStalenessReads(
   }
 
   let inputHistory: Promise<InputHistory> | null = null;
+  let manifests: Promise<ReadonlyMap<string, InputManifest>> | null = null;
   return {
     inputHistory: () =>
       (inputHistory ??= loadInputHistory(scopedDb, sequenceId)),
+    manifests: () =>
+      (manifests ??= (async () => {
+        const stills = await scopedDb.frameVariants.getSelectedByFrameIds([
+          ...frameIds,
+        ]);
+        return scopedDb.inputManifests.getByHashes([
+          ...[...stills.values()].map((v) => v.inputHash),
+          ...[...selectedPromptByFrame.values()].map((v) => v.inputHash),
+          ...[...latestHashedPromptByFrame.values()].map((v) => v.inputHash),
+          ...[...selectedMotionByShot.values()].map((v) => v.inputHash),
+          ...[...latestHashedMotionByShot.values()].map((v) => v.inputHash),
+          ...[...selectedSpecByShot.values()].map((v) => v.inputHash),
+        ]);
+      })()),
     selectedPromptByFrame,
     latestPromptByFrame,
     latestHashedPromptByFrame,
@@ -693,6 +725,9 @@ export async function computeShotStaleness(args: {
     specVersionId: string | null;
     text?: string | null;
   } | null = null;
+  // The hashes each verdict compared against; the causes read their manifests.
+  let visualReferenceHash: string | null = null;
+  let motionReferenceHash: string | null = null;
 
   // Reference hash resolution: prefer the SELECTED version's `inputHash`, but
   // fall back to the most recent version with a non-null one for prompts whose
@@ -710,6 +745,7 @@ export async function computeShotStaleness(args: {
           : await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
       }
       const referenceHash = reference?.inputHash ?? null;
+      visualReferenceHash = referenceHash;
       // The live hash is taken with or without a stored one: a first prompt
       // (#1818) is claimed under it like a regeneration. No stored hash is
       // still no verdict.
@@ -789,6 +825,7 @@ export async function computeShotStaleness(args: {
             );
       }
       const referenceHash = reference?.inputHash ?? null;
+      motionReferenceHash = referenceHash;
       const latest = reads
         ? (reads.latestMotionByShot.get(shot.id) ?? null)
         : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
@@ -951,7 +988,7 @@ export async function computeShotStaleness(args: {
   }
 
   let causes: string[] = [];
-  if ([thumbnail, visualPrompt, motionPrompt].includes('stale')) {
+  if ([thumbnail, visualPrompt, motionPrompt, spec].includes('stale')) {
     try {
       const resolvedRefs: ShotStalenessRefs = refs ?? {
         characters: await scopedDb.characters.list(sequence.id),
@@ -961,7 +998,58 @@ export async function computeShotStaleness(args: {
           ? await scopedDb.styles.getById(sequence.styleId)
           : null,
       };
-      causes = await findStalenessCauses({
+      // Exact where the stamp left a manifest (#2344); the guess below only
+      // for the artifacts stamped before one.
+      const compares: ManifestCompare[] = [
+        {
+          artifact: 'still',
+          stale: thumbnail === 'stale',
+          stored: selectedImage?.inputHash ?? null,
+          live: liveHashes.thumbnail,
+        },
+        {
+          artifact: 'visual-prompt',
+          stale: visualPrompt === 'stale',
+          stored: visualReferenceHash,
+          live: liveHashes.visualPrompt,
+        },
+        {
+          artifact: 'motion-prompt',
+          stale: motionPrompt === 'stale',
+          stored: motionReferenceHash,
+          live: liveHashes.motionPrompt,
+        },
+        {
+          artifact: 'spec',
+          stale: spec === 'stale',
+          stored: selectedSpec?.inputHash ?? null,
+          live: liveHashes.spec,
+        },
+      ];
+      const storedManifests = reads
+        ? await reads.manifests()
+        : await scopedDb.inputManifests.getByHashes(
+            compares.filter((c) => c.stale).map((c) => c.stored)
+          );
+      const exact = exactStalenessCauses(
+        storedManifests,
+        shot.id,
+        resolvedRefs,
+        compares
+      );
+      causes = exact.causes;
+      const guess = exact.guessed;
+      if (guess.size === 0) {
+        return {
+          thumbnail,
+          visualPrompt,
+          motionPrompt,
+          spec,
+          liveHashes,
+          causes,
+        };
+      }
+      const guessed = await findStalenessCauses({
         scopedDb,
         sequence,
         shot,
@@ -977,15 +1065,18 @@ export async function computeShotStaleness(args: {
           : await loadInputHistory(scopedDb, sequence.id),
         generatedAt: {
           thumbnail:
-            thumbnail === 'stale' && selectedImage
+            guess.has('still') && selectedImage
               ? (selectedImage.generatedAt ?? selectedImage.createdAt)
               : undefined,
-          visualPrompt:
-            visualPrompt === 'stale' ? selectedPrompt?.createdAt : undefined,
-          motionPrompt:
-            motionPrompt === 'stale' ? selectedMotion?.createdAt : undefined,
+          visualPrompt: guess.has('visual-prompt')
+            ? selectedPrompt?.createdAt
+            : undefined,
+          motionPrompt: guess.has('motion-prompt')
+            ? selectedMotion?.createdAt
+            : undefined,
         },
       });
+      causes = [...new Set([...causes, ...guessed])];
     } catch (error) {
       // A hint, never a verdict: an unreadable row just leaves it unnamed.
       logger.warn(`staleness causes uncomputable for shot ${shot.id}:`, {
@@ -1000,26 +1091,61 @@ export async function computeShotStaleness(args: {
 const after = (d: Date | null | undefined, at: number) =>
   d != null && d.getTime() > at;
 
-/** Plain words for the bible fields a cause names (#1600). */
-const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
-  name: 'name',
-  age: 'age',
-  gender: 'gender',
-  ethnicity: 'ethnicity',
-  physicalDescription: 'description',
-  rendering: 'rendering',
-  personality: 'personality',
-  movement: 'movement',
-  voiceOnly: 'voice only',
-  isPerson: 'person',
-  consistencyTag: 'tag',
+type ManifestCompare = {
+  artifact: ManifestArtifact;
+  stale: boolean;
+  /** The hash the verdict compared against. */
+  stored: string | null;
+  /** The live hash it computed, whose manifest is still in memory. */
+  live: string | null;
 };
 
 /**
- * The look fields a cause names (#2015). The name is a label: renaming a
- * look redraws nothing.
+ * Causes from the stored manifests (#2344): for each stale artifact whose
+ * stamp left one, the keys whose digest moved. `guessed` names the stale
+ * artifacts with no stored manifest, which keep the timestamp guess. A
+ * stale verdict whose manifests do not differ is a stamp ≠ verify bug:
+ * logged, and named by nothing.
  */
-const LOOK_LABELS = { clothing: 'clothing', styling: 'styling' } as const;
+function exactStalenessCauses(
+  stored: ReadonlyMap<string, InputManifest>,
+  shotId: string,
+  refs: ShotStalenessRefs,
+  compares: readonly ManifestCompare[]
+): { causes: string[]; guessed: Set<ManifestArtifact> } {
+  const stale = compares.filter((c) => c.stale);
+  const guessed = new Set<ManifestArtifact>();
+  const causes = new Set<string>();
+  if (stale.length === 0) return { causes: [], guessed };
+  const names = {
+    characters: new Map(refs.characters.map((c) => [c.characterId, c.name])),
+    locations: new Map(refs.locations.map((l) => [l.locationId, l.name])),
+  };
+  for (const compare of stale) {
+    const was = compare.stored ? stored.get(compare.stored) : undefined;
+    const now = compare.live ? manifestOfHash(compare.live) : null;
+    if (!was || !now) {
+      guessed.add(compare.artifact);
+      continue;
+    }
+    const moved = diffManifests(was, now);
+    if (moved.length === 0) {
+      logger.error(
+        `stale ${compare.artifact} on shot ${shotId} with no differing input: stamp and verify disagree`,
+        { stored: compare.stored, live: compare.live }
+      );
+      continue;
+    }
+    for (const cause of describeManifestCauses(
+      compare.artifact,
+      moved,
+      names
+    )) {
+      causes.add(cause);
+    }
+  }
+  return { causes: [...causes], guessed };
+}
 
 /**
  * What moved in a look since the version live then. Styling is compared as
@@ -1041,17 +1167,6 @@ const lookMoved = (
     ? []
     : [LOOK_LABELS.styling]),
 ];
-
-const LOCATION_LABELS: Record<keyof LocationBible, string> = {
-  name: 'name',
-  type: 'interior/exterior',
-  description: 'description',
-  architecturalStyle: 'architecture',
-  keyFeatures: 'features',
-  ambiance: 'ambiance',
-  rendering: 'rendering',
-  consistencyTag: 'tag',
-};
 
 /**
  * The bible fields that moved since `at` (#1600): the version live then —
@@ -1080,21 +1195,6 @@ function versionAt<V extends { createdAt: Date }>(
   return then;
 }
 
-/** Plain words for the style knobs a cause names (the hash body's keys). */
-const STYLE_LABELS: Record<string, string> = {
-  mood: 'mood',
-  artStyle: 'art style',
-  lighting: 'lighting',
-  colorPalette: 'palette',
-  cameraWork: 'camera',
-  referenceFilms: 'references',
-  colorGrading: 'grading',
-  medium: 'medium',
-  shots: 'shots',
-  pace: 'pace',
-  energy: 'energy',
-};
-
 /**
  * The style knobs that moved since `at` (#1600): the snapshot live then
  * against the live one, compared over the same body the hashes read. Null
@@ -1120,14 +1220,6 @@ function styleMoved(
     return null;
   }
 }
-
-/** Plain words for the scene fields a cause names; the title is a label. */
-const SCENE_LABELS: Partial<Record<keyof SceneNarrative, string>> = {
-  location: 'heading',
-  timeOfDay: 'time of day',
-  storyBeat: 'story beat',
-  continuity: 'cast and tags',
-};
 
 async function loadSceneContext(
   scopedDb: Pick<ScopedDb, 'scenes' | 'sceneScriptVersions'>,

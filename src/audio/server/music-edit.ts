@@ -302,6 +302,7 @@ export async function rewriteMusicPrompt(
     sceneSummaries,
     analysisModel: analysisModelId,
   });
+  await scopedDb.inputManifests.record([liveHash]);
   if (
     await musicPromptInputHashMatches(
       sequence.musicPromptInputHash,

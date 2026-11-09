@@ -42,6 +42,8 @@ export type BannerDensity = Extract<
 
 type StalenessIndicatorBaseProps = {
   entityType: StalenessEntityType;
+  /** What moved (#2344), as labels; shown under the inline banner. */
+  causes?: readonly string[];
   /** Workflow currently in flight — disables the regenerate trigger and shows a spinner so rapid clicks don't enqueue duplicate runs. */
   isRegenerating?: boolean;
   className?: string;
@@ -309,6 +311,9 @@ export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (
       <AlertTitle>Inputs changed</AlertTitle>
       <AlertDescription>
         This {ARTIFACT_LABEL[inlineArtifact]} was generated from earlier inputs.
+        {props.causes && props.causes.length > 0 ? (
+          <span className="block">Changed: {props.causes.join(', ')}</span>
+        ) : null}
       </AlertDescription>
       <AlertAction className="flex items-center gap-1">
         <Button

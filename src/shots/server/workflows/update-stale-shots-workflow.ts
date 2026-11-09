@@ -700,11 +700,16 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
           const payload = await step.do(
             `finish-look-sheet-${draft.lookId}`,
-            () =>
-              finishCharacterSheetPayload(draft, {
+            async () => {
+              const finished = await finishCharacterSheetPayload(draft, {
                 url: landed.sheetImageUrl,
                 versionId,
-              })
+              });
+              await scopedDb.inputManifests.record([
+                finished.snapshotInputHash,
+              ]);
+              return finished;
+            }
           );
           await spawnCharacterSheet(payload, sheetVersionId);
         })
@@ -865,6 +870,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               refs: renderRefs,
               deriveMissingPrompt: false,
             });
+            await scopedDb.inputManifests.record([prepared.snapshotInputHash]);
             return JSON.stringify({
               ...prepared,
               targetVariantId: alternate

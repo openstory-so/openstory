@@ -70,6 +70,9 @@ export type DerivedPromptDb = {
       inputHash: string
     ) => Promise<void>;
   };
+  inputManifests: {
+    record: (hashes: readonly (string | null)[]) => Promise<void>;
+  };
 };
 
 export type CompleteDerivedPromptsInput = {
@@ -142,6 +145,7 @@ export async function completeDerivedPrompts(
       referenceOnly: input.referenceOnly,
     })
   );
+  await db.inputManifests.record([visualHash, motionHash]);
 
   let visualVersionId: string | null = null;
   const writeStill =

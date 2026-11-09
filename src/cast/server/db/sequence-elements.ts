@@ -39,6 +39,7 @@ import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { promoteLegacyMotionDialogue } from '@/shots/server/db/shot-prompt-versions';
 import { shotPromptDialogueResolver } from '@/shots/server/shot-dialogue';
 import { hashShotSpecInput } from '@/shots/shot-spec-currency';
+import { recordInputManifests } from '@/shots/server/db/input-manifests';
 import { canonicalStoredShotSpec } from '@/shots/shot-list.schema';
 import { generateId } from '@/platform/id';
 import { sceneNarrativeOf } from '@/shots/scene-narrative';
@@ -557,6 +558,7 @@ export function createSequenceElementsMethods(db: Database) {
           elementTags: continuity?.elementTags ?? [],
           environmentTag: continuity?.environmentTag ?? '',
         });
+        await recordInputManifests(db, [inputHash]);
         const textUnchanged =
           JSON.stringify(canonicalStoredShotSpec(nextSpec)) ===
           JSON.stringify(canonicalStoredShotSpec(version.spec));

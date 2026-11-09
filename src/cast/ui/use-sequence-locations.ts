@@ -24,7 +24,7 @@ import {
   softDeleteSequenceLocationFn,
   updateSequenceLocationFn,
 } from '@/cast/sequence-locations.fn';
-import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
+import type { SheetVerdict } from '@/cast/server/production-staleness';
 import {
   invalidateLocations,
   sequenceLocationKeys,
@@ -147,7 +147,7 @@ export function useLocationSheetStaleness(
   sequenceId: string | null,
   locationDbId: string
 ) {
-  return useQuery<SheetStaleness>({
+  return useQuery<SheetVerdict>({
     queryKey: sequenceLocationKeys.sheetStaleness(sequenceId, locationDbId),
     queryFn: () =>
       getLocationSheetStalenessFn({ data: { sequenceId, locationDbId } }),

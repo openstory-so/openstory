@@ -85,12 +85,16 @@ export const contextReadTools = [
   ),
   productionRead(
     'get_reference_staleness',
-    'Compute character or location reference-sheet freshness using the existing sheet input hashes. Voice-only characters report applicable false. Does not generate sheets.',
+    'Compute character or location reference-sheet freshness using the existing sheet input hashes, with the inputs that moved as causes. Voice-only characters report applicable false. Does not generate sheets.',
     sequenceInput.extend({
       kind: z.enum(['character', 'location']),
       entityId: ulidSchema,
     }),
-    z.object({ status: artifactStalenessSchema, applicable: z.boolean() }),
+    z.object({
+      status: artifactStalenessSchema,
+      applicable: z.boolean(),
+      causes: z.array(z.string()),
+    }),
     async (input, { scopedDb }) =>
       readReferenceStaleness(
         scopedDb,
@@ -101,26 +105,34 @@ export const contextReadTools = [
   ),
   productionRead(
     'get_render_segment_staleness',
-    'Compare the selected video manifest against current member shots, frames, motion prompts and dialogue voice bindings. This detailed dependency read does not plan or start generation.',
+    'Compare the selected video manifest against current member shots, frames, motion prompts and dialogue voice bindings, naming the pointers that moved as causes. This detailed dependency read does not plan or start generation.',
     sequenceInput.extend({ segmentId: ulidSchema }),
-    z.object({ status: artifactStalenessSchema }),
+    z.object({
+      status: artifactStalenessSchema,
+      causes: z.array(z.string()),
+    }),
     async (input, { scopedDb }) =>
       readSegmentStaleness(scopedDb, input.sequenceId, input.segmentId)
   ),
   productionRead(
     'get_music_staleness',
-    'Compute sequence music-prompt freshness with the shared editor derivation. Track-level freshness is untracked: the product currently derives music regeneration from prompt changes.',
+    'Compute sequence music-prompt freshness with the shared editor derivation, with the inputs that moved as causes. Track-level freshness is untracked: the product currently derives music regeneration from prompt changes.',
     sequenceInput,
     z.object({
       musicPrompt: artifactStalenessSchema,
+      causes: z.array(z.string()),
       track: z.literal('untracked'),
     }),
-    async (input, { scopedDb }) => ({
-      ...(await readMusicPromptStaleness(
+    async (input, { scopedDb }) => {
+      const read = await readMusicPromptStaleness(
         scopedDb,
         await productionAccess(scopedDb).sequence(input.sequenceId)
-      )),
-      track: 'untracked' as const,
-    })
+      );
+      return {
+        musicPrompt: read.musicPrompt,
+        causes: read.musicPromptCauses,
+        track: 'untracked' as const,
+      };
+    }
   ),
 ];

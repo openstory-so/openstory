@@ -85,6 +85,7 @@ async function references(
   // this sheet-only plan only reads the character list and organization id
   const scopedDb = asStub<ScopedDb>({
     organizationId: 'org',
+    inputManifests: { record: async () => undefined },
     characters: { list: async () => [character] },
     characterSheetVariants: { findReusable },
   });

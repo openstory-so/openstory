@@ -157,6 +157,8 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           return null;
         }
 
+        const tileHash = await tileInputHash(input);
+        await scopedDb.inputManifests.record([tileHash]);
         const version = await scopedDb.frameVariants.appendVersion({
           frameId: frame.id,
           sequenceId: input.sequenceId,
@@ -168,7 +170,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           // inherit which prompt the grid was generated from (#1070).
           promptVersionId: input.promptVersionId ?? null,
           // What a tile picked from this sheet inherits (#712).
-          inputHash: await tileInputHash(input),
+          inputHash: tileHash,
           status: 'generating',
           workflowRunId,
           // A sheet is never the frame's still, so its render never speaks

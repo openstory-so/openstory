@@ -369,7 +369,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   // Determine if currently regenerating (from realtime or mutation pending)
   const isSheetGenerating =
     regenerateSheet.isPending || character?.sheetStatus === 'generating';
-  const isSheetStale = sheetStaleness === 'stale';
+  const isSheetStale = sheetStaleness?.status === 'stale';
   // A live URL can exist before the first sheet has ever completed.
   // Generate vs regenerate follows whether a sheet has landed before —
   // `sheetGeneratedAt` / selection pointer.
@@ -502,6 +502,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             entityType="character"
             divergentVariantId={characterDivergentVariant?.id}
             isStale={isSheetStale}
+            causes={sheetStaleness?.causes}
             onRegenerate={faceBlocked ? undefined : handleRegenerateSheet}
             onCompareDivergent={
               characterDivergentVariant

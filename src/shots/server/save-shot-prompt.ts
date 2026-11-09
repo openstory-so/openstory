@@ -139,6 +139,7 @@ export async function saveShotPrompt(
                 await loadShotPromptDialogue(scopedDb, sequence.id, shot)
               ).dialogue,
             });
+      await scopedDb.inputManifests.record([inputHash]);
       analysisModel = ctx.analysisModel;
     } catch (error) {
       logger.warn(

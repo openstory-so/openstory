@@ -1466,7 +1466,7 @@ describe('complete production reads', () => {
         kind: 'character',
         entityId: characterId,
       })
-    ).toEqual({ status: 'untracked', applicable: false });
+    ).toEqual({ status: 'untracked', applicable: false, causes: [] });
     await db
       .update(videoVariants)
       .set({
@@ -1487,7 +1487,7 @@ describe('complete production reads', () => {
       .where(eq(videoVariants.id, videoId));
     expect(
       await data('get_render_segment_staleness', { sequenceId, segmentId })
-    ).toEqual({ status: 'stale' });
+    ).toEqual({ status: 'stale', causes: ['Clip: motion prompt'] });
   });
   it('keeps a segment fresh after its shot is regrouped into a new segment', async () => {
     const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
@@ -1512,7 +1512,7 @@ describe('complete production reads', () => {
       .where(eq(videoVariants.id, videoId));
     const staleness = () =>
       data('get_render_segment_staleness', { sequenceId, segmentId });
-    expect(await staleness()).toEqual({ status: 'fresh' });
+    expect(await staleness()).toEqual({ status: 'fresh', causes: [] });
     const regroupedId = generateId();
     await db
       .insert(renderSegments)
@@ -1521,7 +1521,7 @@ describe('complete production reads', () => {
       .update(shots)
       .set({ renderSegmentId: regroupedId })
       .where(eq(shots.id, shotId));
-    expect(await staleness()).toEqual({ status: 'fresh' });
+    expect(await staleness()).toEqual({ status: 'fresh', causes: [] });
   });
   it('exposes working audio, export source identity and historical activity data without mutations', async () => {
     expect(

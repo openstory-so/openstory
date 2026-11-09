@@ -684,6 +684,7 @@ export async function addModelToSequence(
       skipped++;
       continue;
     }
+    await scopedDb.inputManifests.record([input.snapshotInputHash]);
     inputs.push({
       ...input,
       frameId: anchorFrame?.id,

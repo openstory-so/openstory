@@ -77,6 +77,7 @@ export async function loadShotSpecState(
   const currencyHash = await hashShotSpecInput(
     specCurrencyFromScene(scene, promptDialogue.dialogue.lines)
   );
+  await scopedDb.inputManifests.record([currencyHash]);
   // A null stamp predates the column: read as current, not as a Rewrite.
   const verdict: ShotSpecVerdict = shot.pendingSpecVersionId
     ? 'updating'
@@ -175,6 +176,7 @@ export async function regenerateShotPrompt(
     const narrowedMotion = narrowMotion(motion.text);
     const visualHash = await hashVisualPromptInput(narrowedVisual);
     const motionHash = await hashMotionPromptInput(narrowedMotion);
+    await scopedDb.inputManifests.record([visualHash, motionHash]);
     const writeVisual = !shotReferenceOnly && !visualKept;
     const writeMotion = !motionKept;
     if (!writeVisual && !writeMotion) return result({ alreadyUpToDate: true });
@@ -256,6 +258,7 @@ export async function regenerateShotPrompt(
   const motionHash = await hashMotionPromptInput(
     narrowMotion(motionSelected?.text ?? null)
   );
+  await scopedDb.inputManifests.record([visualHash, motionHash]);
   const claimId = await scopedDb.shotSpecVersions.claim(shot.id);
   let visualClaimId: string | null = null;
   let motionClaimId: string | null = null;

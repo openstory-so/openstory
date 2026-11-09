@@ -141,6 +141,9 @@ export async function buildPlanReferences(args: {
         buildRegenerateLocationSheetPayload({ ...context, location })
       )
   );
+  await scopedDb.inputManifests.record(
+    locationSheets.map((s) => s.snapshotInputHash)
+  );
 
   const owedElements = elements.filter((el) => elementIds.has(el.id));
   let elementSheets: ElementSheetWorkflowInput | null = null;

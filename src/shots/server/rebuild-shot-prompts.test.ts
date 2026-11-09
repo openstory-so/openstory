@@ -82,6 +82,7 @@ function recordingDb(): {
   > = [];
   const stamps: Array<[string, string]> = [];
   const db: DerivedPromptDb = {
+    inputManifests: { record: async () => undefined },
     framePromptVersions: {
       completePendingAiVersion: async (input) => {
         visuals.push(input);

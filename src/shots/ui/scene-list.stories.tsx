@@ -145,6 +145,7 @@ const perSegmentSegments: SequenceSegment[] = [
     versions: [psVersion('v-1a', 'kling_v3_pro')],
     model: 'kling_v3_pro',
     stale: false,
+    causes: [],
   },
   {
     id: 'seg-1b',
@@ -160,6 +161,7 @@ const perSegmentSegments: SequenceSegment[] = [
     ],
     model: 'kling_v3_pro',
     stale: true,
+    causes: ['Clip: motion prompt'],
   },
   {
     id: 'seg-2',
@@ -170,6 +172,7 @@ const perSegmentSegments: SequenceSegment[] = [
     versions: [psVersion('v-2', 'seedance_v2')],
     model: 'seedance_v2',
     stale: false,
+    causes: [],
   },
   // Single-shot segment → still bracketed, so its model shows (a different
   // scene, so a different model is fine).
@@ -182,6 +185,7 @@ const perSegmentSegments: SequenceSegment[] = [
     versions: [psVersion('v-3', 'veo3_1')],
     model: 'veo3_1',
     stale: false,
+    causes: [],
   },
 ];
 

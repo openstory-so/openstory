@@ -314,6 +314,7 @@ export async function prepareShotImageWorkflowInput(args: {
     model,
     sequence.aspectRatio
   );
+  await scopedDb.inputManifests.record([snapshotInputHash]);
 
   return {
     userId,

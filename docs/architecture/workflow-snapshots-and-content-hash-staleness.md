@@ -98,12 +98,25 @@ What this buys:
 - **A sheet records the bible it was made from.** The trigger snapshots
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
-- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version
-  live when the stale artifact was made (the newest created at or before
-  it) and diffs it against the live one: `Character "Jack": clothing,
-  sheet`. A row touched without a bible change (a claim, a voice) is not
-  named. An artifact older than the row's history falls back to the old
-  timestamp guess.
+- **Causes are a manifest diff (#2344).** Every hash goes through
+  `sha256Hex`, which also keeps a manifest of the canonical body: leaf path
+  → short digest (`character:<id>/standardClothing`, `styleConfig/lighting`,
+  `scene/metadata/timeOfDay`, `still`). A stamp site records it in
+  `input_manifests(hash PRIMARY KEY, manifest)` through
+  `scopedDb.inputManifests.record` right after the hash lands, insert or
+  ignore, so identical inputs share a row and no artifact table grows a
+  column. Verify computes the live manifest and names the keys whose digest
+  differs from the stored one (`describeManifestCauses`,
+  `src/shots/staleness-causes.ts`): `Character "Jack": clothing, styling`.
+  Exact by construction. A stale verdict whose manifests differ in no key
+  is a stamp ≠ verify bug: it is logged and shown with no cause, never a
+  guess. Sheets, the shot spec, music and the still get causes this way;
+  a clip's come from the pointer compare, which already knows which
+  pointer moved (`selectedVersionDriftDetail`). A row stamped before
+  manifests existed, or one accepted as a legacy digest until
+  `LEGACY_HASH_UNTIL`, has no manifest: only there does the old
+  `findStalenessCauses` timestamp guess still answer. Delete it with
+  `LEGACY_HASH_UNTIL`.
   Characters, locations and elements come from `resolveShotReferences`: the
   union of what the shot's stale prompts name, the same
   resolution each prompt hash and the clip's `referenceKeys` compare use. A

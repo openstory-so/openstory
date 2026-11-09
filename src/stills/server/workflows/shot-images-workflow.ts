@@ -197,6 +197,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
               : undefined;
           }
         }
+        await scopedDb.inputManifests.record(Object.values(out));
         return out;
       }
     );

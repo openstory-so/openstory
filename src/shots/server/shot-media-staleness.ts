@@ -21,6 +21,8 @@ import type { StartFrameSequence } from '@/shots/use-start-frame';
 export type ShotMediaStaleness = {
   dialogue: ArtifactStaleness;
   video: ArtifactStaleness;
+  /** Which clip pointers moved (#2344); empty unless the clip is stale. */
+  videoCauses: string[];
 };
 
 /** Reads the caller already made, and the shots with a speech in flight. */
@@ -73,7 +75,12 @@ export async function loadShotMediaStates(
 
   const videoByShot = new Map<
     string,
-    { hasVideo: boolean; alreadyStale: boolean; generating: boolean }
+    {
+      hasVideo: boolean;
+      alreadyStale: boolean;
+      generating: boolean;
+      causes: string[];
+    }
   >();
   for (const segment of assembled) {
     const generating = versions.some(
@@ -84,6 +91,7 @@ export async function loadShotMediaStates(
         hasVideo: segment.selectedVersion !== null,
         alreadyStale: segment.stale,
         generating,
+        causes: segment.causes,
       });
     }
   }
@@ -110,6 +118,7 @@ export async function loadShotMediaStates(
           alreadyStale: video?.alreadyStale ?? false,
           generating: video?.generating ?? false,
         }),
+        videoCauses: video?.causes ?? [],
       },
     });
   }
@@ -121,6 +130,7 @@ export function overlayMediaStaleness<
     thumbnail: ArtifactStaleness;
     visualPrompt: ArtifactStaleness;
     motionPrompt: ArtifactStaleness;
+    causes: string[];
   },
 >(result: T, media: ShotMediaStaleness | undefined): T & ShotMediaStaleness {
   if (
@@ -128,11 +138,20 @@ export function overlayMediaStaleness<
     result.visualPrompt === 'generating' &&
     result.motionPrompt === 'generating'
   ) {
-    return { ...result, dialogue: 'generating', video: 'generating' };
+    return {
+      ...result,
+      dialogue: 'generating',
+      video: 'generating',
+      videoCauses: [],
+    };
   }
+  const videoCauses = media?.video === 'stale' ? media.videoCauses : [];
   return {
     ...result,
     dialogue: media?.dialogue ?? 'untracked',
     video: media?.video ?? 'untracked',
+    videoCauses,
+    // The clip's moved pointers join the shot's causes (#2344).
+    causes: [...new Set([...result.causes, ...videoCauses])],
   };
 }

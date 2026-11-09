@@ -185,6 +185,10 @@ function buildScopedDb(
   } = {}
 ): ScopedDb {
   return asScopedDb({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     sequences: {
       getById: () =>
         Promise.resolve({

@@ -72,6 +72,7 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
         sceneSummaries,
         analysisModel: analysisModelId,
       });
+      await scopedDb.inputManifests.record([inputHash]);
 
       await step.do('save-music-prompt-to-db', async () => {
         const reinforcedTags = reinforceInstrumentalTags(

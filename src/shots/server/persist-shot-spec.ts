@@ -33,7 +33,10 @@ import { shotSpecForItem, type ShotWorkItem } from './shot-work-items';
 export async function persistShotSpec(
   scopedDb: Pick<
     WorkflowScopedDb,
-    'shotSpecVersions' | 'framePromptVersions' | 'shotPromptVersions'
+    | 'shotSpecVersions'
+    | 'framePromptVersions'
+    | 'shotPromptVersions'
+    | 'inputManifests'
   >,
   item: ShotWorkItem,
   context: Omit<VisualPromptHashInput, 'scene'> & { referenceOnly: boolean }
@@ -52,6 +55,7 @@ export async function persistShotSpec(
   const inputHash = await hashShotSpecInput(
     specCurrencyFromScene(item.scene, lines)
   );
+  await scopedDb.inputManifests.record([inputHash]);
   const version = await scopedDb.shotSpecVersions.write({
     shotId,
     spec: stored,
@@ -72,18 +76,28 @@ export async function persistShotSpec(
 
   if (!referenceOnly && frameId !== null) {
     const text = deriveStillPrompt(stored, item.scene, context.styleConfig);
+    const visualHash = await hashVisualPromptInput(
+      narrowShotPromptContext(full, { channel: 'visual', prompt: text })
+    );
+    await scopedDb.inputManifests.record([visualHash]);
     await scopedDb.framePromptVersions.write({
       frameId,
       source: 'derived',
       specVersionId: version.id,
       text,
-      inputHash: await hashVisualPromptInput(
-        narrowShotPromptContext(full, { channel: 'visual', prompt: text })
-      ),
+      inputHash: visualHash,
       analysisModel: context.analysisModel,
     });
   }
   const motion = deriveMotionPrompt(stored, { referenceOnly });
+  const motionHash = await hashMotionPromptInput(
+    narrowShotPromptContext(full, {
+      channel: 'motion',
+      prompt: motion.text,
+      referenceOnly,
+    })
+  );
+  await scopedDb.inputManifests.record([motionHash]);
   await scopedDb.shotPromptVersions.write({
     shotId,
     promptType: 'motion',
@@ -92,13 +106,7 @@ export async function persistShotSpec(
     text: motion.text,
     audio: motion.audio,
     usesStartFrame: !referenceOnly,
-    inputHash: await hashMotionPromptInput(
-      narrowShotPromptContext(full, {
-        channel: 'motion',
-        prompt: motion.text,
-        referenceOnly,
-      })
-    ),
+    inputHash: motionHash,
     analysisModel: context.analysisModel,
   });
   return { stillPrompt: !referenceOnly };

@@ -796,6 +796,15 @@ export async function computePlan(args: {
     targets.push(decision.target);
     sceneForBibles ??= scene;
   }
+  // The live hashes the claims and spec rows below are stamped with (#2344).
+  await scopedDb.inputManifests.record(
+    targets.flatMap((t) => [
+      t.visualLiveHash,
+      t.motionLiveHash,
+      t.imageLiveHash,
+      t.specInputHash,
+    ])
+  );
 
   if (targets.length === 0 || !sceneForBibles) {
     return { ...empty, skipped };

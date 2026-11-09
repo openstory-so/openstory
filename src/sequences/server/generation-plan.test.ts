@@ -157,9 +157,12 @@ function character(id: string, name: string, sheetImageUrl: string | null) {
   };
 }
 
-function asScopedDb<T>(stub: T): ScopedDb {
+function asScopedDb<T extends object>(stub: T): ScopedDb {
   // test stub
-  return asStub<ScopedDb>(stub);
+  return asStub<ScopedDb>({
+    inputManifests: { getByHashes: async () => new Map() },
+    ...stub,
+  });
 }
 
 describe('computeGenerationPlan', () => {

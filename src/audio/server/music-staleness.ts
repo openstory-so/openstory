@@ -4,7 +4,16 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
-import { musicPromptInputHashMatches } from '@/shots/input-hash';
+import {
+  computeMusicPromptInputHash,
+  diffManifests,
+  manifestOfHash,
+  musicPromptInputHashMatches,
+} from '@/shots/input-hash';
+import {
+  describeManifestCauses,
+  type ManifestArtifact,
+} from '@/shots/staleness-causes';
 import { musicSceneSummariesFromRows } from './workflows/music-scene-summaries';
 import {
   musicTrackStaleness,
@@ -19,6 +28,34 @@ const logger = getLogger(['openstory', 'music', 'staleness']);
  * durations, 10s each when unset, 30s floor for an empty sequence). Rounded,
  * so a fractional sum hashes the same from the plan and from this read.
  */
+/**
+ * What moved between a stale stamp and now (#2344): the stored manifest
+ * against the live one. Empty for a row stamped before manifests; a stale
+ * verdict whose manifests match is a stamp ≠ verify bug, logged and unnamed.
+ */
+async function musicCauses(
+  scopedDb: Pick<ScopedDb, 'inputManifests'>,
+  artifact: ManifestArtifact,
+  stored: string,
+  live: string
+): Promise<string[]> {
+  const was = (await scopedDb.inputManifests.getByHashes([stored])).get(stored);
+  const now = manifestOfHash(live);
+  if (!was || !now) return [];
+  const moved = diffManifests(was, now);
+  if (moved.length === 0) {
+    logger.error(
+      `stale ${artifact} with no differing input: stamp and verify disagree`,
+      {
+        stored,
+        live,
+      }
+    );
+    return [];
+  }
+  return describeManifestCauses(artifact, moved);
+}
+
 export function musicRequestDurationSeconds(
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
 ): number {
@@ -31,25 +68,33 @@ export function musicRequestDurationSeconds(
  * (#1657). The track's own model is the lever it was rendered with.
  */
 async function readMusicTrackStaleness(
-  scopedDb: Pick<ScopedDb, 'sequenceVariants'>,
+  scopedDb: Pick<ScopedDb, 'sequenceVariants' | 'inputManifests'>,
   sequence: Pick<
     Sequence,
     'selectedMusicVariantId' | 'musicPrompt' | 'musicTags'
   >,
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
-): Promise<MusicTrackStaleness> {
-  if (!sequence.selectedMusicVariantId) return 'untracked';
+): Promise<{ status: MusicTrackStaleness; causes: string[] }> {
+  const untracked = { status: 'untracked' as const, causes: [] };
+  if (!sequence.selectedMusicVariantId) return untracked;
   const track = await scopedDb.sequenceVariants.getMusicById(
     sequence.selectedMusicVariantId
   );
-  if (!track || track.status !== 'completed') return 'untracked';
-  return await musicTrackStaleness({
+  if (!track || track.status !== 'completed') return untracked;
+  const { status, live } = await musicTrackStaleness({
     storedInputHash: track.inputHash,
     prompt: sequence.musicPrompt,
     tags: sequence.musicTags,
     requestDurationSeconds: musicRequestDurationSeconds(shots),
     audioModel: track.model,
   });
+  return {
+    status,
+    causes:
+      status === 'stale' && track.inputHash && live
+        ? await musicCauses(scopedDb, 'music-track', track.inputHash, live)
+        : [],
+  };
 }
 
 /** Shared read-only derivation used by editor and production inspection. */
@@ -66,6 +111,8 @@ export async function readMusicPromptStaleness(
     return {
       musicPrompt: 'generating' as const,
       musicTrack: 'generating' as const,
+      musicPromptCauses: [],
+      musicTrackCauses: [],
     };
   }
 
@@ -73,13 +120,21 @@ export async function readMusicPromptStaleness(
   // prompt selects a row with no hash — so the prompt reads 'untracked' —
   // while leaving the track stale against the text it was rendered from.
   const shots = await scopedDb.shots.listBySequence(sequence.id);
-  const musicTrack = await readMusicTrackStaleness(scopedDb, sequence, shots);
+  const track = await readMusicTrackStaleness(scopedDb, sequence, shots);
+  const musicTrack = track.status;
+  const musicTrackCauses = track.causes;
 
   // No stored hash: legacy sequence or never generated. Surface explicitly
   // so the UI can suppress the "regenerate" prompt without claiming
   // freshness.
-  if (!sequence.musicPromptInputHash) {
-    return { musicPrompt: 'untracked' as const, musicTrack };
+  const stored = sequence.musicPromptInputHash;
+  if (!stored) {
+    return {
+      musicPrompt: 'untracked' as const,
+      musicTrack,
+      musicPromptCauses: [],
+      musicTrackCauses,
+    };
   }
 
   try {
@@ -88,7 +143,12 @@ export async function readMusicPromptStaleness(
       shots
     );
     if (sceneSummaries.length === 0) {
-      return { musicPrompt: 'untracked' as const, musicTrack };
+      return {
+        musicPrompt: 'untracked' as const,
+        musicTrack,
+        musicPromptCauses: [],
+        musicTrackCauses,
+      };
     }
 
     const selected = await scopedDb.sequenceMusicPromptVersions.getSelected(
@@ -100,7 +160,7 @@ export async function readMusicPromptStaleness(
       DEFAULT_ANALYSIS_MODEL;
 
     const musicUpToDate = await musicPromptInputHashMatches(
-      sequence.musicPromptInputHash,
+      stored,
       { sceneSummaries, analysisModel },
       legacyShotSummaries
     );
@@ -108,11 +168,25 @@ export async function readMusicPromptStaleness(
     return {
       musicPrompt: musicUpToDate ? ('fresh' as const) : ('stale' as const),
       musicTrack,
+      musicPromptCauses: musicUpToDate
+        ? []
+        : await musicCauses(
+            scopedDb,
+            'music-prompt',
+            stored,
+            await computeMusicPromptInputHash({ sceneSummaries, analysisModel })
+          ),
+      musicTrackCauses,
     };
   } catch (error) {
     // Hash uncomputable (e.g., scene metadata missing a required field).
     // Surface as untracked so the UI doesn't lie about freshness.
     logger.warn(`uncomputable for sequence ${sequence.id}:`, { err: error });
-    return { musicPrompt: 'untracked' as const, musicTrack };
+    return {
+      musicPrompt: 'untracked' as const,
+      musicTrack,
+      musicPromptCauses: [],
+      musicTrackCauses,
+    };
   }
 }
