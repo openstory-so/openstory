@@ -6,10 +6,7 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
-import {
-  assertReferencesUsable,
-  missingVoiceLines,
-} from '@/motion/reference-support';
+import { shotRefusalLines } from '@/motion/reference-support';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import type { z } from 'zod';
 import type { ShotEditContext } from '@/shots/server/shot-context';
@@ -352,15 +349,15 @@ export async function generateShotMotion(
   const seedanceOnArk = await seedanceRunsOnArk(
     toWorkflowScopedDb(context.scopedDb).credentials
   );
-  assertReferencesUsable(model, referenceImages, {
-    hasStartFrame: !referenceOnly,
-    prompt,
-    onArk: seedanceOnArk,
-  });
   const shotDialogue = dialogueOf(shot);
-  const missingVoices = missingVoiceLines(model, shotDialogue, elements);
-  if (missingVoices.length > 0)
-    throw new ValidationError(missingVoices.join(' '));
+  const refused = shotRefusalLines({
+    model,
+    references: referenceImages,
+    job: { hasStartFrame: !referenceOnly, prompt, onArk: seedanceOnArk },
+    dialogue: shotDialogue,
+    elements,
+  });
+  if (refused.length > 0) throw new ValidationError(refused.join(' '));
 
   // Snap the resolved duration onto the selected model's valid set before
   // both the credit pre-flight and the workflow input — otherwise an

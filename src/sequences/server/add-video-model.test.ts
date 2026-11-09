@@ -29,7 +29,11 @@ describe('add video model (#2272)', () => {
       shotNumber: 1,
       durationMs: 3000,
     };
-    const frame = frameFixture({ id: 'frm_1', shotId: 'sht_1' });
+    const frame = frameFixture({
+      id: 'frm_1',
+      shotId: 'sht_1',
+      sequenceId: 'seq_1',
+    });
     const createReservation = vi.fn();
     const context = asStub<Context>({
       user: { id: 'u1' },
@@ -62,6 +66,7 @@ describe('add video model (#2272)', () => {
                   frameVariantFixture({
                     id: 'fv_1',
                     frameId: 'frm_1',
+                    sequenceId: 'seq_1',
                     url: 'https://cdn/still.jpg',
                   }),
                 ],

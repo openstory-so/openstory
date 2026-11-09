@@ -1282,29 +1282,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               `Dialogue audio is not ready for shot ${target.shotId}; motion is blocked.`
             );
           }
-          // The prompt is final only here, so this is the earliest the
-          // trigger's refusal can be asked (#2272); it fails this shot before
-          // any credit check or child. Every model the shot renders on.
-          const onArk = await seedanceRunsOnArk(scopedDb.credentials);
-          const unusable = batchRefusalLines(
-            (!leftoverGrok.has(target.shotId) &&
-            plan.renderOptions?.videoModels?.length
-              ? plan.renderOptions.videoModels
-              : [model]
-            ).map((renderModel) => ({
-              model: renderModel,
-              references: referenceImages,
-              job: { hasStartFrame: target.usesStartFrame, prompt, onArk },
-              dialogue: target.dialogue,
-              elements: renderRefs.elements,
-            }))
-          );
-          if (unusable.length > 0) {
-            throw new NonRetryableError(
-              unusable.join(' '),
-              'WorkflowValidationError'
-            );
-          }
           const motionInput: MotionRenderShot = {
             shotId: shot.id,
             sceneId: target.motionRender.sceneId,
@@ -1317,7 +1294,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // (#2036). The via is a credential, read through its hatch.
             seedanceEditSeconds: seedanceEditSeconds({
               model,
-              onArk,
+              onArk: await seedanceRunsOnArk(scopedDb.credentials),
               prompt,
               references: referenceImages,
             }),
@@ -2163,6 +2140,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           reservationId: input.reservationId,
           shots: renderShots,
         });
+    const renderOnArk =
+      renderJobs.length > 0
+        ? await step.do('render-on-ark', () =>
+            seedanceRunsOnArk(scopedDb.credentials)
+          )
+        : false;
     await Promise.all(
       renderJobs.map(async ({ input }) => {
         const shotId = input.shotId;
@@ -2174,6 +2157,28 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         const suffix = variant ? `-${input.model}` : '';
         try {
           const model = input.model;
+          // The trigger's refusal (#2272), asked per model: the prompt is
+          // final only now, and a refused model must not stop its siblings.
+          const refused = batchRefusalLines(
+            (input.coveredShots ?? [{ shotId }]).map((member) => ({
+              model,
+              references: input.referenceImages ?? [],
+              job: {
+                hasStartFrame: !input.referenceOnly,
+                prompt: input.prompt,
+                onArk: renderOnArk,
+              },
+              dialogue: plan.targets.find((t) => t.shotId === member.shotId)
+                ?.dialogue,
+              elements: renderRefs.elements,
+            }))
+          );
+          if (refused.length > 0) {
+            throw new NonRetryableError(
+              refused.join(' '),
+              'WorkflowValidationError'
+            );
+          }
           const voicedLines = input.voicedLines ?? [];
           const audioClips = input.audioClips ?? [];
           await step.do(`preflight-video-${shotId}${suffix}`, async () => {
