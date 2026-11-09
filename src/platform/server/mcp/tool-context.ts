@@ -63,7 +63,7 @@ const SLUGGED_FIELDS = {
  */
 async function resolveSlugs(scopedDb: ScopedDb, input: unknown): Promise<void> {
   if (typeof input !== 'object' || input === null) return;
-  const fields: Record<string, unknown> = input;
+  const fields = input as Record<string, unknown>;
   for (const [field, module] of Object.entries(SLUGGED_FIELDS)) {
     const value = fields[field];
     if (typeof value !== 'string' || isValidId(value)) continue;

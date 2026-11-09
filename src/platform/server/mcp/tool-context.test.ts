@@ -166,11 +166,11 @@ describe('runTool', () => {
         },
       }),
     });
-    const spec = {
+    const spec: Parameters<typeof run>[0] = {
       ...base,
       inputSchema: z.strictObject({ sequenceId: z.string() }),
-      run: async ({ sequenceId }: { sequenceId: string }) => ({
-        data: { id: sequenceId },
+      run: async (input) => ({
+        data: { id: input.sequenceId },
         summary: 'ran',
       }),
     };
