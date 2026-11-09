@@ -6,8 +6,8 @@
 
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
-  hashMotionPromptInput,
-  hashVisualPromptInput,
+  stampMotionPromptInput,
+  stampVisualPromptInput,
 } from '@/shots/input-hash';
 import type { VisualPromptHashInput } from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
@@ -18,7 +18,7 @@ import {
 } from '@/shots/shot-list.derive';
 import { storedShotSpec } from '@/shots/shot-list.schema';
 import {
-  hashShotSpecInput,
+  stampShotSpecInput,
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import { shotSpecForItem, type ShotWorkItem } from './shot-work-items';
@@ -52,10 +52,11 @@ export async function persistShotSpec(
   }
   const stored = storedShotSpec(spec);
   const lines = item.scene.originalScript.dialogue;
-  const inputHash = await hashShotSpecInput(
+  const specStamp = await stampShotSpecInput(
     specCurrencyFromScene(item.scene, lines)
   );
-  await scopedDb.inputManifests.record([inputHash]);
+  await scopedDb.inputManifests.record([specStamp]);
+  const inputHash = specStamp.hash;
   const version = await scopedDb.shotSpecVersions.write({
     shotId,
     spec: stored,
@@ -76,10 +77,11 @@ export async function persistShotSpec(
 
   if (!referenceOnly && frameId !== null) {
     const text = deriveStillPrompt(stored, item.scene, context.styleConfig);
-    const visualHash = await hashVisualPromptInput(
+    const visualStamp = await stampVisualPromptInput(
       narrowShotPromptContext(full, { channel: 'visual', prompt: text })
     );
-    await scopedDb.inputManifests.record([visualHash]);
+    await scopedDb.inputManifests.record([visualStamp]);
+    const visualHash = visualStamp.hash;
     await scopedDb.framePromptVersions.write({
       frameId,
       source: 'derived',
@@ -90,14 +92,15 @@ export async function persistShotSpec(
     });
   }
   const motion = deriveMotionPrompt(stored, { referenceOnly });
-  const motionHash = await hashMotionPromptInput(
+  const motionStamp = await stampMotionPromptInput(
     narrowShotPromptContext(full, {
       channel: 'motion',
       prompt: motion.text,
       referenceOnly,
     })
   );
-  await scopedDb.inputManifests.record([motionHash]);
+  await scopedDb.inputManifests.record([motionStamp]);
+  const motionHash = motionStamp.hash;
   await scopedDb.shotPromptVersions.write({
     shotId,
     promptType: 'motion',

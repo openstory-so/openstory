@@ -14,11 +14,12 @@ import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHashLegacy,
-  computeCharacterSheetInputHash,
-  computeShotImageInputHash,
-  computeLocationSheetInputHash,
   locationSheetInputHashMatches,
   sha256Hex,
+  stampCharacterSheetInput,
+  stampLocationSheetInput,
+  stampShotImageInput,
+  type Stamped,
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
   type LegacyStylingParts,
@@ -137,16 +138,17 @@ export type CharacterSheetDraft = Omit<
   'face'
 >;
 
-/** Give a draft its face and stamp the hash, which covers the face. */
+/** Give a draft its face and stamp the hash, which covers the face. The stamp is recorded by the run-start site; verify diffs it. */
 export async function finishCharacterSheetPayload(
   draft: CharacterSheetDraft,
   face: CharacterSheetWorkflowInput['face']
-): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
+): Promise<{
+  payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>;
+  stamp: Stamped<CharacterSheetInputHash>;
+}> {
   const fields = { ...draft, face };
-  return {
-    ...fields,
-    snapshotInputHash: await computeCharacterSheetHashFromDto(fields),
-  };
+  const stamp = await stampCharacterSheetFromDto(fields);
+  return { payload: { ...fields, snapshotInputHash: stamp.hash }, stamp };
 }
 
 /** Hash a `StyleConfig` deterministically. `null`/`undefined` → 'no-style'. */
@@ -195,10 +197,16 @@ function characterSheetHashInput(
   };
 }
 
-export async function computeCharacterSheetHashFromDto(
+export function computeCharacterSheetHashFromDto(
   input: SheetPayload<CharacterSheetWorkflowInput>
 ): Promise<CharacterSheetInputHash> {
-  return computeCharacterSheetInputHash({
+  return stampCharacterSheetFromDto(input).then((stamp) => stamp.hash);
+}
+
+export function stampCharacterSheetFromDto(
+  input: SheetPayload<CharacterSheetWorkflowInput>
+): Promise<Stamped<CharacterSheetInputHash>> {
+  return stampCharacterSheetInput({
     ...characterSheetHashInput(input),
     styleConfigHash: null,
   });
@@ -328,10 +336,16 @@ function locationSheetHashInput(
   };
 }
 
-export async function computeLocationSheetHashFromDto(
+export function computeLocationSheetHashFromDto(
   input: SheetPayload<LocationSheetWorkflowInput>
 ): Promise<LocationSheetInputHash> {
-  return computeLocationSheetInputHash(locationSheetHashInput(input));
+  return stampLocationSheetFromDto(input).then((stamp) => stamp.hash);
+}
+
+export function stampLocationSheetFromDto(
+  input: SheetPayload<LocationSheetWorkflowInput>
+): Promise<Stamped<LocationSheetInputHash>> {
+  return stampLocationSheetInput(locationSheetHashInput(input));
 }
 
 /**
@@ -497,15 +511,12 @@ export function resolveSceneShotImageReferences(params: {
   };
 }
 
-/**
- * Hash one scene's snapshot — used to populate `thumbnail_input_hash` on the
- * shot row and `input_hash` on the matching primary `shot_variants` row.
- */
-export function computeShotImageSceneHash(
+/** Stamp one scene's snapshot: the still hash the shot row and its primary variant carry. */
+export function stampShotImageScene(
   scene: StillHashInput,
   imageModel: string,
   aspectRatio: string
-): Promise<ShotImageInputHash> {
+): Promise<Stamped<ShotImageInputHash>> {
   const hashInput: ShotImageHashInput = {
     kind: 'thumbnail',
     visualPrompt: scene.visualPrompt,
@@ -517,7 +528,7 @@ export function computeShotImageSceneHash(
     locationSheetHashes: scene.locationSheetHashes,
     elementReferenceHashes: scene.elementReferenceHashes,
   };
-  return computeShotImageInputHash(hashInput);
+  return stampShotImageInput(hashInput);
 }
 
 /**

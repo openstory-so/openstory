@@ -11,9 +11,9 @@ import {
   requireLiveLook,
 } from '@/cast/server/character-look';
 import {
-  computeCharacterSheetInputHash,
-  computeLocationSheetInputHash,
-  hashVisualPromptInput,
+  stampCharacterSheetInput,
+  stampLocationSheetInput,
+  stampVisualPromptInput,
 } from '@/shots/input-hash';
 import { isPersonFromUploadLedger } from '@/cast/likeness';
 import {
@@ -50,7 +50,7 @@ import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
 import { regenerateCharacterSheet } from '@/cast/server/cast-generation';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
-  computeUploadedStillInputHash,
+  stampUploadedStillInput,
   parseUploadedStoragePath,
   UPLOAD_EXTENSIONS,
 } from '@/shots/server/upload-media';
@@ -195,7 +195,7 @@ async function appendUploadedStill(args: {
     scopedDb.locations.listWithReferences(args.sequenceId),
     scopedDb.sequenceElements.list(args.sequenceId),
   ]);
-  const inputHash = await computeUploadedStillInputHash({
+  const stamp = await stampUploadedStillInput({
     shotId: args.shotId,
     frameId: args.frameId,
     scene: args.scene,
@@ -205,7 +205,8 @@ async function appendUploadedStill(args: {
     elements,
     aspectRatio: args.aspectRatio,
   });
-  await scopedDb.inputManifests.record([inputHash]);
+  await scopedDb.inputManifests.record([stamp]);
+  const inputHash = stamp?.hash ?? null;
 
   const version = await scopedDb.frameVariants.appendUploadedVersion({
     frameId: args.frameId,
@@ -313,13 +314,14 @@ export async function replaceFrameContent(
         scene,
         startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
       });
-      promptInputHash = await hashVisualPromptInput(
+      const promptStamp = await stampVisualPromptInput(
         narrowShotPromptContext(ctx, {
           channel: 'visual',
           prompt: newPromptText,
         })
       );
-      await scopedDb.inputManifests.record([promptInputHash]);
+      await scopedDb.inputManifests.record([promptStamp]);
+      promptInputHash = promptStamp.hash;
       analysisModel = ctx.analysisModel;
     } catch (error) {
       logger.warn(
@@ -330,7 +332,7 @@ export async function replaceFrameContent(
   }
 
   // Image hash against the NEW prompt text — the §4.3 C freshness rule.
-  const imageInputHash = await computeUploadedStillInputHash({
+  const imageStamp = await stampUploadedStillInput({
     shotId: shot.id,
     frameId: frame.id,
     scene,
@@ -340,7 +342,8 @@ export async function replaceFrameContent(
     elements,
     aspectRatio: sequence.aspectRatio,
   });
-  await scopedDb.inputManifests.record([imageInputHash]);
+  await scopedDb.inputManifests.record([imageStamp]);
+  const imageInputHash = imageStamp?.hash ?? null;
 
   const { promptVersion, imageVersion } =
     await scopedDb.frameVariants.replaceContent({
@@ -590,7 +593,7 @@ export async function setCharacterSheetFromUpload(
   // with different ones (#2017): it is stamped with the upload marker, which
   // the verify reads off the live version (`uploadedCharacterSheetHashMatchesStored`).
   const imageModel = USER_UPLOAD_MODEL;
-  const inputHash = await computeCharacterSheetInputHash({
+  const stamp = await stampCharacterSheetInput({
     characterBible: {
       name: character.name,
       age: character.age ?? '',
@@ -610,7 +613,8 @@ export async function setCharacterSheetFromUpload(
     styleConfigHash: null,
     imageModel,
   });
-  await scopedDb.inputManifests.record([inputHash]);
+  await scopedDb.inputManifests.record([stamp]);
+  const inputHash = stamp.hash;
 
   // The upload's likeness verdict is a bible edit (#1600): its own version
   // row, only when it moved.
@@ -777,13 +781,14 @@ export async function setLocationSheetFromUpload(
   );
 
   const photos = await scopedDb.locations.listPhotos(location.id);
-  const inputHash = await computeLocationSheetInputHash({
+  const stamp = await stampLocationSheetInput({
     locationBible: locationSheetBibleFields(toLocationMetadata(location)),
     // As the trigger snapshots them (`buildRegenerateLocationSheetPayload`).
     referencePhotoHashes: photos.map((photo) => photo.url).sort(),
     imageModel: USER_UPLOAD_MODEL,
   });
-  await scopedDb.inputManifests.record([inputHash]);
+  await scopedDb.inputManifests.record([stamp]);
+  const inputHash = stamp.hash;
 
   const { version: variant } =
     await scopedDb.locationSheetVariants.applyConvergent({

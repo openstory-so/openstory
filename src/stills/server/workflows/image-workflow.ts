@@ -43,7 +43,7 @@ import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type { WorkflowFailureActivity } from '@/platform/server/workflow/errors';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { computeImageWorkflowHashFromDto } from './image-workflow-snapshot';
+import { stampImageWorkflowSnapshot } from './image-workflow-snapshot';
 import { generateImageWithContentRetry } from './soften-image-prompt';
 import { getLogger } from '@/platform/logger';
 
@@ -127,11 +127,15 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     const input = event.payload;
     const workflowRunId = event.instanceId;
 
-    if (input.sceneSnapshot) {
+    const { sceneSnapshot } = input;
+    if (sceneSnapshot) {
       await step.do('validate-snapshot', async () => {
         const expected = input.snapshotInputHash ?? '';
-        const recomputed = await computeImageWorkflowHashFromDto(input);
-        if (recomputed !== expected) {
+        const recomputed = await stampImageWorkflowSnapshot({
+          ...input,
+          sceneSnapshot,
+        });
+        if (recomputed.hash !== expected) {
           throw new WorkflowValidationError(
             'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'
           );

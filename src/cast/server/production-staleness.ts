@@ -27,8 +27,8 @@ import {
 import type { SheetStaleness } from './sheets/sheet-staleness';
 import {
   diffManifests,
-  manifestOfHash,
   type InputManifest,
+  type Stamped,
 } from '@/shots/input-hash';
 import {
   describeManifestCauses,
@@ -53,7 +53,7 @@ export type SheetVerdict = {
 };
 
 /**
- * The stored manifest for `stored` against the one `live` left in memory.
+ * The stored manifest for `stored` against the live stamp's.
  * No stored manifest is a sheet stamped before #2344: no cause, logged.
  * Matching manifests under a stale verdict is a stamp ≠ verify bug: logged, unnamed.
  */
@@ -62,23 +62,18 @@ function sheetCauses(
   artifact: ManifestArtifact,
   owner: string,
   stored: string,
-  live: string
+  live: Stamped
 ): string[] {
   const was = manifests.get(stored);
-  const now = manifestOfHash(live);
-  if (!now) {
-    logger.error(`live manifest missing for ${artifact} ${owner}`, { live });
-    return [];
-  }
   if (!was) {
     logger.warn(`no stored manifest for ${artifact} ${owner}`, { stored });
     return [];
   }
-  const moved = diffManifests(was, now);
+  const moved = diffManifests(was, live.manifest);
   if (moved.length === 0) {
     logger.error(
       `stale ${artifact} ${owner} with no differing input: stamp and verify disagree`,
-      { stored, live }
+      { stored, live: live.hash }
     );
     return [];
   }
@@ -151,7 +146,7 @@ export async function locationSheetStaleness(args: {
   if (location.referenceStatus === 'generating')
     return { status: 'generating', applicable: true, causes: [] };
   if (!stored) return { status: 'untracked', applicable: true, causes: [] };
-  const payload = await buildRegenerateLocationSheetPayload({
+  const { payload, stamp } = await buildRegenerateLocationSheetPayload({
     scopedDb,
     sequence,
     userId: scopedDb.userId,
@@ -177,13 +172,7 @@ export async function locationSheetStaleness(args: {
     applicable: true,
     causes: fresh
       ? []
-      : sheetCauses(
-          manifests,
-          'location-sheet',
-          location.id,
-          stored,
-          payload.snapshotInputHash
-        ),
+      : sheetCauses(manifests, 'location-sheet', location.id, stored, stamp),
   };
 }
 
@@ -279,7 +268,7 @@ export async function lookSheetStaleness(args: {
       },
       rows
     );
-  const payload = await finishCharacterSheetPayload(
+  const { payload, stamp } = await finishCharacterSheetPayload(
     draft,
     isDefault ? null : liveFace
   );
@@ -295,12 +284,6 @@ export async function lookSheetStaleness(args: {
     applicable: true,
     causes: fresh
       ? []
-      : sheetCauses(
-          manifests,
-          'character-sheet',
-          lookId,
-          stored,
-          payload.snapshotInputHash
-        ),
+      : sheetCauses(manifests, 'character-sheet', lookId, stored, stamp),
   };
 }

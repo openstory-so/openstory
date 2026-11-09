@@ -39,7 +39,7 @@ import {
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
 import { ValidationError } from '@/platform/errors';
 import {
   NO_STILL_PROMPT_MESSAGE,
@@ -309,12 +309,13 @@ export async function prepareShotImageWorkflowInput(args: {
       matchedElements.map((e) => e.imageUrl)
     ),
   };
-  const snapshotInputHash = await computeShotImageSceneHash(
+  const stamp = await stampShotImageScene(
     sceneSnapshot,
     model,
     sequence.aspectRatio
   );
-  await scopedDb.inputManifests.record([snapshotInputHash]);
+  await scopedDb.inputManifests.record([stamp]);
+  const snapshotInputHash = stamp.hash;
 
   return {
     userId,

@@ -138,10 +138,10 @@ export async function buildRegenerateCharacterSheetPayload(
   const { draft, isDefault, liveFace, refusal } =
     await buildCharacterSheetDraft(params);
   if (refusal) throw new ValidationError(refusal);
-  const payload = await finishCharacterSheetPayload(
+  const { payload, stamp } = await finishCharacterSheetPayload(
     draft,
     isDefault ? null : liveFace
   );
-  await params.scopedDb.inputManifests.record([payload.snapshotInputHash]);
+  await params.scopedDb.inputManifests.record([stamp]);
   return payload;
 }

@@ -3,10 +3,10 @@ import type { StyleConfig } from '@/look/style-config';
 import type { Scene } from '@/shots/scene-analysis.schema';
 // Hash stability is pinned in fresh-plan-persistence; here only the writes matter.
 vi.mock('@/shots/input-hash', () => ({
-  hashVisualPromptInput: async () => 'visual-hash',
-  hashMotionPromptInput: async () => 'motion-hash',
+  stampVisualPromptInput: async () => ({ hash: 'visual-hash', manifest: {} }),
+  stampMotionPromptInput: async () => ({ hash: 'motion-hash', manifest: {} }),
   sha256Hex: async () => 'spec-input-hash',
-  stampInputHash: async () => 'spec-input-hash',
+  stampInputHash: async () => ({ hash: 'spec-input-hash', manifest: {} }),
 }));
 
 import { persistShotSpec } from './persist-shot-spec';

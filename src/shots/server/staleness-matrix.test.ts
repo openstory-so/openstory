@@ -377,16 +377,20 @@ async function shotVerdicts(
 
 /** Stamp every shot artifact from `world`, as its generation would have. */
 async function stampShot(world: World = BASE): Promise<Stamps> {
-  const { liveHashes } = await shotVerdicts(world, {
+  const { liveStamps } = await shotVerdicts(world, {
     still: 'unstamped',
     visualPrompt: 'unstamped',
     motionPrompt: 'unstamped',
   });
-  const { thumbnail, visualPrompt, motionPrompt } = liveHashes;
+  const { thumbnail, visualPrompt, motionPrompt } = liveStamps;
   if (!thumbnail || !visualPrompt || !motionPrompt) {
     throw new Error('test setup: a base hash did not compute');
   }
-  return { still: thumbnail, visualPrompt, motionPrompt };
+  return {
+    still: thumbnail.hash,
+    visualPrompt: visualPrompt.hash,
+    motionPrompt: motionPrompt.hash,
+  };
 }
 
 /** The prompt context the verify builds for `world`'s shot, per channel. */
@@ -1371,7 +1375,7 @@ async function stampSheets(): Promise<CastWorld> {
     },
     beach: {
       ...CAST_BASE.beach,
-      referenceInputHash: reference.snapshotInputHash ?? null,
+      referenceInputHash: reference.payload.snapshotInputHash ?? null,
     },
   };
 }

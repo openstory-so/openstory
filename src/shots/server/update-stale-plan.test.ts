@@ -24,8 +24,13 @@ import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotStalenessResult } from './shot-staleness';
+import type { Stamped } from '@/shots/input-hash';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asStub } from '@/test/as-stub';
+
+// Branded hashes are opaque strings; a stub stamp needs no real digest.
+const stamp = <H extends string>(hash: string) =>
+  asStub<Stamped<H>>({ hash, manifest: {} });
 
 const FRESH: ShotStalenessResult = {
   thumbnail: 'fresh',
@@ -33,11 +38,11 @@ const FRESH: ShotStalenessResult = {
   motionPrompt: 'fresh',
   spec: 'fresh',
   causes: [],
-  liveHashes: {
-    thumbnail: 'live-thumb',
-    visualPrompt: 'live-visual',
-    motionPrompt: 'live-motion',
-    spec: 'live-spec',
+  liveStamps: {
+    thumbnail: stamp('live-thumb'),
+    visualPrompt: stamp('live-visual'),
+    motionPrompt: stamp('live-motion'),
+    spec: stamp('live-spec'),
   },
 };
 

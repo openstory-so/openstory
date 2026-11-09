@@ -13,7 +13,12 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { CharacterMinimal, Shot } from '@/platform/server/db/schema';
-import { buildShotImageWorkflowInput } from './build-shot-image-input';
+import { buildShotImageWorkflowInput as buildShotImageStamp } from './build-shot-image-input';
+
+/** The payload half; these tests never read the stamp. */
+const buildShotImageWorkflowInput = async (
+  params: Parameters<typeof buildShotImageStamp>[0]
+) => (await buildShotImageStamp(params))?.input ?? null;
 
 const NOW = new Date('2026-06-03T00:00:00.000Z');
 

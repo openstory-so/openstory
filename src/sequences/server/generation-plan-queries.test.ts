@@ -188,7 +188,7 @@ describe('sheet verdicts (#2082)', () => {
     });
     const characterHash = (
       await finishCharacterSheetPayload(draft, isDefault ? null : liveFace)
-    ).snapshotInputHash;
+    ).stamp.hash;
     const locationHash = (
       await buildRegenerateLocationSheetPayload({
         scopedDb,
@@ -196,7 +196,7 @@ describe('sheet verdicts (#2082)', () => {
         ...actor,
         location,
       })
-    ).snapshotInputHash;
+    ).stamp.hash;
     await db
       .update(characterSheetVariants)
       .set({ inputHash: characterHash })

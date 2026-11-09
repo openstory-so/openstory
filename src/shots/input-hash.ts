@@ -162,37 +162,29 @@ export function diffManifests(
 }
 
 /**
- * Manifests of the digests this isolate stamped, by hash. A stamp site
- * records them (`scopedDb.inputManifests.record`) right after computing,
- * and a verify reads the live one here. Content-addressed, so a stale
- * entry is impossible; the cap only bounds memory.
+ * A hash with the manifest of the body it was taken over (#2344). A stamp
+ * site records the pair (`scopedDb.inputManifests.record`); a verify diffs
+ * the stored manifest against a live one. The `compute*` hashers return the
+ * hash alone, for compares.
  */
-const stampedManifests = new Map<string, InputManifest>();
-// ponytail: isolate-global FIFO (~20 KB a prompt manifest); a stamp evicted
-// before its record throws there. Upgrade: return { hash, manifest } from the
-// hashers and pass the pair to record, then delete this map.
-const STAMPED_MANIFEST_CAP = 1024;
+export type Stamped<H extends string = string> = Readonly<{
+  hash: H;
+  manifest: InputManifest;
+}>;
 
-/** The manifest of a hash this isolate stamped; null once evicted or never computed here. */
-export function manifestOfHash(hash: string): InputManifest | null {
-  return stampedManifests.get(hash) ?? null;
+/** Hash and manifest of a current-shape body. Legacy verify shapes use {@link sha256Hex}. */
+export async function stampInputHash(body: unknown): Promise<Stamped> {
+  return { hash: await sha256Hex(body), manifest: inputManifestOf(body) };
 }
 
-/**
- * The hash of a current-shape body, with its manifest remembered. Legacy
- * verify shapes use {@link sha256Hex}: nothing stamps them.
- */
-export async function stampInputHash(body: unknown): Promise<string> {
-  const hash = await sha256Hex(body);
-  if (!stampedManifests.has(hash)) {
-    stampedManifests.set(hash, inputManifestOf(body));
-    if (stampedManifests.size > STAMPED_MANIFEST_CAP) {
-      const oldest = stampedManifests.keys().next().value;
-      if (oldest !== undefined) stampedManifests.delete(oldest);
-    }
-  }
-  return hash;
-}
+const brandStamp =
+  <H extends string>(brand: (hash: string) => H) =>
+  (stamp: Stamped): Stamped<H> => ({
+    hash: brand(stamp.hash),
+    manifest: stamp.manifest,
+  });
+
+const hashOf = <H extends string>(stamp: Stamped<H>) => stamp.hash;
 
 /**
  * Branded artifact digests (#1616). Hasher return types and the write APIs
@@ -273,6 +265,12 @@ const shotImageHashInputSchema = z.object({
 export function computeShotImageInputHash(
   raw: ShotImageHashInput
 ): Promise<ShotImageInputHash> {
+  return stampShotImageInput(raw).then(hashOf);
+}
+
+export function stampShotImageInput(
+  raw: ShotImageHashInput
+): Promise<Stamped<ShotImageInputHash>> {
   const input = shotImageHashInputSchema.parse(raw);
   return stampInputHash({
     artifact: `shot:${input.kind}`,
@@ -284,7 +282,7 @@ export function computeShotImageInputHash(
     characterSheetHashes: sortedRefs(input.characterSheetHashes),
     locationSheetHashes: sortedRefs(input.locationSheetHashes),
     elementReferenceHashes: sortedRefs(input.elementReferenceHashes),
-  }).then(shotImageInputHash);
+  }).then(brandStamp(shotImageInputHash));
 }
 
 /**
@@ -563,9 +561,15 @@ const characterSheetHashInputSchema = z.object({
 export function computeCharacterSheetInputHash(
   raw: CharacterSheetHashInput
 ): Promise<CharacterSheetInputHash> {
+  return stampCharacterSheetInput(raw).then(hashOf);
+}
+
+export function stampCharacterSheetInput(
+  raw: CharacterSheetHashInput
+): Promise<Stamped<CharacterSheetInputHash>> {
   const input = characterSheetHashInputSchema.parse(raw);
   return stampInputHash(characterSheetHashBody(input, 'current', null)).then(
-    characterSheetInputHash
+    brandStamp(characterSheetInputHash)
   );
 }
 
@@ -733,9 +737,15 @@ const locationSheetHashInputSchema = z.object({
 export function computeLocationSheetInputHash(
   raw: LocationSheetHashInput
 ): Promise<LocationSheetInputHash> {
+  return stampLocationSheetInput(raw).then(hashOf);
+}
+
+export function stampLocationSheetInput(
+  raw: LocationSheetHashInput
+): Promise<Stamped<LocationSheetInputHash>> {
   const input = locationSheetHashInputSchema.parse(raw);
   return stampInputHash(locationSheetHashBody(input)).then(
-    locationSheetInputHash
+    brandStamp(locationSheetInputHash)
   );
 }
 
@@ -1309,15 +1319,19 @@ function motionPromptHashBody(
   };
 }
 
-export async function hashVisualPromptInput(
+export function hashVisualPromptInput(
   raw: VisualPromptHashInput | MotionPromptHashInput
 ): Promise<VisualPromptInputHash> {
+  return stampVisualPromptInput(raw).then(hashOf);
+}
+
+export function stampVisualPromptInput(
+  raw: VisualPromptHashInput | MotionPromptHashInput
+): Promise<Stamped<VisualPromptInputHash>> {
   const input = assembleVisualPromptHashInput(raw);
-  return visualPromptInputHash(
-    await stampInputHash(
-      visualPromptHashBody(toVisualBodyInput(input), 'current')
-    )
-  );
+  return stampInputHash(
+    visualPromptHashBody(toVisualBodyInput(input), 'current')
+  ).then(brandStamp(visualPromptInputHash));
 }
 
 /**
@@ -1413,15 +1427,19 @@ export async function visualPromptInputHashMatches(
   return digests.includes(stored);
 }
 
-export async function hashMotionPromptInput(
+export function hashMotionPromptInput(
   raw: MotionPromptHashInput
 ): Promise<MotionPromptInputHash> {
+  return stampMotionPromptInput(raw).then(hashOf);
+}
+
+export function stampMotionPromptInput(
+  raw: MotionPromptHashInput
+): Promise<Stamped<MotionPromptInputHash>> {
   const input = assembleMotionPromptHashInput(raw);
-  return motionPromptInputHash(
-    await stampInputHash(
-      motionPromptHashBody(toMotionBodyInput(input), 'current')
-    )
-  );
+  return stampInputHash(
+    motionPromptHashBody(toMotionBodyInput(input), 'current')
+  ).then(brandStamp(motionPromptInputHash));
 }
 
 /**
@@ -1553,8 +1571,16 @@ const musicPromptInputHashInputSchema = z.object({
 export function computeMusicPromptInputHash(
   raw: MusicPromptInputHashInput
 ): Promise<MusicPromptInputHash> {
+  return stampMusicPromptInput(raw).then(hashOf);
+}
+
+export function stampMusicPromptInput(
+  raw: MusicPromptInputHashInput
+): Promise<Stamped<MusicPromptInputHash>> {
   musicPromptInputHashInputSchema.parse(raw);
-  return stampInputHash(musicPromptHashBody(raw)).then(musicPromptInputHash);
+  return stampInputHash(musicPromptHashBody(raw)).then(
+    brandStamp(musicPromptInputHash)
+  );
 }
 
 /** Pre-#1783 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
@@ -1611,6 +1637,12 @@ const sequenceMusicHashInputSchema = z.object({
 export function computeSequenceMusicInputHash(
   raw: SequenceMusicHashInput
 ): Promise<SequenceMusicInputHash> {
+  return stampSequenceMusicInput(raw).then(hashOf);
+}
+
+export function stampSequenceMusicInput(
+  raw: SequenceMusicHashInput
+): Promise<Stamped<SequenceMusicInputHash>> {
   const input = sequenceMusicHashInputSchema.parse(raw);
   return stampInputHash({
     artifact: 'sequence:music',
@@ -1618,5 +1650,5 @@ export function computeSequenceMusicInputHash(
     tags: trim(input.tags),
     durationSeconds: input.durationSeconds,
     audioModel: input.audioModel,
-  }).then(sequenceMusicInputHash);
+  }).then(brandStamp(sequenceMusicInputHash));
 }

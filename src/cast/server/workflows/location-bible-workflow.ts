@@ -16,7 +16,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
 import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 import { buildLocationInsert } from './cast-records';
-import { computeLocationSheetHashFromDto } from './sheet-snapshots';
+import { stampLocationSheetFromDto } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -182,12 +182,12 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           // claim a bible edit revokes. The claim is taken only while the bible
           // version the upsert returned is still live (#1863): an edit that
           // landed since had no claim to revoke, so the child parks.
+          const stamp = await stampLocationSheetFromDto(unclaimedFields);
           const unclaimed = {
             ...unclaimedFields,
-            snapshotInputHash:
-              await computeLocationSheetHashFromDto(unclaimedFields),
+            snapshotInputHash: stamp.hash,
           };
-          await scopedDb.inputManifests.record([unclaimed.snapshotInputHash]);
+          await scopedDb.inputManifests.record([stamp]);
           claimed = await step.do(`claim-location-sheet-${index}`, async () => {
             const claim = await scopedDb.locations.claimReferenceIfUnmoved(
               locationDbId,

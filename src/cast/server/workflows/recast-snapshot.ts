@@ -15,7 +15,11 @@
  * pure in-memory merge, no DB read.
  */
 
-import { computeShotImageInputHash } from '@/shots/input-hash';
+import {
+  stampShotImageInput,
+  type ShotImageInputHash,
+  type Stamped,
+} from '@/shots/input-hash';
 import { withLookSheet } from '@/cast/character-looks';
 import type { TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -55,6 +59,8 @@ export type RecastRegenerateSnapshot = {
   shotSnapshots: RegenerateShotSnapshot[];
   /** Batch hash over the pre-merge snapshots (payload tamper check). */
   snapshotInputHash: string;
+  /** The still stamps taken here, for the caller to record; never on the payload. */
+  stamps: Stamped<ShotImageInputHash>[];
 };
 
 /**
@@ -79,6 +85,7 @@ export async function buildRecastRegenerateSnapshots(params: {
   if (shotIds.length === 0) {
     return {
       shotSnapshots: [],
+      stamps: [],
       snapshotInputHash: await computeRegenerateShotsBatchHash({
         sequenceId,
         imageModel,
@@ -121,6 +128,7 @@ export async function buildRecastRegenerateSnapshots(params: {
     );
 
   const shotSnapshots: RegenerateShotSnapshot[] = [];
+  const stamps: Stamped<ShotImageInputHash>[] = [];
   for (const shot of shots) {
     const frame = framesByShot.get(shot.id);
     const promptVersion = frame ? promptByFrameId.get(frame.id) : undefined;
@@ -130,24 +138,25 @@ export async function buildRecastRegenerateSnapshots(params: {
       );
       continue;
     }
-    shotSnapshots.push(
-      await buildRegenerateShotSnapshot({
-        shot,
-        scene: resolveSceneForShot(shot, sceneContext).scene,
-        imagePrompt: promptVersion.text,
-        imagePromptVersionId: promptVersion.id,
-        frameId: frame?.id,
-        characters: resolvedCharacters,
-        locations,
-        elements,
-        imageModel,
-        aspectRatio,
-      })
-    );
+    const { snapshot, stamp } = await buildRegenerateShotSnapshot({
+      shot,
+      scene: resolveSceneForShot(shot, sceneContext).scene,
+      imagePrompt: promptVersion.text,
+      imagePromptVersionId: promptVersion.id,
+      frameId: frame?.id,
+      characters: resolvedCharacters,
+      locations,
+      elements,
+      imageModel,
+      aspectRatio,
+    });
+    shotSnapshots.push(snapshot);
+    stamps.push(stamp);
   }
 
   return {
     shotSnapshots,
+    stamps,
     snapshotInputHash: await computeRegenerateShotsBatchHash({
       sequenceId,
       imageModel,
@@ -190,6 +199,7 @@ export async function mergeRecastSheetIntoSnapshots(params: {
     sheetInputHash,
   } = params;
 
+  const stamps: Stamped<ShotImageInputHash>[] = [];
   const merged = await Promise.all(
     shotSnapshots.map(async (snapshot) => {
       const substituteUrl = (
@@ -240,29 +250,32 @@ export async function mergeRecastSheetIntoSnapshots(params: {
         );
       if (!touched) return snapshot;
 
+      const stamp = await stampShotImageInput({
+        kind: 'thumbnail',
+        visualPrompt: snapshot.imagePrompt,
+        imageModel,
+        aspectRatio,
+        size: null,
+        seed: null,
+        characterSheetHashes,
+        locationSheetHashes,
+        elementReferenceHashes: snapshot.elementReferenceHashes,
+      });
+      stamps.push(stamp);
       return {
         ...snapshot,
         characterRefs,
         locationRefs,
         characterSheetHashes,
         locationSheetHashes,
-        snapshotInputHash: await computeShotImageInputHash({
-          kind: 'thumbnail',
-          visualPrompt: snapshot.imagePrompt,
-          imageModel,
-          aspectRatio,
-          size: null,
-          seed: null,
-          characterSheetHashes,
-          locationSheetHashes,
-          elementReferenceHashes: snapshot.elementReferenceHashes,
-        }),
+        snapshotInputHash: stamp.hash,
       };
     })
   );
 
   return {
     shotSnapshots: merged,
+    stamps,
     snapshotInputHash: await computeRegenerateShotsBatchHash({
       sequenceId,
       imageModel,

@@ -705,10 +705,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 url: landed.sheetImageUrl,
                 versionId,
               });
-              await scopedDb.inputManifests.record([
-                finished.snapshotInputHash,
-              ]);
-              return finished;
+              await scopedDb.inputManifests.record([finished.stamp]);
+              return finished.payload;
             }
           );
           await spawnCharacterSheet(payload, sheetVersionId);
@@ -870,7 +868,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               refs: renderRefs,
               deriveMissingPrompt: false,
             });
-            await scopedDb.inputManifests.record([prepared.snapshotInputHash]);
             return JSON.stringify({
               ...prepared,
               targetVariantId: alternate

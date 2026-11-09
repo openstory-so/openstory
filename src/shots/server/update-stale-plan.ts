@@ -94,6 +94,7 @@ import {
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import type { Stamped } from '@/shots/input-hash';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import type { MotionRenderShot } from '@/motion/server/build-motion-render';
 import type { ShotImageRefs } from './shot-image-input';
@@ -758,6 +759,7 @@ export async function computePlan(args: {
     promptDialogueOf(shot).dialogue;
 
   const targets: PlanTarget[] = [];
+  const stamps: Stamped[] = [];
   const skipped: SkippedShot[] = [];
   // Bibles are sequence-wide; any target scene is enough to load context.
   let sceneForBibles: Scene | null = null;
@@ -794,17 +796,11 @@ export async function computePlan(args: {
     if (decision.kind === 'noop') continue;
 
     targets.push(decision.target);
+    stamps.push(...decision.stamps);
     sceneForBibles ??= scene;
   }
   // The live hashes the claims and spec rows below are stamped with (#2344).
-  await scopedDb.inputManifests.record(
-    targets.flatMap((t) => [
-      t.visualLiveHash,
-      t.motionLiveHash,
-      t.imageLiveHash,
-      t.specInputHash,
-    ])
-  );
+  await scopedDb.inputManifests.record(stamps);
 
   if (targets.length === 0 || !sceneForBibles) {
     return { ...empty, skipped };
@@ -988,7 +984,7 @@ async function loadVideoStateByShot(
 // ---------------------------------------------------------------------------
 
 type ShotDecision =
-  | { kind: 'target'; target: PlanTarget }
+  | { kind: 'target'; target: PlanTarget; stamps: Stamped[] }
   | { kind: 'skip'; skip: SkippedShot }
   | { kind: 'noop' };
 
@@ -1097,14 +1093,14 @@ async function decideShotTarget(args: {
   );
   // A first still behind a prompt this run keeps has no live hash yet (the
   // verdict only hashes a still that exists); the direct claim needs one.
-  let imageLiveHash = staleness.liveHashes.thumbnail;
+  let imageLiveStamp = staleness.liveStamps.thumbnail;
   if (
     flags.regenImage &&
     !flags.regenVisual &&
-    !imageLiveHash &&
+    !imageLiveStamp &&
     selectedPrompt?.text
   ) {
-    imageLiveHash = (
+    imageLiveStamp = (
       await buildRegenerateShotSnapshot({
         shot,
         scene,
@@ -1116,7 +1112,7 @@ async function decideShotTarget(args: {
         imageModel,
         aspectRatio: sequence.aspectRatio,
       })
-    ).snapshotInputHash;
+    ).stamp;
   }
   const referenceIds = (() => {
     const matched = resolveSceneShotImageReferences({
@@ -1156,8 +1152,15 @@ async function decideShotTarget(args: {
     ((shot.audioClips?.some((clip) => Boolean(clip.url)) ?? false) ||
       flags.regenDialogue);
 
+  const { liveStamps } = staleness;
   return {
     kind: 'target',
+    stamps: [
+      liveStamps.visualPrompt,
+      liveStamps.motionPrompt,
+      imageLiveStamp,
+      liveStamps.spec,
+    ].filter((stamp): stamp is Stamped => stamp !== null),
     target: {
       shotId: shot.id,
       frameId: frame.id,
@@ -1172,13 +1175,13 @@ async function decideShotTarget(args: {
       rewriteSpec: flags.rewriteSpec,
       specVersionId: selectedSpec?.id ?? null,
       spec: selectedSpec ? canonicalStoredShotSpec(selectedSpec.spec) : null,
-      specInputHash: staleness.liveHashes.spec,
+      specInputHash: liveStamps.spec?.hash ?? null,
       visualWritten: selectedPrompt?.source === 'user-edit',
       motionWritten: selectedMotion?.source === 'user-edit',
       regenImage: flags.regenImage,
-      visualLiveHash: staleness.liveHashes.visualPrompt,
-      motionLiveHash: staleness.liveHashes.motionPrompt,
-      imageLiveHash,
+      visualLiveHash: liveStamps.visualPrompt?.hash ?? null,
+      motionLiveHash: liveStamps.motionPrompt?.hash ?? null,
+      imageLiveHash: imageLiveStamp?.hash ?? null,
       imageModel,
       regenVideo: flags.regenVideo,
       ...(lipsyncVideo ? { lipsyncVideo: true as const } : {}),

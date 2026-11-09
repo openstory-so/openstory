@@ -99,13 +99,16 @@ What this buys:
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
 - **Causes are a manifest diff (#2344).** Every current-shape hash goes through
-  `stampInputHash`, which also keeps a manifest of the canonical body: leaf path
-  → short digest (`character:<id>/standardClothing`, `styleConfig/lighting`,
-  `scene/metadata/timeOfDay`, `still`). A stamp site records it in
-  `input_manifests(hash PRIMARY KEY, manifest)` through
-  `scopedDb.inputManifests.record` right after the hash lands, insert or
-  ignore, so identical inputs share a row and no artifact table grows a
-  column. Verify computes the live manifest and names the keys whose digest
+  `stampInputHash`, which returns the hash with a manifest of the canonical
+  body: leaf path → short digest (`character:<id>/standardClothing`,
+  `styleConfig/lighting`, `scene/metadata/timeOfDay`, `still`). The pair is a
+  `Stamped`; nothing is held in process memory between stamp and record. A
+  stamp site records the pair in `input_manifests(hash PRIMARY KEY, manifest)`
+  through `scopedDb.inputManifests.record` right after the hash lands, insert
+  or ignore, so identical inputs share a row and no artifact table grows a
+  column. A payload carries only the hash; the trigger that built it records
+  the stamp (`buildRegenerateShotSnapshot` and the sheet payload builders
+  return `{ snapshot | payload, stamp }`). Verify computes the live manifest and names the keys whose digest
   differs from the stored one (`describeManifestCauses`,
   `src/shots/staleness-causes.ts`): `Character "Jack": clothing, styling`.
   Exact by construction. A stale verdict whose manifests differ in no key

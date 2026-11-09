@@ -18,20 +18,29 @@ const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
 const hashVisualPromptInput = vi.fn();
 const hashMotionPromptInput = vi.fn();
-/** Live manifests by hash (#2344); the real cache is bypassed with the hashers. */
+/** Live manifests by hash (#2344): what the mocked hashers stamp alongside. */
 const manifestOfHash = vi.fn((_hash: string) => null as InputManifest | null);
+const stampOf = (hash: string) => ({
+  hash,
+  manifest: manifestOfHash(hash) ?? {},
+});
 /** Stored manifests by hash, as `inputManifests.getByHashes` answers. */
 const storedManifests = new Map<string, InputManifest>();
 
 vi.doMock('@/shots/server/workflows/regenerate-shots-snapshot', () => ({
-  buildRegenerateShotSnapshot,
+  buildRegenerateShotSnapshot: async (params: unknown) => {
+    const snapshot = await buildRegenerateShotSnapshot(params);
+    return { snapshot, stamp: stampOf(snapshot.snapshotInputHash) };
+  },
 }));
 vi.doMock('./prompt-context', () => ({ loadNarrowShotPromptContext }));
 const realInputHash = await import('@/shots/input-hash');
 vi.doMock('@/shots/input-hash', () => ({
   voiceOnlyMovedSince: realInputHash.voiceOnlyMovedSince,
-  hashVisualPromptInput,
-  hashMotionPromptInput,
+  stampVisualPromptInput: async (input: unknown) =>
+    stampOf(await hashVisualPromptInput(input)),
+  stampMotionPromptInput: async (input: unknown) =>
+    stampOf(await hashMotionPromptInput(input)),
   visualPromptInputHashMatches: vi.fn(
     async (stored: string | null) => stored === (await hashVisualPromptInput())
   ),
@@ -41,7 +50,6 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
   sha256Hex: realInputHash.sha256Hex,
   stampInputHash: realInputHash.stampInputHash,
-  manifestOfHash,
   diffManifests: realInputHash.diffManifests,
 }));
 
@@ -259,12 +267,10 @@ describe('computeShotStaleness', () => {
       motionPrompt: 'stale',
     });
     // Thumbnail branch never produced a hash (it threw); prompts did.
-    expect(result.liveHashes).toMatchObject({
-      thumbnail: null,
-      visualPrompt: 'visual-stored',
-      motionPrompt: 'motion-moved',
-    });
-    expect(result.liveHashes.spec).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.liveStamps.thumbnail).toBeNull();
+    expect(result.liveStamps.visualPrompt?.hash).toBe('visual-stored');
+    expect(result.liveStamps.motionPrompt?.hash).toBe('motion-moved');
+    expect(result.liveStamps.spec?.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(result.spec).toBe('untracked');
   });
 
@@ -330,7 +336,7 @@ describe('computeShotStaleness', () => {
     expect(result).toMatchObject({
       visualPrompt: 'updating',
       motionPrompt: 'updating',
-      // Direct image claim hash matches liveHashes.thumbnail only when the
+      // Direct image claim hash matches liveStamps.thumbnail only when the
       // snapshot hash equals the claim's pendingInputHash — snapshot is
       // 'image-stored', so set claim accordingly above. With the selected
       // version's hash 'image-old' the thumbnail is stale and the claim
@@ -373,7 +379,7 @@ describe('computeShotStaleness', () => {
       visualPrompt: 'generating',
       motionPrompt: 'generating',
       spec: 'generating',
-      liveHashes: {
+      liveStamps: {
         thumbnail: null,
         visualPrompt: null,
         motionPrompt: null,
@@ -466,7 +472,7 @@ describe('computeShotStaleness', () => {
     });
 
     expect(result.thumbnail).toBe('stale');
-    expect(result.liveHashes.thumbnail).toBe('image-live');
+    expect(result.liveStamps.thumbnail?.hash).toBe('image-live');
   });
 
   it('leaves an untracked still untracked when the named element is older', async () => {
@@ -1267,7 +1273,7 @@ describe('per-shot start-frame override', () => {
       thumbnail: 'untracked',
       visualPrompt: 'untracked',
       motionPrompt: 'stale',
-      liveHashes: { thumbnail: null, visualPrompt: null },
+      liveStamps: { thumbnail: null, visualPrompt: null },
     });
     expect(buildRegenerateShotSnapshot).not.toHaveBeenCalled();
     expect(hashVisualPromptInput).not.toHaveBeenCalled();
@@ -1377,7 +1383,7 @@ describe('per-shot start-frame override', () => {
     });
     // Rebuild does not condition on the still. The live digest leaves the URL out.
     expect(result.motionPrompt).toBe('fresh');
-    expect(result.liveHashes.motionPrompt).toBe('motion-stored');
+    expect(result.liveStamps.motionPrompt?.hash).toBe('motion-stored');
   });
 
   it('a later LLM version again consumes the rendered still', async () => {

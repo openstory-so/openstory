@@ -644,7 +644,7 @@ export async function addModelToSequence(
 
   const inputs: NonNullable<
     Awaited<ReturnType<typeof buildShotImageWorkflowInput>>
-  >[] = [];
+  >['input'][] = [];
   const styleConfig = lazySequenceStyle(scopedDb, sequence);
   // Shots with no still prompt and no spec to derive one from (#2291).
   let skipped = 0;
@@ -654,7 +654,7 @@ export async function addModelToSequence(
       ? promptByFrameId.get(anchorFrame.id)
       : undefined;
     const scene = resolveSceneForShot(f, imageSceneContext).scene;
-    const input = await buildShotImageWorkflowInput({
+    const built = await buildShotImageWorkflowInput({
       shot: f,
       scene,
       model,
@@ -680,13 +680,13 @@ export async function addModelToSequence(
     // The anchor + the prompt version this render is built from, snapshotted
     // here so the workflow stamps the variant with the prompt it actually
     // rendered rather than whatever the pointer says when it runs (#1070).
-    if (!input) {
+    if (!built) {
       skipped++;
       continue;
     }
-    await scopedDb.inputManifests.record([input.snapshotInputHash]);
+    await scopedDb.inputManifests.record([built.stamp]);
     inputs.push({
-      ...input,
+      ...built.input,
       frameId: anchorFrame?.id,
       promptVersionId: selectedPrompt?.id ?? null,
     });

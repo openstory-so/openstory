@@ -37,7 +37,7 @@ import {
   IMAGE_CONTENT_FALLBACK_MODEL,
   softenRejectedImagePrompt,
 } from './content-soften';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -250,13 +250,13 @@ async function recomputeSnapshotHash(
   const sceneSnapshot = input.sceneSnapshot;
   const aspectRatio = input.aspectRatio;
   return step.do(stepName, async () => {
-    const hash = await computeShotImageSceneHash(
+    const stamp = await stampShotImageScene(
       { ...sceneSnapshot, visualPrompt },
       model,
       aspectRatio
     );
-    await scopedDb.inputManifests.record([hash]);
-    return hash;
+    await scopedDb.inputManifests.record([stamp]);
+    return stamp.hash;
   });
 }
 

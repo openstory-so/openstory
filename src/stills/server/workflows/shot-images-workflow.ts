@@ -36,9 +36,9 @@ import {
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
-import type { ShotImageInputHash } from '@/shots/input-hash';
+import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
 import {
-  computeShotImageSceneHash,
+  stampShotImageScene,
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
 } from '@/cast/server/workflows/sheet-snapshots';
@@ -189,15 +189,18 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       'compute-snapshot-hashes',
       async () => {
         const out: Record<string, ShotImageInputHash | undefined> = {};
+        const stamps: Stamped[] = [];
         for (const item of items) {
           const snap = sceneSnapshotsById.get(imageSnapshotKey(item));
           for (const model of imageModels) {
-            out[snapshotHashKey(item, model)] = snap
-              ? await computeShotImageSceneHash(snap, model, aspectRatio)
+            const stamp = snap
+              ? await stampShotImageScene(snap, model, aspectRatio)
               : undefined;
+            if (stamp) stamps.push(stamp);
+            out[snapshotHashKey(item, model)] = stamp?.hash;
           }
         }
-        await scopedDb.inputManifests.record(Object.values(out));
+        await scopedDb.inputManifests.record(stamps);
         return out;
       }
     );

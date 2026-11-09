@@ -193,7 +193,10 @@ describe('character-sheet hash', () => {
   it('finishes a draft with its face and the hash that covers it', async () => {
     const { face: _face, ...draft } = baseInput;
     const face = { url: '/r2/jack.png', versionId: 'sheet-v1' };
-    const finished = await finishCharacterSheetPayload(draft, face);
+    const { payload: finished } = await finishCharacterSheetPayload(
+      draft,
+      face
+    );
     expect(finished.face).toEqual(face);
     expect(finished.snapshotInputHash).toBe(
       await computeCharacterSheetHashFromDto({ ...baseInput, face })

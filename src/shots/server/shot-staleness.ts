@@ -14,10 +14,13 @@ import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
   diffManifests,
   type InputManifest,
-  hashMotionPromptInput,
-  hashVisualPromptInput,
-  manifestOfHash,
   motionPromptInputHashMatches,
+  type MotionPromptInputHash,
+  type ShotImageInputHash,
+  stampMotionPromptInput,
+  stampVisualPromptInput,
+  type Stamped,
+  type VisualPromptInputHash,
   visualPromptInputHashMatches,
   voiceOnlyMovedSince,
 } from '@/shots/input-hash';
@@ -31,7 +34,7 @@ import {
   type ManifestArtifact,
 } from '@/shots/staleness-causes';
 import {
-  hashShotSpecInput,
+  stampShotSpecInput,
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import { resolveShotReferences } from '@/shots/scene-matching';
@@ -118,16 +121,16 @@ export type ArtifactStaleness =
   | 'unknown';
 
 /**
- * The live input hashes computed during the comparison. Enqueue points reuse
- * them to stamp pending claims without recomputing; null when the branch
- * didn't run (untracked/unknown artifacts).
+ * The live stamps computed during the comparison (#2344): hash plus manifest.
+ * Enqueue points stamp claims with the hash and record the manifest without
+ * recomputing; null when the branch didn't run (untracked/unknown artifacts).
  */
-type ShotLiveHashes = {
-  thumbnail: string | null;
-  visualPrompt: string | null;
-  motionPrompt: string | null;
+type ShotLiveStamps = {
+  thumbnail: Stamped<ShotImageInputHash> | null;
+  visualPrompt: Stamped<VisualPromptInputHash> | null;
+  motionPrompt: Stamped<MotionPromptInputHash> | null;
   /** What the selected spec was written from. Null when the shot has no scene. */
-  spec: string | null;
+  spec: Stamped | null;
 };
 
 export type ShotStalenessResult = {
@@ -136,7 +139,7 @@ export type ShotStalenessResult = {
   motionPrompt: ArtifactStaleness;
   /** The shot's spec. `'untracked'` when the shot has none (#1923). */
   spec: ArtifactStaleness;
-  liveHashes: ShotLiveHashes;
+  liveStamps: ShotLiveStamps;
   /**
    * What moved since the stale artifacts were generated, as display labels.
    * Exact from the stored input manifest (#2344); a row stamped before
@@ -152,7 +155,7 @@ export const UNTRACKED_STALENESS: ShotStalenessResult = {
   visualPrompt: 'untracked',
   motionPrompt: 'untracked',
   spec: 'untracked',
-  liveHashes: {
+  liveStamps: {
     thumbnail: null,
     visualPrompt: null,
     motionPrompt: null,
@@ -176,7 +179,7 @@ export const GENERATING_STALENESS: ShotStalenessResult = {
   visualPrompt: 'generating',
   motionPrompt: 'generating',
   spec: 'generating',
-  liveHashes: {
+  liveStamps: {
     thumbnail: null,
     visualPrompt: null,
     motionPrompt: null,
@@ -556,7 +559,7 @@ export async function computeShotStaleness(args: {
   // ============================================================
   if (isSequenceGenerating(sequence.status)) return GENERATING_STALENESS;
 
-  const liveHashes: ShotLiveHashes = {
+  const liveStamps: ShotLiveStamps = {
     thumbnail: null,
     visualPrompt: null,
     motionPrompt: null,
@@ -605,7 +608,7 @@ export async function computeShotStaleness(args: {
           }
         }
 
-        const snapshot = await buildRegenerateShotSnapshot({
+        const { stamp: liveStill } = await buildRegenerateShotSnapshot({
           shot,
           scene,
           frameId: frame.id,
@@ -619,12 +622,10 @@ export async function computeShotStaleness(args: {
           ),
           aspectRatio: sequence.aspectRatio,
         });
-        liveHashes.thumbnail = snapshot.snapshotInputHash;
+        liveStamps.thumbnail = liveStill;
         if (selectedImage.inputHash != null) {
           thumbnail =
-            snapshot.snapshotInputHash !== selectedImage.inputHash
-              ? 'stale'
-              : 'fresh';
+            liveStill.hash !== selectedImage.inputHash ? 'stale' : 'fresh';
         }
       } catch (error) {
         // Fail-open as 'fresh' would lie. Don't clobber a timestamp-stale
@@ -762,8 +763,9 @@ export async function computeShotStaleness(args: {
       });
       const spec = selectedSpec?.spec ?? null;
       const ctx = { ...loaded.shot, spec };
-      const liveHash = await hashVisualPromptInput(ctx);
-      liveHashes.visualPrompt = liveHash;
+      const liveStamp = await stampVisualPromptInput(ctx);
+      liveStamps.visualPrompt = liveStamp;
+      const liveHash = liveStamp.hash;
       if (selectedPrompt?.source === 'user-edit') {
         // A kept written prompt reads fresh. Part 3 decides replace or keep.
         visualPrompt = 'fresh';
@@ -854,8 +856,9 @@ export async function computeShotStaleness(args: {
         spec: selectedSpec?.spec ?? null,
       };
       const ctx = { ...loaded.shot, ...channels };
-      const liveHash = await hashMotionPromptInput(ctx);
-      liveHashes.motionPrompt = liveHash;
+      const liveStamp = await stampMotionPromptInput(ctx);
+      liveStamps.motionPrompt = liveStamp;
+      const liveHash = liveStamp.hash;
       if (written) {
         motionPrompt = 'fresh';
       } else if (referenceHash) {
@@ -903,37 +906,36 @@ export async function computeShotStaleness(args: {
   // Runs last so the thumbnail's chained-claim check can use the visual
   // prompt's live hash computed above.
   // ============================================================
-  if (frame && visualPrompt === 'stale' && liveHashes.visualPrompt) {
+  const liveVisualHash = liveStamps.visualPrompt?.hash ?? null;
+  if (frame && visualPrompt === 'stale' && liveVisualHash) {
     const claim = reads
       ? newestPending(
           reads.liveVisualClaimsByFrame.get(frame.id),
-          liveHashes.visualPrompt
+          liveVisualHash
         )
       : await scopedDb.framePromptVersions.getLivePending(
           frame.id,
-          liveHashes.visualPrompt
+          liveVisualHash
         );
     if (claim) visualPrompt = 'updating';
   }
-  if (motionPrompt === 'stale' && liveHashes.motionPrompt) {
+  const liveMotionHash = liveStamps.motionPrompt?.hash ?? null;
+  if (motionPrompt === 'stale' && liveMotionHash) {
     const claim = reads
-      ? newestPending(
-          reads.liveMotionClaimsByShot.get(shot.id),
-          liveHashes.motionPrompt
-        )
+      ? newestPending(reads.liveMotionClaimsByShot.get(shot.id), liveMotionHash)
       : await scopedDb.shotPromptVersions.getLivePending(
           shot.id,
-          liveHashes.motionPrompt
+          liveMotionHash
         );
     if (claim) motionPrompt = 'updating';
   }
-  if (frame && thumbnail === 'stale' && liveHashes.thumbnail) {
+  if (frame && thumbnail === 'stale' && liveStamps.thumbnail) {
     const claims = reads
       ? (reads.liveImageClaimsByFrame.get(frame.id) ?? [])
       : await scopedDb.frameVariants.listLiveClaims(frame.id);
     for (const claim of claims) {
       // Direct regen: the claim satisfies the image's live hash itself.
-      if (claim.pendingInputHash === liveHashes.thumbnail) {
+      if (claim.pendingInputHash === liveStamps.thumbnail.hash) {
         thumbnail = 'updating';
         break;
       }
@@ -942,7 +944,7 @@ export async function computeShotStaleness(args: {
       // once it completes (render still pending/running) its stamped
       // inputHash must — either way an edit moves the live hash and honestly
       // re-stales the image.
-      if (claim.dependsOnVersionId && liveHashes.visualPrompt) {
+      if (claim.dependsOnVersionId && liveVisualHash) {
         const dep = reads
           ? (reads.promptById.get(claim.dependsOnVersionId) ?? null)
           : await scopedDb.framePromptVersions.getByIdForFrame(
@@ -953,10 +955,9 @@ export async function computeShotStaleness(args: {
         if (!dep) continue;
         const depInFlight =
           (dep.status === 'pending' || dep.status === 'generating') &&
-          dep.pendingInputHash === liveHashes.visualPrompt;
+          dep.pendingInputHash === liveVisualHash;
         const depLanded =
-          dep.status === 'completed' &&
-          dep.inputHash === liveHashes.visualPrompt;
+          dep.status === 'completed' && dep.inputHash === liveVisualHash;
         if (depInFlight || depLanded) {
           thumbnail = 'updating';
           break;
@@ -972,13 +973,13 @@ export async function computeShotStaleness(args: {
     spec = selectedSpec ? 'unknown' : 'untracked';
   } else {
     try {
-      const live = await hashShotSpecInput(
+      const live = await stampShotSpecInput(
         specCurrencyFromScene(scene, dialogue.dialogue.lines)
       );
-      liveHashes.spec = live;
+      liveStamps.spec = live;
       if (!selectedSpec) spec = 'untracked';
       else if (selectedSpec.inputHash == null) spec = 'fresh';
-      else spec = live === selectedSpec.inputHash ? 'fresh' : 'stale';
+      else spec = live.hash === selectedSpec.inputHash ? 'fresh' : 'stale';
     } catch (error) {
       spec = 'unknown';
       logger.warn(`spec staleness uncomputable for shot ${shot.id}:`, {
@@ -1005,25 +1006,25 @@ export async function computeShotStaleness(args: {
           artifact: 'still',
           stale: thumbnail === 'stale',
           stored: selectedImage?.inputHash ?? null,
-          live: liveHashes.thumbnail,
+          live: liveStamps.thumbnail,
         },
         {
           artifact: 'visual-prompt',
           stale: visualPrompt === 'stale',
           stored: visualReferenceHash,
-          live: liveHashes.visualPrompt,
+          live: liveStamps.visualPrompt,
         },
         {
           artifact: 'motion-prompt',
           stale: motionPrompt === 'stale',
           stored: motionReferenceHash,
-          live: liveHashes.motionPrompt,
+          live: liveStamps.motionPrompt,
         },
         {
           artifact: 'spec',
           stale: spec === 'stale',
           stored: selectedSpec?.inputHash ?? null,
-          live: liveHashes.spec,
+          live: liveStamps.spec,
         },
       ];
       const storedManifests = reads
@@ -1045,7 +1046,7 @@ export async function computeShotStaleness(args: {
           visualPrompt,
           motionPrompt,
           spec,
-          liveHashes,
+          liveStamps,
           causes,
         };
       }
@@ -1085,7 +1086,7 @@ export async function computeShotStaleness(args: {
     }
   }
 
-  return { thumbnail, visualPrompt, motionPrompt, spec, liveHashes, causes };
+  return { thumbnail, visualPrompt, motionPrompt, spec, liveStamps, causes };
 }
 
 const after = (d: Date | null | undefined, at: number) =>
@@ -1096,8 +1097,8 @@ type ManifestCompare = {
   stale: boolean;
   /** The hash the verdict compared against. */
   stored: string | null;
-  /** The live hash it computed, whose manifest is still in memory. */
-  live: string | null;
+  /** The live stamp it computed. */
+  live: Stamped | null;
 };
 
 /**
@@ -1123,14 +1124,7 @@ function exactStalenessCauses(
   };
   for (const compare of stale) {
     const was = compare.stored ? stored.get(compare.stored) : undefined;
-    const now = compare.live ? manifestOfHash(compare.live) : null;
-    if (compare.live && !now) {
-      // The live hash was computed in this call: a miss is a bug, not legacy.
-      logger.error(
-        `live manifest missing for ${compare.artifact} on shot ${shotId}`,
-        { live: compare.live }
-      );
-    }
+    const now = compare.live?.manifest ?? null;
     if (!was || !now) {
       if (!was) {
         logger.warn(
@@ -1145,7 +1139,7 @@ function exactStalenessCauses(
     if (moved.length === 0) {
       logger.error(
         `stale ${compare.artifact} on shot ${shotId} with no differing input: stamp and verify disagree`,
-        { stored: compare.stored, live: compare.live }
+        { stored: compare.stored, live: compare.live?.hash }
       );
       continue;
     }

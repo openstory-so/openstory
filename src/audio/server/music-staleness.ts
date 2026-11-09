@@ -5,10 +5,10 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 import {
-  computeMusicPromptInputHash,
   diffManifests,
-  manifestOfHash,
   musicPromptInputHashMatches,
+  stampMusicPromptInput,
+  type Stamped,
 } from '@/shots/input-hash';
 import {
   describeManifestCauses,
@@ -33,19 +33,9 @@ async function musicCauses(
   artifact: ManifestArtifact,
   sequenceId: string,
   stored: string,
-  live: string
+  live: Stamped
 ): Promise<string[]> {
   const was = (await scopedDb.inputManifests.getByHashes([stored])).get(stored);
-  const now = manifestOfHash(live);
-  if (!now) {
-    logger.error(
-      `live manifest missing for ${artifact} on sequence ${sequenceId}`,
-      {
-        live,
-      }
-    );
-    return [];
-  }
   if (!was) {
     logger.warn(
       `no stored manifest for ${artifact} on sequence ${sequenceId}`,
@@ -55,11 +45,11 @@ async function musicCauses(
     );
     return [];
   }
-  const moved = diffManifests(was, now);
+  const moved = diffManifests(was, live.manifest);
   if (moved.length === 0) {
     logger.error(
       `stale ${artifact} on sequence ${sequenceId} with no differing input: stamp and verify disagree`,
-      { stored, live }
+      { stored, live: live.hash }
     );
     return [];
   }
@@ -196,7 +186,7 @@ export async function readMusicPromptStaleness(
             'music-prompt',
             sequence.id,
             stored,
-            await computeMusicPromptInputHash({ sceneSummaries, analysisModel })
+            await stampMusicPromptInput({ sceneSummaries, analysisModel })
           ),
       musicTrackCauses,
     };
