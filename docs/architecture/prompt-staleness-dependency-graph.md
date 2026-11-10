@@ -780,6 +780,27 @@ sha256Hex({
 });
 ```
 
+#### 9. Storyboard sketch — `readShotStoryboard` (#2350)
+
+Reference-only shots only. Not a manifest hash: the sketch row's own
+`promptHash` is `simpleHash(buildPreviewPrompt(text, cast))`, and it reads
+fresh when it equals that hash for either text the shot can be drawn from:
+
+```ts
+cast = charactersToBible(
+  dressForScene(characters, scene.continuity.characterLooks)
+);
+fresh = [
+  buildPreviewPrompt(selectedMotionPrompt.text, cast), // the automatic redraw
+  buildPreviewPrompt(previewTextForShot(spec), cast), // the scene-split sketch
+].map(simpleHash);
+```
+
+`missing` (none drawn) and `failed` (the newest row failed) come first. A
+prompt edit redraws on its own (`redrawShotPreview`); what reads stale is what
+that redraw misses: a cast or look edit, a redraw that did not start, and a
+shot switched to reference-only. Regenerate draws from the motion prompt.
+
 ### 4.2 Hashed surface vs. actual prompt inputs — are we over-hashing? (history)
 
 > **This subsection is the #867 analysis as written, kept for the reasoning.**
@@ -1033,6 +1054,7 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
 | Staleness verify (clip)                  | `src/shots/scene-segments.ts` (`isSelectedVersionStale`, `selectedVersionDriftDetail` for causes)                                                   |
 | Staleness verify (sheets)                | `src/cast/server/production-staleness.ts` (`readReferenceStaleness`)                                                                                |
 | Staleness verify (music)                 | `src/audio/server/music-staleness.ts` (`readMusicPromptStaleness`)                                                                                  |
+| Staleness verify (storyboard sketch)     | `src/shots/server/shot-preview.ts` (`readShotStoryboard`)                                                                                           |
 | Verdict matrix (every edge, as verdicts) | `src/shots/server/staleness-matrix.test.ts`                                                                                                         |
 | Still snapshot hash                      | `src/stills/server/workflows/image-workflow-snapshot.ts`, `src/shots/server/workflows/regenerate-shots-snapshot.ts`                                 |
 | Design rationale                         | `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`                                                                                |

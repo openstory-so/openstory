@@ -160,7 +160,15 @@ async function currentPreviewPrompts(context: PreviewContext) {
   const fromSpec = scene
     ? buildPreviewPrompt(
         previewTextForShot(
-          { ...scene, shots: spec ? [{ ...spec.spec, shotNumber: 1 }] : [] },
+          {
+            shots: spec ? [{ ...spec.spec, shotNumber: 1 }] : [],
+            originalScript: { extract: scene.originalScript?.extract ?? '' },
+            metadata: {
+              title: scene.metadata?.title ?? '',
+              location: '',
+              timeOfDay: '',
+            },
+          },
           1
         ),
         cast

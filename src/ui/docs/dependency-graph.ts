@@ -577,6 +577,26 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     storedAs: 'frame_variants.inputHash',
   },
   {
+    id: 'storyboard',
+    versionedIn: 'frame_variants',
+    optional: 'reference-only shots',
+    label: 'Storyboard sketch',
+    kind: 'artifact',
+    band: 'renders',
+    summary:
+      "A reference-only shot's grey animatic, its only picture until the clip lands. Redrawn on its own when the motion prompt changes; anything that redraw misses reads stale (#2350).",
+    counts: [
+      'Selected motion prompt text, or the shot spec it was split from',
+      'Name, gender, age, description and clothing of each character the text names, in the look the scene picks',
+    ],
+    ignored: [
+      'Style (a sketch is never styled, #1277)',
+      'Sheets and references (a sketch draws from text only)',
+      'Image model and aspect ratio',
+    ],
+    storedAs: 'frame_variants.promptHash',
+  },
+  {
     id: 'clip',
     versionedIn: 'video_variants',
     label: 'Clip',
@@ -854,6 +874,27 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the selected sheet version id',
   },
   { from: 'element', to: 'still', tracking: 'hash', note: 'the image URL' },
+  {
+    from: 'motionPrompt',
+    to: 'storyboard',
+    tracking: 'hash',
+    mode: 'reference-only',
+    note: 'a change redraws it on its own; a failed redraw reads stale',
+  },
+  {
+    from: 'character',
+    to: 'storyboard',
+    tracking: 'hash',
+    mode: 'reference-only',
+    note: 'the bible fields of the characters the text names',
+  },
+  {
+    from: 'look',
+    to: 'storyboard',
+    tracking: 'hash',
+    mode: 'reference-only',
+    note: 'the clothing of the look the scene picks',
+  },
   {
     from: 'motionPrompt',
     to: 'clip',

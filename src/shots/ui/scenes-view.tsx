@@ -823,7 +823,13 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // pick is no longer offered — or the user never picked — fall back to the
   // first tab for the new scope. Every downstream consumer reads
   // `effectiveTab` so the panel, canvas, and previews stay in agreement.
-  const visibleTabs = useMemo(() => tabsForScope(scope), [scope]);
+  const storyboardTab =
+    !!selectedShot &&
+    rendersReferenceOnly(selectedShot, { generateStartFrames });
+  const visibleTabs = useMemo(
+    () => tabsForScope(scope, { storyboard: storyboardTab }),
+    [scope, storyboardTab]
+  );
   const effectiveTab = useMemo(
     () => effectiveTabFor(scope, search.facet),
     [scope, search.facet]

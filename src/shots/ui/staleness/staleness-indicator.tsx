@@ -20,7 +20,8 @@ export type StalenessArtifact =
   | 'visual-prompt'
   | 'motion-prompt'
   | 'music-prompt'
-  | 'music';
+  | 'music'
+  | 'storyboard';
 
 export type StalenessEntityType =
   | 'shot'
@@ -115,6 +116,7 @@ const ARTIFACT_LABEL: Record<StalenessArtifact, string> = {
   'motion-prompt': 'motion prompt',
   'music-prompt': 'music prompt',
   music: 'music',
+  storyboard: 'storyboard sketch',
 };
 
 export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (

@@ -97,6 +97,17 @@ the same text the scene-split sketch is drawn from. Each redraw is a new
 versions, since none of them reaches the clip. A shot with a start frame never
 redraws, because its still takes over.
 
+**The Storyboard tab (#2350).** On a reference-only shot the inspector's
+Start Frame tab reads Storyboard and shows the sketch history (view-only, the
+newest completed sketch always shows), whether the sketch is stale and a
+Regenerate button. The automatic redraw stays; stale covers what it misses: a
+cast or look edit (the sketch prompt names the cast, but no motion prompt is
+written), a redraw that did not start (credits, trigger error; logged only),
+and a shot switched to reference-only that still shows its scene-split sketch.
+The rule is in `readShotStoryboard` (`src/shots/server/shot-preview.ts`) and
+the dependency-graph doc § 4.1.9. MCP and the assistant read it with
+`get_shot_storyboard` and redraw with `regenerate_shot_storyboard`.
+
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
 preview row's `createdAt` (`ShotView.previewCreatedAt`) with the selected
