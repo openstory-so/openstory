@@ -417,9 +417,9 @@ function SpecField({
                 size="xs"
                 variant="ghost"
                 disabled={disabled}
-                aria-label={`${field.label} suggestions`}
+                aria-label={`${field.label} presets`}
               >
-                Suggestions
+                Presets
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-h-72">
