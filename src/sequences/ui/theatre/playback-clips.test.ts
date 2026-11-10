@@ -12,7 +12,6 @@ import {
   shotIdAtSequenceTime,
   shotVideoSubtitlesVtt,
   subtitleTrackRevision,
-  toAnimaticShots,
   toPlaybackClips,
 } from './playback-clips';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -33,32 +32,6 @@ const shot = (url: string | null, extra?: { status?: string }) => ({
   audioClips: null,
   dialogue: null,
   dialogueTiming: null,
-});
-
-describe('toAnimaticShots (#2350)', () => {
-  it('drops every clip; a reference-only shot shows its sketch, a start-frame shot its still', () => {
-    const drawn = {
-      ...shot('/a.mp4'),
-      id: 'ref',
-      image: { url: '/old-still.png' },
-      previewThumbnailUrl: '/sketch.png',
-      useStartFrame: false,
-    };
-    const framed = {
-      ...shot('/b.mp4'),
-      id: 'framed',
-      image: { url: '/still.png' },
-      previewThumbnailUrl: '/sketch-b.png',
-      useStartFrame: true,
-    };
-    const clips = toClips(
-      toAnimaticShots([drawn, framed], { generateStartFrames: false })
-    );
-    expect(clips).toEqual([
-      expect.objectContaining({ imageUrl: '/sketch.png', durationSeconds: 5 }),
-      expect.objectContaining({ imageUrl: '/still.png', durationSeconds: 5 }),
-    ]);
-  });
 });
 
 describe('toPlaybackClips', () => {

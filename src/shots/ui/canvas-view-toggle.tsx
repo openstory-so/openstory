@@ -1,5 +1,5 @@
 /**
- * Canvas / Script / Animatic switch for the centre column (#1037, #2350).
+ * Canvas / Script switch for the centre column (#1037).
  *
  * Both views share the spine, the inspector and the selection — this only
  * changes what the middle shows, so it reads as two views of one object rather
@@ -9,7 +9,7 @@
 
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 import type { CanvasView } from './scene-selection';
-import { Clapperboard, FileText, Film } from 'lucide-react';
+import { FileText, Film } from 'lucide-react';
 
 type CanvasViewToggleProps = {
   view: CanvasView;
@@ -43,8 +43,7 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
       // A toggle group fires `''` when the active item is re-clicked; ignore
       // that so the centre column can never end up showing nothing.
       onValueChange={(next) => {
-        if (next === 'canvas' || next === 'script' || next === 'animatic')
-          onViewChange(next);
+        if (next === 'canvas' || next === 'script') onViewChange(next);
       }}
       variant="outline"
       size="sm"
@@ -61,14 +60,6 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
       <ToggleGroupItem value="script" aria-label="Show the script">
         <FileText className="mr-1.5 h-3.5 w-3.5" />
         Script
-      </ToggleGroupItem>
-      <ToggleGroupItem
-        value="animatic"
-        aria-label="Play the animatic"
-        disabled={canvasDisabled}
-      >
-        <Clapperboard className="mr-1.5 h-3.5 w-3.5" />
-        Animatic
       </ToggleGroupItem>
     </ToggleGroup>
     <div className="flex items-center justify-end gap-1">{trailing}</div>

@@ -1980,7 +1980,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                         handleRegenerateStart(id, 'scene-variants')
                       }
                       firstRunActive={isGenerationActive}
-                      animatic={effectiveView === 'animatic'}
                     />
                   )}
                 </div>

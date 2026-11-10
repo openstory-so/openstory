@@ -29,11 +29,10 @@ export type SceneFacet = (typeof SCENE_FACETS)[number];
 /**
  * What the centre column shows. `canvas` is the player/frame preview; `script`
  * is the scene-block document — the whole script, read top-to-bottom, editable
- * a scene at a time; `animatic` plays the selection as pictures with no clips
- * (#2350). Both rails (spine, inspector) and the selection are shared,
+ * a scene at a time. Both rails (spine, inspector) and the selection are shared,
  * so this is a view of the same object rather than a different page.
  */
-const CANVAS_VIEWS = ['canvas', 'script', 'animatic'] as const;
+const CANVAS_VIEWS = ['canvas', 'script'] as const;
 export type CanvasView = (typeof CANVAS_VIEWS)[number];
 export const DEFAULT_CANVAS_VIEW: CanvasView = 'canvas';
 
