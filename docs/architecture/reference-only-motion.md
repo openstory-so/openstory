@@ -104,7 +104,9 @@ shot's History and the prompt history's Images list (badged Sketch, never
 selectable): a sketch's `preview.generated` event names its row `variantId`,
 which `mediaVersionIds` reads as the version. Image holds the Use start frame
 switch, then the still prompt, upload and variants, inert while the switch is
-off. Video holds the video prompt and Generate. The canvas shows the tab's
+off. The still prompt is written on every shot, reference-only included: it
+is free (`deriveStillPrompt`), and staleness and the plan ignore it until the
+switch is on. Video holds the video prompt and Generate. The canvas shows the tab's
 picture: the sketch on Shot (the still on a start-frame shot), the still or
 "No start frame yet" on Image, the clip on Video. Two Regenerates that saw the
 same newest sketch start one run (`deduplicationId`).

@@ -452,7 +452,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     !!displayImage &&
     displayImage === currentShot.previewThumbnailUrl &&
     (showsShot || !currentShot.image?.url);
-  const noStartFrame = selectedTab === 'image-prompt' && !displayImage;
+  // Image tab, no still and none on the way: an empty frame, not the clip's state.
+  const noStartFrame =
+    selectedTab === 'image-prompt' &&
+    !displayImage &&
+    currentShot.imageStatus !== 'generating';
   const isVariantPreview =
     !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
   // The selected clip is an Ark draft (#1756): 480p, final not yet rendered.
@@ -463,7 +467,18 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 
   return (
     <div className={cn('relative flex w-full flex-col', wrapperClassName)}>
-      {hasFailedVideo ? (
+      {noStartFrame ? (
+        <div
+          className={cn(
+            'relative flex w-full items-center justify-center rounded-lg bg-muted',
+            getAspectRatioClassName(aspectRatio),
+            className
+          )}
+        >
+          <p className="text-sm text-muted-foreground">No start frame yet</p>
+          {frameOverlay}
+        </div>
+      ) : hasFailedVideo ? (
         <div
           className={cn(
             'relative overflow-hidden',
@@ -631,11 +646,6 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             progressMessage={progressMessage}
             retry={retry}
           />
-          {noStartFrame && currentShot.imageStatus !== 'generating' && (
-            <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-              No start frame yet
-            </p>
-          )}
           {/* Status badges sit under the top-left frame-variants control so they
               don't cover it or the bottom video play controls (#1070). */}
           {badgeMessage && (

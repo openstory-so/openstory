@@ -230,7 +230,10 @@ async function createSequence(
 
 /** Opens one shot's panel once the client has hydrated. */
 async function openShot(sequenceId: string, shotId: string): Promise<void> {
-  await page.goto(`/sequences/${sequenceId}/scenes?shot=${shotId}`);
+  // The video prompt's stale badge is on the Video tab; Shot is the default.
+  await page.goto(
+    `/sequences/${sequenceId}/scenes?shot=${shotId}&facet=motion-prompt`
+  );
   await expect(page.getByRole('button', { name: 'Add line' })).toBeVisible({
     timeout: HYDRATION_TIMEOUT,
   });

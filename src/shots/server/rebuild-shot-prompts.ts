@@ -152,7 +152,6 @@ export async function completeDerivedPrompts(
 
   let visualVersionId: string | null = null;
   const writeStill =
-    !input.referenceOnly &&
     !input.visualWritten &&
     input.frameId !== null &&
     input.visualClaimId !== null;

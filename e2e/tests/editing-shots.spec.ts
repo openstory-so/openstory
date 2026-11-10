@@ -364,7 +364,10 @@ test.describe('Editing shots', () => {
 
   test('saving a shot action rebuilds its motion prompt for free and leaves every still current', async () => {
     await openShot(neighbour);
-    const action = page.getByRole('textbox', { name: 'Action' }).first();
+    // The spec is on the Shot tab, the default; its fields are prompt editors.
+    const action = page
+      .getByRole('tabpanel', { name: 'Shot' })
+      .getByLabel('Action', { exact: true });
     await expect(action).toBeVisible({ timeout: 15_000 });
     await action.fill('She stops mid-motion and listens to the street.');
     await page
@@ -530,7 +533,7 @@ test.describe('Editing shots', () => {
     });
     await openShot(target);
     await page.getByRole('tab', { name: 'Image' }).click();
-    const toggle = page.getByRole('checkbox', { name: 'Use start frame' });
+    const toggle = page.getByRole('switch', { name: 'Use start frame' });
     const setToggle = async (on: boolean) => {
       await toggle.click({ timeout: 30_000 });
       await expect(toggle).toBeChecked({ checked: on });

@@ -131,6 +131,12 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       // ---- 3. Select the shot and edit its visual prompt ---------------
       await shotCards.first().click();
       await page.getByRole('tab', { name: 'Image' }).click();
+      // The still tools are inert until the shot uses a start frame.
+      const useStartFrame = page.getByRole('switch', {
+        name: 'Use start frame',
+      });
+      if (!(await useStartFrame.isChecked())) await useStartFrame.click();
+      await expect(useStartFrame).toBeChecked();
       const promptEditor = page
         .getByRole('tabpanel')
         .locator('[data-slot="markdown-editor"] .ProseMirror');

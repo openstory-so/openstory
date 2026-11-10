@@ -75,7 +75,8 @@ export async function persistShotSpec(
     spec: stored,
   };
 
-  if (!referenceOnly && frameId !== null) {
+  // Written on reference-only shots too: free, and ready if the shot turns its start frame on (#2350).
+  if (frameId !== null) {
     const text = deriveStillPrompt(stored, item.scene, context.styleConfig);
     const visualStamp = await stampVisualPromptInput(
       narrowShotPromptContext(full, { channel: 'visual', prompt: text })
@@ -112,5 +113,5 @@ export async function persistShotSpec(
     inputHash: motionHash,
     analysisModel: context.analysisModel,
   });
-  return { stillPrompt: !referenceOnly };
+  return { stillPrompt: frameId !== null };
 }
