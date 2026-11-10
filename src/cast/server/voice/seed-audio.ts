@@ -1,6 +1,7 @@
 /**
- * Seed Audio 1.0 on BytePlus Seed Speech (#1765) — one non-streaming call:
- * a text prompt, up to three reference clips (`@Audio1`…), one WAV back.
+ * Seed Audio 1.5 beta on BytePlus Seed Speech (#1765) — the same
+ * non-streaming call as 1.0: a text prompt, up to three reference clips
+ * (`@Audio1`…), one WAV back. The beta has not changed this request.
  *
  * Every take is transcribed and each line found in what was heard
  * (`take-check.ts`); the transcription's word timings are what a take is

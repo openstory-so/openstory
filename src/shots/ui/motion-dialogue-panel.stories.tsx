@@ -57,7 +57,7 @@ const reading = (
 });
 
 const current = reading('r-3', {
-  model: 'seed-audio-1.0',
+  model: 'seed-audio-1.5',
   selected: true,
   createdAt: '2026-09-20T09:30:00Z',
 });

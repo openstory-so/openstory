@@ -14,8 +14,13 @@ import { generateId } from '@/platform/id';
 
 const SEED_VOICE_PREFIX = 'seed:';
 
-/** The model every Seed voice is made and recorded with. */
-export const SEED_AUDIO_MODEL = 'seed-audio-1.0';
+/**
+ * The model every Seed voice is made and recorded with.
+ * `seed-audio-1.5` is the beta on the same Seed Speech call. Swap back to
+ * the released id when BytePlus ships it. Existing `seed:` voices record
+ * on this id too; their 1.0 clips stay until the next take.
+ */
+export const SEED_AUDIO_MODEL = 'seed-audio-1.5';
 
 /**
  * Range reads per new Seed voice. Each take is a different person reading the

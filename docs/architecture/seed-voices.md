@@ -1,9 +1,16 @@
 # Seed voices (#1765)
 
 ElevenLabs Voice Design could not reliably make an Australian voice. Blind
-listening tests (issue #1765) picked **Seed Audio 1.0**, called on BytePlus
+listening tests (issue #1765) picked **Seed Audio**, called on BytePlus
 Seed Speech directly, with a locked reference voice per character and a
 transcription check on every take.
+
+The call is the **1.5 beta** (`model: seed-audio-1.5`) until BytePlus
+releases it. Same path, headers and body as 1.0: one WAV, three reference
+clips, 120 seconds, 3,000 characters. A `seed:` voice keeps its clips and
+records the next take on 1.5. A take already stored stays until something
+re-records it. The live audio source key includes this model id, so those
+clips show as stale after this change.
 
 ## Provider
 

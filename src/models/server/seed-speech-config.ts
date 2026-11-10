@@ -1,6 +1,6 @@
 /**
- * BytePlus Seed Speech env — Seed Audio 1.0 character voices and dialogue
- * (#1765).
+ * BytePlus Seed Speech env — Seed Audio 1.5 beta character voices and
+ * dialogue (#1765). Same host and key as 1.0.
  *
  * Platform key only, like `ARK_API_KEY` / `ELEVENLABS_API_KEY`: no organization row,
  * no BYOK. Workflows spend it through

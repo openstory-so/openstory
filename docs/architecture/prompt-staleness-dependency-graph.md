@@ -732,8 +732,9 @@ version — an edit, a regeneration, a token rename — re-stales it too. A resc
 rewrite (soften, shorten) is the exception by construction: the clip's
 manifest pins the rewrite, and the rewrite takes the selection only with that
 clip's promote. The TTS model follows the voice
-(`eleven_v3` for an ElevenLabs voice, `seed-audio-1.0` for a Seed voice,
-#1765), so it moves only when the voice does.
+(`eleven_v3` for an ElevenLabs voice, `seed-audio-1.5` for a Seed voice,
+#1765). It moves when the voice does, and when this Seed model id changes:
+a 1.0 take then no longer matches the live key.
 
 A lip-sync (#2263) is its own video version (`source: 'lipsync'`) under the
 model that rendered the clip. It copies the source manifest and rewrites only
