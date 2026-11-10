@@ -137,7 +137,7 @@ Eso copia [`stitch`](skills/stitch/SKILL.md) (`/stitch`) y [`stitch-player`](ski
 npx @openstory/stitch skill --global
 ```
 
-O instale el [plugin de OpenStory](https://github.com/openstory-so/skills) para obtener `create-style`, `create-sequence` y `stitch` juntos. El plugin no incluye `stitch-player`:
+O instale el [plugin de OpenStory](https://github.com/openstory-so/skills) para obtener `create-style`, `create-sequence`, `stitch` y `stitch-player` juntos:
 
 ```sh
 npx skills add openstory-so/skills

@@ -1,0 +1,91 @@
+name: Publish skills
+
+# Copies skills/ and packages/stitch/skills/ into openstory-so/skills (#2357)
+# and bumps the version in all five manifests. That repo's main takes only
+# pull requests, so this opens one and lets auto-merge land it once its
+# version check passes. Nobody edits that repo's skills/ by hand.
+# Needs: secret SKILLS_REPO_TOKEN (fine-grained, openstory-so/skills,
+# contents + pull requests write), and "Allow auto-merge" on that repo.
+# Runs after Test passes on a push to main, on the commit Test ran on.
+
+# Only a push to this repo's main runs it (the job's if), so no fork code.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: publish-skills
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openstory-so/skills
+          path: plugin
+          token: ${{ secrets.SKILLS_REPO_TOKEN }}
+          persist-credentials: false
+
+      - name: Open the sync pull request
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_REPO_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          set -euo pipefail
+          before=$(ls plugin/skills)
+          rsync -a --delete skills/ packages/stitch/skills/ plugin/skills/
+          cd plugin
+          if [ -z "$(git status --porcelain skills)" ]; then
+            echo "Skills already match; nothing to publish"; exit 0
+          fi
+
+          # Minor for a new skill, patch otherwise (see that repo's AGENTS.md).
+          old=$(jq -r .version plugin.json)
+          IFS=. read -r major minor patch <<< "$old"
+          if [ -n "$(comm -13 <(echo "$before") <(ls skills))" ]; then
+            new="$major.$((minor + 1)).0"
+          else
+            new="$major.$minor.$((patch + 1))"
+          fi
+          subject=$(printf '%s\n' "$MESSAGE" | head -1)
+          notes="$new syncs the skills from openstory-so/openstory@${SHA:0:7}: $subject"
+          # Edit in place: jq would reflow the hand-formatted manifests.
+          export NEW="$new" NOTES_JSON
+          NOTES_JSON=$(jq -n --arg n "$notes" '$n')
+          perl -i -pe 's/("version": )"[^"]*"/$1"$ENV{NEW}"/' \
+            plugin.json .codex-plugin/plugin.json .claude-plugin/plugin.json .grok-plugin/plugin.json gemini-extension.json
+          perl -i -pe 's/("release_notes": ).*/$1$ENV{NOTES_JSON}/' plugin.json
+
+          # One branch: a newer sync replaces an unmerged one instead of racing it.
+          branch=sync-skills
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add -A
+          git commit -qm "Sync skills from openstory-so/openstory@${SHA:0:7} ($new)"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/openstory-so/skills.git" "$branch"
+          if ! gh pr view "$branch" --repo openstory-so/skills --json state -q .state | grep -qx OPEN; then
+            gh pr create --repo openstory-so/skills --head "$branch" --base main \
+              --title "Sync skills ($new)" --body "$notes"
+          else
+            gh pr edit "$branch" --repo openstory-so/skills --title "Sync skills ($new)" --body "$notes"
+          fi
+          gh pr merge "$branch" --repo openstory-so/skills --auto --squash --delete-branch
