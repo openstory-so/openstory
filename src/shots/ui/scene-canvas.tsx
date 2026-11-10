@@ -27,6 +27,7 @@ import { Film, MessageSquare } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   shotIdAtSequenceTime,
+  toAnimaticShots,
   toPlaybackClips,
 } from '@/sequences/ui/theatre/playback-clips';
 
@@ -68,6 +69,8 @@ type SceneCanvasProps = {
   onPlayingShot?: (shotId: string | undefined) => void;
   /** The shot under the sequence player's playhead — its lines are marked. */
   playingShotId?: string;
+  /** Play pictures for each shot's length, no clips (#2350). A shot plays its scene. */
+  animatic?: boolean;
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -95,12 +98,20 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   onAutoPlayConsumed,
   onPlayingShot,
   playingShotId,
+  animatic = false,
 }) => {
-  const scope = selectionScope(selection);
-  const scopedShots = useMemo(
-    () => (shots ? selectionShots(selection, shots) : []),
-    [selection, shots]
-  );
+  const selectedScope = selectionScope(selection);
+  const scope = animatic && selectedScope === 'shot' ? 'scenes' : selectedScope;
+  const scopedShots = useMemo(() => {
+    if (!shots) return [];
+    const picked = selectionShots(selection, shots);
+    if (!animatic || !sequence) return picked;
+    const sceneId = selection.shotId ? picked[0]?.sceneId : undefined;
+    return toAnimaticShots(
+      sceneId ? shots.filter((s) => s.sceneId === sceneId) : picked,
+      sequence
+    );
+  }, [selection, shots, animatic, sequence]);
 
   const playbackClips = useMemo(
     () => toPlaybackClips(scopedShots, aspectRatio),
@@ -245,7 +256,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         onTimeUpdate={(time, offsets) =>
           onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, offsets))
         }
-        draftLabel={draftLabel}
+        draftLabel={animatic ? null : draftLabel}
         overlayActions={
           scope === 'sequence' ? (
             <>

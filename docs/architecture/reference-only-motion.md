@@ -108,6 +108,13 @@ The rule is in `readShotStoryboard` (`src/shots/server/shot-preview.ts`) and
 the dependency-graph doc § 4.1.9. MCP and the assistant read it with
 `get_shot_storyboard` and redraw with `regenerate_shot_storyboard`.
 
+**The Animatic view (#2350).** A third centre view beside Canvas and Script
+(`view=animatic`) plays the selection with no clips: each shot holds its
+picture for its own length with its dialogue, through the same sequence player
+(`toAnimaticShots`, `playback-clips.ts`). A reference-only shot's picture is its
+sketch; a start-frame shot's is its still, else its sketch. A selected shot
+plays its whole scene. Music plays at sequence scope, as in the theatre.
+
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
 preview row's `createdAt` (`ShotView.previewCreatedAt`) with the selected

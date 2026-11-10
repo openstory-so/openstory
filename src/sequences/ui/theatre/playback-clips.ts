@@ -6,6 +6,10 @@ import {
 
 import { sketchIsNewerThanClip, type ShotView } from '@/shots/shot-view';
 import {
+  usesStartFrame,
+  type StartFrameSequence,
+} from '@/shots/use-start-frame';
+import {
   packedClipWindows,
   shotIdAtTime,
   type PackedClipShot,
@@ -151,6 +155,21 @@ export function subtitleTrackRevision(vtt: string): string {
     hash = (Math.imul(31, hash) + vtt.charCodeAt(i)) | 0;
   }
   return (hash >>> 0).toString(36);
+}
+
+/**
+ * The animatic (#2350): every shot as its picture for its own length, with
+ * its dialogue, and no clip. A reference-only shot's picture is its sketch;
+ * a start-frame shot's is its still, else its sketch.
+ */
+export function toAnimaticShots<
+  S extends PlaybackShot & { useStartFrame?: boolean | null },
+>(shots: readonly S[], sequence: StartFrameSequence): S[] {
+  return shots.map((shot) => ({
+    ...shot,
+    video: null,
+    image: usesStartFrame(shot, sequence) ? shot.image : null,
+  }));
 }
 
 /** One continuous timeline: rendered clips where available, stills elsewhere. Clips play in array order. */
