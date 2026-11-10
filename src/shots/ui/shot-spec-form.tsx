@@ -416,6 +416,8 @@ function SpecField({
           focused.current = true;
         }}
         disabled={disabled}
+        // Preset fields hold a phrase: one row, growing with the text.
+        className={field.suggestions ? 'min-h-9 py-1.5' : undefined}
         mentionItems={mentionItems}
         onMentionRename={onMentionRename}
       />
