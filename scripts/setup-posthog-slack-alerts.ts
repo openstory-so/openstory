@@ -350,17 +350,6 @@ function specs(): DestinationSpec[] {
       ),
     },
     {
-      name: `Product · user_signed_in · ${PRODUCT_CHANNEL} (#1088)`,
-      type: 'destination',
-      event: 'user_signed_in',
-      channel: PRODUCT_CHANNEL,
-      text: 'Sign-in: {person.properties.email ?? event.properties.email ?? event.distinct_id}',
-      blocks: productBlocks(
-        '👋 User signed in',
-        '*{person.properties.email ?? event.properties.email ?? event.distinct_id}* signed in ({event.properties.path ?? "session"})'
-      ),
-    },
-    {
       name: `Product · sequence_generated · ${PRODUCT_CHANNEL} (#1088)`,
       type: 'destination',
       event: 'sequence_generated',
