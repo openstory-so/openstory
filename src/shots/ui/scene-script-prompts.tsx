@@ -1704,6 +1704,38 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
       <TabsContent value="image-prompt">
         <div className="space-y-4">
+          {/* Start-frame switch. Unticked, the shot renders straight from its
+                  reference sheets — the same thing the sequence-wide reference-only
+                  setting does, decided per shot. Disabled without a still to point
+                  at: ticking it must never trigger image generation. */}
+          <label
+            htmlFor="scene-use-start-frame"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Checkbox
+              id="scene-use-start-frame"
+              checked={shotUsesStartFrame}
+              onCheckedChange={(checked) =>
+                setUseStartFrame.mutate(checked === true)
+              }
+              disabled={
+                !hydrated ||
+                !shot ||
+                setUseStartFrame.isPending ||
+                isGeneratingMotion ||
+                (!startFrameAvailable && !shotUsesStartFrame)
+              }
+            />
+            <span>
+              Use start frame
+              {!startFrameAvailable && !shotUsesStartFrame && (
+                <span className="text-muted-foreground/70">
+                  {' '}
+                  — generate one first
+                </span>
+              )}
+            </span>
+          </label>
           {/* A reference-only shot's picture is its sketch; a still is optional (#2350). */}
           {shot && !shotUsesStartFrame && (
             <div className="flex flex-col gap-4 border-b pb-6">
@@ -2308,43 +2340,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </label>
           )}
 
-          {/* Start-frame switch. Unticked, the shot renders straight from its
-              reference sheets — the same thing the sequence-wide reference-only
-              setting does, decided per shot. Disabled without a still to point
-              at: ticking it must never trigger image generation. */}
-          <label
-            htmlFor="scene-use-start-frame"
-            className="flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Checkbox
-              id="scene-use-start-frame"
-              checked={shotUsesStartFrame}
-              onCheckedChange={(checked) =>
-                setUseStartFrame.mutate(checked === true)
-              }
-              disabled={
-                !hydrated ||
-                !shot ||
-                setUseStartFrame.isPending ||
-                isGeneratingMotion ||
-                (!startFrameAvailable && !shotUsesStartFrame)
-              }
-            />
-            <span>
-              Use start frame
-              {!startFrameAvailable && !shotUsesStartFrame && (
-                <span className="text-muted-foreground/70">
-                  {' '}
-                  — generate one first
-                </span>
-              )}
-            </span>
-          </label>
-
           {modelCannotRenderReferenceOnly && (
             <p className="text-xs text-muted-foreground">
               {IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name} needs a start
-              frame. Pick another model, or tick Use start frame.
+              frame. Pick another model, or tick Use start frame on the Image
+              tab.
             </p>
           )}
 

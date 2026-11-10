@@ -529,7 +529,7 @@ test.describe('Editing shots', () => {
       useStartFrame: true,
     });
     await openShot(target);
-    await page.getByRole('tab', { name: 'Video' }).click();
+    await page.getByRole('tab', { name: 'Image' }).click();
     const toggle = page.getByRole('checkbox', { name: 'Use start frame' });
     const setToggle = async (on: boolean) => {
       await toggle.click({ timeout: 30_000 });

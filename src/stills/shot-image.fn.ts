@@ -164,6 +164,8 @@ export function isImageHistoryVersion(v: {
   return (
     v.kind === 'model' ||
     v.kind === 'upload' ||
+    // Storyboard sketches show too, view-only (#2350).
+    v.kind === 'preview' ||
     (v.kind === 'framing' && Boolean(v.sourceVariantId))
   );
 }
@@ -176,7 +178,7 @@ export function isImageHistoryVersion(v: {
 export type ShotImageVersionRow = {
   id: string;
   model: string;
-  kind: 'model' | 'framing' | 'upload';
+  kind: 'model' | 'framing' | 'upload' | 'sketch';
   status: string;
   url: string | null;
   createdAt: Date;
@@ -229,7 +231,9 @@ export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
             ? ('framing' as const)
             : v.kind === 'upload'
               ? ('upload' as const)
-              : ('model' as const),
+              : v.kind === 'preview'
+                ? ('sketch' as const)
+                : ('model' as const),
         status: v.status,
         url: v.url,
         createdAt: v.createdAt,
