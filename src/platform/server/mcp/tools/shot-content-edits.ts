@@ -33,6 +33,7 @@ import {
   loadShotTarget,
   type ShotEditContext,
 } from '@/shots/server/shot-context';
+import { readShotStoryboard } from '@/shots/server/shot-preview';
 import { shotSpecEditSchema } from '@/shots/shot-list.schema';
 import { openstoryTool, productionRead } from '../tool-context';
 
@@ -99,6 +100,37 @@ const getShotSpec = productionRead(
     const context = await shotEdit(scopedDb, userId, input);
     return { shotId: context.shot.id, ...(await readShotSpec(context)) };
   }
+);
+
+const storyboardSketch = z.object({
+  id: z.string(),
+  url: z.string().nullable(),
+  status: z.string(),
+  error: z.string().nullable(),
+  model: z.string(),
+  createdAt: z.string(),
+});
+
+const shotStoryboard = z.object({
+  shotId: z.string(),
+  referenceOnly: z.boolean(),
+  generating: z.boolean(),
+  staleReason: z.enum(['missing', 'failed', 'changed']).nullable(),
+  current: storyboardSketch.nullable(),
+  history: z.array(storyboardSketch),
+});
+
+const getShotStoryboard = productionRead(
+  'get_shot_storyboard',
+  'Read a shot’s storyboard sketch: the grey animatic that is a reference-only shot’s only picture until its clip lands. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last redraw failed; changed: the motion prompt or cast moved since it was drawn), whether one is drawing, and every sketch drawn for it, newest first. A shot with a start frame shows its still instead and is never stale. Redraw with regenerate_shot_storyboard.',
+  shotInput,
+  shotStoryboard,
+  async (input, { scopedDb, userId, origin }) =>
+    projectRead(
+      shotStoryboard,
+      await readShotStoryboard(await shotEdit(scopedDb, userId, input)),
+      origin
+    )
 );
 
 const dialogueLine = z.object({
@@ -414,6 +446,7 @@ const selectVideoVersion = openstoryTool({
 
 export const shotContentTools = [
   getShotSpec,
+  getShotStoryboard,
   listShotDialogue,
   updateShotPrompt,
   restoreShotPrompt,

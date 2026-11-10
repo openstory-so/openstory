@@ -1501,6 +1501,21 @@ export function createFrameVariantsMethods(db: Database) {
       return rows[0] ?? null;
     },
 
+    /** Every non-discarded `kind: 'preview'` row of a frame, newest first (#2350). */
+    listPreviews: (frameId: string, limit = 50): Promise<FrameVariant[]> =>
+      db
+        .select()
+        .from(frameVariants)
+        .where(
+          and(
+            eq(frameVariants.frameId, frameId),
+            eq(frameVariants.kind, 'preview'),
+            isNull(frameVariants.discardedAt)
+          )
+        )
+        .orderBy(...newestFirst)
+        .limit(limit),
+
     /**
      * Batch {@link getLatestPreview}, keyed by frameId — frames with no preview
      * are absent, so `map.get(id) ?? null` matches the single-frame read.

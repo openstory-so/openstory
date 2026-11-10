@@ -83,6 +83,8 @@ import {
   stitches,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
+import { simpleHash } from '@/platform/hash';
+import { buildPreviewPrompt } from '@/sequences/server/poster-prompt';
 import {
   shotInspectionSchema,
   sceneDetailSchema,
@@ -2561,6 +2563,115 @@ describe('structure edits (#1979)', () => {
     expect(
       await call('create_shot', { sequenceId: otherSequence, sceneId })
     ).toMatchObject({ isError: true });
+  });
+});
+
+describe('shot storyboard (#2350)', () => {
+  const sketchOf = (text: string) => simpleHash(buildPreviewPrompt(text, []));
+  async function addSketch(
+    values: Partial<typeof frameVariants.$inferInsert> = {}
+  ) {
+    const id = generateId();
+    await db.insert(frameVariants).values({
+      id,
+      frameId,
+      sequenceId,
+      kind: 'preview',
+      model: 'nano_banana_2_lite',
+      status: 'completed',
+      isPrimary: false,
+      url: `/r2/openstory-images/${id}.png`,
+      promptHash: sketchOf('Motion prompt'),
+      ...values,
+    });
+    return id;
+  }
+  const referenceOnly = () =>
+    db.update(shots).set({ useStartFrame: false }).where(eq(shots.id, shotId));
+
+  it('never reads a start-frame shot stale', async () => {
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ referenceOnly: false, staleReason: null, current: null });
+  });
+
+  it('reads missing, fresh, changed and failed sketches', async () => {
+    await referenceOnly();
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ referenceOnly: true, staleReason: 'missing' });
+
+    const fresh = await addSketch();
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      staleReason: null,
+      current: {
+        id: fresh,
+        url: `https://openstory.test/r2/openstory-images/${fresh}.png`,
+      },
+    });
+
+    const changed = await addSketch({ promptHash: sketchOf('Old prompt') });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ staleReason: 'changed', current: { id: changed } });
+
+    const failed = await addSketch({
+      status: 'failed',
+      url: null,
+      error: 'Content checker',
+    });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      staleReason: 'failed',
+      current: { id: changed },
+      history: [
+        { id: failed, error: 'Content checker' },
+        { id: changed },
+        { id: fresh },
+      ],
+    });
+
+    await addSketch({ status: 'generating', url: null });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ generating: true, staleReason: null });
+  });
+
+  it('regenerate_shot_storyboard draws from the motion prompt and refuses a start-frame shot', async () => {
+    expect(
+      await call('regenerate_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    await referenceOnly();
+    await db
+      .insert(credits)
+      .values({ organizationId, balance: 100_000_000 })
+      .onConflictDoUpdate({
+        target: credits.organizationId,
+        set: { balance: 100_000_000 },
+      });
+    vi.mocked(triggerWorkflow).mockClear().mockResolvedValueOnce('sketch-run');
+    expect(
+      await data('regenerate_shot_storyboard', { sequenceId, shotId })
+    ).toEqual({ workflowRunId: 'sketch-run', alreadyInFlight: false });
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
+      '/image',
+      expect.objectContaining({
+        shotId,
+        frameId,
+        prompt: buildPreviewPrompt('Motion prompt', []),
+      }),
+      undefined
+    );
+    await addSketch({ status: 'generating', url: null, workflowRunId: 'r2' });
+    expect(
+      await data('regenerate_shot_storyboard', { sequenceId, shotId })
+    ).toEqual({ workflowRunId: 'r2', alreadyInFlight: true });
   });
 });
 

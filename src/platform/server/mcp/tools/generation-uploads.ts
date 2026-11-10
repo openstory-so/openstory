@@ -80,6 +80,7 @@ import {
 import { openstoryTool, productionRead } from '../tool-context';
 import { uploadSceneDialogue } from '@/shots/server/scene-dialogue-upload';
 import { shotEdit } from './shot-content-edits';
+import { regenerateShotStoryboard } from '@/shots/server/shot-preview';
 
 const writeAnnotations = {
   readOnlyHint: false,
@@ -271,6 +272,30 @@ const generateShotImageTool = openstoryTool({
       summary: result.alreadyInFlight
         ? 'That still is already rendering.'
         : 'Started the still.',
+    };
+  },
+});
+
+const regenerateShotStoryboardTool = openstoryTool({
+  name: 'regenerate_shot_storyboard',
+  description:
+    'Redraw a reference-only shot’s storyboard sketch from its current motion prompt and cast (uses credits; one small image). Use when get_shot_storyboard reads stale. A sketch already drawing is returned (alreadyInFlight) and nothing is charged. Refused for a shot with a start frame. The sketch lands when the run finishes (get_shot_storyboard).',
+  scope: 'generate',
+  annotations: paid,
+  inputSchema: shotInput,
+  outputSchema: z.object({
+    workflowRunId: z.string().nullable(),
+    alreadyInFlight: z.boolean(),
+  }),
+  run: async (input, { scopedDb, userId }) => {
+    const result = await regenerateShotStoryboard(
+      await shotEdit(scopedDb, userId, input)
+    );
+    return {
+      data: result,
+      summary: result.alreadyInFlight
+        ? 'That sketch is already drawing.'
+        : 'Started the sketch.',
     };
   },
 });
@@ -869,6 +894,7 @@ export const generationUploadTools = [
   listModels,
   getShotVariantGrid,
   generateShotImageTool,
+  regenerateShotStoryboardTool,
   generateShotImageVariantsTool,
   selectShotImageVariantTool,
   generateShotVideoTool,
