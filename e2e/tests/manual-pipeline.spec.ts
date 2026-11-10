@@ -130,7 +130,7 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
 
       // ---- 3. Select the shot and edit its visual prompt ---------------
       await shotCards.first().click();
-      await page.getByRole('tab', { name: 'Start Frame' }).click();
+      await page.getByRole('tab', { name: 'Image' }).click();
       const promptEditor = page
         .getByRole('tabpanel')
         .locator('[data-slot="markdown-editor"] .ProseMirror');
@@ -148,7 +148,7 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       // The mobile drawer mounts a second (hidden) copy of the tab — scope to
       // the visible desktop tabpanel.
       await page
-        .getByRole('tabpanel', { name: 'Start Frame' })
+        .getByRole('tabpanel', { name: 'Image' })
         .locator('input[type="file"]')
         .setInputFiles(IMAGE_FIXTURE);
       // The fixture photo shows a person, so the likeness check (#1581) asks

@@ -97,19 +97,13 @@ the same text the scene-split sketch is drawn from. Each redraw is a new
 versions, since none of them reaches the clip. A shot with a start frame never
 redraws, because its still takes over.
 
-**The Storyboard tab (#2350).** A reference-only shot gets a Storyboard tab
-beside Start Frame (facet `storyboard`; the canvas shows the sketch while it
-is open). Start Frame keeps the still prompt, upload and variants, since a
-still can still be made for a reference-only shot. The tab shows the sketch
-history (view-only, the newest completed sketch always shows), whether the
-sketch is stale and a Regenerate button; two Regenerates that saw the same
-newest sketch start one run (`deduplicationId`). The automatic redraw stays; stale covers what it misses: a
-cast or look edit (the sketch prompt names the cast, but no motion prompt is
-written), a redraw that did not start (credits, trigger error; logged only),
-and a shot switched to reference-only that still shows its scene-split sketch.
-The rule is in `readShotStoryboard` (`src/shots/server/shot-preview.ts`) and
-the dependency-graph doc § 4.1.9. MCP and the assistant read it with
-`get_shot_storyboard` and redraw with `regenerate_shot_storyboard`.
+**The Image tab (#2350).** The second shot tab is Image on every shot. On a
+reference-only shot it opens with the storyboard: whether the sketch is stale,
+Regenerate, and the sketch history (view-only, the newest completed sketch
+always shows). The still prompt, upload and variants follow under "Start frame
+(optional)", because Use Start Frame stays off until the shot has a still.
+Two Regenerates that saw the same newest sketch start one run
+(`deduplicationId`).
 
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the

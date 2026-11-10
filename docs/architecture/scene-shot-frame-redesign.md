@@ -164,7 +164,7 @@ as she runs"). A shot from before specs has no row and keeps its text as
 written until Rewrite shot.
 
 The shot inspector edits the spec above each prompt (#1929): framing and
-action on the Start Frame tab; action, camera move, pacing, direction and
+action on the Image tab; action, camera move, pacing, direction and
 sound on the Video tab. Suggestions come from `shot-spec-vocabulary.ts`, the
 same lists the shot-list prompt names; every field stays free text. A save
 appends a `source: 'edit'` version stamped current, then rebuilds the

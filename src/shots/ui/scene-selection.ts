@@ -21,7 +21,6 @@ export const SCENE_FACETS = [
   'script',
   'scene-variants',
   'image-prompt',
-  'storyboard',
   'motion-prompt',
 ] as const;
 

@@ -654,8 +654,8 @@ test.describe('Editing shots', () => {
     const row = byId(await readShots(), target.id);
     expect(row.lines.length).toBeGreaterThan(0);
     await openShot(row);
-    await page.getByRole('tab', { name: 'Start Frame' }).click();
-    const prompt = page.getByRole('tabpanel', { name: 'Start Frame' });
+    await page.getByRole('tab', { name: 'Image' }).click();
+    const prompt = page.getByRole('tabpanel', { name: 'Image' });
     await expect(prompt).toContainText('eye level', { timeout: 15_000 });
     for (const line of row.lines) {
       await expect(prompt).not.toContainText(line);

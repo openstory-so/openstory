@@ -182,10 +182,7 @@ export type TabDescriptor = { value: TabValue; label: string };
  * concern, and cast/locations/elements apply at every level. Starting-frame
  * variants moved out of the tabs onto the canvas, so they're absent here.
  */
-export function tabsForScope(
-  scope: SelectionScope,
-  options: { storyboard: boolean } = { storyboard: false }
-): TabDescriptor[] {
+export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
   if (scope === 'shot') {
     // No Script tab: the script is scene-scoped (`scene_script_versions` is
     // keyed by sceneId), so editing it from a shot would silently rewrite every
@@ -194,11 +191,8 @@ export function tabsForScope(
     // the default reference-only mode the start frame is optional.
     return [
       { value: 'motion-prompt', label: 'Video' },
-      { value: 'image-prompt', label: 'Start Frame' },
-      // A reference-only shot's picture is its storyboard sketch (#2350).
-      ...(options.storyboard
-        ? [{ value: 'storyboard' as const, label: 'Storyboard' }]
-        : []),
+      // The shot's pictures: its storyboard sketch and its still (#2350).
+      { value: 'image-prompt', label: 'Image' },
       { value: 'cast', label: 'Cast' },
       { value: 'location', label: 'Locations' },
       { value: 'elements', label: 'Elements' },
@@ -230,10 +224,9 @@ export function tabsForScope(
  */
 export function effectiveTabFor(
   scope: SelectionScope,
-  picked: TabValue | undefined,
-  options: { storyboard: boolean } = { storyboard: false }
+  picked: TabValue | undefined
 ): TabValue {
-  const tabs = tabsForScope(scope, options);
+  const tabs = tabsForScope(scope);
   if (picked && tabs.some((t) => t.value === picked)) return picked;
   return tabs[0]?.value ?? 'cast';
 }
@@ -1632,14 +1625,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         {visibleTabs.map((t) => (
           <TabsTrigger key={t.value} value={t.value} disabled={!hydrated}>
             {t.label}
-            {t.value === 'storyboard' && storyboardStale && (
-              <StalenessIndicator
-                artifact="storyboard"
-                entityType="shot"
-                density="corner-dot"
-                isRegenerating={storyboard?.generating ?? false}
-              />
-            )}
+            {t.value === 'image-prompt' &&
+              storyboardStale &&
+              staleness?.visualPrompt !== 'stale' &&
+              staleness?.visualPrompt !== 'updating' && (
+                <StalenessIndicator
+                  artifact="storyboard"
+                  entityType="shot"
+                  density="corner-dot"
+                  isRegenerating={storyboard?.generating ?? false}
+                />
+              )}
             {t.value === 'image-prompt' &&
               (staleness?.visualPrompt === 'stale' ||
                 staleness?.visualPrompt === 'updating') && (
@@ -1708,6 +1704,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
       <TabsContent value="image-prompt">
         <div className="space-y-4">
+          {/* A reference-only shot's picture is its sketch; a still is optional (#2350). */}
+          {shot && !shotUsesStartFrame && (
+            <div className="flex flex-col gap-4 border-b pb-6">
+              <h3 className="text-sm font-medium">Storyboard</h3>
+              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
+            </div>
+          )}
+          {shot && !shotUsesStartFrame && (
+            <h3 className="text-sm font-medium">Start frame (optional)</h3>
+          )}
           {/* Thinking bar while the model reasons, before the regenerated
               prompt starts streaming back ('pending' → first delta). */}
           <ThinkingBar active={shotPromptStream.visual.status === 'pending'} />
@@ -2009,12 +2015,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           ) : null}
         </div>
-      </TabsContent>
-
-      <TabsContent value="storyboard">
-        {shot && !shotUsesStartFrame ? (
-          <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
-        ) : null}
       </TabsContent>
 
       <TabsContent value="motion-prompt">
