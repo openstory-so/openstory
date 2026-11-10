@@ -992,7 +992,7 @@ export function createFrameVariantsMethods(db: Database) {
             kind: 'preview.generated',
             targetType: 'frame',
             targetId: input.frameId,
-            summary: `Generated a preview with ${mediaModelName(input.model)}`,
+            summary: `Drew a storyboard sketch with ${mediaModelName(input.model)}`,
             data: { variantId, model: input.model },
           },
           frameVariants,

@@ -33,21 +33,16 @@ const STALE_COPY = {
   changed: 'The prompt or cast changed since this sketch.',
 } as const;
 
-const DATE = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
 /**
- * A reference-only shot's storyboard (#2350): whether its sketch is stale,
- * Regenerate, and every sketch drawn for it. The newest always shows.
+ * A reference-only shot's storyboard (#2350): its sketch, whether it is
+ * stale, and Regenerate. Past sketches are in the shot's History.
  */
 export const ShotStoryboardPanel: React.FC<PanelProps> = (props) => (
   <Suspense
     fallback={
       <div className="flex flex-col gap-4">
         <Skeleton className="h-9 w-full" />
-        <Skeleton className="aspect-video w-full" />
+        <Skeleton className="h-16 w-24" />
       </div>
     }
   >
@@ -78,9 +73,11 @@ const StoryboardBody: React.FC<PanelProps> = ({ sequenceId, shotId }) => {
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {drawing
             ? 'Drawing a new sketch…'
-            : data.staleReason
-              ? STALE_COPY[data.staleReason]
-              : 'Up to date with the prompt and cast.'}
+            : data.staleReason === 'failed'
+              ? `${STALE_COPY.failed} ${data.history[0]?.error ?? ''}`.trim()
+              : data.staleReason
+                ? STALE_COPY[data.staleReason]
+                : 'Up to date with the prompt and cast.'}
         </p>
         <Button
           type="button"
@@ -99,36 +96,17 @@ const StoryboardBody: React.FC<PanelProps> = ({ sequenceId, shotId }) => {
         </Button>
       </div>
 
-      {data.history.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Sketches appear here once drawn.
-        </p>
-      ) : (
-        <ul className="grid grid-cols-2 gap-3" aria-label="Sketch history">
-          {data.history.map((sketch) => (
-            <li key={sketch.id} className="flex flex-col gap-1">
-              {sketch.url ? (
-                <AppImage
-                  src={sketch.url}
-                  alt={`Sketch from ${DATE.format(new Date(sketch.createdAt))}`}
-                  width={320}
-                  height={180}
-                  className="aspect-video w-full rounded-md bg-muted object-contain"
-                />
-              ) : (
-                <div className="flex aspect-video w-full items-center justify-center rounded-md border border-dashed p-2 text-center text-xs text-muted-foreground">
-                  {sketch.status === 'failed'
-                    ? (sketch.error ?? 'Failed')
-                    : 'Drawing…'}
-                </div>
-              )}
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {`${sketch.id === data.current?.id ? 'Showing · ' : ''}${DATE.format(new Date(sketch.createdAt))}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {data.current?.url ? (
+        <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-md bg-muted">
+          <AppImage
+            src={data.current.url}
+            alt="Current storyboard sketch"
+            width={96}
+            height={64}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
