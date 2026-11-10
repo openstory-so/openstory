@@ -5,7 +5,7 @@
  * prompt is replaced only when the user says so.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/platform/errors';
 import {
@@ -34,12 +34,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/ui/shadcn/collapsible';
-import { Input } from '@/ui/shadcn/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui/shadcn/dropdown-menu';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { Textarea } from '@/ui/shadcn/textarea';
 import { useHydrated } from '@/ui/use-hydrated';
 import { cn } from '@/ui/utils';
 import { ChevronRight } from 'lucide-react';
+import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
+import type { MentionItem } from './prompt-mention/mention-items';
+import { useSequenceMentionItems } from './use-mention-items';
 import { useSaveShotSpec, useShotSpec } from './use-shot-spec';
 
 type Part = 'still' | 'motion';
@@ -202,6 +209,10 @@ function SpecFields({
 }) {
   const save = useSaveShotSpec(sequenceId);
   const hydrated = useHydrated();
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
+  // Remounts the fields on Cancel, back to the saved spec.
+  const [resetCount, setResetCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<StoredShotSpec | null>(null);
@@ -241,8 +252,10 @@ function SpecFields({
   return (
     <form
       className="flex flex-col gap-3"
-      onChange={() => setDirty(true)}
-      onReset={() => setDirty(false)}
+      onReset={() => {
+        setDirty(false);
+        setResetCount((count) => count + 1);
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         const parsed = shotSpecEditSchema.safeParse(
@@ -294,48 +307,18 @@ function SpecFields({
               className="flex flex-col gap-3"
               disabled={updating || save.isPending}
             >
-              {PART_FIELDS[part].map((field) => {
-                const id = `${shotId}-${part}-${field.name}`;
-                const listId = field.suggestions
-                  ? `${id}-suggestions`
-                  : undefined;
-                return (
-                  <label
-                    key={field.name}
-                    className="flex flex-col gap-1 text-xs"
-                    htmlFor={id}
-                  >
-                    {field.label}
-                    {field.suggestions ? (
-                      <>
-                        <Input
-                          id={id}
-                          name={field.name}
-                          defaultValue={field.read(spec)}
-                          maxLength={2000}
-                          list={listId}
-                          autoComplete="off"
-                        />
-                        <datalist id={listId}>
-                          {field.suggestions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </datalist>
-                      </>
-                    ) : (
-                      <Textarea
-                        id={id}
-                        name={field.name}
-                        defaultValue={field.read(spec)}
-                        maxLength={2000}
-                        rows={2}
-                      />
-                    )}
-                  </label>
-                );
-              })}
+              {PART_FIELDS[part].map((field) => (
+                <SpecField
+                  key={`${field.name}-${resetCount}`}
+                  id={`${shotId}-${part}-${field.name}`}
+                  field={field}
+                  initial={field.read(spec)}
+                  disabled={updating || save.isPending}
+                  mentionItems={mentionItems}
+                  onMentionRename={onMentionRename}
+                  onEdit={() => setDirty(true)}
+                />
+              ))}
             </fieldset>
             {dirty && (
               <div className="flex items-center justify-end gap-2">
@@ -394,5 +377,79 @@ function SpecFields({
         </AlertDialogContent>
       </AlertDialog>
     </form>
+  );
+}
+
+/** One spec field: grows with its text and shows cast and elements as pills. */
+function SpecField({
+  id,
+  field,
+  initial,
+  disabled,
+  mentionItems,
+  onMentionRename,
+  onEdit,
+}: {
+  id: string;
+  field: Field;
+  initial: string;
+  disabled: boolean;
+  mentionItems: MentionItem[];
+  onMentionRename: (item: MentionItem, name: string) => void;
+  onEdit: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  // The editor re-emits on mount; only a change after focus is an edit.
+  const focused = useRef(false);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <span className="text-xs">{field.label}</span>
+        {field.suggestions && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={disabled}
+                aria-label={`${field.label} suggestions`}
+              >
+                Suggestions
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72">
+              {field.suggestions.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onSelect={() => {
+                    setValue(option);
+                    onEdit();
+                  }}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      <MarkdownEditor
+        id={id}
+        aria-label={field.label}
+        value={value}
+        onValueChange={(next) => {
+          setValue(next);
+          if (focused.current) onEdit();
+        }}
+        onFocus={() => {
+          focused.current = true;
+        }}
+        disabled={disabled}
+        mentionItems={mentionItems}
+        onMentionRename={onMentionRename}
+      />
+      <input type="hidden" name={field.name} value={value} />
+    </div>
   );
 }

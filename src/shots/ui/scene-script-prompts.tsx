@@ -1704,6 +1704,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
       <TabsContent value="image-prompt">
         <div className="space-y-4">
+          {/* A reference-only shot's picture is its sketch; a still is optional (#2350). */}
+          {shot && !shotUsesStartFrame && (
+            <div className="flex flex-col gap-4 border-b pb-6">
+              <h3 className="text-sm font-medium">Storyboard</h3>
+              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
+            </div>
+          )}
+          <h3 className="text-sm font-medium">Start frame</h3>
           {/* Start-frame switch. Unticked, the shot renders straight from its
                   reference sheets — the same thing the sequence-wide reference-only
                   setting does, decided per shot. Disabled without a still to point
@@ -1736,16 +1744,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               )}
             </span>
           </label>
-          {/* A reference-only shot's picture is its sketch; a still is optional (#2350). */}
-          {shot && !shotUsesStartFrame && (
-            <div className="flex flex-col gap-4 border-b pb-6">
-              <h3 className="text-sm font-medium">Storyboard</h3>
-              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
-            </div>
-          )}
-          {shot && !shotUsesStartFrame && (
-            <h3 className="text-sm font-medium">Start frame (optional)</h3>
-          )}
           {/* Thinking bar while the model reasons, before the regenerated
               prompt starts streaming back ('pending' → first delta). */}
           <ThinkingBar active={shotPromptStream.visual.status === 'pending'} />

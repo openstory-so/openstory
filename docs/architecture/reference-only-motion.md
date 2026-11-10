@@ -97,14 +97,14 @@ the same text the scene-split sketch is drawn from. Each redraw is a new
 versions, since none of them reaches the clip. A shot with a start frame never
 redraws, because its still takes over.
 
-**The Image tab (#2350).** The second shot tab is Image on every shot. It
-holds the Use start frame checkbox. On a reference-only shot it continues with
-the storyboard: the current sketch, whether
+**The Image tab (#2350).** The second shot tab is Image on every shot. On a
+reference-only shot it opens with the storyboard: the current sketch, whether
 it is stale, and Regenerate. Past sketches are in the shot's History and the
 prompt history's Images list (badged Sketch, never selectable) like any
 other image: a sketch's `preview.generated` event names its row `variantId`,
-which `mediaVersionIds` reads as the version. The still prompt, upload and variants follow under "Start frame
-(optional)", because Use Start Frame stays off until the shot has a still.
+which `mediaVersionIds` reads as the version. A "Start frame" section follows with the Use start frame checkbox, then the
+still prompt, upload and variants. The checkbox stays off until the shot has a
+still.
 Two Regenerates that saw the same newest sketch start one run
 (`deduplicationId`).
 
