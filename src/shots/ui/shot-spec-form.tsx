@@ -1,7 +1,6 @@
 /**
- * The shot spec above a prompt (#1929). The still's tab edits framing and
- * action; the video's tab edits action, camera move, pacing, direction and
- * sound. Saving rebuilds the prompts from the spec for free. A written
+ * The shot spec (#1929), one form on the Shot tab (#2350): framing, then
+ * motion. Saving rebuilds the prompts from the spec for free. A written
  * prompt is replaced only when the user says so.
  */
 
@@ -48,8 +47,6 @@ import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import type { MentionItem } from './prompt-mention/mention-items';
 import { useSequenceMentionItems } from './use-mention-items';
 import { useSaveShotSpec, useShotSpec } from './use-shot-spec';
-
-type Part = 'still' | 'motion';
 
 type Field = {
   name: string;
@@ -102,24 +99,29 @@ const FIELDS = {
   soundCue: { name: 'soundCue', label: 'Sound', read: (s) => s.soundCue },
 } satisfies Record<string, Field>;
 
-const PART_FIELDS: Record<Part, Field[]> = {
-  still: [
-    FIELDS.shotSize,
-    FIELDS.angle,
-    FIELDS.composition,
-    FIELDS.subjectStartState,
-    FIELDS.action,
-  ],
-  motion: [
-    FIELDS.action,
-    FIELDS.move,
-    FIELDS.pacing,
-    FIELDS.direction,
-    FIELDS.soundCue,
-  ],
-};
+const GROUPS: { label: string; fields: Field[] }[] = [
+  {
+    label: 'Framing',
+    fields: [
+      FIELDS.shotSize,
+      FIELDS.angle,
+      FIELDS.composition,
+      FIELDS.subjectStartState,
+    ],
+  },
+  {
+    label: 'Motion',
+    fields: [
+      FIELDS.action,
+      FIELDS.move,
+      FIELDS.pacing,
+      FIELDS.direction,
+      FIELDS.soundCue,
+    ],
+  },
+];
 
-/** The saved spec with this tab's fields read off the form. */
+/** The spec read off the form. */
 function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
   const value = (name: string, fallback: string) => {
     const entry = form.get(name);
@@ -153,11 +155,9 @@ function writtenLabel(visual: boolean, motion: boolean): string {
 export function ShotSpecForm({
   sequenceId,
   shotId,
-  part,
 }: {
   sequenceId: string;
   shotId: string;
-  part: Part;
 }) {
   const { data } = useShotSpec({ sequenceId, shotId });
   if (!data) {
@@ -181,7 +181,6 @@ export function ShotSpecForm({
       key={JSON.stringify(data.spec)}
       sequenceId={sequenceId}
       shotId={shotId}
-      part={part}
       spec={data.spec}
       verdict={data.verdict}
       visualWritten={data.visualWritten}
@@ -193,7 +192,6 @@ export function ShotSpecForm({
 function SpecFields({
   sequenceId,
   shotId,
-  part,
   spec,
   verdict,
   visualWritten,
@@ -201,7 +199,6 @@ function SpecFields({
 }: {
   sequenceId: string;
   shotId: string;
-  part: Part;
   spec: StoredShotSpec;
   verdict: 'current' | 'stale' | 'missing' | 'updating';
   visualWritten: boolean;
@@ -213,7 +210,7 @@ function SpecFields({
     useSequenceMentionItems(sequenceId);
   // Remounts the fields on Cancel, back to the saved spec.
   const [resetCount, setResetCount] = useState(0);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<StoredShotSpec | null>(null);
   const updating = verdict === 'updating';
@@ -307,17 +304,24 @@ function SpecFields({
               className="flex flex-col gap-3"
               disabled={updating || save.isPending}
             >
-              {PART_FIELDS[part].map((field) => (
-                <SpecField
-                  key={`${field.name}-${resetCount}`}
-                  id={`${shotId}-${part}-${field.name}`}
-                  field={field}
-                  initial={field.read(spec)}
-                  disabled={updating || save.isPending}
-                  mentionItems={mentionItems}
-                  onMentionRename={onMentionRename}
-                  onEdit={() => setDirty(true)}
-                />
+              {GROUPS.map((group) => (
+                <div key={group.label} className="flex flex-col gap-3">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {group.label}
+                  </span>
+                  {group.fields.map((field) => (
+                    <SpecField
+                      key={`${field.name}-${resetCount}`}
+                      id={`${shotId}-${field.name}`}
+                      field={field}
+                      initial={field.read(spec)}
+                      disabled={updating || save.isPending}
+                      mentionItems={mentionItems}
+                      onMentionRename={onMentionRename}
+                      onEdit={() => setDirty(true)}
+                    />
+                  ))}
+                </div>
               ))}
             </fieldset>
             {dirty && (

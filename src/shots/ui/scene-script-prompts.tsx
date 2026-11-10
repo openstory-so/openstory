@@ -188,13 +188,13 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
   if (scope === 'shot') {
     // No Script tab: the script is scene-scoped (`scene_script_versions` is
     // keyed by sceneId), so editing it from a shot would silently rewrite every
-    // sibling shot's text. Shot scope keeps only what a shot actually owns — its
-    // image and motion prompts. Video leads: it is the deliverable, and in
-    // the default reference-only mode the start frame is optional.
+    // sibling shot's text. Shot scope keeps only what a shot actually owns.
+    // In the order a clip is made: the spec and its sketch, the optional
+    // still, then the video (#2350).
     return [
-      { value: 'motion-prompt', label: 'Video' },
-      // The shot's pictures: its storyboard sketch and its still (#2350).
+      { value: 'shot', label: 'Shot' },
       { value: 'image-prompt', label: 'Image' },
+      { value: 'motion-prompt', label: 'Video' },
       { value: 'cast', label: 'Cast' },
       { value: 'location', label: 'Locations' },
       { value: 'elements', label: 'Elements' },
@@ -221,7 +221,7 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
  *
  * `picked` is the user's last explicit choice (a click, or a `facet` in the
  * URL). No pick → first tab of the current scope: Cast at sequence, Script
- * at scene, Video at shot. An implicit sequence Cast must not stick when
+ * at scene, Shot at shot. An implicit sequence Cast must not stick when
  * the user clicks a shot (#1624).
  */
 export function effectiveTabFor(
@@ -1629,17 +1629,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         {visibleTabs.map((t) => (
           <TabsTrigger key={t.value} value={t.value} disabled={!hydrated}>
             {t.label}
-            {t.value === 'image-prompt' &&
-              storyboardStale &&
-              staleness?.visualPrompt !== 'stale' &&
-              staleness?.visualPrompt !== 'updating' && (
-                <StalenessIndicator
-                  artifact="storyboard"
-                  entityType="shot"
-                  density="corner-dot"
-                  isRegenerating={storyboard?.generating ?? false}
-                />
-              )}
+            {t.value === 'shot' && storyboardStale && (
+              <StalenessIndicator
+                artifact="storyboard"
+                entityType="shot"
+                density="corner-dot"
+                isRegenerating={storyboard?.generating ?? false}
+              />
+            )}
             {t.value === 'image-prompt' &&
               (staleness?.visualPrompt === 'stale' ||
                 staleness?.visualPrompt === 'updating') && (
@@ -1706,25 +1703,22 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         />
       </TabsContent>
 
+      <TabsContent value="shot">
+        {shot && (
+          <div className="flex flex-col gap-6">
+            {/* A start-frame shot's sketch is not redrawn; its still shows on the canvas. */}
+            {shotUsesStartFrame ? null : (
+              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
+            )}
+            <ShotSpecForm sequenceId={sequenceId} shotId={shot.id} />
+          </div>
+        )}
+      </TabsContent>
+
       <TabsContent value="image-prompt">
         <div className="space-y-4">
-          {/* A reference-only shot's picture is its sketch; a still is optional (#2350). */}
-          {shot && !shotUsesStartFrame && (
-            <div className="flex flex-col gap-4 border-b pb-6">
-              <h3 className="text-sm font-medium">Storyboard</h3>
-              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
-            </div>
-          )}
-          {shot && (
-            <ShotSpecForm
-              sequenceId={sequenceId}
-              shotId={shot.id}
-              part="still"
-            />
-          )}
-
           {/* Off, the shot renders from its reference sheets; on with no still, the still is owed first. */}
-          <div className="flex items-center justify-between gap-2 border-t pt-6">
+          <div className="flex items-center justify-between gap-2">
             <label
               htmlFor="scene-use-start-frame"
               className="text-sm font-medium"
@@ -2091,14 +2085,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           {/* Thinking bar while the model reasons, before the regenerated
               prompt starts streaming back ('pending' → first delta). */}
           <ThinkingBar active={shotPromptStream.motion.status === 'pending'} />
-
-          {shot && (
-            <ShotSpecForm
-              sequenceId={sequenceId}
-              shotId={shot.id}
-              part="motion"
-            />
-          )}
 
           {/* Editable raw motion prompt */}
           <div className="space-y-2">

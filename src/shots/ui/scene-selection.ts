@@ -20,6 +20,7 @@ export const SCENE_FACETS = [
   'music',
   'script',
   'scene-variants',
+  'shot',
   'image-prompt',
   'motion-prompt',
 ] as const;

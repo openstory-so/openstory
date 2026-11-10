@@ -192,8 +192,12 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     const revision = subtitleTrackRevision(vtt);
     return `/api/sequences/${currentShot.sequenceId}/shots/${currentShot.id}/subtitles?v=${revision}`;
   }, [currentShot, packedGroup]);
+  // The canvas shows the tab's picture (#2350): Shot the sketch, Image the still.
+  const showsShot = selectedTab === 'shot';
   const showsStillImage =
-    selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
+    showsShot ||
+    selectedTab === 'image-prompt' ||
+    selectedTab === 'scene-variants';
   const playbackVideoUrl = showsStillImage
     ? ''
     : (overrideVideoUrl ?? currentShot?.video?.url ?? '');
@@ -427,25 +431,28 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     !!overrideVideoUrl &&
     !showsStillImage &&
     overrideVideoUrl !== currentShot.video?.url;
-  const displayImage = showsStillImage
-    ? (overrideImageUrl ??
-      currentShot.image?.url ??
+  const shotUsesStill = usesStartFrame(
+    currentShot,
+    sequence ?? { generateStartFrames: false }
+  );
+  const displayImage = showsShot
+    ? ((shotUsesStill ? currentShot.image?.url : null) ??
       currentShot.previewThumbnailUrl ??
       null)
-    : playerPosterSrc({
-        videoUrl: playbackVideoUrl || null,
-        stillUrl: currentShot.image?.url,
-        previewUrl: currentShot.previewThumbnailUrl,
-        overrideImageUrl,
-        usesStartFrame: usesStartFrame(
-          currentShot,
-          sequence ?? { generateStartFrames: false }
-        ),
-      });
+    : showsStillImage
+      ? (overrideImageUrl ?? currentShot.image?.url ?? null)
+      : playerPosterSrc({
+          videoUrl: playbackVideoUrl || null,
+          stillUrl: currentShot.image?.url,
+          previewUrl: currentShot.previewThumbnailUrl,
+          overrideImageUrl,
+          usesStartFrame: shotUsesStill,
+        });
   const isPreviewImage =
     !!displayImage &&
     displayImage === currentShot.previewThumbnailUrl &&
-    !currentShot.image?.url;
+    (showsShot || !currentShot.image?.url);
+  const noStartFrame = selectedTab === 'image-prompt' && !displayImage;
   const isVariantPreview =
     !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
   // The selected clip is an Ark draft (#1756): 480p, final not yet rendered.
@@ -624,6 +631,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             progressMessage={progressMessage}
             retry={retry}
           />
+          {noStartFrame && currentShot.imageStatus !== 'generating' && (
+            <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+              No start frame yet
+            </p>
+          )}
           {/* Status badges sit under the top-left frame-variants control so they
               don't cover it or the bottom video play controls (#1070). */}
           {badgeMessage && (

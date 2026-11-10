@@ -97,16 +97,17 @@ the same text the scene-split sketch is drawn from. Each redraw is a new
 versions, since none of them reaches the clip. A shot with a start frame never
 redraws, because its still takes over.
 
-**The Image tab (#2350).** The second shot tab is Image on every shot. On a
-reference-only shot it opens with the storyboard: the current sketch, whether
-it is stale, and Regenerate. Past sketches are in the shot's History and the
-prompt history's Images list (badged Sketch, never selectable) like any
-other image: a sketch's `preview.generated` event names its row `variantId`,
-which `mediaVersionIds` reads as the version. The shot spec follows (framing drives the sketch and the reference-only
-prompt too), then the Use start frame switch. While it is off, the still
-prompt, upload and variants below it are inert.
-Two Regenerates that saw the same newest sketch start one run
-(`deduplicationId`).
+**Shot, Image, Video (#2350).** Shot tabs run in the order a clip is made.
+Shot holds the spec and, on a reference-only shot, the storyboard: the
+current sketch, whether it is stale, and Regenerate. Past sketches are in the
+shot's History and the prompt history's Images list (badged Sketch, never
+selectable): a sketch's `preview.generated` event names its row `variantId`,
+which `mediaVersionIds` reads as the version. Image holds the Use start frame
+switch, then the still prompt, upload and variants, inert while the switch is
+off. Video holds the video prompt and Generate. The canvas shows the tab's
+picture: the sketch on Shot (the still on a start-frame shot), the still or
+"No start frame yet" on Image, the clip on Video. Two Regenerates that saw the
+same newest sketch start one run (`deduplicationId`).
 
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
