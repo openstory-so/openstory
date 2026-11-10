@@ -162,6 +162,8 @@ export interface ImageWorkflowInput
    * still uploaded to R2; the provider CDN URL is not kept.
    */
   skipStorage?: boolean;
+  /** Preview path: the spec version the sketch is drawn from (#2350). */
+  specVersionId?: string | null;
   /**
    * Per-scene snapshot for divergence detection. When present, the workflow
    * re-resolves character/location/element sheet hashes at write time and

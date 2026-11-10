@@ -579,14 +579,13 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   {
     id: 'storyboard',
     versionedIn: 'frame_variants',
-    optional: 'reference-only shots',
     label: 'Storyboard sketch',
     kind: 'artifact',
     band: 'renders',
     summary:
-      "A reference-only shot's grey animatic, its only picture until the clip lands. Redrawn on its own when the motion prompt changes; anything that redraw misses reads stale (#2350).",
+      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350).",
     counts: [
-      'Selected motion prompt text, or the shot spec it was split from',
+      'The selected shot spec version (the motion prompt on a shot with no spec)',
       'Name, gender, age, description and clothing of each character the text names, in the look the scene picks',
     ],
     ignored: [
@@ -875,17 +874,15 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   },
   { from: 'element', to: 'still', tracking: 'hash', note: 'the image URL' },
   {
-    from: 'motionPrompt',
+    from: 'script',
     to: 'storyboard',
-    tracking: 'hash',
-    mode: 'reference-only',
-    note: 'a change redraws it on its own; a failed redraw reads stale',
+    tracking: 'pointer',
+    note: 'the selected shot spec version; each spec save draws its own sketch',
   },
   {
     from: 'character',
     to: 'storyboard',
     tracking: 'hash',
-    mode: 'reference-only',
     note: 'the bible fields of the characters the text names',
   },
   {

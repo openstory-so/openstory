@@ -1,11 +1,8 @@
 /**
- * A shot's storyboard preview: the grey animatic sketch on the scene rail
- * (#1101, #1642). Scene split draws one per shot. A reference-only shot has
- * no still, so the sketch is the only picture of it until the clip lands, and
- * it is drawn again whenever the motion prompt changes. For a reference-only
- * shot that prompt is the same framing, action and camera text the sketch is
- * drawn from (`deriveMotionPrompt`). A shot with a start frame shows its
- * still, so its sketch is never redrawn.
+ * A shot's storyboard sketch: the grey animatic on the scene rail (#1101,
+ * #1642). Scene split draws one per shot; after that every spec version is
+ * drawn, start-frame shots included, and the sketch records the version it
+ * was drawn from (#2350). See `docs/architecture/reference-only-motion.md`.
  */
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -20,7 +17,10 @@ import { SHOT_PREVIEW_IMAGE_MODEL } from '@/models/models';
 import { simpleHash } from '@/platform/hash';
 import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
-import type { FrameVariant } from '@/platform/server/db/schema';
+import type {
+  FrameVariant,
+  ShotSpecVersion,
+} from '@/platform/server/db/schema';
 import type { EnforcementRow } from '@/platform/server/compliance/enforcement';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -30,6 +30,7 @@ import {
   previewTextForShot,
 } from '@/sequences/server/poster-prompt';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { StoredShotSpec } from '@/shots/shot-list.schema';
 import { rendersReferenceOnly } from '@/shots/use-start-frame';
 import type { ShotEditContext } from './shot-context';
 
@@ -44,6 +45,8 @@ type PreviewTarget = {
   aspectRatio: AspectRatio;
   /** Built by `buildPreviewPrompt`. */
   prompt: string;
+  /** The spec version drawn; null for scene split and a shot with no spec. */
+  specVersionId: string | null;
   /** The run envelope this spends, when a parent run holds one. */
   reservationId?: string;
 };
@@ -69,6 +72,7 @@ export function triggerShotPreview(
       shotId: target.shotId,
       frameId: target.frameId,
       skipStorage: true,
+      specVersionId: target.specVersionId,
       variantOnly: false,
       reservationId: target.reservationId,
     } satisfies ImageWorkflowInput,
@@ -83,6 +87,32 @@ async function previewCostMicros(aspectRatio: AspectRatio) {
     }),
     { model: SHOT_PREVIEW_IMAGE_MODEL, operation: 'shot-preview' }
   );
+}
+
+type SketchScene = {
+  originalScript?: { extract?: string } | null;
+  metadata?: { title?: string } | null;
+} | null;
+
+/** The sketch prompt for one spec, the same text scene split draws from. */
+function specSketchPrompt(
+  spec: StoredShotSpec,
+  scene: SketchScene,
+  cast: readonly CharacterBibleEntry[]
+): string {
+  const text = previewTextForShot(
+    {
+      shots: [{ ...spec, shotNumber: 1 }],
+      originalScript: { extract: scene?.originalScript?.extract ?? '' },
+      metadata: {
+        title: scene?.metadata?.title ?? '',
+        location: '',
+        timeOfDay: '',
+      },
+    },
+    1
+  );
+  return buildPreviewPrompt(text, cast);
 }
 
 type PreviewContext = Pick<
@@ -109,6 +139,7 @@ async function previewCast(context: PreviewContext) {
 async function startPreview(
   context: PreviewContext,
   prompt: string,
+  specVersionId: string | null,
   deduplicationId?: string
 ) {
   const { scopedDb, user, organizationId, shot, frame, sequence } = context;
@@ -122,160 +153,195 @@ async function startPreview(
       frameId: frame.id,
       aspectRatio: sequence.aspectRatio,
       prompt,
+      specVersionId,
     },
     deduplicationId ? { deduplicationId } : undefined
   );
 }
 
+const isLive = (row: FrameVariant) =>
+  row.status === 'generating' || row.status === 'pending';
+
 /**
- * Redraw a reference-only shot's sketch from its new motion prompt, after an
- * edit has saved it. Skipped when the sketch would come out of the same
- * prompt. Never throws: the edit is already saved, and a failure here must
- * not report it as failed. The old sketch stays up and reads stale (#2350).
+ * Draw a sketch for a spec version the user just saved or picked. Skipped
+ * when that version already has a sketch from the same prompt. Never throws:
+ * the spec is already saved, and a failure here must not report it as failed.
  */
-export async function redrawShotPreview(
+export async function drawSpecSketch(
   context: PreviewContext,
-  motionPrompt: string
+  version: Pick<ShotSpecVersion, 'id' | 'spec'>
 ): Promise<void> {
-  const { scopedDb, shot, frame, sequence } = context;
-  if (!rendersReferenceOnly(shot, sequence)) return;
+  const { scopedDb, shot, frame, scene } = context;
   try {
-    const prompt = buildPreviewPrompt(motionPrompt, await previewCast(context));
-    const latest = await scopedDb.frameVariants.getLatestPreview(frame.id);
-    if (latest?.promptHash === simpleHash(prompt)) return;
-    await startPreview(context, prompt);
+    const prompt = specSketchPrompt(
+      version.spec,
+      scene,
+      await previewCast(context)
+    );
+    const hash = simpleHash(prompt);
+    const rows = await scopedDb.frameVariants.listPreviews(frame.id);
+    const drawn = rows.some(
+      (row) =>
+        row.specVersionId === version.id &&
+        row.promptHash === hash &&
+        (row.status === 'completed' || isLive(row))
+    );
+    if (drawn) return;
+    await startPreview(context, prompt, version.id);
   } catch (error) {
     logger.warn(
-      `Preview redraw for shot ${shot.id} did not start; its old sketch stays up`,
+      `Sketch for shot ${shot.id} spec ${version.id} did not start; its old sketch stays up`,
       { err: error }
     );
   }
 }
 
-/**
- * The sketch prompts that count as current: the one a redraw draws now (the
- * selected motion prompt) and the one scene split draws (the spec). A sketch
- * from either is not stale.
- */
-async function currentPreviewPrompts(context: PreviewContext) {
-  const { scopedDb, shot, scene } = context;
-  const [cast, motion, spec] = await Promise.all([
-    previewCast(context),
-    scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
-    scopedDb.shotSpecVersions.getSelected(shot.id),
-  ]);
-  const fromSpec = scene
-    ? buildPreviewPrompt(
-        previewTextForShot(
-          {
-            shots: spec ? [{ ...spec.spec, shotNumber: 1 }] : [],
-            originalScript: { extract: scene.originalScript?.extract ?? '' },
-            metadata: {
-              title: scene.metadata?.title ?? '',
-              location: '',
-              timeOfDay: '',
-            },
-          },
-          1
-        ),
-        cast
-      )
-    : null;
-  const fromMotion = motion?.text
-    ? buildPreviewPrompt(motion.text, cast)
-    : null;
-  return { draw: fromMotion ?? fromSpec, fromSpec, fromMotion };
+// ponytail: scene split draws before the analysis spec exists, so its sketch
+// carries no id. Read it as the nearest analysis version within ten minutes.
+const ATTRIBUTE_WINDOW_MS = 10 * 60 * 1000;
+
+/** The spec version each sketch was drawn from, by id or by that rule. */
+function sketchSpecIds(
+  rows: readonly FrameVariant[],
+  versions: readonly ShotSpecVersion[]
+): Map<string, string | null> {
+  const analyses = versions.filter((v) => v.source === 'analysis');
+  return new Map(
+    rows.map((row) => {
+      if (row.specVersionId) return [row.id, row.specVersionId];
+      let best: ShotSpecVersion | null = null;
+      let bestGap = ATTRIBUTE_WINDOW_MS;
+      for (const v of analyses) {
+        const gap = Math.abs(v.createdAt.getTime() - row.createdAt.getTime());
+        if (gap <= bestGap) {
+          best = v;
+          bestGap = gap;
+        }
+      }
+      return [row.id, best?.id ?? null];
+    })
+  );
 }
 
 type StoryboardStaleReason = 'missing' | 'failed' | 'changed';
 
 /**
- * A reference-only shot's storyboard (#2350): the sketch on show, whether it
- * is stale and why, and every sketch drawn for it, newest first. History is
- * view-only; the newest completed sketch always shows.
+ * A shot's storyboard (#2350): the sketch on show, whether it is stale and
+ * why, every sketch drawn for it, and every spec version with its sketch,
+ * newest first. The selected spec's newest sketch shows; until it lands the
+ * newest sketch of any version shows, stale.
  */
 export async function readShotStoryboard(context: PreviewContext) {
-  const { scopedDb, shot, frame, sequence } = context;
-  const referenceOnly = rendersReferenceOnly(shot, sequence);
-  const [rows, prompts] = await Promise.all([
+  const { scopedDb, shot, frame, sequence, scene } = context;
+  const [rows, versions, cast, motion] = await Promise.all([
     scopedDb.frameVariants.listPreviews(frame.id),
-    referenceOnly ? currentPreviewPrompts(context) : null,
+    scopedDb.shotSpecVersions.listByShot(shot.id),
+    previewCast(context),
+    scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
   ]);
-  const current =
-    rows.find((row) => row.status === 'completed' && row.url) ?? null;
-  const newest = rows[0] ?? null;
-  const generating =
-    newest?.status === 'generating' || newest?.status === 'pending';
-  const fresh = [prompts?.fromMotion, prompts?.fromSpec]
-    .filter((prompt): prompt is string => !!prompt)
-    .map(simpleHash);
-  const staleReason: StoryboardStaleReason | null =
-    !prompts || generating
-      ? null
-      : !current
-        ? 'missing'
-        : newest?.status === 'failed'
-          ? 'failed'
-          : !current.promptHash || !fresh.includes(current.promptHash)
-            ? 'changed'
-            : null;
-  return {
-    shotId: shot.id,
-    referenceOnly,
-    generating,
-    staleReason,
-    current: current && storyboardSketch(current),
-    history: rows.map(storyboardSketch),
-  };
-}
+  const specOf = sketchSpecIds(rows, versions);
+  const selected =
+    versions.find((v) => v.id === shot.selectedSpecVersionId) ?? null;
+  const done = (row: FrameVariant) => row.status === 'completed' && !!row.url;
 
-function storyboardSketch(row: FrameVariant) {
-  return {
+  // A shot with no spec (from before #1915) is drawn from its motion prompt.
+  const fresh = selected
+    ? simpleHash(specSketchPrompt(selected.spec, scene, cast))
+    : motion?.text
+      ? simpleHash(buildPreviewPrompt(motion.text, cast))
+      : null;
+  const mine = selected
+    ? rows.filter((row) => specOf.get(row.id) === selected.id)
+    : rows;
+  const current = mine.find(done) ?? rows.find(done) ?? null;
+  const generating = rows[0] ? isLive(rows[0]) : false;
+  // Only a stamped sketch is held to its prompt: scene split's used an
+  // earlier cast label, so its hash never matches.
+  const promptMoved =
+    !!current &&
+    (!selected || current.specVersionId === selected.id) &&
+    current.promptHash !== fresh;
+  const staleReason: StoryboardStaleReason | null = generating
+    ? null
+    : !current
+      ? 'missing'
+      : mine[0]?.status === 'failed'
+        ? 'failed'
+        : (selected && specOf.get(current.id) !== selected.id) || promptMoved
+          ? 'changed'
+          : null;
+
+  const sketch = (row: FrameVariant) => ({
     id: row.id,
     url: row.url,
     status: row.status,
     error: row.status === 'failed' ? row.error : null,
     model: row.model,
+    specVersionId: specOf.get(row.id) ?? null,
     createdAt: row.createdAt,
+  });
+  return {
+    shotId: shot.id,
+    referenceOnly: rendersReferenceOnly(shot, sequence),
+    generating,
+    staleReason,
+    current: current && sketch(current),
+    history: rows.map(sketch),
+    versions: versions.map((version) => {
+      const drawn = rows.find((row) => specOf.get(row.id) === version.id);
+      return {
+        id: version.id,
+        source: version.source,
+        spec: version.spec,
+        createdAt: version.createdAt,
+        selected: version.id === selected?.id,
+        sketch: drawn ? sketch(drawn) : null,
+      };
+    }),
   };
 }
 
 /**
- * Draw a reference-only shot's sketch again now, from the prompt a redraw
- * would use. Unlike the automatic redraw, a failure to start throws.
+ * Draw the shot's sketch again now, from its selected spec. Unlike the
+ * automatic draw, a failure to start throws.
  */
 export async function regenerateShotStoryboard(context: PreviewContext) {
-  const { scopedDb, shot, frame, sequence } = context;
-  if (!rendersReferenceOnly(shot, sequence)) {
-    throw new ValidationError(
-      'This shot uses a start frame; its still is its picture.'
-    );
-  }
+  const { scopedDb, shot, frame, scene } = context;
   const newest = (await scopedDb.frameVariants.listPreviews(frame.id, 1))[0];
-  if (newest?.status === 'generating' || newest?.status === 'pending') {
+  if (newest && isLive(newest)) {
     return { workflowRunId: newest.workflowRunId, alreadyInFlight: true };
   }
-  const { draw } = await currentPreviewPrompts(context);
-  if (!draw)
+  const [spec, motion, cast] = await Promise.all([
+    scopedDb.shotSpecVersions.getSelected(shot.id),
+    scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
+    previewCast(context),
+  ]);
+  const prompt = spec
+    ? specSketchPrompt(spec.spec, scene, cast)
+    : motion?.text
+      ? buildPreviewPrompt(motion.text, cast)
+      : null;
+  if (!prompt)
     throw new ValidationError('Shot has nothing to draw a sketch from');
   // Two clicks that saw the same newest sketch start one run, not two.
   const workflowRunId = await startPreview(
     context,
-    draw,
+    prompt,
+    spec?.id ?? null,
     `storyboard-${frame.id}-${newest?.id ?? 'none'}`
   );
   return { workflowRunId, alreadyInFlight: false };
 }
 
 /**
- * The same redraw from inside a run (Rewrite shot). The run cannot read the
- * frame's latest preview, so it always redraws: a rewrite always writes a new
- * spec. `deduplicationId` keeps a replayed step from drawing twice.
+ * The same draw from inside a run (Rewrite shot), for the spec it just
+ * promoted. `deduplicationId` keeps a replayed step from drawing twice.
  */
-export async function redrawShotPreviewInRun(
+export async function drawSpecSketchInRun(
   scopedDb: WorkflowScopedDb,
-  target: Omit<PreviewTarget, 'prompt'> & {
-    motionPrompt: string;
+  target: Omit<PreviewTarget, 'prompt' | 'specVersionId'> & {
+    version: Pick<ShotSpecVersion, 'id' | 'spec'>;
+    scene: SketchScene;
     characterBible: readonly CharacterBibleEntry[];
     deduplicationId: string;
   }
@@ -289,7 +355,12 @@ export async function redrawShotPreviewInRun(
     await triggerShotPreview(
       {
         ...target,
-        prompt: buildPreviewPrompt(target.motionPrompt, target.characterBible),
+        prompt: specSketchPrompt(
+          target.version.spec,
+          target.scene,
+          target.characterBible
+        ),
+        specVersionId: target.version.id,
       },
       {
         deduplicationId: target.deduplicationId,
@@ -301,7 +372,7 @@ export async function redrawShotPreviewInRun(
     );
   } catch (error) {
     logger.warn(
-      `Preview redraw for shot ${target.shotId} did not start; its old sketch stays up`,
+      `Sketch for shot ${target.shotId} did not start; its old sketch stays up`,
       { err: error }
     );
   }

@@ -204,6 +204,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             sequenceId: input.sequenceId,
             model: params.model,
             promptHash: input.prompt ? simpleHash(input.prompt) : null,
+            specVersionId: input.specVersionId ?? null,
             workflowRunId,
           });
         }

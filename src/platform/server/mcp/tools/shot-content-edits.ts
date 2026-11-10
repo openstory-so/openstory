@@ -108,6 +108,7 @@ const storyboardSketch = z.object({
   status: z.string(),
   error: z.string().nullable(),
   model: z.string(),
+  specVersionId: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -118,11 +119,20 @@ const shotStoryboard = z.object({
   staleReason: z.enum(['missing', 'failed', 'changed']).nullable(),
   current: storyboardSketch.nullable(),
   history: z.array(storyboardSketch),
+  versions: z.array(
+    z.object({
+      id: z.string(),
+      source: z.enum(['analysis', 'rewrite', 'rename', 'edit']),
+      createdAt: z.string(),
+      selected: z.boolean(),
+      sketch: storyboardSketch.nullable(),
+    })
+  ),
 });
 
 const getShotStoryboard = productionRead(
   'get_shot_storyboard',
-  'Read a shot’s storyboard sketch: the grey animatic that is a reference-only shot’s only picture until its clip lands. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last redraw failed; changed: the motion prompt or cast moved since it was drawn), whether one is drawing, and every sketch drawn for it, newest first. A shot with a start frame shows its still instead and is never stale. Redraw with regenerate_shot_storyboard.',
+  'Read a shot’s storyboard sketch: the grey animatic drawn from each version of its shot spec, start-frame shots included. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last sketch failed; changed: the spec or cast moved since it was drawn), whether one is drawing, every sketch drawn for it, and every spec version with its sketch, newest first. Redraw with regenerate_shot_storyboard.',
   shotInput,
   shotStoryboard,
   async (input, { scopedDb, userId, origin }) =>

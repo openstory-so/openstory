@@ -44,7 +44,6 @@ import {
   loadShotPromptDialogue,
   type ShotPromptDialogue,
 } from './shot-dialogue';
-import { redrawShotPreview } from './shot-preview';
 
 type RegenerateContext = Pick<
   ShotEditContext,
@@ -248,7 +247,6 @@ export async function regenerateShotPrompt(
         analysisModel,
         createdBy: user.id,
       });
-      await redrawShotPreview({ ...context, scene }, motion.text);
     }
     return result({ rebuilt: true });
   }

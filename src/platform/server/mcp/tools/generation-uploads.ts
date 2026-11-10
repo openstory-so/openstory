@@ -279,7 +279,7 @@ const generateShotImageTool = openstoryTool({
 const regenerateShotStoryboardTool = openstoryTool({
   name: 'regenerate_shot_storyboard',
   description:
-    'Redraw a reference-only shot’s storyboard sketch from its current motion prompt and cast (uses credits; one small image). Use when get_shot_storyboard reads stale. A sketch already drawing is returned (alreadyInFlight) and nothing is charged. Refused for a shot with a start frame. The sketch lands when the run finishes (get_shot_storyboard).',
+    'Redraw a shot’s storyboard sketch from its selected spec and cast (uses credits; one small image). Use when get_shot_storyboard reads stale. A sketch already drawing is returned (alreadyInFlight) and nothing is charged. The sketch lands when the run finishes (get_shot_storyboard).',
   scope: 'generate',
   annotations: paid,
   inputSchema: shotInput,

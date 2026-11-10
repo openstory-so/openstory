@@ -36,7 +36,11 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
-import { ShotStoryboardPanel, storyboardQuery } from './shot-storyboard-panel';
+import {
+  ShotSpecHistorySheet,
+  ShotStoryboardPanel,
+  storyboardQuery,
+} from './shot-storyboard-panel';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
@@ -411,9 +415,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     [shotDivergentVariants]
   );
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState<'visual' | 'motion' | null>(
-    null
-  );
+  const [historyOpen, setHistoryOpen] = useState<
+    'visual' | 'motion' | 'spec' | null
+  >(null);
   const [shortenStatus, setShortenStatus] = useState<{
     loading: boolean;
     error: string | null;
@@ -1341,10 +1345,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !!shot && shotUsesStartFrame && !canUseStartFrame(shot);
   const { data: storyboard } = useQuery({
     ...storyboardQuery(sequenceId, shot?.id ?? ''),
-    enabled: !!shot && !shotUsesStartFrame,
+    enabled: !!shot,
   });
-  const storyboardStale =
-    !!shot && !shotUsesStartFrame && !!storyboard?.staleReason;
+  const storyboardStale = !!shot && !!storyboard?.staleReason;
   const setUseStartFrame = useMutation({
     mutationFn: (next: boolean) =>
       setShotUseStartFrameFn({
@@ -1706,10 +1709,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       <TabsContent value="shot">
         {shot && (
           <div className="flex flex-col gap-6">
-            {/* A start-frame shot's sketch is not redrawn; its still shows on the canvas. */}
-            {shotUsesStartFrame ? null : (
-              <ShotStoryboardPanel sequenceId={sequenceId} shotId={shot.id} />
-            )}
+            <ShotStoryboardPanel
+              sequenceId={sequenceId}
+              shotId={shot.id}
+              onOpenHistory={() => setHistoryOpen('spec')}
+            />
             <ShotSpecForm sequenceId={sequenceId} shotId={shot.id} />
           </div>
         )}
@@ -2539,7 +2543,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         <SceneMusicFacet sequenceId={sequenceId} editable={musicEditable} />
       </TabsContent>
 
-      {shot?.id && historyOpen && (
+      {shot?.id && historyOpen === 'spec' && (
+        <ShotSpecHistorySheet
+          onOpenChange={(open) => !open && setHistoryOpen(null)}
+          sequenceId={sequenceId}
+          shotId={shot.id}
+        />
+      )}
+      {shot?.id && (historyOpen === 'visual' || historyOpen === 'motion') && (
         <PromptHistorySheet
           open
           onOpenChange={(open) => !open && setHistoryOpen(null)}

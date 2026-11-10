@@ -281,6 +281,8 @@ async function triggerPreviewImage({
         frameId: shot.frameId,
         aspectRatio: input.aspectRatio,
         prompt: buildPreviewPrompt(shotText, characterBible),
+        // The analysis spec is written later; read time links it (#2350).
+        specVersionId: null,
       },
       {
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),

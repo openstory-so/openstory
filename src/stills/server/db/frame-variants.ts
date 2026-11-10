@@ -920,6 +920,7 @@ export function createFrameVariantsMethods(db: Database) {
       sequenceId: string;
       model: string;
       promptHash: string | null;
+      specVersionId: string | null;
       workflowRunId: string;
     }): Promise<void> => {
       const [existing] = await db
@@ -943,6 +944,7 @@ export function createFrameVariantsMethods(db: Database) {
         isPrimary: false,
         promptHash: input.promptHash,
         promptVersionId: null,
+        specVersionId: input.specVersionId,
         workflowRunId: input.workflowRunId,
       });
     },

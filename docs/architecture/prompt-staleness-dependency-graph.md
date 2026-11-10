@@ -782,24 +782,28 @@ sha256Hex({
 
 #### 9. Storyboard sketch — `readShotStoryboard` (#2350)
 
-Reference-only shots only. Not a manifest hash: the sketch row's own
-`promptHash` is `simpleHash(buildPreviewPrompt(text, cast))`, and it reads
-fresh when it equals that hash for either text the shot can be drawn from:
+Every shot, start-frame ones included. Not a manifest hash: a sketch row
+records the spec version it was drawn from (`frame_variants.specVersionId`)
+and its `promptHash`. The sketch on show is the selected spec's newest; it
+reads fresh when its hash equals:
 
 ```ts
 cast = charactersToBible(
   dressForScene(characters, scene.continuity.characterLooks)
 );
-fresh = [
-  buildPreviewPrompt(selectedMotionPrompt.text, cast), // the automatic redraw
-  buildPreviewPrompt(previewTextForShot(spec), cast), // the scene-split sketch
-].map(simpleHash);
+fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
 ```
 
-`missing` (none drawn) and `failed` (the newest row failed) come first. A
-prompt edit redraws on its own (`redrawShotPreview`); what reads stale is what
-that redraw misses: a cast or look edit, a redraw that did not start, and a
-shot switched to reference-only. Regenerate draws from the motion prompt.
+`missing` (none drawn) and `failed` (the selected spec's newest row failed)
+come first. `changed` is a sketch of another spec version (shown until the
+new one lands) or a stamped sketch whose cast moved. Every spec save,
+Rewrite and analysis draws its own (`drawSpecSketch`), so what reads stale is
+a cast or look edit and a draw that did not start. Scene split draws before
+the analysis spec exists, so its sketch has no id and reads as the analysis
+version written within ten minutes of it; its hash is not checked, because
+it used the bible's earlier look labels. A shot with no spec (before #1915)
+is held to its motion prompt instead. Regenerate draws from the selected
+spec.
 
 ### 4.2 Hashed surface vs. actual prompt inputs — are we over-hashing? (history)
 

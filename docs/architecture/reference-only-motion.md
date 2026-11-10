@@ -87,20 +87,20 @@ preview is what fills the scene rail while the clip renders — without it the
 rail has nothing to show until the video lands, and the anchor frame is where
 that preview variant hangs.
 
-**The preview follows the motion prompt.** It is the only picture of a
-reference-only shot, so an edit that changes the shot's motion prompt redraws
-it from that prompt (`redrawShotPreview`, `src/shots/server/shot-preview.ts`):
-a saved spec or Rebuild, a hand edit, a restored version, and Rewrite shot.
-The reference-only motion prompt is the spec's framing, action and camera,
-the same text the scene-split sketch is drawn from. Each redraw is a new
-`kind: 'preview'` row and the rail shows the newest: older sketches are not
-versions, since none of them reaches the clip. A shot with a start frame never
-redraws, because its still takes over.
+**The sketch follows the spec (#2350).** Every spec version gets a sketch,
+start-frame shots included: a saved spec (even with Keep mine), Rewrite shot,
+and analysis (scene split's sketch). It is drawn from the spec text scene
+split uses (`drawSpecSketch`, `src/shots/server/shot-preview.ts`) and stamped
+with the version (`frame_variants.specVersionId`). A prompt edit draws
+nothing: the picture matches the spec it sits beside. Each draw is a new
+`kind: 'preview'` row; fast saves get one each, since they are cheap.
 
 **Shot, Image, Video (#2350).** Shot tabs run in the order a clip is made.
-Shot holds the spec and, on a reference-only shot, the storyboard: the
-current sketch, whether it is stale, and Regenerate. Past sketches are in the
-shot's History and the prompt history's Images list (badged Sketch, never
+Shot holds the storyboard (the current sketch, whether it is stale,
+Regenerate, History) and the spec. History lists every spec version, newest
+first, with its sketch ("Drawing…" or "No sketch" without one), how it was
+made and when; Use this version saves it again as a new version, keeping any
+written prompt, and draws for it. Sketches also show in the prompt history's Images list (badged Sketch, never
 selectable): a sketch's `preview.generated` event names its row `variantId`,
 which `mediaVersionIds` reads as the version. Image holds the Use start frame
 switch, then the still prompt, upload and variants, inert while the switch is
@@ -114,7 +114,7 @@ same newest sketch start one run (`deduplicationId`).
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
 preview row's `createdAt` (`ShotView.previewCreatedAt`) with the selected
-clip's `generatedAt`. A sketch is redrawn only when the prompt changes, so a
+clip's `generatedAt`. A sketch is drawn only when the spec changes, so a
 newer sketch means the clip shows a shot that is no longer written. The rail
 thumbnails pass no clip (`shownClipUrl`), and the theatre plays the sketch for
 the shot's length with its dialogue (`withoutOutdatedClips` in

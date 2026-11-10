@@ -58,6 +58,12 @@ export function useSaveShotSpec(sequenceId: string) {
       replace: { visual: boolean; motion: boolean };
     }) => saveShotSpecFn({ data: { sequenceId, ...input } }),
     onSuccess: (_result, input) =>
-      invalidateRebuiltPrompts(queryClient, sequenceId, input.shotId),
+      Promise.all([
+        invalidateRebuiltPrompts(queryClient, sequenceId, input.shotId),
+        // A saved spec draws a sketch (#2350).
+        queryClient.invalidateQueries({
+          queryKey: ['shots', sequenceId, 'storyboard', input.shotId],
+        }),
+      ]),
   });
 }

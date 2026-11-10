@@ -2588,10 +2588,14 @@ describe('shot storyboard (#2350)', () => {
   const referenceOnly = () =>
     db.update(shots).set({ useStartFrame: false }).where(eq(shots.id, shotId));
 
-  it('never reads a start-frame shot stale', async () => {
+  it('reads a start-frame shot with no sketch as missing', async () => {
     expect(
       await data('get_shot_storyboard', { sequenceId, shotId })
-    ).toMatchObject({ referenceOnly: false, staleReason: null, current: null });
+    ).toMatchObject({
+      referenceOnly: false,
+      staleReason: 'missing',
+      current: null,
+    });
   });
 
   it('reads missing, fresh, changed and failed sketches', async () => {
@@ -2639,14 +2643,7 @@ describe('shot storyboard (#2350)', () => {
     ).toMatchObject({ generating: true, staleReason: null });
   });
 
-  it('regenerate_shot_storyboard draws from the motion prompt and refuses a start-frame shot', async () => {
-    expect(
-      await call('regenerate_shot_storyboard', { sequenceId, shotId })
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
-    });
-    await referenceOnly();
+  it('regenerate_shot_storyboard draws a shot with no spec from its motion prompt', async () => {
     await db
       .insert(credits)
       .values({ organizationId, balance: 100_000_000 })
@@ -2664,6 +2661,7 @@ describe('shot storyboard (#2350)', () => {
         shotId,
         frameId,
         prompt: buildPreviewPrompt('Motion prompt', []),
+        specVersionId: null,
       }),
       { deduplicationId: `storyboard-${frameId}-none` }
     );

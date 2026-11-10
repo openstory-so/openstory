@@ -20,8 +20,7 @@ import type {
   ShotSpecRewriteWorkflowResult,
 } from '@/platform/server/workflow/types';
 import { completeDerivedPrompts } from '@/shots/server/rebuild-shot-prompts';
-import { redrawShotPreviewInRun } from '@/shots/server/shot-preview';
-import { deriveMotionPrompt } from '@/shots/shot-list.derive';
+import { drawSpecSketchInRun } from '@/shots/server/shot-preview';
 import { storedShotSpecSchema } from '@/shots/shot-list.schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
@@ -112,13 +111,9 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         currencyHash: input.specInputHash,
       });
 
-      if (
-        input.referenceOnly &&
-        prompts.motionVersionId &&
-        input.sequenceId &&
-        input.frameId
-      ) {
-        await redrawShotPreviewInRun(scopedDb, {
+      // Every spec gets a sketch, start-frame shots too (#2350).
+      if (input.sequenceId && input.frameId) {
+        await drawSpecSketchInRun(scopedDb, {
           userId: input.userId,
           organizationId: input.organizationId,
           sequenceId: input.sequenceId,
@@ -126,9 +121,8 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
           frameId: input.frameId,
           aspectRatio: input.aspectRatio,
           reservationId: input.reservationId,
-          motionPrompt: deriveMotionPrompt(version.spec, {
-            referenceOnly: true,
-          }).text,
+          version,
+          scene: input.scene,
           characterBible: input.characterBible,
           deduplicationId: previewImageDedupId(event.instanceId, input.shotId),
         });
