@@ -302,7 +302,7 @@ const rebuildShotPrompts = openstoryTool({
 const updateShotSpec = openstoryTool({
   name: 'update_shot_spec',
   description:
-    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. Prompts the user wrote are kept unless replaceWritten names them. Refused while a rewrite of the shot is in flight.',
+    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: shotInput.extend({
@@ -317,7 +317,9 @@ const updateShotSpec = openstoryTool({
     const result = await saveShotSpec(
       context,
       input.spec,
-      input.replaceWritten
+      input.replaceWritten,
+      // A sketch spends credits; this tool holds only the write scope.
+      { drawSketch: false }
     );
     return { data: result, summary: rebuildSummary(result) };
   },

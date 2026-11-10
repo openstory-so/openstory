@@ -137,6 +137,7 @@ export async function readShotSpec(
 /**
  * Save an edited shot spec (#1929) and rebuild the prompts from it for free.
  * A prompt the user wrote is replaced only when `replace` says so.
+ * `drawSketch` spends credits, so only a caller allowed to generate sets it.
  */
 export async function saveShotSpec(
   context: Pick<
@@ -150,7 +151,8 @@ export async function saveShotSpec(
     | 'scene'
   >,
   edit: z.infer<typeof shotSpecEditSchema>,
-  replace: { visual: boolean; motion: boolean }
+  replace: { visual: boolean; motion: boolean },
+  options: { drawSketch: boolean }
 ) {
   const { scopedDb, shot, user, scene } = context;
   if (!scene)
@@ -178,7 +180,7 @@ export async function saveShotSpec(
       createdBy: user.id,
     });
     // Every spec gets a sketch, even when the user keeps their prompts (#2350).
-    await drawSpecSketch(context, version);
+    if (options.drawSketch) await drawSpecSketch(context, version);
   }
   return regenerateShotPrompt(context, scene, { force: false, replace });
 }

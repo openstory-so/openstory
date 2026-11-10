@@ -94,6 +94,8 @@ split uses (`drawSpecSketch`, `src/shots/server/shot-preview.ts`) and stamped
 with the version (`frame_variants.specVersionId`). A prompt edit draws
 nothing: the picture matches the spec it sits beside. Each draw is a new
 `kind: 'preview'` row; fast saves get one each, since they are cheap.
+A sketch spends credits, so MCP `update_shot_spec` (write scope) draws none;
+the caller asks for one with `regenerate_shot_storyboard` (generate scope).
 
 **Shot, Image, Video (#2350).** Shot tabs run in the order a clip is made.
 Shot holds the storyboard (the current sketch, whether it is stale,

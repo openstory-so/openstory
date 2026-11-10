@@ -2893,7 +2893,15 @@ describe('shot content edits (#1979)', () => {
     soundCue: 'surf',
   };
 
-  it('update_shot_spec saves the spec and rebuilds the prompts from it', async () => {
+  it('update_shot_spec saves the spec and rebuilds the prompts from it, spending nothing', async () => {
+    // Funded, so a sketch would start if the write scope could draw one.
+    await db
+      .insert(credits)
+      .values({ organizationId, balance: 100_000_000 })
+      .onConflictDoUpdate({
+        target: credits.organizationId,
+        set: { balance: 100_000_000 },
+      });
     vi.mocked(triggerWorkflow).mockClear();
     expect(
       await data('update_shot_spec', {
