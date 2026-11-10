@@ -6,7 +6,11 @@
  */
 
 import './instrumentation';
-import handler from '@tanstack/react-start/server-entry';
+import {
+  createServerEntry,
+  createStartHandler,
+  defaultStreamHandler,
+} from '@tanstack/react-start/server';
 import {
   acceptsMarkdown,
   getMarkdownForPath,
@@ -41,6 +45,20 @@ import {
 import { drizzle } from 'drizzle-orm/d1';
 
 const logger = getLogger(['openstory', 'server']);
+
+const startFetch = createStartHandler(defaultStreamHandler);
+
+// A client disconnect rethrows the request's abort reason; Start's default catch logs it at error (#2354).
+const handler = createServerEntry({
+  async fetch(request, opts) {
+    try {
+      return await startFetch(request, opts);
+    } catch (error) {
+      if (request.signal.aborted) return new Response(null, { status: 499 });
+      throw error;
+    }
+  },
+});
 
 // System templates self-seed on first request: the first request per isolate
 // waits on one D1 SELECT (and, when the stored seed hash is stale — fresh
