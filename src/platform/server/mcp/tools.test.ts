@@ -2666,7 +2666,7 @@ describe('shot storyboard (#2350)', () => {
         frameId,
         prompt: buildPreviewPrompt('Motion prompt', []),
       }),
-      undefined
+      { deduplicationId: `storyboard-${frameId}-none` }
     );
     await addSketch({ status: 'generating', url: null, workflowRunId: 'r2' });
     expect(

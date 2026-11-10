@@ -97,10 +97,13 @@ the same text the scene-split sketch is drawn from. Each redraw is a new
 versions, since none of them reaches the clip. A shot with a start frame never
 redraws, because its still takes over.
 
-**The Storyboard tab (#2350).** On a reference-only shot the inspector's
-Start Frame tab reads Storyboard and shows the sketch history (view-only, the
-newest completed sketch always shows), whether the sketch is stale and a
-Regenerate button. The automatic redraw stays; stale covers what it misses: a
+**The Storyboard tab (#2350).** A reference-only shot gets a Storyboard tab
+beside Start Frame (facet `storyboard`; the canvas shows the sketch while it
+is open). Start Frame keeps the still prompt, upload and variants, since a
+still can still be made for a reference-only shot. The tab shows the sketch
+history (view-only, the newest completed sketch always shows), whether the
+sketch is stale and a Regenerate button; two Regenerates that saw the same
+newest sketch start one run (`deduplicationId`). The automatic redraw stays; stale covers what it misses: a
 cast or look edit (the sketch prompt names the cast, but no motion prompt is
 written), a redraw that did not start (credits, trigger error; logged only),
 and a shot switched to reference-only that still shows its scene-split sketch.

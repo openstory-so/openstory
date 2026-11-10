@@ -831,8 +831,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     [scope, storyboardTab]
   );
   const effectiveTab = useMemo(
-    () => effectiveTabFor(scope, search.facet),
-    [scope, search.facet]
+    () => effectiveTabFor(scope, search.facet, { storyboard: storyboardTab }),
+    [scope, search.facet, storyboardTab]
   );
 
   // Shot ids in scope; `null` = whole sequence, so facets show the full

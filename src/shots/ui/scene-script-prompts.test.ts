@@ -31,4 +31,24 @@ describe('effectiveTabFor', () => {
   it('puts Video first at shot scope so the fallback is the clip', () => {
     expect(tabsForScope('shot')[0]?.value).toBe('motion-prompt');
   });
+
+  it('adds Storyboard beside Start Frame on a reference-only shot (#2350)', () => {
+    expect(tabsForScope('shot').map((t) => t.value)).not.toContain(
+      'storyboard'
+    );
+    expect(
+      tabsForScope('shot', { storyboard: true }).map((t) => t.label)
+    ).toEqual([
+      'Video',
+      'Start Frame',
+      'Storyboard',
+      'Cast',
+      'Locations',
+      'Elements',
+    ]);
+    expect(effectiveTabFor('shot', 'storyboard', { storyboard: true })).toBe(
+      'storyboard'
+    );
+    expect(effectiveTabFor('shot', 'storyboard')).toBe('motion-prompt');
+  });
 });

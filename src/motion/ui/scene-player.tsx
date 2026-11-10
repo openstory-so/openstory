@@ -192,8 +192,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     const revision = subtitleTrackRevision(vtt);
     return `/api/sequences/${currentShot.sequenceId}/shots/${currentShot.id}/subtitles?v=${revision}`;
   }, [currentShot, packedGroup]);
+  const showsStoryboard = selectedTab === 'storyboard';
   const showsStillImage =
-    selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
+    selectedTab === 'image-prompt' ||
+    selectedTab === 'scene-variants' ||
+    showsStoryboard;
   const playbackVideoUrl = showsStillImage
     ? ''
     : (overrideVideoUrl ?? currentShot?.video?.url ?? '');
@@ -427,25 +430,27 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     !!overrideVideoUrl &&
     !showsStillImage &&
     overrideVideoUrl !== currentShot.video?.url;
-  const displayImage = showsStillImage
-    ? (overrideImageUrl ??
-      currentShot.image?.url ??
-      currentShot.previewThumbnailUrl ??
-      null)
-    : playerPosterSrc({
-        videoUrl: playbackVideoUrl || null,
-        stillUrl: currentShot.image?.url,
-        previewUrl: currentShot.previewThumbnailUrl,
-        overrideImageUrl,
-        usesStartFrame: usesStartFrame(
-          currentShot,
-          sequence ?? { generateStartFrames: false }
-        ),
-      });
+  const displayImage = showsStoryboard
+    ? (currentShot.previewThumbnailUrl ?? null)
+    : showsStillImage
+      ? (overrideImageUrl ??
+        currentShot.image?.url ??
+        currentShot.previewThumbnailUrl ??
+        null)
+      : playerPosterSrc({
+          videoUrl: playbackVideoUrl || null,
+          stillUrl: currentShot.image?.url,
+          previewUrl: currentShot.previewThumbnailUrl,
+          overrideImageUrl,
+          usesStartFrame: usesStartFrame(
+            currentShot,
+            sequence ?? { generateStartFrames: false }
+          ),
+        });
   const isPreviewImage =
     !!displayImage &&
     displayImage === currentShot.previewThumbnailUrl &&
-    !currentShot.image?.url;
+    (showsStoryboard || !currentShot.image?.url);
   const isVariantPreview =
     !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
   // The selected clip is an Ark draft (#1756): 480p, final not yet rendered.

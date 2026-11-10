@@ -106,18 +106,25 @@ async function previewCast(context: PreviewContext) {
   );
 }
 
-async function startPreview(context: PreviewContext, prompt: string) {
+async function startPreview(
+  context: PreviewContext,
+  prompt: string,
+  deduplicationId?: string
+) {
   const { scopedDb, user, organizationId, shot, frame, sequence } = context;
   await requireCredits(scopedDb, await previewCostMicros(sequence.aspectRatio));
-  return triggerShotPreview({
-    userId: user.id,
-    organizationId,
-    sequenceId: sequence.id,
-    shotId: shot.id,
-    frameId: frame.id,
-    aspectRatio: sequence.aspectRatio,
-    prompt,
-  });
+  return triggerShotPreview(
+    {
+      userId: user.id,
+      organizationId,
+      sequenceId: sequence.id,
+      shotId: shot.id,
+      frameId: frame.id,
+      aspectRatio: sequence.aspectRatio,
+      prompt,
+    },
+    deduplicationId ? { deduplicationId } : undefined
+  );
 }
 
 /**
@@ -251,7 +258,12 @@ export async function regenerateShotStoryboard(context: PreviewContext) {
   const { draw } = await currentPreviewPrompts(context);
   if (!draw)
     throw new ValidationError('Shot has nothing to draw a sketch from');
-  const workflowRunId = await startPreview(context, draw);
+  // Two clicks that saw the same newest sketch start one run, not two.
+  const workflowRunId = await startPreview(
+    context,
+    draw,
+    `storyboard-${frame.id}-${newest?.id ?? 'none'}`
+  );
   return { workflowRunId, alreadyInFlight: false };
 }
 
