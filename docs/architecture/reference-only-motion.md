@@ -102,9 +102,9 @@ reference-only shot it opens with the storyboard: the current sketch, whether
 it is stale, and Regenerate. Past sketches are in the shot's History and the
 prompt history's Images list (badged Sketch, never selectable) like any
 other image: a sketch's `preview.generated` event names its row `variantId`,
-which `mediaVersionIds` reads as the version. A "Start frame" section follows with the Use start frame checkbox, then the
-still prompt, upload and variants. The checkbox stays off until the shot has a
-still.
+which `mediaVersionIds` reads as the version. The shot spec follows (framing drives the sketch and the reference-only
+prompt too), then the Use start frame switch. While it is off, the still
+prompt, upload and variants below it are inert.
 Two Regenerates that saw the same newest sketch start one run
 (`deduplicationId`).
 
@@ -376,11 +376,11 @@ folds into the motion-prompt hash, so flipping it re-stales that shot's motion
 prompt — deliberately, because rendering a reference-only shot with an
 image-to-video prompt reinvents the composition the prompt never described.
 
-Both directions are gated at `setShotUseStartFrameFn`, because either can
-persist a shot that cannot render: ON needs an existing still (a checkbox must
-never start image generation and spend money), OFF needs a model with a
-reference-to-video route. Ungated, one unrenderable shot rejected the whole
-sequence's batch motion.
+ON is never gated (#2350): with no still, the still is a dependency. The plan
+owes it before the clip, batch motion leaves the shot out
+(`isBatchMotionEligible`), the Video tab's Generate waits for it, and the
+switch itself starts nothing. OFF is gated at `setShotUseStartFrame`: it needs
+a model with a reference-to-video route.
 
 Consequences of the override being per shot:
 

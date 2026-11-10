@@ -2508,17 +2508,16 @@ describe('structure edits (#1979)', () => {
         durationSeconds: 6.5,
       })
     ).toMatchObject({ durationSeconds: 6.5 });
-    // No still yet: turning the start frame on must not start a generation.
+    // No still yet: the switch turns on, and the still is owed, not started.
+    vi.mocked(triggerWorkflow).mockClear();
     expect(
-      await call('update_shot', {
+      await data('update_shot', {
         sequenceId,
         shotId: created.shotId,
         useStartFrame: true,
       })
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
-    });
+    ).toMatchObject({ useStartFrame: true });
+    expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
     expect(
       await data('update_shot', { sequenceId, shotId, useStartFrame: true })
     ).toMatchObject({ useStartFrame: true });

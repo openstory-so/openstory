@@ -166,15 +166,7 @@ export async function setShotUseStartFrame(
   },
   useStartFrame: boolean | null
 ) {
-  const { shot, frameId, sequence } = target;
-  if (useStartFrame === true) {
-    const still = await scopedDb.frameVariants.getSelected(frameId);
-    if (!still?.url) {
-      throw new ValidationError(
-        'This shot has no start frame yet. Generate one first.'
-      );
-    }
-  }
+  const { shot, sequence } = target;
   if (!usesStartFrame({ useStartFrame }, sequence)) {
     // Same via-aware question the render path asks, so the setting cannot
     // accept a state the Generate button then refuses.
