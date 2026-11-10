@@ -92,7 +92,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
-  ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
+  ): Promise<{
+    assetId: string;
+    outputs: GeneratedAssetOutput[];
+    provider: MediaVia;
+  }> {
     const { assetId, input } = event.payload;
 
     await step.do('set-running', async () => {
@@ -110,7 +114,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     input: Extract<StudioRunInput, { activity: 'image' }>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
-  ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
+  ): Promise<{
+    assetId: string;
+    outputs: GeneratedAssetOutput[];
+    provider: MediaVia;
+  }> {
     const { assetId, organizationId, userId } = event.payload;
     const { imageModel } = input;
     const imageSize = aspectRatioToImageSize(input.aspectRatio);
@@ -215,7 +223,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     await this.notifyContentFeed(event, input, outputs, step);
 
-    return { assetId, outputs };
+    return { assetId, outputs, provider: generated.via };
   }
 
   private async runVideo(
@@ -223,7 +231,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     input: Extract<StudioRunInput, { activity: 'video' }>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
-  ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
+  ): Promise<{
+    assetId: string;
+    outputs: GeneratedAssetOutput[];
+    provider: MediaVia;
+  }> {
     const { assetId, organizationId, userId } = event.payload;
     const { videoModel } = input;
 
@@ -619,7 +631,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     await this.notifyContentFeed(event, input, outputs, step);
 
-    return { assetId, outputs };
+    return { assetId, outputs, provider: job.via };
   }
 
   private async notifyContentFeed(

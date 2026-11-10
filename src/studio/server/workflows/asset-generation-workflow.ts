@@ -30,6 +30,7 @@ import {
 } from '@/models/server/fal-deadline-fetch';
 import { isContentRejectionError } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import type { MediaVia } from '@/models/via';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type {
   GeneratedAssetActivity,
@@ -227,7 +228,11 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     event: Readonly<WorkflowEvent<AssetGenerationWorkflowInput>>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
-  ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
+  ): Promise<{
+    assetId: string;
+    outputs: GeneratedAssetOutput[];
+    provider: MediaVia;
+  }> {
     const { assetId, endpointId, activity, input, organizationId } =
       event.payload;
 
@@ -378,7 +383,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     logger.info(
       `[AssetGenerationWorkflow] Completed asset ${assetId} (${outputs.length} output${outputs.length === 1 ? '' : 's'})`
     );
-    return { assetId, outputs };
+    return { assetId, outputs, provider: 'fal' };
   }
 
   protected override async onFailure({

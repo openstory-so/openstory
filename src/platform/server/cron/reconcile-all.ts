@@ -40,7 +40,10 @@ import {
   resolveRunState,
   STALE_THRESHOLD_MS,
 } from '@/platform/server/workflow/reconcile';
+import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
+import type { MediaVia } from '@/models/via';
 import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
+import { z } from 'zod';
 
 import { getLogger } from '@/platform/logger';
 
@@ -791,22 +794,53 @@ async function reconcileSequencesPass(db: Database): Promise<number> {
   return updated;
 }
 
-// Narrowly typed like `setSequenceStatus` so dropping the null/'unknown'
-// guard in the loop fails typecheck. A verified-'completed' instance whose
-// row is still queued/running means `markCompleted` never landed — the
-// outputs can't be recovered here, so the honest terminal state is 'failed'
-// with a retry hint, never a fabricated 'completed' without outputs.
-const setGeneratedAssetStatus = (next: 'failed' | 'completed') =>
-  next === 'failed'
-    ? {
-        status: 'failed' as const,
-        error: 'Generation was interrupted — run it again.',
-      }
-    : {
-        status: 'failed' as const,
-        error:
-          'The generation finished but its result was not saved — run it again.',
-      };
+// Keyed by the union so a new via fails typecheck here.
+const MEDIA_VIAS: Record<MediaVia, MediaVia> = {
+  fal: 'fal',
+  xai: 'xai',
+  byteplus: 'byteplus',
+  google: 'google',
+};
+
+/** What a studio / asset run returns; the row is recovered from it (#2352). */
+const generatedAssetRunOutputSchema = z.object({
+  outputs: z
+    .array(z.object({ url: z.string().min(1), contentType: z.string() }))
+    .min(1),
+  provider: z.enum(MEDIA_VIAS),
+});
+
+// A complete run with no readable outputs (older runs return no provider)
+// stays 'failed' with a retry hint, never 'completed' without outputs.
+async function generatedAssetTerminalFields(
+  next: 'failed' | 'completed',
+  runId: string
+) {
+  if (next === 'failed') {
+    return {
+      status: 'failed' as const,
+      error: 'Generation was interrupted — run it again.',
+    };
+  }
+  const outcome = await getWorkflowRunOutcome(runId);
+  const parsed =
+    outcome.state === 'complete'
+      ? generatedAssetRunOutputSchema.safeParse(outcome.output)
+      : null;
+  if (parsed?.success) {
+    return {
+      status: 'completed' as const,
+      outputs: parsed.data.outputs,
+      provider: parsed.data.provider,
+      error: null,
+    };
+  }
+  return {
+    status: 'failed' as const,
+    error:
+      'The generation finished but its result was not saved — run it again.',
+  };
+}
 
 /**
  * Heal `generated_assets` rows stuck in 'queued'/'running' whose workflow
@@ -830,11 +864,12 @@ async function reconcileGeneratedAssetsPass(db: Database): Promise<number> {
 
   let updated = 0;
   for (const row of stuck) {
-    const next = await resolveRunState(row.runId ?? '');
+    const runId = row.runId ?? '';
+    const next = await resolveRunState(runId);
     if (next === null || next === 'unknown') continue;
-    await db
+    const written = await db
       .update(generatedAssets)
-      .set(setGeneratedAssetStatus(next))
+      .set(await generatedAssetTerminalFields(next, runId))
       // Guarded: a run that saves its result between the select and this
       // write must keep it, not be overwritten as failed.
       .where(
@@ -842,8 +877,9 @@ async function reconcileGeneratedAssetsPass(db: Database): Promise<number> {
           eq(generatedAssets.id, row.id),
           inArray(generatedAssets.status, ['queued', 'running'])
         )
-      );
-    updated++;
+      )
+      .returning({ id: generatedAssets.id });
+    updated += written.length;
   }
   return updated;
 }

@@ -130,7 +130,14 @@ vi.doMock('@/platform/server/workflow/reconcile', () => ({
   STALE_THRESHOLD_MS: 5 * 60 * 1000,
 }));
 
+// What the complete instance returned; read only for generated_assets (#2352).
+let runOutput: unknown = undefined;
+vi.doMock('@/platform/server/workflow/run-outcome', () => ({
+  getWorkflowRunOutcome: async () => ({ state: 'complete', output: runOutput }),
+}));
+
 beforeEach(() => {
+  runOutput = undefined;
   updateCalls.length = 0;
   limitArgs = [];
   stuckRows = [];
@@ -261,6 +268,7 @@ describe('reconcileAllStuckJobs — sequences.status pass (#839)', () => {
 describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
   test('dead asset run → status=failed with a retry hint', async () => {
     stuckRows = [{ id: 'ga_1', runId: 'openstory-so_asset_dead' }];
+    stuckSelectTable = generatedAssets;
     runStateResult = 'failed';
     const { reconcileAllStuckJobs } = await import('./reconcile-all');
 
@@ -271,12 +279,34 @@ describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
     );
     expect(update).toBeDefined();
     expect(update?.payload.error).toMatch(/run it again/);
-    expect(counts['generated_assets.status']).toBeGreaterThan(0);
+    expect(counts['generated_assets.status']).toBe(1);
   });
 
-  test('completed instance with an unflipped row → failed (never completed without outputs)', async () => {
+  test('complete instance with outputs → completed with those outputs (#2352)', async () => {
     stuckRows = [{ id: 'ga_1', runId: 'openstory-so_asset_done' }];
+    stuckSelectTable = generatedAssets;
     runStateResult = 'completed';
+    const outputs = [{ url: '/r2/clip.mp4', contentType: 'video/mp4' }];
+    runOutput = { assetId: 'ga_1', outputs, provider: 'byteplus' };
+    const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+    const counts = await reconcileAllStuckJobs();
+
+    const update = updateCalls.find((c) => c.table === generatedAssets);
+    expect(update?.payload).toEqual({
+      status: 'completed',
+      outputs,
+      provider: 'byteplus',
+      error: null,
+    });
+    expect(counts['generated_assets.status']).toBe(1);
+  });
+
+  test('complete instance without readable outputs → failed (never completed without outputs)', async () => {
+    stuckRows = [{ id: 'ga_1', runId: 'openstory-so_asset_done' }];
+    stuckSelectTable = generatedAssets;
+    runStateResult = 'completed';
+    runOutput = { assetId: 'ga_1', outputs: [], provider: 'fal' };
     const { reconcileAllStuckJobs } = await import('./reconcile-all');
 
     await reconcileAllStuckJobs();
@@ -284,6 +314,16 @@ describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
     const update = updateCalls.find((c) => c.table === generatedAssets);
     expect(update?.payload.status).toBe('failed');
     expect(update?.payload.error).toMatch(/was not saved/);
+  });
+
+  test('a row that moved on is not counted', async () => {
+    stuckRows = [{ id: 'ga_1', runId: 'openstory-so_asset_done' }];
+    runStateResult = 'completed';
+    const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+    const counts = await reconcileAllStuckJobs();
+
+    expect(counts['generated_assets.status']).toBe(0);
   });
 
   // A 30s clip runs past the stale cutoff, so the sweep can select it as
@@ -299,7 +339,7 @@ describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
 
     // Each write must check the very column it sets.
     const guarded = updateCalls
-      .filter((c) => !c.returning)
+      .filter((c) => !c.returning || c.table === generatedAssets)
       .flatMap((c) => {
         const column =
           'shotVariantStatus' in c.payload
