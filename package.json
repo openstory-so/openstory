@@ -102,9 +102,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
-    "@better-auth/api-key": "1.7.16",
-    "@better-auth/mcp": "1.7.16",
-    "@better-auth/passkey": "1.7.16",
+    "@better-auth/api-key": "1.7.18",
+    "@better-auth/mcp": "1.7.18",
+    "@better-auth/passkey": "1.7.18",
     "@cf-wasm/photon": "^0.4.0",
     "@cloudflare/containers": "^0.3.7",
     "@content-collections/core": "0.15.3",
