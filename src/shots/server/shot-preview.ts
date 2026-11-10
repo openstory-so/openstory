@@ -2,7 +2,7 @@
  * A shot's storyboard sketch: the grey animatic on the scene rail (#1101,
  * #1642). Scene split draws one per shot; after that every spec version is
  * drawn, start-frame shots included, and the sketch records the version it
- * was drawn from (#2350). See `docs/architecture/reference-only-motion.md`.
+ * was drawn from (#2350). Staleness reads the prompt hash, not the stamp. See `docs/architecture/reference-only-motion.md`.
  */
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -164,8 +164,9 @@ const isLive = (row: FrameVariant) =>
 
 /**
  * Draw a sketch for a spec version the user just saved or picked. Skipped
- * when that version already has a sketch from the same prompt. Never throws:
- * the spec is already saved, and a failure here must not report it as failed.
+ * when a sketch of the same prompt exists: an unchanged rename or a picked
+ * old version shows that one. Never throws: the spec is already saved, and a
+ * failure here must not report it as failed.
  */
 export async function drawSpecSketch(
   context: PreviewContext,
@@ -182,9 +183,7 @@ export async function drawSpecSketch(
     const rows = await scopedDb.frameVariants.listPreviews(frame.id);
     const drawn = rows.some(
       (row) =>
-        row.specVersionId === version.id &&
-        row.promptHash === hash &&
-        (row.status === 'completed' || isLive(row))
+        row.promptHash === hash && (row.status === 'completed' || isLive(row))
     );
     if (drawn) return;
     await startPreview(context, prompt, version.id);
@@ -196,40 +195,14 @@ export async function drawSpecSketch(
   }
 }
 
-// ponytail: scene split draws before the analysis spec exists, so its sketch
-// carries no id. Read it as the nearest analysis version within ten minutes.
-const ATTRIBUTE_WINDOW_MS = 10 * 60 * 1000;
-
-/** The spec version each sketch was drawn from, by id or by that rule. */
-function sketchSpecIds(
-  rows: readonly FrameVariant[],
-  versions: readonly ShotSpecVersion[]
-): Map<string, string | null> {
-  const analyses = versions.filter((v) => v.source === 'analysis');
-  return new Map(
-    rows.map((row) => {
-      if (row.specVersionId) return [row.id, row.specVersionId];
-      let best: ShotSpecVersion | null = null;
-      let bestGap = ATTRIBUTE_WINDOW_MS;
-      for (const v of analyses) {
-        const gap = Math.abs(v.createdAt.getTime() - row.createdAt.getTime());
-        if (gap <= bestGap) {
-          best = v;
-          bestGap = gap;
-        }
-      }
-      return [row.id, best?.id ?? null];
-    })
-  );
-}
-
 type StoryboardStaleReason = 'missing' | 'failed' | 'changed';
 
 /**
  * A shot's storyboard (#2350): the sketch on show, whether it is stale and
  * why, every sketch drawn for it, and every spec version with its sketch,
- * newest first. The selected spec's newest sketch shows; until it lands the
- * newest sketch of any version shows, stale.
+ * newest first. Fresh means drawn from the prompt the selected spec and
+ * today's cast make. A version's sketch is the newest stamped with it, else
+ * the newest of the same prompt (scene split's, which carries no stamp).
  */
 export async function readShotStoryboard(context: PreviewContext) {
   const { scopedDb, shot, frame, sequence, scene } = context;
@@ -239,37 +212,32 @@ export async function readShotStoryboard(context: PreviewContext) {
     previewCast(context),
     scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
   ]);
-  const specOf = sketchSpecIds(rows, versions);
+  const hashOf = (version: ShotSpecVersion) =>
+    simpleHash(specSketchPrompt(version.spec, scene, cast));
   const selected =
     versions.find((v) => v.id === shot.selectedSpecVersionId) ?? null;
   const done = (row: FrameVariant) => row.status === 'completed' && !!row.url;
 
   // A shot with no spec (from before #1915) is drawn from its motion prompt.
   const fresh = selected
-    ? simpleHash(specSketchPrompt(selected.spec, scene, cast))
+    ? hashOf(selected)
     : motion?.text
       ? simpleHash(buildPreviewPrompt(motion.text, cast))
       : null;
-  const mine = selected
-    ? rows.filter((row) => specOf.get(row.id) === selected.id)
-    : rows;
-  const current = mine.find(done) ?? rows.find(done) ?? null;
+  const current =
+    rows.find((row) => done(row) && row.promptHash === fresh) ??
+    rows.find(done) ??
+    null;
   const generating = rows[0] ? isLive(rows[0]) : false;
-  // Only a stamped sketch is held to its prompt: scene split's used an
-  // earlier cast label, so its hash never matches.
-  const promptMoved =
-    !!current &&
-    (!selected || current.specVersionId === selected.id) &&
-    current.promptHash !== fresh;
   const staleReason: StoryboardStaleReason | null = generating
     ? null
     : !current
       ? 'missing'
-      : mine[0]?.status === 'failed'
-        ? 'failed'
-        : (selected && specOf.get(current.id) !== selected.id) || promptMoved
-          ? 'changed'
-          : null;
+      : current.promptHash === fresh
+        ? null
+        : rows[0]?.status === 'failed'
+          ? 'failed'
+          : 'changed';
 
   const sketch = (row: FrameVariant) => ({
     id: row.id,
@@ -277,7 +245,7 @@ export async function readShotStoryboard(context: PreviewContext) {
     status: row.status,
     error: row.status === 'failed' ? row.error : null,
     model: row.model,
-    specVersionId: specOf.get(row.id) ?? null,
+    specVersionId: row.specVersionId,
     createdAt: row.createdAt,
   });
   return {
@@ -288,7 +256,10 @@ export async function readShotStoryboard(context: PreviewContext) {
     current: current && sketch(current),
     history: rows.map(sketch),
     versions: versions.map((version) => {
-      const drawn = rows.find((row) => specOf.get(row.id) === version.id);
+      const hash = hashOf(version);
+      const drawn =
+        rows.find((row) => row.specVersionId === version.id) ??
+        rows.find((row) => row.promptHash === hash);
       return {
         id: version.id,
         source: version.source,

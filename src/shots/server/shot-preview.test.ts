@@ -30,17 +30,23 @@ const SPEC = asStub<StoredShotSpec>({
   cameraMovement: { move: 'Push in', pacing: 'slow' },
   direction: '',
 });
-const PROMPT = buildPreviewPrompt(
-  previewTextForShot(
-    {
-      shots: [{ ...SPEC, shotNumber: 1 }],
-      originalScript: { extract: '' },
-      metadata: { title: '', location: '', timeOfDay: '' },
-    },
-    1
-  ),
-  []
-);
+const promptOf = (spec: StoredShotSpec) =>
+  buildPreviewPrompt(
+    previewTextForShot(
+      {
+        shots: [{ ...spec, shotNumber: 1 }],
+        originalScript: { extract: '' },
+        metadata: { title: '', location: '', timeOfDay: '' },
+      },
+      1
+    ),
+    []
+  );
+const PROMPT = promptOf(SPEC);
+const EDITED = asStub<StoredShotSpec>({
+  ...SPEC,
+  action: 'Mara runs for the stairs',
+});
 const listPreviews = vi.fn();
 const listByShot = vi.fn();
 const hasEnoughCredits = vi.fn();
@@ -110,8 +116,8 @@ describe('drawSpecSketch', () => {
     }
   );
 
-  it('does not draw a version twice from the same prompt', async () => {
-    listPreviews.mockResolvedValue([sketch({ specVersionId: 'spec-2' })]);
+  it('does not draw a prompt that already has a sketch, under any version', async () => {
+    listPreviews.mockResolvedValue([sketch({ specVersionId: 'spec-1' })]);
     await drawSpecSketch(contextFor(false), { id: 'spec-2', spec: SPEC });
     expect(mocks.trigger).not.toHaveBeenCalled();
   });
@@ -138,16 +144,17 @@ describe('readShotStoryboard', () => {
     createdBy: null,
   });
 
-  it('pairs each version with its sketch; scene split reads as analysis', async () => {
+  it('pairs each version with its sketch; scene split matches by prompt', async () => {
     const split = sketch({ id: 'split', createdAt: at(0) });
     const edited = sketch({
       id: 'edited',
       specVersionId: 'spec-2',
+      promptHash: simpleHash(promptOf(EDITED)),
       createdAt: at(30),
     });
     listPreviews.mockResolvedValue([edited, split]);
     listByShot.mockResolvedValue([
-      version('spec-2', 'edit', 30),
+      { ...version('spec-2', 'edit', 30), spec: EDITED },
       version('spec-1', 'analysis', 2),
     ]);
     const board = await readShotStoryboard(contextFor(true));
@@ -164,12 +171,44 @@ describe('readShotStoryboard', () => {
       sketch({ id: 'old', specVersionId: 'spec-1' }),
     ]);
     listByShot.mockResolvedValue([
-      version('spec-2', 'edit', 30),
+      { ...version('spec-2', 'edit', 30), spec: EDITED },
       version('spec-1', 'analysis', 2),
     ]);
     const board = await readShotStoryboard(contextFor(false));
     expect(board.current?.id).toBe('old');
     expect(board.staleReason).toBe('changed');
     expect(board.versions[0]?.sketch).toBeNull();
+  });
+
+  it('a rename that leaves the drawn text alone stays fresh', async () => {
+    listPreviews.mockResolvedValue([
+      sketch({ id: 'old', specVersionId: 'spec-1' }),
+    ]);
+    listByShot.mockResolvedValue([
+      version('spec-2', 'rename', 30),
+      version('spec-1', 'analysis', 2),
+    ]);
+    const board = await readShotStoryboard(contextFor(false));
+    expect(board.staleReason).toBeNull();
+    expect(board.versions[0]?.sketch?.id).toBe('old');
+  });
+
+  it('a failed redraw reads failed while the old sketch shows', async () => {
+    listPreviews.mockResolvedValue([
+      sketch({
+        id: 'failed',
+        status: 'failed',
+        url: null,
+        specVersionId: 'spec-2',
+      }),
+      sketch({ id: 'old', specVersionId: 'spec-1' }),
+    ]);
+    listByShot.mockResolvedValue([
+      { ...version('spec-2', 'edit', 30), spec: EDITED },
+      version('spec-1', 'analysis', 2),
+    ]);
+    const board = await readShotStoryboard(contextFor(false));
+    expect(board.current?.id).toBe('old');
+    expect(board.staleReason).toBe('failed');
   });
 });

@@ -2604,17 +2604,6 @@ describe('shot storyboard (#2350)', () => {
       await data('get_shot_storyboard', { sequenceId, shotId })
     ).toMatchObject({ referenceOnly: true, staleReason: 'missing' });
 
-    const fresh = await addSketch();
-    expect(
-      await data('get_shot_storyboard', { sequenceId, shotId })
-    ).toMatchObject({
-      staleReason: null,
-      current: {
-        id: fresh,
-        url: `https://openstory.test/r2/openstory-images/${fresh}.png`,
-      },
-    });
-
     const changed = await addSketch({ promptHash: sketchOf('Old prompt') });
     expect(
       await data('get_shot_storyboard', { sequenceId, shotId })
@@ -2630,11 +2619,18 @@ describe('shot storyboard (#2350)', () => {
     ).toMatchObject({
       staleReason: 'failed',
       current: { id: changed },
-      history: [
-        { id: failed, error: 'Content checker' },
-        { id: changed },
-        { id: fresh },
-      ],
+      history: [{ id: failed, error: 'Content checker' }, { id: changed }],
+    });
+
+    const fresh = await addSketch();
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      staleReason: null,
+      current: {
+        id: fresh,
+        url: `https://openstory.test/r2/openstory-images/${fresh}.png`,
+      },
     });
 
     await addSketch({ status: 'generating', url: null });

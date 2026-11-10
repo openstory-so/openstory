@@ -93,7 +93,8 @@ and analysis (scene split's sketch). It is drawn from the spec text scene
 split uses (`drawSpecSketch`, `src/shots/server/shot-preview.ts`) and stamped
 with the version (`frame_variants.specVersionId`). A prompt edit draws
 nothing: the picture matches the spec it sits beside. Each draw is a new
-`kind: 'preview'` row; fast saves get one each, since they are cheap.
+`kind: 'preview'` row; fast saves get one each, since they are cheap. A
+prompt that already has a sketch is not drawn again.
 A sketch spends credits, so MCP `update_shot_spec` (write scope) draws none;
 the caller asks for one with `regenerate_shot_storyboard` (generate scope).
 

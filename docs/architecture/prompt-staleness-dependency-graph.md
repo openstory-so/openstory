@@ -784,8 +784,8 @@ sha256Hex({
 
 Every shot, start-frame ones included. Not a manifest hash: a sketch row
 records the spec version it was drawn from (`frame_variants.specVersionId`)
-and its `promptHash`. The sketch on show is the selected spec's newest; it
-reads fresh when its hash equals:
+and its `promptHash`. Staleness reads the hash only: the sketch on show is
+the newest whose hash equals the one below, else the newest of any.
 
 ```ts
 cast = charactersToBible(
@@ -794,16 +794,17 @@ cast = charactersToBible(
 fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
 ```
 
-`missing` (none drawn) and `failed` (the selected spec's newest row failed)
-come first. `changed` is a sketch of another spec version (shown until the
-new one lands) or a stamped sketch whose cast moved. Every spec save,
-Rewrite and analysis draws its own (`drawSpecSketch`), so what reads stale is
-a cast or look edit and a draw that did not start. Scene split draws before
-the analysis spec exists, so its sketch has no id and reads as the analysis
-version written within ten minutes of it; its hash is not checked, because
-it used the bible's earlier look labels. A shot with no spec (before #1915)
-is held to its motion prompt instead. Regenerate draws from the selected
-spec.
+`missing` is none drawn. A sketch of the fresh hash is fresh, whatever
+version it is stamped with, so a rename that leaves the drawn text alone and
+a picked old version stay fresh. Otherwise `failed` if the newest row failed,
+else `changed`. Every spec save, Rewrite and analysis draws its own
+(`drawSpecSketch`, skipped when a sketch of that prompt exists), so what
+reads stale is a cast or look edit, a rename that changes the drawn text, and
+a draw that did not start. The stamp only groups sketches in History: a
+version's sketch is the newest stamped with it, else the newest of its
+prompt, which is how scene split's sketch (drawn before the analysis spec,
+so unstamped) finds its version. A shot with no spec (before #1915) is held
+to its motion prompt instead. Regenerate draws from the selected spec.
 
 ### 4.2 Hashed surface vs. actual prompt inputs — are we over-hashing? (history)
 
