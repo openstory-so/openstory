@@ -1,5 +1,5 @@
 /**
- * Animatic / Canvas / Script switch for the centre column (#1037, #2350).
+ * Canvas / Script / Animatic switch for the centre column (#1037, #2350).
  *
  * Both views share the spine, the inspector and the selection — this only
  * changes what the middle shows, so it reads as two views of one object rather
@@ -51,14 +51,6 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
       spacing={0}
     >
       <ToggleGroupItem
-        value="animatic"
-        aria-label="Play the animatic"
-        disabled={canvasDisabled}
-      >
-        <Clapperboard className="mr-1.5 h-3.5 w-3.5" />
-        Animatic
-      </ToggleGroupItem>
-      <ToggleGroupItem
         value="canvas"
         aria-label="Show the canvas"
         disabled={canvasDisabled}
@@ -69,6 +61,14 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
       <ToggleGroupItem value="script" aria-label="Show the script">
         <FileText className="mr-1.5 h-3.5 w-3.5" />
         Script
+      </ToggleGroupItem>
+      <ToggleGroupItem
+        value="animatic"
+        aria-label="Play the animatic"
+        disabled={canvasDisabled}
+      >
+        <Clapperboard className="mr-1.5 h-3.5 w-3.5" />
+        Animatic
       </ToggleGroupItem>
     </ToggleGroup>
     <div className="flex items-center justify-end gap-1">{trailing}</div>

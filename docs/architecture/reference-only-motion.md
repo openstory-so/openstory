@@ -108,7 +108,7 @@ The rule is in `readShotStoryboard` (`src/shots/server/shot-preview.ts`) and
 the dependency-graph doc § 4.1.9. MCP and the assistant read it with
 `get_shot_storyboard` and redraw with `regenerate_shot_storyboard`.
 
-**The Animatic view (#2350).** The first centre view, before Canvas and Script
+**The Animatic view (#2350).** A third centre view beside Canvas and Script
 (`view=animatic`) plays the selection with no clips: each shot holds its
 picture for its own length with its dialogue, through the same sequence player
 (`toAnimaticShots`, `playback-clips.ts`). A reference-only shot's picture is its
