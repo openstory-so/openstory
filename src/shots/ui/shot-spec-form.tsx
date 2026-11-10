@@ -29,8 +29,17 @@ import {
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/ui/shadcn/collapsible';
 import { Input } from '@/ui/shadcn/input';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { Textarea } from '@/ui/shadcn/textarea';
+import { useHydrated } from '@/ui/use-hydrated';
+import { cn } from '@/ui/utils';
+import { ChevronRight } from 'lucide-react';
 import { useSaveShotSpec, useShotSpec } from './use-shot-spec';
 
 type Part = 'still' | 'motion';
@@ -192,9 +201,18 @@ function SpecFields({
   motionWritten: boolean;
 }) {
   const save = useSaveShotSpec(sequenceId);
+  const hydrated = useHydrated();
+  const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<StoredShotSpec | null>(null);
   const updating = verdict === 'updating';
+  const status = updating
+    ? 'Rewriting…'
+    : dirty
+      ? 'Unsaved changes'
+      : verdict === 'stale'
+        ? 'Script changed since it was written'
+        : '';
 
   const submit = (next: StoredShotSpec, replace: boolean) => {
     setPending(null);
@@ -240,65 +258,107 @@ function SpecFields({
         else submit(parsed.data, false);
       }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Shot spec</span>
-        {verdict === 'stale' && (
-          <span className="text-xs text-muted-foreground">
-            Script changed since it was written
-          </span>
-        )}
-        {updating && (
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            Rewriting…
-          </span>
-        )}
-      </div>
-      <fieldset
-        className="grid gap-3 sm:grid-cols-2"
-        disabled={updating || save.isPending}
+      <Collapsible
+        open={open}
+        onOpenChange={setOpen}
+        className="rounded-md border"
       >
-        {PART_FIELDS[part].map((field) => {
-          const id = `${shotId}-${part}-${field.name}`;
-          const listId = field.suggestions ? `${id}-suggestions` : undefined;
-          return (
-            <label key={field.name} className="text-xs" htmlFor={id}>
-              {field.label}
-              <Input
-                id={id}
-                name={field.name}
-                defaultValue={field.read(spec)}
-                maxLength={2000}
-                list={listId}
-                autoComplete="off"
-              />
-              {field.suggestions && (
-                <datalist id={listId}>
-                  {field.suggestions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </datalist>
-              )}
-            </label>
-          );
-        })}
-      </fieldset>
-      {dirty && (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            type="reset"
-            size="sm"
-            variant="outline"
-            disabled={save.isPending}
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            disabled={!hydrated}
+            className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={save.isPending || updating}>
-            {save.isPending ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      )}
+            <ChevronRight
+              className={cn(
+                'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
+                open && 'rotate-90'
+              )}
+              aria-hidden
+            />
+            <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+              <span className="font-medium">Shot spec</span>
+              <span
+                className="truncate text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {status}
+              </span>
+            </span>
+          </button>
+        </CollapsibleTrigger>
+        {/* Hidden, not unmounted, so closing keeps unsaved edits. */}
+        <CollapsibleContent forceMount className="data-[state=closed]:hidden">
+          <div className="flex flex-col gap-3 border-t px-3 py-3">
+            <fieldset
+              className="flex flex-col gap-3"
+              disabled={updating || save.isPending}
+            >
+              {PART_FIELDS[part].map((field) => {
+                const id = `${shotId}-${part}-${field.name}`;
+                const listId = field.suggestions
+                  ? `${id}-suggestions`
+                  : undefined;
+                return (
+                  <label
+                    key={field.name}
+                    className="flex flex-col gap-1 text-xs"
+                    htmlFor={id}
+                  >
+                    {field.label}
+                    {field.suggestions ? (
+                      <>
+                        <Input
+                          id={id}
+                          name={field.name}
+                          defaultValue={field.read(spec)}
+                          maxLength={2000}
+                          list={listId}
+                          autoComplete="off"
+                        />
+                        <datalist id={listId}>
+                          {field.suggestions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </datalist>
+                      </>
+                    ) : (
+                      <Textarea
+                        id={id}
+                        name={field.name}
+                        defaultValue={field.read(spec)}
+                        maxLength={2000}
+                        rows={2}
+                      />
+                    )}
+                  </label>
+                );
+              })}
+            </fieldset>
+            {dirty && (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="reset"
+                  size="sm"
+                  variant="outline"
+                  disabled={save.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={save.isPending || updating}
+                >
+                  {save.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       <AlertDialog
         open={pending !== null}
