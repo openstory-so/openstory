@@ -1,9 +1,7 @@
 name: Publish skills
 
-# Copies skills/ and packages/stitch/skills/ into openstory-so/skills (#2357)
-# and bumps the version in all five manifests. That repo's main takes only
-# pull requests, so this opens one and lets auto-merge land it once its
-# version check passes. Nobody edits that repo's skills/ by hand.
+# Publishes the skills to openstory-so/skills (#2357): scripts/publish-skills.ts.
+# Nobody edits that repo's skills/ by hand.
 # Needs: secret SKILLS_REPO_TOKEN (fine-grained, openstory-so/skills,
 # contents + pull requests write), and "Allow auto-merge" on that repo.
 # Runs after Test passes on a push to main, on the commit Test ran on, or by
@@ -47,63 +45,12 @@ jobs:
           token: ${{ secrets.SKILLS_REPO_TOKEN }}
           persist-credentials: false
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
       - name: Open the sync pull request
         env:
           GH_TOKEN: ${{ secrets.SKILLS_REPO_TOKEN }}
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: |
-          set -euo pipefail
-          # Test runs finish out of order: only main's tip may publish.
-          tip=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$tip" != "$SHA" ]; then
-            echo "::notice::$SHA is not main's tip ($tip); the newer run publishes"; exit 0
-          fi
-          subject=$(git log -1 --format=%s)
-          before=$(ls plugin/skills)
-          rsync -a --delete skills/ packages/stitch/skills/ plugin/skills/
-          cd plugin
-          branch=sync-skills
-          open=$(gh pr view "$branch" --repo openstory-so/skills --json state -q .state 2>/dev/null || true)
-          if [ -z "$(git status --porcelain skills)" ]; then
-            # A revert can leave an unmerged sync PR that would undo it.
-            if [ "$open" = OPEN ]; then
-              gh pr close "$branch" --repo openstory-so/skills --comment "Skills match main at ${SHA:0:7}"
-            fi
-            echo "Skills already match; nothing to publish"; exit 0
-          fi
-
-          # Minor for a new skill, patch otherwise (see that repo's AGENTS.md).
-          old=$(jq -r .version plugin.json)
-          IFS=. read -r major minor patch <<< "$old"
-          if [ -n "$(comm -13 <(echo "$before") <(ls skills))" ]; then
-            new="$major.$((minor + 1)).0"
-          else
-            new="$major.$minor.$((patch + 1))"
-          fi
-          notes="$new syncs the skills from openstory-so/openstory@${SHA:0:7}: $subject"
-          # Edit in place: jq would reflow the hand-formatted manifests.
-          export NEW="$new" NOTES_JSON
-          NOTES_JSON=$(jq -n --arg n "$notes" '$n')
-          perl -i -pe 's/("version": )"[^"]*"/$1"$ENV{NEW}"/' \
-            plugin.json .codex-plugin/plugin.json .claude-plugin/plugin.json .grok-plugin/plugin.json gemini-extension.json
-          perl -i -pe 's/("release_notes": ).*/$1$ENV{NOTES_JSON}/' plugin.json
-          for f in plugin.json .codex-plugin/plugin.json .claude-plugin/plugin.json .grok-plugin/plugin.json gemini-extension.json; do
-            [ "$(jq -r .version "$f")" = "$new" ] || { echo "::error::$f was not bumped to $new"; exit 1; }
-          done
-          [ "$(jq -r '.extensions["com.openai"].publication.release_notes' plugin.json)" = "$notes" ] \
-            || { echo "::error::release_notes in plugin.json was not set"; exit 1; }
-
-          # One branch: a newer sync replaces an unmerged one instead of racing it.
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$branch"
-          git add -A
-          git commit -qm "Sync skills from openstory-so/openstory@${SHA:0:7} ($new)"
-          git push --force "https://x-access-token:${GH_TOKEN}@github.com/openstory-so/skills.git" "$branch"
-          if [ "$open" != OPEN ]; then
-            gh pr create --repo openstory-so/skills --head "$branch" --base main \
-              --title "Sync skills ($new)" --body "$notes"
-          else
-            gh pr edit "$branch" --repo openstory-so/skills --title "Sync skills ($new)" --body "$notes"
-          fi
-          gh pr merge "$branch" --repo openstory-so/skills --auto --squash --delete-branch
+        run: bun scripts/publish-skills.ts

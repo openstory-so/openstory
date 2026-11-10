@@ -548,7 +548,7 @@ Before editing files for a substantial task:
 
 ### Published skills (#2357)
 
-The OpenStory plugin's skills are written here: `skills/` (setup, create-sequence, create-style) and `packages/stitch/skills/` (stitch, stitch-player). `.github/workflows/publish-skills.yml` copies them into `openstory-so/skills` and bumps its version after Test passes on main; never edit that repo's `skills/` by hand. Name MCP tools as clients list them (`openstory_create_stitch`, `whoami`); `src/platform/server/mcp/skill-tool-names.test.ts` fails when a skill names a tool that is not in `MCP_TOOLS`, so rename a tool and its skills in the same PR.
+The OpenStory plugin's skills are written here: `skills/` (setup, create-sequence, create-style) and `packages/stitch/skills/` (stitch, stitch-player). `scripts/publish-skills.ts` (run by `.github/workflows/publish-skills.yml`) copies them into `openstory-so/skills` and bumps its version after Test passes on main; never edit that repo's `skills/` by hand. Name MCP tools as clients list them (`openstory_create_stitch`, `whoami`); `src/platform/server/mcp/skill-tool-names.test.ts` fails when a skill names a tool that is not in `MCP_TOOLS`, so rename a tool and its skills in the same PR.
 
 ### Issue tracker
 
