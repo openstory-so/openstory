@@ -19,9 +19,19 @@ import {
   clampAudioDuration,
   isValidAudioModel,
 } from '@/models/models';
-import { computeSequenceMusicInputHash } from '@/shots/input-hash';
+import {
+  stampSequenceMusicInput,
+  type SequenceMusicInputHash,
+  type Stamped,
+} from '@/shots/input-hash';
 
 export type MusicTrackStaleness = 'fresh' | 'stale' | 'untracked';
+
+/** The verdict and the live stamp it compared, whose manifest names the cause (#2344). */
+export type MusicTrackVerdict = {
+  status: MusicTrackStaleness;
+  live: Stamped<SequenceMusicInputHash> | null;
+};
 
 export async function musicTrackStaleness(input: {
   /** `inputHash` of the completed primary `sequence_music_variants` row. */
@@ -33,12 +43,13 @@ export async function musicTrackStaleness(input: {
   requestDurationSeconds: number;
   /** The variant's audio model; `user-upload` and friends are untracked. */
   audioModel: string | null;
-}): Promise<MusicTrackStaleness> {
+}): Promise<MusicTrackVerdict> {
   const { storedInputHash, prompt, tags, audioModel } = input;
-  if (!storedInputHash || !prompt || !tags || !audioModel) return 'untracked';
-  if (!isValidAudioModel(audioModel)) return 'untracked';
+  const untracked = { status: 'untracked' as const, live: null };
+  if (!storedInputHash || !prompt || !tags || !audioModel) return untracked;
+  if (!isValidAudioModel(audioModel)) return untracked;
 
-  const live = await computeSequenceMusicInputHash({
+  const live = await stampSequenceMusicInput({
     prompt,
     tags,
     // The stamped duration is what `generateMusic` billed.
@@ -48,5 +59,5 @@ export async function musicTrackStaleness(input: {
     ),
     audioModel,
   });
-  return live === storedInputHash ? 'fresh' : 'stale';
+  return { status: live.hash === storedInputHash ? 'fresh' : 'stale', live };
 }

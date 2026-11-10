@@ -12,7 +12,7 @@
 
 import { organizationKeyPrefix } from '@/platform/server/storage/buckets';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
-import type { ShotImageInputHash } from '@/shots/input-hash';
+import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
@@ -106,7 +106,7 @@ export function parseUploadedStoragePath(
  * → the app default — the same resolution the verify applies to the stored
  * row's `user-upload` model.
  */
-export async function computeUploadedStillInputHash(args: {
+export async function stampUploadedStillInput(args: {
   shotId: string;
   frameId: string;
   scene: Scene | null;
@@ -115,9 +115,9 @@ export async function computeUploadedStillInputHash(args: {
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   aspectRatio: AspectRatio;
-}): Promise<ShotImageInputHash | null> {
+}): Promise<Stamped<ShotImageInputHash> | null> {
   if (!args.promptText || args.promptText.length === 0) return null;
-  const snapshot = await buildRegenerateShotSnapshot({
+  const { stamp } = await buildRegenerateShotSnapshot({
     shot: { id: args.shotId },
     scene: args.scene,
     frameId: args.frameId,
@@ -128,5 +128,5 @@ export async function computeUploadedStillInputHash(args: {
     imageModel: safeTextToImageModel(USER_UPLOAD_MODEL, DEFAULT_IMAGE_MODEL),
     aspectRatio: args.aspectRatio,
   });
-  return snapshot.snapshotInputHash;
+  return stamp;
 }

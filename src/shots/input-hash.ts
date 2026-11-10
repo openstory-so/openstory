@@ -16,7 +16,41 @@
  */
 
 import { wornStyling } from '@/cast/bible-looks';
+import { simpleHash } from '@/platform/hash';
 import { z } from 'zod';
+
+/**
+ * An entity collection keyed by id (#2344). Hashed as the id-sorted list of
+ * values, the shape every stored digest has; listed in the manifest as
+ * `<prefix>:<id>/<leaf>` so a cause can name the entity.
+ */
+class Keyed {
+  constructor(
+    readonly prefix: string,
+    readonly entries: Readonly<Record<string, unknown>>
+  ) {}
+}
+
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Build a {@link Keyed} from rows; a repeated id keeps its row under `id#n`. */
+function keyed<T>(
+  prefix: string,
+  rows: readonly T[],
+  id: (row: T) => string,
+  project: (row: T) => unknown
+): Keyed {
+  const entries: Record<string, unknown> = {};
+  for (const row of rows) {
+    let key = id(row);
+    for (let n = 2; key in entries; n++) key = `${id(row)}#${n}`;
+    entries[key] = project(row);
+  }
+  return new Keyed(prefix, entries);
+}
+
+const sortedKeys = (keyedValue: Keyed) =>
+  Object.keys(keyedValue.entries).sort(cmp);
 
 /**
  * Recursively rebuild a value with object keys sorted. Arrays are preserved in
@@ -47,6 +81,9 @@ function canonicalize(
   if (Array.isArray(value)) {
     return value.map((v) => canonicalize(v, seen));
   }
+  if (value instanceof Keyed) {
+    return sortedKeys(value).map((k) => canonicalize(value.entries[k], seen));
+  }
   if (value !== null && typeof value === 'object') {
     if (seen.has(value)) {
       throw new Error('input-hash: circular reference in DTO');
@@ -54,7 +91,7 @@ function canonicalize(
     seen.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value).sort(([a], [b]) =>
-      a < b ? -1 : a > b ? 1 : 0
+      cmp(a, b)
     )) {
       out[key] = canonicalize(val, seen);
     }
@@ -75,6 +112,79 @@ export async function sha256Hex(input: unknown): Promise<string> {
   }
   return hex;
 }
+
+/**
+ * What a hash read (#2344): leaf path → short digest of that leaf, over the
+ * same body. Stored content-addressed by the hash (`input_manifests`), so a
+ * stale verdict names exactly the keys whose digest moved.
+ */
+export type InputManifest = Readonly<Record<string, string>>;
+
+function flattenManifest(
+  value: unknown,
+  path: string,
+  out: Record<string, string>
+): void {
+  if (value instanceof Keyed) {
+    for (const k of sortedKeys(value)) {
+      flattenManifest(value.entries[k], `${value.prefix}:${k}`, out);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => flattenManifest(v, `${path}/${i}`, out));
+    return;
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      flattenManifest(v, path ? `${path}/${k}` : k, out);
+    }
+    return;
+  }
+  out[path] = simpleHash(JSON.stringify(canonicalize(value)));
+}
+
+/** The manifest of a body, a pure function of it. */
+function inputManifestOf(body: unknown): InputManifest {
+  const out: Record<string, string> = {};
+  flattenManifest(body, '', out);
+  return out;
+}
+
+/** Keys whose digest differs, or exists on one side only. */
+export function diffManifests(
+  stored: InputManifest,
+  live: InputManifest
+): string[] {
+  return [...new Set([...Object.keys(stored), ...Object.keys(live)])]
+    .filter((key) => stored[key] !== live[key])
+    .sort(cmp);
+}
+
+/**
+ * A hash with the manifest of the body it was taken over (#2344). A stamp
+ * site records the pair (`scopedDb.inputManifests.record`); a verify diffs
+ * the stored manifest against a live one. The `compute*` hashers return the
+ * hash alone, for compares.
+ */
+export type Stamped<H extends string = string> = Readonly<{
+  hash: H;
+  manifest: InputManifest;
+}>;
+
+/** Hash and manifest of a current-shape body. Legacy verify shapes use {@link sha256Hex}. */
+export async function stampInputHash(body: unknown): Promise<Stamped> {
+  return { hash: await sha256Hex(body), manifest: inputManifestOf(body) };
+}
+
+const brandStamp =
+  <H extends string>(brand: (hash: string) => H) =>
+  (stamp: Stamped): Stamped<H> => ({
+    hash: brand(stamp.hash),
+    manifest: stamp.manifest,
+  });
+
+const hashOf = <H extends string>(stamp: Stamped<H>) => stamp.hash;
 
 /**
  * Branded artifact digests (#1616). Hasher return types and the write APIs
@@ -155,8 +265,14 @@ const shotImageHashInputSchema = z.object({
 export function computeShotImageInputHash(
   raw: ShotImageHashInput
 ): Promise<ShotImageInputHash> {
+  return stampShotImageInput(raw).then(hashOf);
+}
+
+export function stampShotImageInput(
+  raw: ShotImageHashInput
+): Promise<Stamped<ShotImageInputHash>> {
   const input = shotImageHashInputSchema.parse(raw);
-  return sha256Hex({
+  return stampInputHash({
     artifact: `shot:${input.kind}`,
     visualPrompt: trim(input.visualPrompt),
     imageModel: input.imageModel,
@@ -166,7 +282,7 @@ export function computeShotImageInputHash(
     characterSheetHashes: sortedRefs(input.characterSheetHashes),
     locationSheetHashes: sortedRefs(input.locationSheetHashes),
     elementReferenceHashes: sortedRefs(input.elementReferenceHashes),
-  }).then(shotImageInputHash);
+  }).then(brandStamp(shotImageInputHash));
 }
 
 /**
@@ -445,9 +561,15 @@ const characterSheetHashInputSchema = z.object({
 export function computeCharacterSheetInputHash(
   raw: CharacterSheetHashInput
 ): Promise<CharacterSheetInputHash> {
+  return stampCharacterSheetInput(raw).then(hashOf);
+}
+
+export function stampCharacterSheetInput(
+  raw: CharacterSheetHashInput
+): Promise<Stamped<CharacterSheetInputHash>> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, 'current', null)).then(
-    characterSheetInputHash
+  return stampInputHash(characterSheetHashBody(input, 'current', null)).then(
+    brandStamp(characterSheetInputHash)
   );
 }
 
@@ -615,8 +737,16 @@ const locationSheetHashInputSchema = z.object({
 export function computeLocationSheetInputHash(
   raw: LocationSheetHashInput
 ): Promise<LocationSheetInputHash> {
+  return stampLocationSheetInput(raw).then(hashOf);
+}
+
+export function stampLocationSheetInput(
+  raw: LocationSheetHashInput
+): Promise<Stamped<LocationSheetInputHash>> {
   const input = locationSheetHashInputSchema.parse(raw);
-  return sha256Hex(locationSheetHashBody(input)).then(locationSheetInputHash);
+  return stampInputHash(locationSheetHashBody(input)).then(
+    brandStamp(locationSheetInputHash)
+  );
 }
 
 /**
@@ -1087,15 +1217,32 @@ function promptBibleProjection(
   const location = named
     ? projectLocationForPromptV4
     : projectLocationForPrompt;
+  // Keyed by id (#2344): the hash sees the id-sorted list it always did,
+  // the manifest sees `character:<id>/clothing`.
   return {
-    characterBible: bibles.characterBible.map((c) => ({
-      ...character(c),
-      ...(performance ? projectCharacterPerformance(c) : {}),
-      ...(markVoiceOnly && c.voiceOnly ? { voiceOnly: true } : {}),
-    })),
-    locationBible: bibles.locationBible.map(location),
+    characterBible: keyed(
+      'character',
+      bibles.characterBible,
+      (c) => c.characterId,
+      (c) => ({
+        ...character(c),
+        ...(performance ? projectCharacterPerformance(c) : {}),
+        ...(markVoiceOnly && c.voiceOnly ? { voiceOnly: true } : {}),
+      })
+    ),
+    locationBible: keyed(
+      'location',
+      bibles.locationBible,
+      (l) => l.locationId,
+      location
+    ),
     elementBible: bibles.elementBible
-      ? bibles.elementBible.map(projectElementForPrompt)
+      ? keyed(
+          'element',
+          bibles.elementBible,
+          (e) => e.token,
+          projectElementForPrompt
+        )
       : null,
   };
 }
@@ -1172,13 +1319,19 @@ function motionPromptHashBody(
   };
 }
 
-export async function hashVisualPromptInput(
+export function hashVisualPromptInput(
   raw: VisualPromptHashInput | MotionPromptHashInput
 ): Promise<VisualPromptInputHash> {
+  return stampVisualPromptInput(raw).then(hashOf);
+}
+
+export function stampVisualPromptInput(
+  raw: VisualPromptHashInput | MotionPromptHashInput
+): Promise<Stamped<VisualPromptInputHash>> {
   const input = assembleVisualPromptHashInput(raw);
-  return visualPromptInputHash(
-    await sha256Hex(visualPromptHashBody(toVisualBodyInput(input), 'current'))
-  );
+  return stampInputHash(
+    visualPromptHashBody(toVisualBodyInput(input), 'current')
+  ).then(brandStamp(visualPromptInputHash));
 }
 
 /**
@@ -1274,13 +1427,19 @@ export async function visualPromptInputHashMatches(
   return digests.includes(stored);
 }
 
-export async function hashMotionPromptInput(
+export function hashMotionPromptInput(
   raw: MotionPromptHashInput
 ): Promise<MotionPromptInputHash> {
+  return stampMotionPromptInput(raw).then(hashOf);
+}
+
+export function stampMotionPromptInput(
+  raw: MotionPromptHashInput
+): Promise<Stamped<MotionPromptInputHash>> {
   const input = assembleMotionPromptHashInput(raw);
-  return motionPromptInputHash(
-    await sha256Hex(motionPromptHashBody(toMotionBodyInput(input), 'current'))
-  );
+  return stampInputHash(
+    motionPromptHashBody(toMotionBodyInput(input), 'current')
+  ).then(brandStamp(motionPromptInputHash));
 }
 
 /**
@@ -1412,8 +1571,16 @@ const musicPromptInputHashInputSchema = z.object({
 export function computeMusicPromptInputHash(
   raw: MusicPromptInputHashInput
 ): Promise<MusicPromptInputHash> {
+  return stampMusicPromptInput(raw).then(hashOf);
+}
+
+export function stampMusicPromptInput(
+  raw: MusicPromptInputHashInput
+): Promise<Stamped<MusicPromptInputHash>> {
   musicPromptInputHashInputSchema.parse(raw);
-  return sha256Hex(musicPromptHashBody(raw)).then(musicPromptInputHash);
+  return stampInputHash(musicPromptHashBody(raw)).then(
+    brandStamp(musicPromptInputHash)
+  );
 }
 
 /** Pre-#1783 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
@@ -1470,12 +1637,18 @@ const sequenceMusicHashInputSchema = z.object({
 export function computeSequenceMusicInputHash(
   raw: SequenceMusicHashInput
 ): Promise<SequenceMusicInputHash> {
+  return stampSequenceMusicInput(raw).then(hashOf);
+}
+
+export function stampSequenceMusicInput(
+  raw: SequenceMusicHashInput
+): Promise<Stamped<SequenceMusicInputHash>> {
   const input = sequenceMusicHashInputSchema.parse(raw);
-  return sha256Hex({
+  return stampInputHash({
     artifact: 'sequence:music',
     prompt: trim(input.prompt),
     tags: trim(input.tags),
     durationSeconds: input.durationSeconds,
     audioModel: input.audioModel,
-  }).then(sequenceMusicInputHash);
+  }).then(brandStamp(sequenceMusicInputHash));
 }

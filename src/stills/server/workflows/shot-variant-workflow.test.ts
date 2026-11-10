@@ -9,7 +9,12 @@
 import { describe, expect, it } from 'vitest';
 import { safeTextToImageModel, type TextToImageModel } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
-import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { buildRegenerateShotSnapshot as buildRegenerateShotStamp } from '@/shots/server/workflows/regenerate-shots-snapshot';
+
+/** The snapshot half; these tests never read the stamp. */
+const buildRegenerateShotSnapshot = async (
+  params: Parameters<typeof buildRegenerateShotStamp>[0]
+) => (await buildRegenerateShotStamp(params)).snapshot;
 import { tileInputHash } from './shot-variant-workflow';
 
 const PROMPT = 'Jack on the docks at dusk, wide';
@@ -47,7 +52,7 @@ describe('tileInputHash (#712)', () => {
   it.each<TextToImageModel>(['nano_banana_2', 'hidream_i1'])(
     'reads fresh, then stale after a prompt edit (%s grid)',
     async (gridModel) => {
-      const stamped = await stamp(gridModel);
+      const stamped = (await stamp(gridModel))?.hash;
       expect(stamped).toBe(await liveTileHash(gridModel, PROMPT));
       expect(stamped).not.toBe(
         await liveTileHash(gridModel, `${PROMPT}, rain`)

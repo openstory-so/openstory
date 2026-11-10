@@ -40,14 +40,19 @@ import {
 import type { VideoManifest } from '@/platform/server/db/schema';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import {
-  computeUploadedStillInputHash,
+  stampUploadedStillInput,
   parseUploadedStoragePath,
   resolveUploadExtension,
 } from './upload-media';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import { uploadAttestations } from '@/platform/server/db/schema';
 import { isSelectedVersionStale } from '@/shots/scene-segments';
-import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { buildRegenerateShotSnapshot as buildRegenerateShotStamp } from '@/shots/server/workflows/regenerate-shots-snapshot';
+
+/** The snapshot half; these tests never read the stamp. */
+const buildRegenerateShotSnapshot = async (
+  params: Parameters<typeof buildRegenerateShotStamp>[0]
+) => (await buildRegenerateShotStamp(params)).snapshot;
 import { eq, sql } from 'drizzle-orm';
 import {
   afterAll,
@@ -467,16 +472,19 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
     const oldVideo = await seedSegmentAndVideo(oldImage.id);
 
     const images = createFrameVariantsMethods(db);
-    const inputHash = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: null,
-      promptText: prompt.text,
-      characters: [],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const inputHash =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: null,
+          promptText: prompt.text,
+          characters: [],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     expect(inputHash).not.toBeNull();
 
     const url = uploadUrl();
@@ -552,16 +560,19 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
     const prompt = await seedSelectedPrompt('Jack at dawn, wide');
 
     const images = createFrameVariantsMethods(db);
-    const inputHash = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: SCENE_WITH_REFS,
-      promptText: prompt.text,
-      characters: [character],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const inputHash =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: SCENE_WITH_REFS,
+          promptText: prompt.text,
+          characters: [character],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     const uploaded = await images.appendUploadedVersion({
       frameId,
       sequenceId,
@@ -588,16 +599,19 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
   });
 
   it('stamps a null hash (untracked, never falsely stale) when the frame has no prompt', async () => {
-    const inputHash = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: null,
-      promptText: null,
-      characters: [],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const inputHash =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: null,
+          promptText: null,
+          characters: [],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     expect(inputHash).toBeNull();
 
     const images = createFrameVariantsMethods(db);
@@ -633,16 +647,19 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
 
     const newText = 'a blue motorcycle at dusk';
     const images = createFrameVariantsMethods(db);
-    const imageInputHash = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: null,
-      promptText: newText,
-      characters: [],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const imageInputHash =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: null,
+          promptText: newText,
+          characters: [],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     const url = uploadUrl();
     const { promptVersion, imageVersion } = await images.replaceContent({
       frameId,
@@ -679,32 +696,38 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
 
     // Image FRESH against the NEW prompt text — the §4.3 C rule. Recompute
     // from post-commit state (selected prompt = newText) and compare.
-    const recomputed = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: null,
-      promptText: newText,
-      characters: [],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const recomputed =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: null,
+          promptText: newText,
+          characters: [],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     expect(imageVersion.inputHash).toBe(recomputed);
     expect(imageVersion.kind).toBe('upload');
     expect(imageVersion.promptVersionId).toBe(promptVersion.id);
 
     // Counterfactual: hashing against the OLD text would have read stale —
     // stamping from the new text is what keeps the upload fresh.
-    const hashAgainstOldText = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: null,
-      promptText: oldPrompt.text,
-      characters: [],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const hashAgainstOldText =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: null,
+          promptText: oldPrompt.text,
+          characters: [],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     expect(imageVersion.inputHash).not.toBe(hashAgainstOldText);
 
     // Video STALE by manifest derivation.
@@ -739,16 +762,19 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
 
     const newText = 'Jack at dusk, tight on his hands';
     const images = createFrameVariantsMethods(db);
-    const imageInputHash = await computeUploadedStillInputHash({
-      shotId,
-      frameId,
-      scene: SCENE_WITH_REFS,
-      promptText: newText,
-      characters: [character],
-      locations: [],
-      elements: [],
-      aspectRatio: '16:9',
-    });
+    const imageInputHash =
+      (
+        await stampUploadedStillInput({
+          shotId,
+          frameId,
+          scene: SCENE_WITH_REFS,
+          promptText: newText,
+          characters: [character],
+          locations: [],
+          elements: [],
+          aspectRatio: '16:9',
+        })
+      )?.hash ?? null;
     await images.replaceContent({
       frameId,
       sequenceId,

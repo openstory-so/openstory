@@ -469,7 +469,7 @@ test.describe('Editing dialogue and cast', () => {
     }
     await page.goto(`/sequences/${firstId}/scenes`);
     await expect(page.getByTestId('scene-stale-shots')).toContainText(
-      'Out of date since your edit',
+      /Changed: .*Location "CORNER DINER"/,
       { timeout: 30_000 }
     );
   });
@@ -600,7 +600,7 @@ test.describe('Editing dialogue and cast', () => {
     }
     await page.goto(`/sequences/${secondId}/scenes`);
     await expect(page.getByTestId('scene-stale-shots')).toContainText(
-      'Out of date since your edit',
+      /Changed: .*Character "MAYA"/,
       { timeout: 30_000 }
     );
   });

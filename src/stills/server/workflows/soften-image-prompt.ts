@@ -37,7 +37,7 @@ import {
   IMAGE_CONTENT_FALLBACK_MODEL,
   softenRejectedImagePrompt,
 } from './content-soften';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -239,6 +239,7 @@ async function generateOnce(
 
 async function recomputeSnapshotHash(
   step: WorkflowStep,
+  scopedDb: Pick<WorkflowScopedDb, 'inputManifests'>,
   stepName: string,
   input: ImageWorkflowInput,
   visualPrompt: string,
@@ -248,13 +249,15 @@ async function recomputeSnapshotHash(
   if (!input.sceneSnapshot || !input.aspectRatio) return current;
   const sceneSnapshot = input.sceneSnapshot;
   const aspectRatio = input.aspectRatio;
-  return step.do(stepName, async () =>
-    computeShotImageSceneHash(
+  return step.do(stepName, async () => {
+    const stamp = await stampShotImageScene(
       { ...sceneSnapshot, visualPrompt },
       model,
       aspectRatio
-    )
-  );
+    );
+    await scopedDb.inputManifests.record([stamp]);
+    return stamp.hash;
+  });
 }
 
 export async function generateImageWithContentRetry(
@@ -327,6 +330,7 @@ export async function generateImageWithContentRetry(
     );
     snapshotInputHash = await recomputeSnapshotHash(
       step,
+      scopedDb,
       'hash-fallback-snapshot',
       input,
       prompt,
@@ -495,6 +499,7 @@ export async function generateImageWithContentRetry(
     params = rebuildParams(input, params, softened);
     snapshotInputHash = await recomputeSnapshotHash(
       step,
+      scopedDb,
       'hash-softened-snapshot',
       input,
       softened,

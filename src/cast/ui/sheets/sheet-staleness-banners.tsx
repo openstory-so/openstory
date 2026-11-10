@@ -18,6 +18,8 @@ type SheetStalenessBannersProps = {
   divergentVariantId?: string;
   /** Whether the live primary's input hash has drifted from the current state. */
   isStale?: boolean;
+  /** What moved (#2344). */
+  causes?: readonly string[];
   density?: BannerDensity;
   onCompareDivergent?: () => void;
   onPromoteDivergent?: () => void;
@@ -35,6 +37,7 @@ export const SheetStalenessBanners: React.FC<SheetStalenessBannersProps> = ({
   entityType,
   divergentVariantId,
   isStale = false,
+  causes,
   density = 'inline',
   onCompareDivergent,
   onPromoteDivergent,
@@ -81,6 +84,7 @@ export const SheetStalenessBanners: React.FC<SheetStalenessBannersProps> = ({
         artifact="sheet"
         entityType={entityType}
         density="inline"
+        causes={causes}
         onRegenerate={onRegenerate}
         className={className}
       />

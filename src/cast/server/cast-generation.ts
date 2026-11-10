@@ -240,7 +240,7 @@ export async function regenerateLocationSheet(
     data.locationDbId
   );
 
-  const payload = await buildRegenerateLocationSheetPayload({
+  const { payload, stamp } = await buildRegenerateLocationSheetPayload({
     scopedDb,
     userId: actor.userId,
     organizationId: scopedDb.organizationId,
@@ -248,6 +248,7 @@ export async function regenerateLocationSheet(
     location,
     imageModel: data.imageModel,
   });
+  await scopedDb.inputManifests.record([stamp]);
 
   // The claim (#1113): last kickoff wins, and any edit to the location's
   // inputs before this run lands revokes it.
@@ -353,7 +354,7 @@ export async function recastLocation(
   // Freeze every regenerate-shots input here, at the trigger, after the link
   // moved: the snapshots read the new location's sheet.
   const imageModel = safeTextToImageModel(sequence.imageModel);
-  const { shotSnapshots, snapshotInputHash } =
+  const { shotSnapshots, snapshotInputHash, stamps } =
     await buildRecastRegenerateSnapshots({
       scopedDb,
       sequenceId: sequence.id,
@@ -362,6 +363,7 @@ export async function recastLocation(
       aspectRatio: sequence.aspectRatio,
       subject: null,
     });
+  await scopedDb.inputManifests.record(stamps);
 
   const workflowRunId = await triggerWorkflow('/recast-location', {
     locationDbId: location.id,

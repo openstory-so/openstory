@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
+import type { InputManifest } from '@/shots/input-hash';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotStalenessRefs } from './shot-staleness';
@@ -17,16 +18,29 @@ const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
 const hashVisualPromptInput = vi.fn();
 const hashMotionPromptInput = vi.fn();
+/** Live manifests by hash (#2344): what the mocked hashers stamp alongside. */
+const manifestOfHash = vi.fn((_hash: string) => null as InputManifest | null);
+const stampOf = (hash: string) => ({
+  hash,
+  manifest: manifestOfHash(hash) ?? {},
+});
+/** Stored manifests by hash, as `inputManifests.getByHashes` answers. */
+const storedManifests = new Map<string, InputManifest>();
 
 vi.doMock('@/shots/server/workflows/regenerate-shots-snapshot', () => ({
-  buildRegenerateShotSnapshot,
+  buildRegenerateShotSnapshot: async (params: unknown) => {
+    const snapshot = await buildRegenerateShotSnapshot(params);
+    return { snapshot, stamp: stampOf(snapshot.snapshotInputHash) };
+  },
 }));
 vi.doMock('./prompt-context', () => ({ loadNarrowShotPromptContext }));
 const realInputHash = await import('@/shots/input-hash');
 vi.doMock('@/shots/input-hash', () => ({
   voiceOnlyMovedSince: realInputHash.voiceOnlyMovedSince,
-  hashVisualPromptInput,
-  hashMotionPromptInput,
+  stampVisualPromptInput: async (input: unknown) =>
+    stampOf(await hashVisualPromptInput(input)),
+  stampMotionPromptInput: async (input: unknown) =>
+    stampOf(await hashMotionPromptInput(input)),
   visualPromptInputHashMatches: vi.fn(
     async (stored: string | null) => stored === (await hashVisualPromptInput())
   ),
@@ -35,7 +49,23 @@ vi.doMock('@/shots/input-hash', () => ({
       stored === (await hashMotionPromptInput(input))
   ),
   sha256Hex: realInputHash.sha256Hex,
+  stampInputHash: realInputHash.stampInputHash,
+  diffManifests: realInputHash.diffManifests,
 }));
+
+const logError = vi.fn();
+vi.doMock('@/platform/logger', async () => {
+  const real = await import('@/platform/logger');
+  return {
+    ...real,
+    getLogger: () => ({
+      error: logError,
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    }),
+  };
+});
 
 const { computeShotStaleness, loadShotStalenessReads } =
   await import('./shot-staleness');
@@ -95,6 +125,16 @@ function makeScopedDb(overrides: {
   motionText?: string;
 }) {
   return asStub<ScopedDb>({
+    inputManifests: {
+      getByHashes: vi.fn(async (hashes: readonly (string | null)[]) => {
+        const out = new Map<string, InputManifest>();
+        for (const hash of hashes) {
+          const manifest = hash ? storedManifests.get(hash) : undefined;
+          if (hash && manifest) out.set(hash, manifest);
+        }
+        return out;
+      }),
+    },
     characters: {
       list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
@@ -227,12 +267,10 @@ describe('computeShotStaleness', () => {
       motionPrompt: 'stale',
     });
     // Thumbnail branch never produced a hash (it threw); prompts did.
-    expect(result.liveHashes).toMatchObject({
-      thumbnail: null,
-      visualPrompt: 'visual-stored',
-      motionPrompt: 'motion-moved',
-    });
-    expect(result.liveHashes.spec).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.liveStamps.thumbnail).toBeNull();
+    expect(result.liveStamps.visualPrompt?.hash).toBe('visual-stored');
+    expect(result.liveStamps.motionPrompt?.hash).toBe('motion-moved');
+    expect(result.liveStamps.spec?.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(result.spec).toBe('untracked');
   });
 
@@ -298,7 +336,7 @@ describe('computeShotStaleness', () => {
     expect(result).toMatchObject({
       visualPrompt: 'updating',
       motionPrompt: 'updating',
-      // Direct image claim hash matches liveHashes.thumbnail only when the
+      // Direct image claim hash matches liveStamps.thumbnail only when the
       // snapshot hash equals the claim's pendingInputHash — snapshot is
       // 'image-stored', so set claim accordingly above. With the selected
       // version's hash 'image-old' the thumbnail is stale and the claim
@@ -341,7 +379,7 @@ describe('computeShotStaleness', () => {
       visualPrompt: 'generating',
       motionPrompt: 'generating',
       spec: 'generating',
-      liveHashes: {
+      liveStamps: {
         thumbnail: null,
         visualPrompt: null,
         motionPrompt: null,
@@ -434,7 +472,7 @@ describe('computeShotStaleness', () => {
     });
 
     expect(result.thumbnail).toBe('stale');
-    expect(result.liveHashes.thumbnail).toBe('image-live');
+    expect(result.liveStamps.thumbnail?.hash).toBe('image-live');
   });
 
   it('leaves an untracked still untracked when the named element is older', async () => {
@@ -481,6 +519,124 @@ describe('computeShotStaleness', () => {
     });
 
     expect(result.thumbnail).toBe('untracked');
+  });
+});
+
+describe('exact causes from manifests (#2344)', () => {
+  const woman = {
+    name: 'Woman',
+    characterId: 'woman',
+    lookId: 'c-woman',
+    looks: [],
+    consistencyTag: null,
+    updatedAt: new Date('2026-01-02T00:00:00Z'),
+    sheetGeneratedAt: null,
+  };
+  const refs = asStub<ShotStalenessRefs>({
+    characters: [woman],
+    locations: [],
+    elements: [],
+    style: null,
+  });
+  const guessReads = {
+    scenes: {
+      getById: vi.fn().mockResolvedValue({ updatedAt: woman.updatedAt }),
+    },
+    sceneScriptVersions: {
+      getSelected: vi.fn().mockResolvedValue({ createdAt: woman.updatedAt }),
+      listBySequence: vi.fn().mockResolvedValue([]),
+    },
+    sequenceEvents: {
+      listPinMoves: vi.fn().mockResolvedValue([]),
+      listByTarget: vi.fn().mockResolvedValue([]),
+    },
+  };
+  const still = asStub<FrameVariant>({
+    id: 'fv-1',
+    inputHash: 'image-old',
+    model: null,
+    url: null,
+    generatedAt: new Date('2026-01-01T00:00:00Z'),
+  });
+
+  // Seeded manifests must not leak into the legacy-guess tests below.
+  afterEach(() => {
+    storedManifests.clear();
+    manifestOfHash.mockReset();
+  });
+  beforeEach(() => {
+    logError.mockReset();
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+  });
+
+  const run = (scopedDb: ScopedDb) =>
+    computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: still,
+      scene,
+      refs,
+    });
+
+  it('names exactly the keys whose digest moved, and runs no guess', async () => {
+    storedManifests.set('image-old', {
+      'character:woman/standardClothing': 'a',
+      imageModel: 'm',
+    });
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live'
+        ? { 'character:woman/standardClothing': 'b', imageModel: 'm' }
+        : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.causes).toEqual(['Character "Woman": clothing']);
+    expect(guessReads.sequenceEvents.listByTarget).not.toHaveBeenCalled();
+  });
+
+  it('keeps the timestamp guess only for a stale artifact with no stored manifest', async () => {
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live' ? { imageModel: 'm' } : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(guessReads.sequenceEvents.listByTarget).toHaveBeenCalled();
+    expect(result.causes).toEqual(['Script']);
+  });
+
+  it('logs a stale verdict whose manifests do not differ and names nothing', async () => {
+    storedManifests.set('image-old', { imageModel: 'm' });
+    manifestOfHash.mockImplementation((hash) =>
+      hash === 'image-live' ? { imageModel: 'm' } : null
+    );
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, guessReads);
+
+    const result = await run(scopedDb);
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.causes).toEqual([]);
+    expect(logError).toHaveBeenCalledWith(
+      expect.stringContaining('stamp and verify disagree'),
+      { stored: 'image-old', live: 'image-live' }
+    );
+    expect(guessReads.sequenceEvents.listByTarget).not.toHaveBeenCalled();
   });
 });
 
@@ -1117,7 +1273,7 @@ describe('per-shot start-frame override', () => {
       thumbnail: 'untracked',
       visualPrompt: 'untracked',
       motionPrompt: 'stale',
-      liveHashes: { thumbnail: null, visualPrompt: null },
+      liveStamps: { thumbnail: null, visualPrompt: null },
     });
     expect(buildRegenerateShotSnapshot).not.toHaveBeenCalled();
     expect(hashVisualPromptInput).not.toHaveBeenCalled();
@@ -1227,7 +1383,7 @@ describe('per-shot start-frame override', () => {
     });
     // Rebuild does not condition on the still. The live digest leaves the URL out.
     expect(result.motionPrompt).toBe('fresh');
-    expect(result.liveHashes.motionPrompt).toBe('motion-stored');
+    expect(result.liveStamps.motionPrompt?.hash).toBe('motion-stored');
   });
 
   it('a later LLM version again consumes the rendered still', async () => {

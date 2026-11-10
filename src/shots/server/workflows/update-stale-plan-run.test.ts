@@ -172,6 +172,10 @@ const createPendingVoiceClaim = vi.fn(async (id: string) => ({
 function makeScopedDb(): WorkflowScopedDb {
   // minimal stub for the paths under test
   return asStub<WorkflowScopedDb>({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     characterLooks: { claimSheet, failSheetClaim },
     characters: {
       createPendingVoiceClaim,

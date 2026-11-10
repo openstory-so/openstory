@@ -8,7 +8,7 @@
  * the prior export name (`generateMusicPromptWorflow`).
  */
 
-import { computeMusicPromptInputHash } from '@/shots/input-hash';
+import { stampMusicPromptInput } from '@/shots/input-hash';
 import { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
@@ -68,10 +68,12 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
       // The versions helper appends a row tagged 'ai-generated' /
       // 'regenerated' and selects it — no claim (pinned in
       // claim-discipline.test.ts).
-      const inputHash = await computeMusicPromptInputHash({
+      const stamp = await stampMusicPromptInput({
         sceneSummaries,
         analysisModel: analysisModelId,
       });
+      await scopedDb.inputManifests.record([stamp]);
+      const inputHash = stamp.hash;
 
       await step.do('save-music-prompt-to-db', async () => {
         const reinforcedTags = reinforceInstrumentalTags(

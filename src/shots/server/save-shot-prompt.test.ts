@@ -15,8 +15,11 @@ vi.mock('./prompt-context', () => ({
   narrowShotPromptContext: (value: object) => value,
 }));
 vi.mock('@/shots/input-hash', () => ({
-  hashMotionPromptInput: mocks.hashMotion,
-  hashVisualPromptInput: vi.fn(),
+  stampMotionPromptInput: async (input: unknown) => ({
+    hash: await mocks.hashMotion(input),
+    manifest: {},
+  }),
+  stampVisualPromptInput: vi.fn(),
 }));
 vi.mock('./shot-dialogue', () => ({
   loadShotPromptDialogue: mocks.loadDialogue,
@@ -41,6 +44,7 @@ const context = asStub<ShotContext>({
     shotPromptVersions: { getSelectedMotion, write },
     scenes: { updateContinuity },
     shotDialogue: { getSelected: vi.fn(() => null), write: writeDialogue },
+    inputManifests: { record: vi.fn() },
   },
 });
 

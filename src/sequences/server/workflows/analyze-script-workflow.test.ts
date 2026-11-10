@@ -188,6 +188,10 @@ const writeMotionPrompt = vi.fn(
 function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
   // minimal stub: the run stops at the script stage
   return asStub<WorkflowScopedDb>({
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     sequences: {
       update,
       updateAnalysisDurationMs: vi.fn(async () => undefined),

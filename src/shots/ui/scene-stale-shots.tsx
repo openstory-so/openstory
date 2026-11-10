@@ -1,5 +1,8 @@
 import { openAssistant } from '@/assistant/ui/assistant-store';
-import { UpdateAllDialog } from '@/shots/ui/staleness/update-all-dialog';
+import {
+  describeCauses,
+  UpdateAllDialog,
+} from '@/shots/ui/staleness/update-all-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
   type ShotStaleness,
@@ -88,6 +91,9 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
   if (staleShots.length === 0 && updatingShots.length === 0) return null;
 
   const busy = isUpdating;
+  const staleMessage =
+    describeCauses(staleShots.flatMap((shot) => staleness?.[shot.id] ?? [])) ??
+    'Out of date since your edit';
 
   // In one scene a chip is the shot's position in it, as the rail numbers
   // it. Across scenes a chip is a scene (its title, as the rail shows it),
@@ -114,10 +120,11 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
           className="h-3 w-3 shrink-0 animate-spin text-amber-600 motion-reduce:animate-none"
         />
       )}
-      <span>
-        {staleShots.length > 0
-          ? 'Out of date since your edit'
-          : 'Updating out-of-date shots…'}
+      <span
+        className="min-w-0 max-w-full truncate"
+        title={staleShots.length > 0 ? staleMessage : undefined}
+      >
+        {staleShots.length > 0 ? staleMessage : 'Updating out-of-date shots…'}
       </span>
       <span aria-hidden="true">·</span>
       {sceneChips?.map((chip) => (

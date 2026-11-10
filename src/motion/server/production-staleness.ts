@@ -19,7 +19,7 @@ export async function readSegmentStaleness(
     selected.discardedAt ||
     !selected.manifest.length
   )
-    return { status: 'untracked' as const };
+    return { status: 'untracked' as const, causes: [] };
   // The editor's own assembly over every shot in the sequence, so this verdict
   // and the Scenes editor badge are one derivation.
   const { assembled } = await loadSequenceSegments(
@@ -30,5 +30,8 @@ export async function readSegmentStaleness(
   const current = assembled.find((s) => s.id === segmentId);
   if (!current)
     throw new Error(`Render segment ${segmentId} was not assembled`);
-  return { status: current.stale ? ('stale' as const) : ('fresh' as const) };
+  return {
+    status: current.stale ? ('stale' as const) : ('fresh' as const),
+    causes: current.causes,
+  };
 }

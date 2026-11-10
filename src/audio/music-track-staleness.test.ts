@@ -35,10 +35,13 @@ describe('musicRequestDurationSeconds', () => {
   });
 });
 
+const status = async (input: Parameters<typeof musicTrackStaleness>[0]) =>
+  (await musicTrackStaleness(input)).status;
+
 describe('musicTrackStaleness', () => {
   it('is fresh while prompt, tags, duration and model all match', async () => {
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         storedInputHash: await storedFor({}),
       })
@@ -47,7 +50,7 @@ describe('musicTrackStaleness', () => {
 
   it('is stale when the music prompt was edited or regenerated', async () => {
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         prompt: 'driving percussion, urgent',
         storedInputHash: await storedFor({}),
@@ -57,7 +60,7 @@ describe('musicTrackStaleness', () => {
 
   it('is stale when the tags moved', async () => {
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         tags: 'orchestral, strings',
         storedInputHash: await storedFor({}),
@@ -67,7 +70,7 @@ describe('musicTrackStaleness', () => {
 
   it('is stale when the shot durations moved', async () => {
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         requestDurationSeconds: 70,
         storedInputHash: await storedFor({}),
@@ -79,7 +82,7 @@ describe('musicTrackStaleness', () => {
     // ace_step tops out at 240s: a 300s sequence hashes as 240, so a track
     // rendered at the ceiling does not read stale for ever.
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         audioModel: 'ace_step',
         requestDurationSeconds: 300,
@@ -94,14 +97,12 @@ describe('musicTrackStaleness', () => {
   });
 
   it('is untracked with no stored hash — an upload is never stale', async () => {
-    expect(await musicTrackStaleness({ ...base, storedInputHash: null })).toBe(
-      'untracked'
-    );
+    expect(await status({ ...base, storedInputHash: null })).toBe('untracked');
   });
 
   it('is untracked for a non-catalog model such as user-upload', async () => {
     expect(
-      await musicTrackStaleness({
+      await status({
         ...base,
         audioModel: 'user-upload',
         storedInputHash: await storedFor({}),
@@ -111,11 +112,11 @@ describe('musicTrackStaleness', () => {
 
   it('is untracked when the sequence has no prompt or tags to compare', async () => {
     const storedInputHash = await storedFor({});
-    expect(
-      await musicTrackStaleness({ ...base, prompt: null, storedInputHash })
-    ).toBe('untracked');
-    expect(
-      await musicTrackStaleness({ ...base, tags: null, storedInputHash })
-    ).toBe('untracked');
+    expect(await status({ ...base, prompt: null, storedInputHash })).toBe(
+      'untracked'
+    );
+    expect(await status({ ...base, tags: null, storedInputHash })).toBe(
+      'untracked'
+    );
   });
 });

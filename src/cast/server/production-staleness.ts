@@ -26,12 +26,59 @@ import {
 } from './sheets/location-sheet-trigger';
 import type { SheetStaleness } from './sheets/sheet-staleness';
 import {
+  diffManifests,
+  type InputManifest,
+  type Stamped,
+} from '@/shots/input-hash';
+import {
+  describeManifestCauses,
+  type ManifestArtifact,
+} from '@/shots/staleness-causes';
+import { getLogger } from '@/platform/logger';
+import {
   characterSheetHashMatchesStored,
   uploadedCharacterSheetHashMatchesStored,
   finishCharacterSheetPayload,
   locationSheetHashMatchesStored,
   uploadedLocationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
+
+const logger = getLogger(['openstory', 'cast', 'sheet-staleness']);
+
+/** A sheet verdict with what moved (#2344); empty when fresh or stamped before manifests. */
+export type SheetVerdict = {
+  status: SheetStaleness;
+  applicable: boolean;
+  causes: string[];
+};
+
+/**
+ * The stored manifest for `stored` against the live stamp's.
+ * No stored manifest is a sheet stamped before #2344: no cause, logged.
+ * Matching manifests under a stale verdict is a stamp ≠ verify bug: logged, unnamed.
+ */
+function sheetCauses(
+  manifests: ReadonlyMap<string, InputManifest>,
+  artifact: ManifestArtifact,
+  owner: string,
+  stored: string,
+  live: Stamped
+): string[] {
+  const was = manifests.get(stored);
+  if (!was) {
+    logger.warn(`no stored manifest for ${artifact} ${owner}`, { stored });
+    return [];
+  }
+  const moved = diffManifests(was, live.manifest);
+  if (moved.length === 0) {
+    logger.error(
+      `stale ${artifact} ${owner} with no differing input: stamp and verify disagree`,
+      { stored, live: live.hash }
+    );
+    return [];
+  }
+  return describeManifestCauses(artifact, moved);
+}
 
 /** What a sheet verdict takes of the sequence; null from the organization pages. */
 type SheetSequence = Pick<
@@ -55,7 +102,7 @@ export async function readReferenceStaleness(
   sequenceId: string | null,
   kind: 'character' | 'location',
   entityId: string
-): Promise<{ status: SheetStaleness; applicable: boolean }> {
+): Promise<SheetVerdict> {
   // A character's own sheet is its default look's, whose id is the
   // character's (#2015).
   if (kind === 'character') {
@@ -66,11 +113,12 @@ export async function readReferenceStaleness(
       ? null
       : await productionAccess(scopedDb).sequence(sequenceId);
   const location = await requireLocation(scopedDb, sequenceId, entityId);
-  const [rows, styleConfig] = await Promise.all([
+  const [rows, styleConfig, manifests] = await Promise.all([
     loadLocationSheetPayloadRows(scopedDb, location),
     sequence === null
       ? null
       : resolveSequenceStyle(scopedDb, sequence).then((s) => s ?? null),
+    scopedDb.inputManifests.getByHashes([location.referenceInputHash]),
   ]);
   return locationSheetStaleness({
     scopedDb,
@@ -78,6 +126,7 @@ export async function readReferenceStaleness(
     location,
     styleConfig,
     rows,
+    manifests,
   });
 }
 
@@ -89,13 +138,15 @@ export async function locationSheetStaleness(args: {
   /** The sequence's style, for a digest stamped before #1695; null from no sequence. */
   styleConfig: StyleConfig | null;
   rows: LocationSheetPayloadRows;
-}): Promise<{ status: SheetStaleness; applicable: boolean }> {
-  const { scopedDb, sequence, location, styleConfig, rows } = args;
+  /** Stored manifests by hash (`inputManifests.getByHashes`); the plan reads every sheet's in one batch. */
+  manifests: ReadonlyMap<string, InputManifest>;
+}): Promise<SheetVerdict> {
+  const { scopedDb, sequence, location, styleConfig, rows, manifests } = args;
   const stored = location.referenceInputHash;
   if (location.referenceStatus === 'generating')
-    return { status: 'generating', applicable: true };
-  if (!stored) return { status: 'untracked', applicable: true };
-  const payload = await buildRegenerateLocationSheetPayload({
+    return { status: 'generating', applicable: true, causes: [] };
+  if (!stored) return { status: 'untracked', applicable: true, causes: [] };
+  const { payload, stamp } = await buildRegenerateLocationSheetPayload({
     scopedDb,
     sequence,
     userId: scopedDb.userId,
@@ -104,22 +155,24 @@ export async function locationSheetStaleness(args: {
     preloaded: rows,
   });
   if (!payload.snapshotInputHash)
-    return { status: 'untracked', applicable: true };
+    return { status: 'untracked', applicable: true, causes: [] };
+  const fresh = await (
+    rows.liveVersion?.model === USER_UPLOAD_MODEL
+      ? uploadedLocationSheetHashMatchesStored
+      : locationSheetHashMatchesStored
+  )(stored, payload, {
+    // What a digest stamped before #1695 read: the library reference it
+    // was drawn from and the sequence's style. None from no sequence, so
+    // such a digest reads stale there.
+    libraryLocationReferenceHash: location.legacyLibraryReferenceHash,
+    styleConfig,
+  });
   return {
-    status: (await (
-      rows.liveVersion?.model === USER_UPLOAD_MODEL
-        ? uploadedLocationSheetHashMatchesStored
-        : locationSheetHashMatchesStored
-    )(stored, payload, {
-      // What a digest stamped before #1695 read: the library reference it
-      // was drawn from and the sequence's style. None from no sequence, so
-      // such a digest reads stale there.
-      libraryLocationReferenceHash: location.legacyLibraryReferenceHash,
-      styleConfig,
-    }))
-      ? 'fresh'
-      : 'stale',
+    status: fresh ? 'fresh' : 'stale',
     applicable: true,
+    causes: fresh
+      ? []
+      : sheetCauses(manifests, 'location-sheet', location.id, stored, stamp),
   };
 }
 
@@ -133,18 +186,20 @@ export async function readLookSheetStaleness(
   sequenceId: string | null,
   characterId: string,
   lookId: string
-): Promise<{ status: SheetStaleness; applicable: boolean }> {
+): Promise<SheetVerdict> {
   const [sequence, owner] = await Promise.all([
     sequenceId === null
       ? null
       : productionAccess(scopedDb).sequence(sequenceId),
     requireCharacter(scopedDb, sequenceId, characterId),
   ]);
-  if (owner.voiceOnly) return { status: 'untracked', applicable: false };
+  if (owner.voiceOnly)
+    return { status: 'untracked', applicable: false, causes: [] };
   const look = await requireCharacterLook(scopedDb, owner, lookId);
-  const [rows, styleConfigHash] = await Promise.all([
+  const [rows, styleConfigHash, manifests] = await Promise.all([
     loadCharacterSheetDraftRows(scopedDb, wearLook(owner, look)),
     sequence === null ? null : sequenceStyleHash(scopedDb, sequence),
+    scopedDb.inputManifests.getByHashes([look.sheetInputHash]),
   ]);
   return lookSheetStaleness({
     scopedDb,
@@ -153,6 +208,7 @@ export async function readLookSheetStaleness(
     lookId,
     styleConfigHash,
     rows,
+    manifests,
   });
 }
 
@@ -175,17 +231,28 @@ export async function lookSheetStaleness(args: {
   styleConfigHash: string | null;
   /** The worn look's live sheet version. */
   rows: CharacterSheetDraftRows;
-}): Promise<{ status: SheetStaleness; applicable: boolean }> {
-  const { scopedDb, sequence, owner, lookId, styleConfigHash, rows } = args;
-  if (owner.voiceOnly) return { status: 'untracked', applicable: false };
+  /** Stored manifests by hash (`inputManifests.getByHashes`); the plan reads every sheet's in one batch. */
+  manifests: ReadonlyMap<string, InputManifest>;
+}): Promise<SheetVerdict> {
+  const {
+    scopedDb,
+    sequence,
+    owner,
+    lookId,
+    styleConfigHash,
+    rows,
+    manifests,
+  } = args;
+  if (owner.voiceOnly)
+    return { status: 'untracked', applicable: false, causes: [] };
   const character = wearLook(
     owner,
     await requireCharacterLook(scopedDb, owner, lookId)
   );
   const stored = character.sheetInputHash;
   if (character.sheetStatus === 'generating')
-    return { status: 'generating', applicable: true };
-  if (!stored) return { status: 'untracked', applicable: true };
+    return { status: 'generating', applicable: true, causes: [] };
+  if (!stored) return { status: 'untracked', applicable: true, causes: [] };
   // What a regenerate would stamp now. A look whose default has no sheet
   // yet hashes with no face: it cannot be drawn, and its old sheet was not
   // drawn from one either.
@@ -201,20 +268,22 @@ export async function lookSheetStaleness(args: {
       },
       rows
     );
-  const payload = await finishCharacterSheetPayload(
+  const { payload, stamp } = await finishCharacterSheetPayload(
     draft,
     isDefault ? null : liveFace
   );
   if (!payload.snapshotInputHash)
-    return { status: 'untracked', applicable: true };
+    return { status: 'untracked', applicable: true, causes: [] };
+  const fresh = await (
+    liveVersionModel === USER_UPLOAD_MODEL
+      ? uploadedCharacterSheetHashMatchesStored
+      : characterSheetHashMatchesStored
+  )(stored, payload, legacyStylingParts(character), styleConfigHash);
   return {
-    status: (await (
-      liveVersionModel === USER_UPLOAD_MODEL
-        ? uploadedCharacterSheetHashMatchesStored
-        : characterSheetHashMatchesStored
-    )(stored, payload, legacyStylingParts(character), styleConfigHash))
-      ? 'fresh'
-      : 'stale',
+    status: fresh ? 'fresh' : 'stale',
     applicable: true,
+    causes: fresh
+      ? []
+      : sheetCauses(manifests, 'character-sheet', lookId, stored, stamp),
   };
 }

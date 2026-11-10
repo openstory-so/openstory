@@ -102,6 +102,10 @@ function harness(opts: {
     inputHash: opts.specHash,
   };
   const scopedDb = {
+    inputManifests: {
+      record: async () => undefined,
+      getByHashes: async () => new Map(),
+    },
     shotSpecVersions: {
       getSelected: () =>
         Promise.resolve(opts.hasSpec === false ? null : specVersion),

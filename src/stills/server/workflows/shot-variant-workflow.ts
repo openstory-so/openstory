@@ -10,8 +10,8 @@
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
-import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
-import type { ShotImageInputHash } from '@/shots/input-hash';
+import { stampShotImageScene } from '@/cast/server/workflows/sheet-snapshots';
+import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -54,9 +54,9 @@ export function tileInputHash(
     ShotVariantWorkflowInput,
     'tileHashInput' | 'model' | 'aspectRatio'
   >
-): Promise<ShotImageInputHash> | null {
+): Promise<Stamped<ShotImageInputHash>> | null {
   if (!input.tileHashInput || !input.aspectRatio) return null;
-  return computeShotImageSceneHash(
+  return stampShotImageScene(
     input.tileHashInput,
     resolveUpscaleModel(input.model || DEFAULT_IMAGE_MODEL),
     input.aspectRatio
@@ -157,6 +157,9 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           return null;
         }
 
+        const tileStamp = await tileInputHash(input);
+        await scopedDb.inputManifests.record([tileStamp]);
+        const tileHash = tileStamp?.hash ?? null;
         const version = await scopedDb.frameVariants.appendVersion({
           frameId: frame.id,
           sequenceId: input.sequenceId,
@@ -168,7 +171,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           // inherit which prompt the grid was generated from (#1070).
           promptVersionId: input.promptVersionId ?? null,
           // What a tile picked from this sheet inherits (#712).
-          inputHash: await tileInputHash(input),
+          inputHash: tileHash,
           status: 'generating',
           workflowRunId,
           // A sheet is never the frame's still, so its render never speaks

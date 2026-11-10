@@ -37,8 +37,10 @@ import {
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
 import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
-import { readLookSheetStaleness } from '@/cast/server/production-staleness';
-import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
+import {
+  readLookSheetStaleness,
+  type SheetVerdict,
+} from '@/cast/server/production-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type {
@@ -576,14 +578,11 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .validator(
     zodValidator(castCharacterInput.extend({ lookId: ulidSchema.optional() }))
   )
-  .handler(
-    async ({ context, data }): Promise<SheetStaleness> =>
-      (
-        await readLookSheetStaleness(
-          context.scopedDb,
-          data.sequenceId,
-          data.characterId,
-          data.lookId ?? data.characterId
-        )
-      ).status
+  .handler(({ context, data }): Promise<SheetVerdict> =>
+    readLookSheetStaleness(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId,
+      data.lookId ?? data.characterId
+    )
   );
