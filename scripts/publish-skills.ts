@@ -109,24 +109,24 @@ function main() {
   const inPlugin = (cmd: string, args: string[]) =>
     run(cmd, args, { cwd: PLUGIN });
   const gh = (...args: string[]) => inPlugin('gh', [...args, '--repo', REPO]);
-  const open =
-    gh(
-      'pr',
-      'list',
-      '--head',
-      BRANCH,
-      '--state',
-      'open',
-      '--json',
-      'number',
-      '-q',
-      'length'
-    ) !== '0';
+  // By number, and only from this repo's own branch: a fork can open a PR
+  // from a branch of the same name.
+  const pr = gh(
+    'pr',
+    'list',
+    '--head',
+    BRANCH,
+    '--state',
+    'open',
+    '--json',
+    'number,isCrossRepository',
+    '-q',
+    '[.[] | select(.isCrossRepository | not) | .number][0] // empty'
+  );
 
   if (!inPlugin('git', ['status', '--porcelain', 'skills'])) {
     // A revert can leave an unmerged sync PR that would undo it.
-    if (open)
-      gh('pr', 'close', BRANCH, '--comment', `Skills match main at ${short}`);
+    if (pr) gh('pr', 'close', pr, '--comment', `Skills match main at ${short}`);
     console.log('Skills already match; nothing to publish');
     return;
   }
@@ -174,8 +174,9 @@ function main() {
     BRANCH,
   ]);
   const title = `Sync skills (${version})`;
-  if (open) gh('pr', 'edit', BRANCH, '--title', title, '--body', notes);
-  else
+  if (pr) gh('pr', 'edit', pr, '--title', title, '--body', notes);
+  const number =
+    pr ||
     gh(
       'pr',
       'create',
@@ -187,8 +188,12 @@ function main() {
       title,
       '--body',
       notes
-    );
-  gh('pr', 'merge', BRANCH, '--auto', '--squash', '--delete-branch');
+    )
+      .split('/')
+      .pop();
+  if (!number || !/^\d+$/.test(number))
+    throw new Error(`No sync PR number (got ${number})`);
+  gh('pr', 'merge', number, '--auto', '--squash', '--delete-branch');
   console.log(`Published ${version}`);
 }
 
