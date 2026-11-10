@@ -29,20 +29,12 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/ui/shadcn/collapsible';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { useHydrated } from '@/ui/use-hydrated';
-import { cn } from '@/ui/utils';
-import { ChevronRight } from 'lucide-react';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import type { MentionItem } from './prompt-mention/mention-items';
 import { useSequenceMentionItems } from './use-mention-items';
@@ -205,12 +197,10 @@ function SpecFields({
   motionWritten: boolean;
 }) {
   const save = useSaveShotSpec(sequenceId);
-  const hydrated = useHydrated();
   const { items: mentionItems, onMentionRename } =
     useSequenceMentionItems(sequenceId);
   // Remounts the fields on Cancel, back to the saved spec.
   const [resetCount, setResetCount] = useState(0);
-  const [open, setOpen] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<StoredShotSpec | null>(null);
   const updating = verdict === 'updating';
@@ -268,84 +258,60 @@ function SpecFields({
         else submit(parsed.data, false);
       }}
     >
-      <Collapsible
-        open={open}
-        onOpenChange={setOpen}
-        className="rounded-md border"
-      >
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            disabled={!hydrated}
-            className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <ChevronRight
-              className={cn(
-                'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
-                open && 'rotate-90'
-              )}
-              aria-hidden
-            />
-            <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <span className="font-medium">Shot spec</span>
-              <span
-                className="truncate text-xs text-muted-foreground"
-                aria-live="polite"
-              >
-                {status}
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">Shot spec</h3>
+        <span
+          className="truncate text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          {status}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3">
+        <fieldset
+          className="flex flex-col gap-3"
+          disabled={updating || save.isPending}
+        >
+          {GROUPS.map((group) => (
+            <div key={group.label} className="flex flex-col gap-3">
+              <span className="text-xs font-medium text-muted-foreground">
+                {group.label}
               </span>
-            </span>
-          </button>
-        </CollapsibleTrigger>
-        {/* Hidden, not unmounted, so closing keeps unsaved edits. */}
-        <CollapsibleContent forceMount className="data-[state=closed]:hidden">
-          <div className="flex flex-col gap-3 border-t px-3 py-3">
-            <fieldset
-              className="flex flex-col gap-3"
-              disabled={updating || save.isPending}
-            >
-              {GROUPS.map((group) => (
-                <div key={group.label} className="flex flex-col gap-3">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {group.label}
-                  </span>
-                  {group.fields.map((field) => (
-                    <SpecField
-                      key={`${field.name}-${resetCount}`}
-                      id={`${shotId}-${field.name}`}
-                      field={field}
-                      initial={field.read(spec)}
-                      disabled={updating || save.isPending}
-                      mentionItems={mentionItems}
-                      onMentionRename={onMentionRename}
-                      onEdit={() => setDirty(true)}
-                    />
-                  ))}
-                </div>
+              {group.fields.map((field) => (
+                <SpecField
+                  key={`${field.name}-${resetCount}`}
+                  id={`${shotId}-${field.name}`}
+                  field={field}
+                  initial={field.read(spec)}
+                  disabled={updating || save.isPending}
+                  mentionItems={mentionItems}
+                  onMentionRename={onMentionRename}
+                  onEdit={() => setDirty(true)}
+                />
               ))}
-            </fieldset>
-            {dirty && (
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  type="reset"
-                  size="sm"
-                  variant="outline"
-                  disabled={save.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={save.isPending || updating}
-                >
-                  {save.isPending ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-            )}
+            </div>
+          ))}
+        </fieldset>
+        {dirty && (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="reset"
+              size="sm"
+              variant="outline"
+              disabled={save.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={save.isPending || updating}
+            >
+              {save.isPending ? 'Saving…' : 'Save'}
+            </Button>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+        )}
+      </div>
 
       <AlertDialog
         open={pending !== null}
