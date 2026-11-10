@@ -6,7 +6,8 @@ name: Publish skills
 # version check passes. Nobody edits that repo's skills/ by hand.
 # Needs: secret SKILLS_REPO_TOKEN (fine-grained, openstory-so/skills,
 # contents + pull requests write), and "Allow auto-merge" on that repo.
-# Runs after Test passes on a push to main, on the commit Test ran on.
+# Runs after Test passes on a push to main, on the commit Test ran on, or by
+# hand (Run workflow) to catch up after a red Test.
 
 # Only a push to this repo's main runs it (the job's if), so no fork code.
 on: # zizmor: ignore[dangerous-triggers]
@@ -14,6 +15,7 @@ on: # zizmor: ignore[dangerous-triggers]
     workflows: [Test]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: publish-skills
@@ -24,16 +26,18 @@ permissions: {}
 jobs:
   publish:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,14 +50,25 @@ jobs:
       - name: Open the sync pull request
         env:
           GH_TOKEN: ${{ secrets.SKILLS_REPO_TOKEN }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
+          # Test runs finish out of order: only main's tip may publish.
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$tip" != "$SHA" ]; then
+            echo "::notice::$SHA is not main's tip ($tip); the newer run publishes"; exit 0
+          fi
+          subject=$(git log -1 --format=%s)
           before=$(ls plugin/skills)
           rsync -a --delete skills/ packages/stitch/skills/ plugin/skills/
           cd plugin
+          branch=sync-skills
+          open=$(gh pr view "$branch" --repo openstory-so/skills --json state -q .state 2>/dev/null || true)
           if [ -z "$(git status --porcelain skills)" ]; then
+            # A revert can leave an unmerged sync PR that would undo it.
+            if [ "$open" = OPEN ]; then
+              gh pr close "$branch" --repo openstory-so/skills --comment "Skills match main at ${SHA:0:7}"
+            fi
             echo "Skills already match; nothing to publish"; exit 0
           fi
 
@@ -65,7 +80,6 @@ jobs:
           else
             new="$major.$minor.$((patch + 1))"
           fi
-          subject=$(printf '%s\n' "$MESSAGE" | head -1)
           notes="$new syncs the skills from openstory-so/openstory@${SHA:0:7}: $subject"
           # Edit in place: jq would reflow the hand-formatted manifests.
           export NEW="$new" NOTES_JSON
@@ -73,16 +87,20 @@ jobs:
           perl -i -pe 's/("version": )"[^"]*"/$1"$ENV{NEW}"/' \
             plugin.json .codex-plugin/plugin.json .claude-plugin/plugin.json .grok-plugin/plugin.json gemini-extension.json
           perl -i -pe 's/("release_notes": ).*/$1$ENV{NOTES_JSON}/' plugin.json
+          for f in plugin.json .codex-plugin/plugin.json .claude-plugin/plugin.json .grok-plugin/plugin.json gemini-extension.json; do
+            [ "$(jq -r .version "$f")" = "$new" ] || { echo "::error::$f was not bumped to $new"; exit 1; }
+          done
+          [ "$(jq -r '.extensions["com.openai"].publication.release_notes' plugin.json)" = "$notes" ] \
+            || { echo "::error::release_notes in plugin.json was not set"; exit 1; }
 
           # One branch: a newer sync replaces an unmerged one instead of racing it.
-          branch=sync-skills
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$branch"
           git add -A
           git commit -qm "Sync skills from openstory-so/openstory@${SHA:0:7} ($new)"
           git push --force "https://x-access-token:${GH_TOKEN}@github.com/openstory-so/skills.git" "$branch"
-          if ! gh pr view "$branch" --repo openstory-so/skills --json state -q .state | grep -qx OPEN; then
+          if [ "$open" != OPEN ]; then
             gh pr create --repo openstory-so/skills --head "$branch" --base main \
               --title "Sync skills ($new)" --body "$notes"
           else

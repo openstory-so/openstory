@@ -24,11 +24,14 @@ describe('agent skills', () => {
   it('name only MCP tools that exist, with the openstory_ prefix', () => {
     const bad: string[] = [];
     for (const { path, text } of skills) {
-      for (const [, token = ''] of text.matchAll(/`([a-z][a-z0-9_]*)`/g)) {
-        const isTool = token === 'whoami' || token.startsWith('openstory_');
-        if (isTool && !toolNames.has(token)) bad.push(`${path}: ${token}`);
-        if (toolNames.has(`openstory_${token}`))
-          bad.push(`${path}: ${token} (write openstory_${token})`);
+      for (const [token] of text.matchAll(/\bopenstory_[a-z0-9_]+/g))
+        if (!toolNames.has(token)) bad.push(`${path}: ${token}`);
+      for (const [, token = ''] of text.matchAll(/`([a-z][a-z0-9_.]*)`/g)) {
+        const prefixed = `openstory_${token.replace(/^openstory\./, '')}`;
+        if (token !== prefixed && toolNames.has(prefixed))
+          bad.push(`${path}: ${token} (write ${prefixed})`);
+        if (token === 'whoami' && !toolNames.has(token))
+          bad.push(`${path}: ${token}`);
       }
     }
     expect(bad).toEqual([]);
