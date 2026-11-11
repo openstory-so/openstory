@@ -1,8 +1,9 @@
 /**
- * Every line of the scenes on the canvas, under the sequence player (#1802),
- * with Record and Edit on each. The line of the shot being heard is marked —
- * the player's playhead, or a scene's own dialogue played back on its own
- * (its shots' clips in order).
+ * Every shot of the scenes on the canvas, under the sequence player (#1802),
+ * including shots with no lines yet (#2375). Record and Edit sit on each
+ * line, and Add line sits under each shot. The line of the shot being heard
+ * is marked — the player's playhead, or a scene's own dialogue played back
+ * on its own (its shots' clips in order).
  */
 
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
@@ -36,14 +37,13 @@ type SceneLines = {
   shots: ShotView[];
 };
 
-/** Consecutive shots of one scene that say something, in shot order. */
+/** Consecutive shots of one scene, silent shots included (#2375). */
 function sceneLines(
   shots: readonly ShotView[],
   scenes: readonly SceneWithScript[] | undefined
 ): SceneLines[] {
   const groups: SceneLines[] = [];
   for (const shot of shots) {
-    if (!shot.dialogue?.presence || shot.dialogue.lines.length === 0) continue;
     const sceneId = shot.sceneId ?? shot.id;
     const last = groups.at(-1);
     if (last?.sceneId === sceneId) {
@@ -137,9 +137,14 @@ export const SequenceDialogueLines: React.FC<{
   const groups = sceneLines(shots, scenes);
   const sceneShotsOf = (sceneId: string) =>
     sequenceShots.filter((shot) => shot.sceneId === sceneId && !shot.deletedAt);
+  // A silent shot in the list must not split a scene's one take.
+  const speakingOf = (group: SceneLines) => group.shots.filter(speaks);
   const oneTakeBySceneId = new Map(
     groups.flatMap((group) => {
-      const speechId = oneTakeOf(group.shots, sceneShotsOf(group.sceneId));
+      const speechId = oneTakeOf(
+        speakingOf(group),
+        sceneShotsOf(group.sceneId)
+      );
       return speechId ? [[group.sceneId, speechId] as const] : [];
     })
   );
@@ -153,11 +158,12 @@ export const SequenceDialogueLines: React.FC<{
   if (groups.length === 0) return null;
 
   const sceneClips = (group: SceneLines) => {
+    const speaking = speakingOf(group);
     const speechId = oneTakeBySceneId.get(group.sceneId);
     const url = speechId ? speechUrls?.[speechId] : undefined;
     return url
-      ? [{ shotIds: group.shots.map((shot) => shot.id), url }]
-      : shotByShotClips(group.shots);
+      ? [{ shotIds: speaking.map((shot) => shot.id), url }]
+      : shotByShotClips(speaking);
   };
   const listening = player.audio !== null;
   const speakers = (characters ?? []).map((character) => character.name);
@@ -169,6 +175,7 @@ export const SequenceDialogueLines: React.FC<{
         // A shot with no scene groups under its own id; it has no scene to
         // open or record as one.
         const isScene = group.sceneId !== group.shots[0]?.id;
+        const speaking = speakingOf(group);
         return (
           <div key={group.sceneId} className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
@@ -184,18 +191,18 @@ export const SequenceDialogueLines: React.FC<{
                 <span className="text-sm font-medium">{group.title}</span>
               )}
               <div className="flex shrink-0 items-center gap-1">
-                {isScene ? (
+                {isScene && speaking.length > 0 ? (
                   <UploadSceneDialogueButton
                     sequenceId={sequenceId}
                     sceneId={group.sceneId}
-                    shotIds={group.shots.map((shot) => shot.id)}
+                    shotIds={speaking.map((shot) => shot.id)}
                     label={group.title}
                   />
                 ) : null}
-                {isScene ? (
+                {isScene && speaking.length > 0 ? (
                   <RegenerateSceneDialogueButton
                     sequenceId={sequenceId}
-                    shotIds={group.shots.map((shot) => shot.id)}
+                    shotIds={speaking.map((shot) => shot.id)}
                     label={group.title}
                     estimate={
                       characters
@@ -227,7 +234,9 @@ export const SequenceDialogueLines: React.FC<{
                   {run.label}
                 </span>
                 {run.shots.map((shot) => {
-                  const lines = shot.dialogue?.lines ?? [];
+                  const lines = shot.dialogue?.presence
+                    ? shot.dialogue.lines
+                    : [];
                   return (
                     <DialogueLineRows
                       key={shot.id}
@@ -255,6 +264,7 @@ export const SequenceDialogueLines: React.FC<{
                         shot.audioClips,
                         characters ?? []
                       )}
+                      canAdd
                     />
                   );
                 })}

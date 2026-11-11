@@ -523,7 +523,10 @@ spliced speech's turns: the taken line is clean, the others keep theirs.
 conversation (a real actor, another tool) becomes the scene's dialogue:
 "Upload recording" on the scene in the dialogue list
 (`presignSceneDialogueUploadFn` → `uploadSceneDialogueFn`) or MCP
-`upload_media` use `dialogue` then `set_scene_dialogue_from_upload`. Both go
+`upload_media` use `dialogue` then `set_scene_dialogue_from_upload`. A silent
+scene on the canvas is still listed (#2375), and each of its shots offers
+Add line. Upload recording and Regenerate stay hidden until the scene has a
+line. Both go
 through `uploadSceneDialogue` (`src/shots/server/scene-dialogue-upload.ts`),
 which refuses, before reserving Scribe's cost: a file that is not a PCM WAV or
 is over 25 MB, a scene line with no generated voice (the reading is keyed on
