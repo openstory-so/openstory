@@ -27,6 +27,13 @@ import {
 } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import {
+  MODELS_INVOKE_SCOPE,
+  monthlyCapMicrosSchema,
+  requestsModelsInvoke,
+} from '@/platform/auth/oauth-spend-cap';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { GrantStanding } from '@/gateway/apps';
 import { APIError } from 'better-auth/api';
 
 const logger = getLogger(['openstory', 'serverFn', 'oauth-consent']);
@@ -48,15 +55,31 @@ export type OAuthConsentContext = {
   scopes: OAuthScopeSummary[];
   organizations: OrganizationOption[];
   activeOrganizationId: string;
+  /** Asked for `models:invoke`, so approving needs a monthly cap. */
+  needsSpendCap: boolean;
+  /** The live cap this client already has, per organization id, in microdollars. */
+  currentCaps: Record<string, number>;
 };
 
 export type AuthorizedApp = {
   consentId: string;
   client: OAuthClientSummary;
   scopes: OAuthScopeSummary[];
+  /** The organization the consent bills; null for a consent with none. */
+  organization: OrganizationOption | null;
+  /** Holds `models:invoke`, so it can spend through the gateway. */
+  invokesModels: boolean;
+  /** The live spend cap and this month's use; null when there is none. */
+  grant: GrantStanding | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/** The grant methods the consent flows write through (the signed-in user's). */
+type UserGrants = Pick<
+  ScopedDb['gatewayGrants'],
+  'listStandings' | 'setCap' | 'revoke'
+>;
 
 const scopeSummaries = (scope: string): OAuthScopeSummary[] =>
   scope
@@ -108,6 +131,7 @@ export async function loadOAuthConsentContext(input: {
   scope: string;
   redirectUri?: string;
   headers: Headers;
+  grants: Pick<UserGrants, 'listStandings'>;
 }): Promise<OAuthConsentContext> {
   const auth = getAuth();
   let client: OAuthClientSummary | null = null;
@@ -121,12 +145,34 @@ export async function loadOAuthConsentContext(input: {
     if (!(error instanceof APIError)) throw error;
     if (error.statusCode !== 404) throw error;
   }
+  const needsSpendCap = requestsModelsInvoke(input.scope);
+  const currentCaps: Record<string, number> = {};
+  if (needsSpendCap) {
+    for (const grant of await input.grants.listStandings()) {
+      if (grant.oauthClientId === input.clientId) {
+        currentCaps[grant.organizationId] = grant.monthlyCapMicros;
+      }
+    }
+  }
   return {
     client,
     scopes: scopeSummaries(input.scope),
     organizations: await listUserOrganizations(input.userId),
     activeOrganizationId: input.organizationId,
+    needsSpendCap,
+    currentCaps,
   };
+}
+
+/** The cap an approval must carry, or a ValidationError. */
+function requireMonthlyCap(value: number | null | undefined): number {
+  const parsed = monthlyCapMicrosSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new ValidationError(
+      'Set a monthly spend cap in whole dollars within the allowed range before approving.'
+    );
+  }
+  return parsed.data;
 }
 
 const CONSENT_STALE_MESSAGE =
@@ -249,7 +295,10 @@ export async function decideOAuthConsent(input: {
   accept: boolean;
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: string;
+  /** Required to approve a request for `models:invoke`; ignored otherwise. */
+  monthlyCapMicros?: number | null;
   headers: Headers;
+  grants: Pick<UserGrants, 'setCap'>;
 }): Promise<{ url: string }> {
   if (
     input.accept &&
@@ -259,6 +308,15 @@ export async function decideOAuthConsent(input: {
   }
   const oauthQuery = resolveOAuthQuery(input.oauthQuery).replace(/^\?/, '');
   const queryParams = new URLSearchParams(oauthQuery);
+  const clientId = queryParams.get('client_id');
+  // The signed query's scope: the provider rejects a tampered one on the POST.
+  const capMicros =
+    input.accept && requestsModelsInvoke(queryParams.get('scope') ?? '')
+      ? requireMonthlyCap(input.monthlyCapMicros)
+      : null;
+  if (capMicros !== null && !clientId) {
+    throw new ValidationError(CONSENT_STALE_MESSAGE);
+  }
   const origin = consentApiOrigin(input.headers);
   const headers = consentRequestHeaders(input.headers);
   headers.set('Origin', origin);
@@ -300,11 +358,22 @@ export async function decideOAuthConsent(input: {
     }
   }
   if (redirect) {
+    if (capMicros !== null && clientId && consentGranted(redirect)) {
+      const written = await input.grants.setCap({
+        oauthClientId: clientId,
+        organizationId: input.organizationId,
+        monthlyCapMicros: capMicros,
+      });
+      if (!written) {
+        throw new ValidationError('You are not a member of that organization');
+      }
+    }
     logger.info('oauth consent decided', {
       userId: input.userId,
       organizationId: input.organizationId,
       accept: input.accept,
-      clientId: queryParams.get('client_id'),
+      clientId,
+      monthlyCapMicros: capMicros,
     });
     return { url: rewriteAuthorizationIss(redirect, origin) };
   }
@@ -320,12 +389,30 @@ export async function decideOAuthConsent(input: {
   );
 }
 
+/** The redirect carries no error: the provider recorded the consent. */
+function consentGranted(redirect: string): boolean {
+  try {
+    return !new URL(redirect, 'https://placeholder.invalid').searchParams.has(
+      'error'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Apps the user has granted access to, newest first. */
-export async function listAuthorizedApps(
-  headers: Headers
-): Promise<AuthorizedApp[]> {
+export async function listAuthorizedApps(input: {
+  userId: string;
+  headers: Headers;
+  grants: Pick<UserGrants, 'listStandings'>;
+}): Promise<AuthorizedApp[]> {
+  const { headers } = input;
   const auth = getAuth();
   const consents = await auth.api.getOAuthConsents({ headers });
+  const [organizations, standings] = await Promise.all([
+    listUserOrganizations(input.userId),
+    input.grants.listStandings(),
+  ]);
   const clients = new Map<string, OAuthClientSummary>();
   const apps: AuthorizedApp[] = [];
   for (const consent of consents) {
@@ -354,6 +441,15 @@ export async function listAuthorizedApps(
       }
       clients.set(consent.clientId, client);
     }
+    const organization =
+      organizations.find((org) => org.id === consent.referenceId) ?? null;
+    const standing = organization
+      ? standings.find(
+          (grant) =>
+            grant.oauthClientId === consent.clientId &&
+            grant.organizationId === organization.id
+        )
+      : undefined;
     apps.push({
       consentId: consent.id,
       client,
@@ -361,6 +457,16 @@ export async function listAuthorizedApps(
         id,
         description: OAUTH_SCOPE_DESCRIPTIONS[id] ?? id,
       })),
+      organization,
+      invokesModels: consent.scopes.includes(MODELS_INVOKE_SCOPE),
+      grant: standing
+        ? {
+            monthlyCapMicros: standing.monthlyCapMicros,
+            spentMicros: standing.spentMicros,
+            heldMicros: standing.heldMicros,
+            remainingMicros: standing.remainingMicros,
+          }
+        : null,
       createdAt: consent.createdAt,
       updatedAt: consent.updatedAt,
     });
@@ -381,6 +487,7 @@ export async function performAuthorizedAppRevoke(input: {
   consentId: string;
   clientId: string;
   headers: Headers;
+  grants: Pick<UserGrants, 'revoke'>;
 }): Promise<void> {
   const auth = getAuth();
   const consents = await auth.api.getOAuthConsents({ headers: input.headers });
@@ -388,8 +495,15 @@ export async function performAuthorizedAppRevoke(input: {
   if (consent && consent.clientId !== input.clientId) {
     throw new Error('This app is no longer authorized.');
   }
-  // Tokens first: if deleteConsent succeeds and this throws, retry cannot
-  // find the consent and the refresh tokens would stay live.
+  // The spend grant first, so a still-valid access token stops spending now.
+  // Without the consent (a retry) every organization's grant goes, as the
+  // tokens below do.
+  await input.grants.revoke({
+    oauthClientId: input.clientId,
+    organizationId: consent?.referenceId ?? null,
+  });
+  // Tokens before the consent: if deleteConsent succeeds and this throws,
+  // retry cannot find the consent and the refresh tokens would stay live.
   await revokeOAuthGrantTokens(input.userId, input.clientId);
   if (consent) {
     await auth.api.deleteOAuthConsent({
@@ -402,4 +516,34 @@ export async function performAuthorizedAppRevoke(input: {
     consentId: input.consentId,
     clientId: input.clientId,
   });
+}
+
+/**
+ * Change the monthly cap of an authorized app that holds `models:invoke`.
+ * Creates the grant when the consent has none (one approved before caps).
+ */
+export async function setAuthorizedAppCap(input: {
+  consentId: string;
+  monthlyCapMicros: number;
+  headers: Headers;
+  grants: Pick<UserGrants, 'setCap'>;
+}): Promise<void> {
+  const monthlyCapMicros = requireMonthlyCap(input.monthlyCapMicros);
+  const consents = await getAuth().api.getOAuthConsents({
+    headers: input.headers,
+  });
+  const consent = consents.find((row) => row.id === input.consentId);
+  if (!consent?.referenceId || !consent.scopes.includes(MODELS_INVOKE_SCOPE)) {
+    throw new ValidationError('This app cannot spend credits through models.');
+  }
+  const written = await input.grants.setCap({
+    oauthClientId: consent.clientId,
+    organizationId: consent.referenceId,
+    monthlyCapMicros,
+  });
+  if (!written) {
+    throw new ValidationError(
+      'You are no longer a member of the organization this app bills.'
+    );
+  }
 }

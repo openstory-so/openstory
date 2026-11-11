@@ -66,6 +66,7 @@ import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
 import { gatewayJobs } from './gateway-jobs';
 import { chargeLines } from './charge-lines';
+import { gatewayApps, gatewayGrants } from './gateway-apps';
 import {
   assistantInterrupts,
   assistantMessages,
@@ -339,6 +340,10 @@ export type { GatewayJob } from './gateway-jobs';
 export { chargeLines };
 export type { ChargeLine } from './charge-lines';
 
+// Gateway apps and grants (docs/architecture/model-gateway.md)
+export { gatewayApps, gatewayGrants };
+export type { GatewayApp, GatewayGrant } from './gateway-apps';
+
 // In-app assistant threads and their TanStack AI persistence stores (#2155)
 export {
   assistantInterrupts,
@@ -586,6 +591,8 @@ export const schema = {
   stitches,
   gatewayJobs,
   chargeLines,
+  gatewayApps,
+  gatewayGrants,
   assistantThreads,
   assistantMessages,
   assistantRuns,

@@ -99,6 +99,7 @@ import { Route as AppSequencesNewIndexRouteImport } from './routes/_app/sequence
 import { Route as AppSequencesNewScenesRouteImport } from './routes/_app/sequences/new/scenes'
 import { Route as ApiV1DeviceCodeRouteImport } from './routes/api/v1/device.code'
 import { Route as ApiV1DeviceTokenRouteImport } from './routes/api/v1/device.token'
+import { Route as ApiV1GatewayGrantRouteImport } from './routes/api/v1/gateway.grant'
 import { Route as ApiV1GatewayJobsRouteImport } from './routes/api/v1/gateway.jobs'
 import { Route as ApiV1GatewayModelsRouteImport } from './routes/api/v1/gateway.models'
 import { Route as ApiV1ScriptsEnhanceRouteImport } from './routes/api/v1/scripts.enhance'
@@ -566,6 +567,11 @@ const ApiV1DeviceTokenRoute = ApiV1DeviceTokenRouteImport.update({
   path: '/api/v1/device/token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1GatewayGrantRoute = ApiV1GatewayGrantRouteImport.update({
+  id: '/api/v1/gateway/grant',
+  path: '/api/v1/gateway/grant',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1GatewayJobsRoute = ApiV1GatewayJobsRouteImport.update({
   id: '/api/v1/gateway/jobs',
   path: '/api/v1/gateway/jobs',
@@ -746,6 +752,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -850,6 +857,7 @@ export interface FileRoutesByTo {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -960,6 +968,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -1068,6 +1077,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1172,6 +1182,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1281,6 +1292,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1334,6 +1346,7 @@ export interface RootRouteChildren {
   ApiV1IndexRoute: typeof ApiV1IndexRoute
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
+  ApiV1GatewayGrantRoute: typeof ApiV1GatewayGrantRoute
   ApiV1GatewayJobsRoute: typeof ApiV1GatewayJobsRouteWithChildren
   ApiV1GatewayModelsRoute: typeof ApiV1GatewayModelsRoute
   ApiV1ScriptsEnhanceRoute: typeof ApiV1ScriptsEnhanceRoute
@@ -1972,6 +1985,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1DeviceTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/gateway/grant': {
+      id: '/api/v1/gateway/grant'
+      path: '/api/v1/gateway/grant'
+      fullPath: '/api/v1/gateway/grant'
+      preLoaderRoute: typeof ApiV1GatewayGrantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/gateway/jobs': {
       id: '/api/v1/gateway/jobs'
       path: '/api/v1/gateway/jobs'
@@ -2399,6 +2419,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1IndexRoute: ApiV1IndexRoute,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
+  ApiV1GatewayGrantRoute: ApiV1GatewayGrantRoute,
   ApiV1GatewayJobsRoute: ApiV1GatewayJobsRouteWithChildren,
   ApiV1GatewayModelsRoute: ApiV1GatewayModelsRoute,
   ApiV1ScriptsEnhanceRoute: ApiV1ScriptsEnhanceRoute,

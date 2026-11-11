@@ -124,6 +124,10 @@ export const creditReservations = snakeCase.table(
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
+    // A user-pays gateway hold: the client whose monthly cap it counts against.
+    oauthClientId: text(),
+    // The registered gateway app that client is, when it is one.
+    appId: text(),
   },
   (table) => [
     uniqueIndex('idx_credit_reservations_organization_idempotency_key').on(

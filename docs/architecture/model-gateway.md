@@ -1,7 +1,7 @@
 # Model gateway
 
-Status: PR 1 (gateway core and app-pays) and PR 2 (charge lines) shipped;
-PRs 3–4 are the plan. This
+Status: PR 1 (gateway core and app-pays), PR 2 (charge lines) and PR 3
+(apps and user-pays) shipped; PR 4 is the plan. This
 file is the plan and the contract; each PR in the stack updates it to match
 what it shipped. § Shipped describes the code as it is.
 
@@ -36,6 +36,7 @@ after the contract has held for the main app and for third parties.
 | `GET /api/v1/gateway/models`         | Models the gateway serves, with input shape |
 | `POST /api/v1/gateway/jobs`          | Submit. Returns `202` and the job           |
 | `GET /api/v1/gateway/jobs/$id`       | Status, result URLs, the charge (`?wait`)   |
+| `GET /api/v1/gateway/grant`          | The caller's cap, spend and remaining       |
 | `POST /api/v1/gateway/jobs/estimate` | Price before submitting (PR 4)              |
 | `POST /api/v1/gateway/charges`       | An app's own billing line (PR 4)            |
 
@@ -79,7 +80,7 @@ debit and one or more **charge lines**:
 - An `app_charge` names a SKU the app declared in advance; an app cannot
   charge an arbitrary amount.
 - The cap on a grant counts every line: settled lines this calendar month
-  (UTC) plus live holds for that client and organization.
+  (UTC) plus live holds for that client and organization (§ Shipped (PR 3)).
 
 ## Earnings
 
@@ -347,16 +348,140 @@ A replay of its `Idempotency-Key` returns that job.
 - The fee is off (`GATEWAY_PLATFORM_FEE_BPS = 0`), so no `platform_fee` line
   is written yet.
 
-### For PR 3
+## Shipped (PR 3)
 
-The cap counts `sum(amount_micros)` of `charge_lines` for the payer
-organization and `oauth_client_id` since the start of the UTC month
-(`idx_charge_lines_organization_client_created`), plus the live holds of
-that client's jobs. Holds carry no client today: PR 3 either adds the client
-to the reservation or sums `credit_reservations` joined to `gateway_jobs`
-(`reservation_id`, `oauth_client_id`) for live jobs. The check belongs in
-`submitGatewayJob` before `reserveRunCredits`, where the hold amount is
-known.
+### Code
+
+- `src/platform/server/db/schema/gateway-apps.ts`: tables `gateway_apps`
+  and `gateway_grants`; migration `20261111224833_gateway_apps_and_grants`
+  (two new tables and two `ADD COLUMN`s on `credit_reservations`; nothing is
+  rebuilt). No foreign key into the Better Auth tables; the organization
+  keys are `restrict`.
+- `src/platform/auth/oauth-spend-cap.ts`: the cap bounds
+  (`DEFAULT_MONTHLY_CAP_USD` 20, `MIN_` 1, `MAX_` 1000, whole dollars) and
+  `monthlyCapMicrosSchema`. Client-safe; it lives in platform because the
+  consent screen is platform's and platform may not import a domain.
+- `src/billing/server/db/spend-cap.ts`: the one SQL definition of a grant's
+  spend (`monthSpendSql`), holds (`liveHoldsSql`) and the guard
+  (`fitsUnderCapSql`).
+- `src/billing/server/db/billing.ts`: `createReservation(…, { spendCap })`.
+- `src/gateway/server/db/gateway-grants.ts`: `scopedDb.gatewayGrants`,
+  bound to the signed-in user: `getStanding`, `listStandings`, `setCap`
+  (upsert, guarded by membership in the same insert), `revoke`.
+- `src/gateway/server/db/gateway-apps.ts`: `scopedDb.gatewayApps`: `list`,
+  `register` (guarded insert), `getByOAuthClient`.
+- `src/gateway/server/submit-job.ts`: the app and grant checks, the capped
+  hold and its refusal codes. `src/gateway/server/errors.ts`: the codes.
+- `src/gateway/server/read-grant.ts` and `src/routes/api/v1/gateway.grant.ts`.
+- `src/gateway/server/register-app.ts`, `src/gateway/apps.fn.ts`,
+  `src/gateway/ui/gateway-apps-settings.tsx`: Settings → Developer → Apps.
+- `src/platform/server/auth/oauth-consent.ts`: the consent decision writes
+  the grant, revoke revokes it, `setAuthorizedAppCap`; the consent page and
+  Settings → Authorized apps show and change the cap.
+
+### Grants
+
+One row per (OAuth client, user, payer organization), unique on the triple:
+`monthly_cap_micros`, `revoked_at`. The JWT is stateless and lives up to an
+hour, so the grant is looked up on every submit, not carried in the token.
+
+- **Consent.** When the signed query's `scope` holds `models:invoke`, the
+  consent page shows a monthly cap between the organization select and the
+  credits copy, prefilled with the client's current cap for the picked
+  organization, else the default. `decideOAuthConsent` refuses an approval
+  without a valid cap before the provider sees it, and writes the grant for
+  the picked organization once the provider answers with a redirect that
+  carries no `error`. Re-consenting updates the cap and revives a revoked
+  grant. A denial writes nothing.
+- **Revoke.** `performAuthorizedAppRevoke` revokes the grant for the
+  consent's organization first (every organization's when the consent row
+  is already gone, matching the tokens), then the tokens, then the consent.
+  A still-valid access token then gets `403 GRANT_REQUIRED` on submit. Jobs
+  already running finish and settle.
+- **Settings → Authorized apps.** A consent with `models:invoke` shows its
+  cap, settled spend this month and remaining, and a cap editor
+  (optimistic, rolled back on error). A consent that has `models:invoke` but
+  no grant (one approved before PR 3, or one whose authorize request named no
+  `scope` and got the client's defaults) shows "no spend cap yet" and can set
+  one there; until then the gateway refuses it.
+
+### The cap
+
+`createReservation` with `spendCap: { oauthClientId, appId }` inserts the
+hold only if, in the same `INSERT … SELECT`, the balance guard holds and a
+live grant of (client, this user, this organization) exists with
+
+```
+monthly_cap ≥ settled lines this UTC month (payer, client)
+            + live holds (payer, client) + this hold
+```
+
+Settled lines are `charge_lines` by `organization_id`, `oauth_client_id`
+and `created_at ≥` the month's first second. Live holds are
+`credit_reservations` with that `oauth_client_id`, `remaining_amount > 0`
+and `expires_at > now`; the hold carries `oauth_client_id` and `app_id`
+(new nullable columns). D1 runs one statement at a time, so two submits
+that together pass the cap cannot both hold. A refusal is classified after
+the fact by reading the grant again: no live grant → `403 GRANT_REQUIRED`;
+hold above remaining → `402 SPEND_CAP_EXCEEDED` with `monthlyCapMicros`,
+`spentMicros`, `heldMicros`, `remainingMicros` and `requestedMicros` in
+`details`; else `402 INSUFFICIENT_CREDITS`. Spend is per (payer, client),
+not per user: two members of one organization who both connect the same app
+share its spend, each against their own cap.
+
+**Growth.** A settle above its hold is not blocked by the cap: the capture
+grows the hold when the balance covers it, as before, and the lines it
+writes count against the cap from then on, so the next submit sees them.
+`remainingMicros` is never negative. `capture` and `settleReservation` are
+unchanged, so short capture and lines-sum-to-debit hold exactly as in PR 2.
+A caller without `spendCap` (every existing caller and every `osk_` submit)
+runs the same statement it did before, with the two new columns null.
+
+### Apps
+
+`gateway_apps`: one row per OAuth client (unique), owned by an organization:
+`name`, `status` (`active` | `suspended`), `created_by_user_id`. Registering
+is an owner's or admin's act and links a client only when the signed-in user
+created it: the insert selects from `oauth_client` where `client_id` and
+`user_id` match, so another user's client, an unowned DCR client and an
+unknown id all write nothing. With no client id, Settings first creates a
+public PKCE client through Better Auth's `createOAuthClient` (owner = the
+user, `token_endpoint_auth_method: none`, `native` when a redirect is
+loopback or a custom scheme). There is no suspend control yet; suspension
+is an operator write.
+
+At submit an OAuth caller's client is looked up in `gateway_apps` across
+organizations: a suspended app is `403 APP_SUSPENDED`; an active one's id is
+snapshotted on the payload (`appId`) and stamped on the hold and on every
+charge line (`app_id`). A run started before PR 3 has no `appId` and
+settles with null.
+
+### Auth
+
+An OAuth token is user-pays; one with no `client_id` is refused
+(`GRANT_REQUIRED`), never treated as app-pays (`userPaysClientId`). An
+`osk_` key or a cookie session is app-pays: no grant, no cap.
+`GET /api/v1/gateway/grant` answers `{ payer: 'user', clientId,
+monthlyCapMicros, spentMicros, heldMicros, remainingMicros, periodStart,
+periodEnd }` for an OAuth caller (403 without a live grant) and `payer:
+'app'` with the cap fields null for a key. `/api/v1` error `details` are
+sent only for a `PublicApiError`.
+
+### For PR 4
+
+- Margin: add `margin_bps` to `gateway_apps` with `ADD COLUMN`, snapshot it
+  on the payload next to `appId` at submit, and pass `appMargin: { bps,
+  payeeOrganizationId: app.organizationId }` to `gatewayCharge` in both the
+  hold and `settleGatewayJob`. Skip it when the payer is the app's own
+  organization. The hold then includes the margin, so the cap guard counts
+  it with no change.
+- `POST /gateway/charges`: reserve with the same `spendCap` (the caller's
+  client and `appId`) so an app charge is capped like a job, and settle with
+  attribution `{ oauthClientId, appId }`.
+- Earnings: payee lines carry `app_id`; `idx_charge_lines_payee_created`
+  serves the sweep.
+- The estimate endpoint and the consent price breakdown can read
+  `getStanding` for "remaining this month".
 
 ## Not in this stack
 

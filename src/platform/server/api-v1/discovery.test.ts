@@ -118,4 +118,12 @@ describe('model gateway', () => {
       gatewayJobRequestSchema.parse(submit?.examples?.[0])
     ).not.toThrow();
   });
+
+  it('advertises the caller grant read and the user-pays refusals', () => {
+    const { _links, instructions } = buildRootDocument();
+    expect(_links['gateway-grant']?.href).toBe('/api/v1/gateway/grant');
+    expect(instructions).toMatch(/GET \/api\/v1\/gateway\/grant/);
+    expect(instructions).toMatch(/SPEND_CAP_EXCEEDED/);
+    expect(instructions).toMatch(/GRANT_REQUIRED/);
+  });
 });

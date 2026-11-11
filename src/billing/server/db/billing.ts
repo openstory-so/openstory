@@ -56,6 +56,7 @@ import {
 
 import { getLogger } from '@/platform/logger';
 import { onPrimary } from '@/platform/server/db/d1-session';
+import { fitsUnderCapSql, spendCapScope } from '@/billing/server/db/spend-cap';
 
 /**
  * Best-effort live balance push for the credit pill (#1090).
@@ -942,12 +943,19 @@ export function createBillingMethods(
     });
   }
 
+  /**
+   * Hold `amountMicros` if the balance covers it after every live hold. With
+   * `spendCap`, the same statement also requires a live grant of (client,
+   * this user, this organization) whose cap covers this month's settled
+   * lines, the client's live holds and this hold (model-gateway.md § The cap).
+   */
   async function createReservation(
     amountMicros: Microdollars,
     opts: {
       idempotencyKey: string;
       sequenceId?: string;
       ttlMs?: number;
+      spendCap?: { oauthClientId: string; appId: string | null };
     }
   ): Promise<CreateReservationResult> {
     if (amountMicros <= 0) return { ok: false };
@@ -984,6 +992,14 @@ export function createBillingMethods(
     );
     const nowSeconds = Math.floor(now.getTime() / 1000);
     const expiresSeconds = Math.floor(expiresAt.getTime() / 1000);
+    const { spendCap } = opts;
+    const capGuard = spendCap
+      ? fitsUnderCapSql(
+          spendCapScope(organizationId, spendCap.oauthClientId, now),
+          userId,
+          amountMicros
+        )
+      : undefined;
 
     const inserted = await db
       .insert(creditReservations)
@@ -1005,6 +1021,10 @@ export function createBillingMethods(
               'idempotency_key'
             ),
             createdAt: sql`${nowSeconds}`.as('created_at'),
+            oauthClientId: sql`${spendCap?.oauthClientId ?? null}`.as(
+              'oauth_client_id'
+            ),
+            appId: sql`${spendCap?.appId ?? null}`.as('app_id'),
           })
           .from(credits)
           .where(
@@ -1016,7 +1036,8 @@ export function createBillingMethods(
                 where ${creditReservations.organizationId} = ${organizationId}
                   and ${creditReservations.remainingAmount} > 0
                   and ${creditReservations.expiresAt} > ${nowSeconds}
-              ), 0) >= ${amountMicros}`
+              ), 0) >= ${amountMicros}`,
+              capGuard
             )
           )
       )

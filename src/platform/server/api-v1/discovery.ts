@@ -21,6 +21,7 @@ import {
 import { apiCreateSequenceSchema } from './input-schema';
 import { EXAMPLE_CREATE_STYLE_BODY } from './style-input-schema';
 import {
+  GATEWAY_GRANT_PATH,
   GATEWAY_JOBS_PATH,
   GATEWAY_MODELS_PATH,
   submitGatewayJobLink,
@@ -82,6 +83,11 @@ Model gateway (run one model, pay per job):
   'outputs') or 'failed'. Send an Idempotency-Key header so a retry returns
   the same job. 402 INSUFFICIENT_CREDITS when the hold cannot be covered; 429
   RATE_LIMITED past the per-organization submit rate.
+  With an OAuth token the user pays: the organization they picked at consent,
+  up to the monthly cap they set there. GET /api/v1/gateway/grant reads the
+  cap, this month's spend and what remains (an osk_ key reads payer 'app').
+  A job past the cap is 402 SPEND_CAP_EXCEEDED; a revoked or missing grant
+  is 403 GRANT_REQUIRED (send the user through authorization again).
 
 Authentication:
   Every endpoint except this root and the device-login pair requires an osk_
@@ -313,6 +319,10 @@ export function buildRootDocument(): RootDocument {
         'Models the gateway serves, with what each accepts'
       ),
       'submit-gateway-job': submitGatewayJobLink(),
+      'gateway-grant': getLink(
+        GATEWAY_GRANT_PATH,
+        "The caller's monthly spend cap, spend this month and what remains"
+      ),
       'gateway-job': {
         href: `${GATEWAY_JOBS_PATH}/{id}{?wait}`,
         method: 'GET',

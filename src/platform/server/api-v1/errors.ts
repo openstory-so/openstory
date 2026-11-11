@@ -10,6 +10,9 @@ import { z } from 'zod';
 
 const logger = getLogger(['openstory', 'api-v1']);
 
+/** An error whose `details` are part of the public `/api/v1` contract. */
+export class PublicApiError extends OpenStoryError {}
+
 export function apiJsonError(
   status: number,
   code: string,
@@ -64,6 +67,11 @@ export async function runApiV1Handler(
         status: handled.statusCode,
       });
     }
-    return apiJsonError(handled.statusCode, handled.code, handled.message);
+    return apiJsonError(
+      handled.statusCode,
+      handled.code,
+      handled.message,
+      handled instanceof PublicApiError ? handled.details : undefined
+    );
   }
 }

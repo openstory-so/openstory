@@ -64,6 +64,8 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   platformFeeBps: number;
   /** The OAuth client that submitted; null for an `osk_` key or a session. */
   oauthClientId: string | null;
+  /** The registered app that client is, at submit; absent on runs from before apps. */
+  appId?: string | null;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -410,6 +412,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         estimateMicros: event.payload.estimateMicros,
         platformFeeBps: event.payload.platformFeeBps,
         oauthClientId: event.payload.oauthClientId,
+        appId: event.payload.appId ?? null,
         usedOwnKey: result.usedOwnKey,
         idempotencyKey: `${event.instanceId}:gateway-settle`,
         result: { outputs: result.outputs, via: result.via },
