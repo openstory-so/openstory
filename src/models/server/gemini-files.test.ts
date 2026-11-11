@@ -57,4 +57,28 @@ describe('uploadClipToGemini', () => {
       method: 'DELETE',
     });
   });
+
+  it('streams one clip at a time, so parallel calls cannot fill the isolate (#2370)', async () => {
+    let open = 0;
+    let most = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          open += 1;
+          most = Math.max(most, open);
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        open -= 1;
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    await Promise.all(
+      [1, 2, 3].map(() => uploadClipToGemini('c.mp4', 'video/mp4', 'k'))
+    );
+    expect(most).toBe(1);
+  });
 });

@@ -47,12 +47,46 @@ async function geminiFetch(
   return response;
 }
 
+// ponytail: one clip streams per isolate (#2370); per-isolate, not global.
+let streaming: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+  const run = streaming.then(task);
+  streaming = run.catch(() => undefined);
+  return run;
+}
+
 /** Upload the clip at storage `key` and wait until Gemini can read it. */
 export async function uploadClipToGemini(
   key: string,
   mimeType: string,
   apiKey: string
 ): Promise<GeminiFile> {
+  const uploaded = await oneAtATime(() =>
+    streamClipToGemini(key, mimeType, apiKey)
+  );
+  const { name } = z
+    .object({ file: z.object({ name: z.string() }) })
+    .parse(uploaded).file;
+  // From here the clip is on Google: every failure deletes it.
+  try {
+    return await waitUntilActive(
+      z.object({ file: fileSchema }).parse(uploaded).file,
+      apiKey
+    );
+  } catch (error) {
+    await deleteGeminiFile(name, apiKey).catch((deleteError: unknown) => {
+      logger.warn('Could not delete a Gemini file', { name, deleteError });
+    });
+    throw error;
+  }
+}
+
+async function streamClipToGemini(
+  key: string,
+  mimeType: string,
+  apiKey: string
+): Promise<unknown> {
   const size = await storageObjectSize(key);
   if (!size) throw new Error(`Stored clip is missing or empty: ${key}`);
 
@@ -93,22 +127,7 @@ export async function uploadClipToGemini(
     // Node's fetch (tests, scripts) refuses a stream body without it.
     duplex: 'half',
   } as RequestInit & { headers: Record<string, string> });
-  const uploaded: unknown = await finished.json();
-  const { name } = z
-    .object({ file: z.object({ name: z.string() }) })
-    .parse(uploaded).file;
-  // From here the clip is on Google: every failure deletes it.
-  try {
-    return await waitUntilActive(
-      z.object({ file: fileSchema }).parse(uploaded).file,
-      apiKey
-    );
-  } catch (error) {
-    await deleteGeminiFile(name, apiKey).catch((deleteError: unknown) => {
-      logger.warn('Could not delete a Gemini file', { name, deleteError });
-    });
-    throw error;
-  }
+  return finished.json();
 }
 
 async function waitUntilActive(
