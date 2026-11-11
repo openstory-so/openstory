@@ -18,22 +18,91 @@ function readVersion(): string {
   return version;
 }
 
-/** Every request to OpenStory carries the CLI version; a 426 becomes the update message. */
+/** The key allows 10 requests a second. Two are spare for anything else on that key. */
+const REQUESTS_PER_SECOND = 8;
+const WINDOW_MS = 1000;
+const RATE_LIMIT_RETRIES = 5;
+
+export type FetchClock = {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+};
+
+const realClock: FetchClock = {
+  now: Date.now,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/**
+ * Every request to OpenStory carries the CLI version; a 426 becomes the
+ * update message. Requests stay under the key's rate limit, and a
+ * RATE_LIMITED 429 waits for Retry-After and tries again.
+ */
 export function versionedFetch(
   fetchFn: typeof fetch,
-  version: string = CLI_VERSION
+  version: string = CLI_VERSION,
+  clock: FetchClock = realClock
 ): typeof fetch {
+  const sent: number[] = [];
+  let tail = Promise.resolve();
   return async (input, init) => {
-    const headers = new Headers(init?.headers);
-    headers.set(CLI_VERSION_HEADER, version);
-    const response = await fetchFn(input, { ...init, headers });
-    if (response.status === 426) {
-      throw new Error(
-        `OpenStory needs a newer @openstory/cli (you have ${version}). Run npx @openstory/cli@latest. ${await errorText(response)}`.trim()
+    for (let attempt = 0; ; attempt += 1) {
+      const slot = tail.then(() => takeSlot(sent, clock));
+      tail = slot.then(
+        () => undefined,
+        () => undefined
       );
+      await slot;
+      const headers = new Headers(init?.headers);
+      headers.set(CLI_VERSION_HEADER, version);
+      const response = await fetchFn(input, { ...init, headers });
+      if (response.status === 426) {
+        throw new Error(
+          `OpenStory needs a newer @openstory/cli (you have ${version}). Run npx @openstory/cli@latest. ${await errorText(response)}`.trim()
+        );
+      }
+      if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) {
+        return response;
+      }
+      const text = await response.text();
+      if (rateLimitCode(text) !== 'RATE_LIMITED') {
+        return new Response(text, {
+          status: response.status,
+          headers: response.headers,
+        });
+      }
+      await clock.sleep(retryAfterMs(response));
     }
-    return response;
   };
+}
+
+/** One slot in the rolling second, in line, so a burst cannot slip past the count. */
+async function takeSlot(sent: number[], clock: FetchClock): Promise<void> {
+  for (;;) {
+    const now = clock.now();
+    while (sent[0] !== undefined && now - sent[0] >= WINDOW_MS) sent.shift();
+    if (sent.length < REQUESTS_PER_SECOND) {
+      sent.push(now);
+      return;
+    }
+    const oldest = sent[0] ?? now;
+    await clock.sleep(WINDOW_MS - (now - oldest));
+  }
+}
+
+function retryAfterMs(response: Response): number {
+  const header = Number(response.headers.get('retry-after'));
+  if (!Number.isFinite(header) || header < 0) return WINDOW_MS;
+  return Math.min(header * 1000, 10_000);
+}
+
+function rateLimitCode(text: string): string | null {
+  try {
+    const error = recordOf(recordOf(JSON.parse(text)).error);
+    return typeof error.code === 'string' ? error.code : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A JSON object's fields, or none: a wrong shape reads as missing fields. */
