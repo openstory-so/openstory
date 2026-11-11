@@ -81,4 +81,27 @@ describe('uploadClipToGemini', () => {
     );
     expect(most).toBe(1);
   });
+
+  it('frees the slot when an upload fails', async () => {
+    let starts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          starts += 1;
+          if (starts === 1) return new Response('down', { status: 503 });
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    const [failed, ok] = await Promise.allSettled([
+      uploadClipToGemini('a.mp4', 'video/mp4', 'k'),
+      uploadClipToGemini('b.mp4', 'video/mp4', 'k'),
+    ]);
+    expect(failed.status).toBe('rejected');
+    expect(ok.status).toBe('fulfilled');
+  });
 });

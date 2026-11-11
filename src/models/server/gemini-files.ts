@@ -47,13 +47,22 @@ async function geminiFetch(
   return response;
 }
 
-// ponytail: one clip streams per isolate (#2370); per-isolate, not global.
-let streaming: Promise<unknown> = Promise.resolve();
+// ponytail: one clip streams per isolate (#2370); a flag each waiter polls itself, since workerd must not share promises across requests.
+let streaming = false;
+const QUEUE_POLL_MS = 250;
+/** Deadline per upload, so a stalled one cannot hold the slot. */
+const UPLOAD_TIMEOUT_MS = 300_000;
 
-function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
-  const run = streaming.then(task);
-  streaming = run.catch(() => undefined);
-  return run;
+async function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+  while (streaming) {
+    await new Promise((resolve) => setTimeout(resolve, QUEUE_POLL_MS));
+  }
+  streaming = true;
+  try {
+    return await task();
+  } finally {
+    streaming = false;
+  }
 }
 
 /** Upload the clip at storage `key` and wait until Gemini can read it. */
@@ -89,6 +98,7 @@ async function streamClipToGemini(
 ): Promise<unknown> {
   const size = await storageObjectSize(key);
   if (!size) throw new Error(`Stored clip is missing or empty: ${key}`);
+  const signal = AbortSignal.timeout(UPLOAD_TIMEOUT_MS);
 
   const start = await geminiFetch(`${apiBase()}/upload/v1beta/files`, apiKey, {
     method: 'POST',
@@ -100,6 +110,7 @@ async function streamClipToGemini(
       'x-goog-upload-header-content-type': mimeType,
     },
     body: JSON.stringify({ file: { display_name: key.split('/').pop() } }),
+    signal,
   });
   const uploadUrl = start.headers.get('x-goog-upload-url');
   if (!uploadUrl) throw new Error('Gemini Files: no upload URL');
@@ -124,6 +135,7 @@ async function streamClipToGemini(
       'x-goog-upload-command': 'upload, finalize',
     },
     body,
+    signal,
     // Node's fetch (tests, scripts) refuses a stream body without it.
     duplex: 'half',
   } as RequestInit & { headers: Record<string, string> });
