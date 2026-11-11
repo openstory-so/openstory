@@ -108,12 +108,16 @@ const shotListContinuitySchema = z.object({
 // Descriptions are short labels on purpose: they count toward the Anthropic
 // grammar budget, so the vocabulary and rules live in the system prompt
 // (`phase/scene-shot-list-chat`), which is not budgeted.
+// Mention pills match the ALL-CAPS name only (#2369).
+const CAST_CAPS = ' Cast names in ALL CAPS.';
 const shotFramingSchema = z.object({
   shotSize: z.string().meta({ description: 'Shot size' }),
   angle: z.string().meta({ description: 'Camera angle' }),
-  composition: z.string().meta({ description: 'Frame composition' }),
+  composition: z
+    .string()
+    .meta({ description: `Frame composition.${CAST_CAPS}` }),
   subjectStartState: z.string().meta({
-    description: 'Subject pose/position/expression at the START of the shot',
+    description: `Subject pose/position/expression at the START of the shot.${CAST_CAPS}`,
   }),
 });
 
@@ -123,7 +127,7 @@ const shotFramingSchema = z.object({
  * follow in order within one clip. Feeds the motion prompt.
  */
 const shotCameraMovementSchema = z.object({
-  move: z.string().meta({ description: 'Camera move, in order' }),
+  move: z.string().meta({ description: `Camera move, in order.${CAST_CAPS}` }),
   pacing: z.string().meta({ description: 'Pace of the move' }),
 });
 
@@ -149,10 +153,16 @@ const shotDialogueLineSchema = z.object({
 export const shotSpecSchema = z.object({
   shotNumber: z.number().meta({ description: '1-based within the scene' }),
   framing: shotFramingSchema,
-  action: z.string().meta({ description: 'The ONE primary action' }),
+  action: z
+    .string()
+    .meta({ description: `The ONE primary action.${CAST_CAPS}` }),
   cameraMovement: shotCameraMovementSchema,
-  direction: z.string().meta({ description: 'Direction note, empty if none' }),
-  soundCue: z.string().meta({ description: 'SFX/ambience, empty if none' }),
+  direction: z.string().meta({
+    description: `Direction note, empty if none.${CAST_CAPS}`,
+  }),
+  soundCue: z.string().meta({
+    description: `SFX/ambience, empty if none.${CAST_CAPS}`,
+  }),
   dialogue: z.array(shotDialogueLineSchema).meta({
     description: 'Lines spoken in this shot, in order',
   }),
@@ -180,10 +190,16 @@ export type StoredShotSpec = Omit<
  */
 export const storedShotSpecSchema = z.object({
   framing: shotFramingSchema,
-  action: z.string().meta({ description: 'The ONE primary action' }),
+  action: z
+    .string()
+    .meta({ description: `The ONE primary action.${CAST_CAPS}` }),
   cameraMovement: shotCameraMovementSchema,
-  direction: z.string().meta({ description: 'Direction note, empty if none' }),
-  soundCue: z.string().meta({ description: 'SFX/ambience, empty if none' }),
+  direction: z.string().meta({
+    description: `Direction note, empty if none.${CAST_CAPS}`,
+  }),
+  soundCue: z.string().meta({
+    description: `SFX/ambience, empty if none.${CAST_CAPS}`,
+  }),
 });
 
 const specEditField = z.string().trim().max(2000);

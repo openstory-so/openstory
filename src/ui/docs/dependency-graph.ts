@@ -583,7 +583,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'renders',
     summary:
-      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350).",
+      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350). While the sequence is processing, a mismatch is not stale (#2369).",
     counts: [
       'The selected shot spec version (the motion prompt on a shot with no spec)',
       'Name, gender, age, description and clothing of each character the text names, in the look the scene picks',

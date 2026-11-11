@@ -93,6 +93,21 @@ describe('scene-shot-list-chat', () => {
     // aimock routes recordings by this prefix (e2e/mocks/aimock-server.ts).
     expect(String(prompt?.[1]?.content)).toMatch(/^Cover each scene\./);
   });
+
+  it('writes cast names in ALL CAPS in every spec field (#2369)', () => {
+    const system =
+      WORKFLOW_CHAT_PROMPTS['phase/scene-shot-list-chat']?.[0]?.content ?? '';
+    expect(system).toContain(
+      'ALL CAPS in every spec field that names them (framing, action, camera move, direction, sound cue)'
+    );
+    expect(system).toContain('MAGGIE in the action, not Maggie');
+    expect(system).toContain(
+      'dialogue.character stays the spelling <CHARACTERS> uses'
+    );
+    const rewrite =
+      WORKFLOW_CHAT_PROMPTS['phase/shot-spec-rewrite-chat']?.[0]?.content ?? '';
+    expect(rewrite).toContain("character's name in ALL CAPS in every field");
+  });
 });
 
 describe('script/enhance — two levels (#1486)', () => {
