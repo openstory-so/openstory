@@ -25,6 +25,7 @@ import { useUser } from '@/platform/ui/use-user';
 import { rememberLastPage } from '@/platform/ui/auth/last-page';
 import { Button } from '@/ui/shadcn/button';
 import { SITE_CONFIG } from '@/ui/marketing/constants';
+import { GitHubIcon } from '@/ui/icons/github-icon';
 import { Link, useRouterState } from '@tanstack/react-router';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
@@ -146,7 +147,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     <Button
                       asChild
                       size="lg"
-                      variant="secondary"
+                      variant="outline"
                       className="px-5"
                     >
                       <a
@@ -154,6 +155,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                         target="_blank"
                         rel="noreferrer"
                       >
+                        <GitHubIcon className="size-4" />
                         GitHub
                       </a>
                     </Button>

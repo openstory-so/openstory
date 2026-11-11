@@ -1880,14 +1880,14 @@ export const ScriptView: FC<{
                     {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
-                {/* Signed out it is secondary and opens sign-in (#2372). */}
+                {/* Signed out it is an outline button and opens sign-in (#2372). */}
                 <Button
                   type="submit"
                   disabled={isDisabled}
                   aria-label={
                     isAuthenticated ? undefined : 'Sign in to Generate'
                   }
-                  variant={isAuthenticated ? 'default' : 'secondary'}
+                  variant={isAuthenticated ? 'default' : 'outline'}
                   className={cn(
                     'group relative px-6 font-semibold tracking-wide overflow-hidden',
                     isAuthenticated &&
