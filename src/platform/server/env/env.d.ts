@@ -17,10 +17,14 @@ declare namespace Cloudflare {
     /** ElevenLabs native via (voices, dialogue, music). */
     ELEVENLABS_API_KEY?: string;
     ELEVENLABS_BASE_URL?: string;
-    /** Seed Audio voices and dialogue (#1765). */
+    /** Seed Audio 1.0 key. Not sent while voice generation uses the 1.5 beta. */
     SEED_SPEECH_API_KEY?: string;
     SEED_SPEECH_BASE_URL?: string;
     SEED_SPEECH_QPM?: string;
+    /** Seed Audio 1.5 early-access key. Voice generation and dialogue. */
+    SEED_AUDIO_15_API_KEY?: string;
+    /** Overrides the early-access endpoint id on the 1.5 request. */
+    SEED_AUDIO_15_ENDPOINT?: string;
     /** Lifts modelschemas.com off its anonymous rate limit. */
     MODELSCHEMAS_API_KEY?: string;
     /** Served at /.well-known/openai-apps-challenge (#2138). */

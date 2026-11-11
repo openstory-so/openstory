@@ -15,12 +15,12 @@ import { generateId } from '@/platform/id';
 const SEED_VOICE_PREFIX = 'seed:';
 
 /**
- * The model every Seed voice is made and recorded with.
- * `seed-audio-1.5` is the beta on the same Seed Speech call. Swap back to
- * the released id when BytePlus ships it. Existing `seed:` voices record
- * on this id too; their 1.0 clips stay until the next take.
+ * The model every Seed voice is made and recorded with. This is the name
+ * the 1.5 beta returns. The request sends the early-access endpoint id
+ * (`getSeedAudioEndpoint`), not this string. Existing `seed:` voices record
+ * on it too; their 1.0 clips stay until the next take.
  */
-export const SEED_AUDIO_MODEL = 'seed-audio-1.5';
+export const SEED_AUDIO_MODEL = 'dola-seed-audio-1-5-260928';
 
 /**
  * Range reads per new Seed voice. Each take is a different person reading the

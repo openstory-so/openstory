@@ -5,30 +5,38 @@ listening tests (issue #1765) picked **Seed Audio**, called on BytePlus
 Seed Speech directly, with a locked reference voice per character and a
 transcription check on every take.
 
-The call is the **1.5 beta** (`model: seed-audio-1.5`) until BytePlus
-releases it. Same path, headers and body as 1.0: one WAV, three reference
-clips, 120 seconds, 3,000 characters. A `seed:` voice keeps its clips and
-records the next take on 1.5. A take already stored stays until something
-re-records it. The live audio source key includes this model id, so those
-clips show as stale after this change.
+Voice generation and dialogue both use the **1.5 early access**. A new
+voice is a text-only range read on that call. A `seed:` voice keeps its
+clips and the next take, voice or dialogue, is 1.5. A take already stored
+stays until something re-records it. The live audio source key includes
+the model id (`dola-seed-audio-1-5-260928`), so 1.0 clips show as stale
+after this change.
 
 ## Provider
 
-- `POST {SEED_SPEECH_BASE_URL}/api/v3/tts/create`, header `X-Api-Key`
-  (`seed-audio.ts`). **Platform key only** (`SEED_SPEECH_API_KEY`), spent
-  through `scopedDb.credentials.resolveKey('seed-speech')`. Under `E2E_TEST`
-  it stays off unless `SEED_SPEECH_BASE_URL` is set, so e2e and replay stay on
+- `POST {SEED_SPEECH_BASE_URL}/api/v3/contents/generations`, header
+  `Authorization: Bearer` (`seed-audio.ts`). Default host
+  `https://ark.ap-southeast.bytepluses.com`. The request `model` is the
+  early-access endpoint `ep-20260921143824-2m8c9` (`SEED_AUDIO_15_ENDPOINT`
+  overrides it). **Platform key only** (`SEED_AUDIO_15_API_KEY`). The live
+  1.0 key (`SEED_SPEECH_API_KEY`) is not sent. Spent through
+  `scopedDb.credentials.resolveKey('seed-speech')`. Under `E2E_TEST` it
+  stays off unless `SEED_SPEECH_BASE_URL` is set, so e2e and replay stay on
   ElevenLabs.
-- Output is WAV at 44.1 kHz, so everything after the call is the same PCM
-  byte arithmetic the ElevenLabs path uses (`cutAudioSection`,
-  `trimmedEndSeconds`).
-- Limits: 3 reference clips (each ≤ 30 s, ≤ 10 MB) — so 3 speakers, one clip each (three held apart in a listening test), 120 s of
-  audio, a 3,000-character prompt. The QPS cap is per **account**: calls are
+- The body is a `content` list: the prompt, then each reference clip as
+  `data:audio/mp3;base64,…` or WAV, role `reference_audio`, in `@Audio1`
+  order. A voice range read has no clips. The response is stem URLs. We
+  download the `speaker` stem in the same step. Output is WAV at 44.1 kHz,
+  so everything after the download is the same PCM byte arithmetic the
+  ElevenLabs path uses (`cutAudioSection`, `trimmedEndSeconds`).
+- Early access allows 6 reference clips (each 2–30 s, ≤ 15 MB) and 2
+  concurrent calls per key. We still send at most 3 speakers. Calls are
   paced on the BytePlus governor DO (`acquireSeedSpeechToken`,
-  `SEED_SPEECH_QPM`, default 30/min, burst 2) and a 429 is retried.
-- Pricing (`seed-speech-pricing.ts`): $0.0025 per second of
-  `original_duration` (BytePlus pay-as-you-go $0.15/min, read off the docs
-  2026-09-23, not yet bill-verified). Trailing silence is billed. Scribe
+  `SEED_SPEECH_QPM`, default 30/min, bucket capacity 2) and a 429 is retried.
+- Pricing (`seed-speech-pricing.ts`): the card is still $0.0025 per second,
+  now read from `usage.final_duration_ms`. Early access is free at
+  BytePlus. The 1.0 card was $0.15/min on 2026-09-23, not yet bill-verified.
+  Scribe
   ($0.22/h) and isolation ($0.12/min) are on the ElevenLabs card and are
   charged as their own ledger lines (`elevenlabs-scribe`,
   `elevenlabs-isolation`), never folded into the Seed charge. Unaudited
