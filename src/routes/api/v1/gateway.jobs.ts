@@ -7,6 +7,7 @@ import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn'
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { gatewayJobRequestSchema } from '@/gateway/schema';
 import { gatewayJobResource } from '@/gateway/server/read-job';
+import { userPaysClientId } from '@/gateway/server/errors';
 import { assertGatewayRate } from '@/gateway/server/rate-limit';
 import {
   readIdempotencyKey,
@@ -39,7 +40,7 @@ export const Route = createFileRoute('/api/v1/gateway/jobs')({
               userAgent: request.headers.get('user-agent'),
             },
             idempotencyKey: readIdempotencyKey(request.headers),
-            oauthClientId: context.oauth?.clientId ?? null,
+            oauthClientId: userPaysClientId(context.oauth),
           });
           return Response.json(
             await gatewayJobResource(

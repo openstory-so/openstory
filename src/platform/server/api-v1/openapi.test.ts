@@ -67,6 +67,20 @@ describe('buildOpenApiDocument', () => {
     expect(doc.components.schemas.GatewayJob.required).toContain('_links');
   });
 
+  it('documents the caller grant read and the user-pays refusals', () => {
+    const grant = doc.paths['/api/v1/gateway/grant'].get;
+    expect(grant.responses['200'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GatewayGrant',
+    });
+    expect(grant.responses['403'].description).toMatch(/GRANT_REQUIRED/);
+    expect(doc.components.schemas.GatewayGrant.required).toEqual(
+      expect.arrayContaining(['payer', 'remainingMicros', '_links'])
+    );
+    const submit = doc.paths['/api/v1/gateway/jobs'].post;
+    expect(submit.responses['402'].description).toMatch(/SPEND_CAP_EXCEEDED/);
+    expect(submit.responses['403'].description).toMatch(/APP_SUSPENDED/);
+  });
+
   it('documents the create-style endpoint with a valid example and a 409', () => {
     const op = doc.paths['/api/v1/styles'].post;
     expect(op.responses['201']).toBeDefined();

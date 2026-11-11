@@ -30,6 +30,8 @@ export async function settleGatewayJob(params: {
   /** The fee snapshotted at submit, so the charge matches the hold. */
   platformFeeBps: number;
   oauthClientId: string | null;
+  /** The registered app the client was at submit. */
+  appId?: string | null;
   /** Must be false: a gateway job spends platform keys only. */
   usedOwnKey: boolean;
   /** Replay-stable, e.g. `${instanceId}:gateway-settle`. */
@@ -89,6 +91,7 @@ export async function settleGatewayJob(params: {
         attribution: {
           gatewayJobId: jobId,
           oauthClientId: params.oauthClientId,
+          appId: params.appId ?? null,
         },
       }
     );

@@ -331,7 +331,10 @@ changing the area, and update it in the same PR.**
   parameter; it lives on the app row. A charge's lines always sum to its
   wallet debit, written in one batch (`billing.settleReservation`). Nothing
   runs after the `settle` step, which also marks the job succeeded: a
-  charged job never reads failed.
+  charged job never reads failed. A user-pays (OAuth) cap is enforced in
+  the hold's own SQL (`createReservation`'s `spendCap`), never by
+  check-then-reserve; a missing or revoked grant refuses the job, and an
+  OAuth token without a client is never treated as app-pays.
 - **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
   runs `MCP_TOOLS` through `chat()` under the session; never add an
   assistant-only tool, add an MCP tool. Only a delete

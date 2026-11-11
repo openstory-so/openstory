@@ -187,6 +187,7 @@ function makeEvent(input: GatewayJobInput): Event {
       estimateMicros: micros(50_000),
       platformFeeBps: 0,
       oauthClientId: 'client-1',
+      appId: 'app-1',
     },
     instanceId: 'run-1',
     workflowName: 'gateway',
@@ -263,7 +264,11 @@ describe('GatewayGenerationWorkflow image', () => {
       ],
       expect.objectContaining({
         idempotencyKey: 'run-1:gateway-settle',
-        attribution: { gatewayJobId: 'job-1', oauthClientId: 'client-1' },
+        attribution: {
+          gatewayJobId: 'job-1',
+          oauthClientId: 'client-1',
+          appId: 'app-1',
+        },
       })
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith('job-1', {

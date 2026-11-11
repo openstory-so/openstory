@@ -22,11 +22,13 @@ import {
 } from '@/gateway/schema';
 import type { GatewayJobChargeLine } from '@/gateway/server/db/gateway-jobs';
 import type { GatewayModelEntry } from '@/gateway/server/models';
+import type { GrantStanding } from '@/gateway/apps';
 import { z } from 'zod';
 
 const GATEWAY_PATH = `${API_V1_BASE}/gateway`;
 export const GATEWAY_MODELS_PATH = `${GATEWAY_PATH}/models`;
 export const GATEWAY_JOBS_PATH = `${GATEWAY_PATH}/jobs`;
+export const GATEWAY_GRANT_PATH = `${GATEWAY_PATH}/grant`;
 
 const gatewayModelSchema = z
   .object({
@@ -87,6 +89,71 @@ export const gatewayJobResourceSchema = z
   .meta({ id: 'GatewayJob' });
 
 export type GatewayJobResource = z.infer<typeof gatewayJobResourceSchema>;
+
+const microsOrNull = (description: string) =>
+  z.number().int().nullable().describe(description);
+
+export const gatewayGrantResourceSchema = z
+  .object({
+    payer: z
+      .enum(['user', 'app'])
+      .describe(
+        "`user`: an OAuth token; the user's organization pays, up to the monthly cap they set. `app`: an `osk_` key; its organization pays, with no cap."
+      ),
+    organizationId: z.string().describe('The organization that pays.'),
+    clientId: z
+      .string()
+      .nullable()
+      .describe('The OAuth client the cap applies to; null when the app pays.'),
+    monthlyCapMicros: microsOrNull('The cap per UTC calendar month.'),
+    spentMicros: microsOrNull(
+      "What this client's jobs settled for this month, for this organization."
+    ),
+    heldMicros: microsOrNull(
+      "What this client's running jobs hold for this organization."
+    ),
+    remainingMicros: microsOrNull(
+      'Cap minus spent minus held, never below zero. A job whose hold is above it is refused with SPEND_CAP_EXCEEDED.'
+    ),
+    periodStart: z.string().meta({ format: 'date-time' }),
+    periodEnd: z
+      .string()
+      .meta({ format: 'date-time' })
+      .describe('When the month resets (UTC).'),
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'GatewayGrant' });
+
+export type GatewayGrantResource = z.infer<typeof gatewayGrantResourceSchema>;
+
+/** The caller's grant as the API returns it; `standing` null means the app pays. */
+export function gatewayGrantDocument(input: {
+  organizationId: string;
+  clientId: string | null;
+  standing: GrantStanding | null;
+  periodStart: Date;
+  periodEnd: Date;
+}): GatewayGrantResource {
+  const { standing } = input;
+  return withLinks(
+    {
+      payer: standing ? 'user' : 'app',
+      organizationId: input.organizationId,
+      clientId: standing ? input.clientId : null,
+      monthlyCapMicros: standing?.monthlyCapMicros ?? null,
+      spentMicros: standing?.spentMicros ?? null,
+      heldMicros: standing?.heldMicros ?? null,
+      remainingMicros: standing?.remainingMicros ?? null,
+      periodStart: input.periodStart.toISOString(),
+      periodEnd: input.periodEnd.toISOString(),
+    },
+    {
+      self: getLink(GATEWAY_GRANT_PATH),
+      models: getLink(GATEWAY_MODELS_PATH),
+      'submit-job': submitGatewayJobLink(),
+    }
+  );
+}
 
 /** A representative submit body, valid against the request schema. */
 export const EXAMPLE_GATEWAY_JOB_BODY = {

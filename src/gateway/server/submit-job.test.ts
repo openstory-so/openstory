@@ -21,6 +21,7 @@ import {
   chargeLines,
   creditReservations,
   credits,
+  gatewayGrants,
   gatewayJobs,
   organization,
   organizationApiKeys,
@@ -141,6 +142,13 @@ beforeAll(async () => {
     keyTag: 'x',
     keyHint: 'x',
     addedBy: userId,
+  });
+  // The user-pays submits below spend under this grant.
+  await db.insert(gatewayGrants).values({
+    oauthClientId: 'client-1',
+    userId,
+    organizationId,
+    monthlyCapMicros: 1_000_000_000,
   });
 });
 

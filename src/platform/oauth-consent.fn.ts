@@ -10,6 +10,7 @@ import {
   listAuthorizedApps,
   loadOAuthConsentContext,
   performAuthorizedAppRevoke,
+  setAuthorizedAppCap,
   type AuthorizedApp,
   type OAuthConsentContext,
 } from '@/platform/server/auth/oauth-consent';
@@ -48,6 +49,7 @@ export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
       scope: data.scope,
       redirectUri: data.redirectUri,
       headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
     })
   );
 
@@ -56,6 +58,8 @@ const decideSchema = z.object({
   organizationId: ulidSchema,
   /** The consent page's full query string (signed by the provider). */
   oauthQuery: z.string().min(1).max(8192),
+  /** The monthly spend cap, in microdollars; required to approve `models:invoke`. */
+  monthlyCapMicros: z.number().int().nullable().optional(),
 });
 
 /**
@@ -71,15 +75,21 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
       organizationId: data.organizationId,
       accept: data.accept,
       oauthQuery: data.oauthQuery,
+      monthlyCapMicros: data.monthlyCapMicros,
       headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
     })
   );
 
 /** Apps the user has granted access to, newest first. */
 export const listAuthorizedAppsFn = createServerFn({ method: 'GET' })
   .middleware([authWithOrganizationMiddleware])
-  .handler(async (): Promise<AuthorizedApp[]> =>
-    listAuthorizedApps(getRequestHeaders())
+  .handler(async ({ context }): Promise<AuthorizedApp[]> =>
+    listAuthorizedApps({
+      userId: context.user.id,
+      headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
+    })
   );
 
 const revokeSchema = z.object({
@@ -97,6 +107,26 @@ export const revokeAuthorizedAppFn = createServerFn({ method: 'POST' })
       consentId: data.consentId,
       clientId: data.clientId,
       headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
+    });
+    return { success: true };
+  });
+
+const setCapSchema = z.object({
+  consentId: z.string().min(1),
+  monthlyCapMicros: z.number().int(),
+});
+
+/** Change an authorized app's monthly spend cap. */
+export const setAuthorizedAppCapFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
+  .validator(zodValidator(setCapSchema))
+  .handler(async ({ data, context }): Promise<{ success: true }> => {
+    await setAuthorizedAppCap({
+      consentId: data.consentId,
+      monthlyCapMicros: data.monthlyCapMicros,
+      headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
     });
     return { success: true };
   });
