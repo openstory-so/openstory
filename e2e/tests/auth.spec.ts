@@ -22,7 +22,7 @@ baseTest.describe('Route Protection', () => {
       ).toBeVisible();
       await expect(
         page.getByText(
-          'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
+          'Films, microdramas and brand episodes with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
       // The composer's Generate button is the sign-in control; the header has
