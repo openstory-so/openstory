@@ -22,7 +22,8 @@ const GENERATE_PATHS = [/^\/sequences\/?$/, /^\/scripts\/enhance\/?$/];
 export function requiredOAuthScope(request: Request): OAuthApiScope | null {
   const pathname = new URL(request.url).pathname;
   if (!pathname.startsWith(API_V1_BASE)) return null;
-  const relative = pathname.slice(API_V1_BASE.length) || '/';
+  // Read as the router matches: case-insensitive, decoded, empty segments dropped.
+  const relative = routerPath(pathname.slice(API_V1_BASE.length)) || '/';
   const method = request.method.toUpperCase();
 
   if (
@@ -40,4 +41,14 @@ export function requiredOAuthScope(request: Request): OAuthApiScope | null {
     return 'generate';
   }
   return 'sequences:write';
+}
+
+function routerPath(path: string): string {
+  let decoded = path;
+  try {
+    decoded = decodeURI(path);
+  } catch {
+    // Malformed escapes: match on the raw path.
+  }
+  return decoded.toLowerCase().replace(/\/{2,}/g, '/');
 }

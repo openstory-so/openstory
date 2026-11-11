@@ -25,6 +25,7 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { studioBillableSeconds } from '@/studio/text-to-video';
 import type { GatewayJobInput, GatewayJobRequest } from '@/gateway/schema';
 import { estimateGatewayJobCost, gatewayVias } from '@/gateway/server/models';
+import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 
 const logger = getLogger(['openstory', 'gateway', 'submit']);
@@ -106,7 +107,11 @@ export async function submitGatewayJob(
     organizationId: scopedDb.organizationId,
   });
   const media = gatedMedia(input);
-  await requireCheckedUploadRights(scopedDb, media, ctx.request);
+  await requireCheckedUploadRights(
+    withPlatformLlmKey(scopedDb),
+    media,
+    ctx.request
+  );
   const noPersonImages: string[] = [];
   if (input.kind === 'video') {
     for (const url of media) {
@@ -149,6 +154,7 @@ export async function submitGatewayJob(
     jobId: job.id,
     input,
     noPersonImages,
+    holdMicros: estimate,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
