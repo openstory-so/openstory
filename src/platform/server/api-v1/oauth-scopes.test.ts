@@ -69,6 +69,20 @@ describe('requiredOAuthScope', () => {
     );
   });
 
+  it('reads the path as the case-insensitive router matches it', () => {
+    for (const [method, path] of [
+      ['POST', '/api/v1/GATEWAY/jobs'],
+      ['GET', '/api/v1/Gateway/jobs/01JOB'],
+      ['POST', '/api/v1/%67ateway/jobs'],
+      ['POST', '/api/v1//gateway/jobs'],
+    ] as const) {
+      expect(requiredOAuthScope(req(method, path))).toBe('models:invoke');
+    }
+    expect(requiredOAuthScope(req('POST', '/api/v1/Sequences'))).toBe(
+      'generate'
+    );
+  });
+
   it('ignores non-v1 paths', () => {
     expect(requiredOAuthScope(req('GET', '/api/auth/session'))).toBeNull();
   });

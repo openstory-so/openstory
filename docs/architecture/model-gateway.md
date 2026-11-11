@@ -195,13 +195,16 @@ Ark's InternalServiceError: one submit, and a failure is the answer.
   (`src/models/server/db/api-keys.ts`), which reads env and never the
   organization's key row. The run never touches `scopedDb.credentials`; a
   source test pins that, and `settleGatewayJob` refuses a result that
-  reports `usedOwnKey`.
+  reports `usedOwnKey`. The submit's likeness check (`classifyUpload`) runs
+  on the platform LLM key too (`withPlatformLlmKey`).
 - The hold is `reserveRunCredits(…, { providers: [] })`: no BYOK skip, so an
   organization with its own fal key is still held and charged.
 - The settle is `deductWorkflowCredits` with the job's `reservationId`
-  (capture), idempotency key `${instanceId}:gateway-settle`. `costMicros` on
-  the row is what the provider billed; the response shows it as
-  `charge.totalMicros` once the job succeeded.
+  (capture), idempotency key `${instanceId}:gateway-settle`. A result the
+  provider reports no cost for is charged the hold (`holdMicros`, the
+  estimate on the payload) and reported as a missing cost, never settled
+  free. `costMicros` on the row is what was charged; the response shows it
+  as `charge.totalMicros` once the job succeeded.
 - Insufficient credits at submit is `402 INSUFFICIENT_CREDITS` in the
   `/api/v1` error envelope, and leaves no row, so the same key can be sent
   again after a top-up.

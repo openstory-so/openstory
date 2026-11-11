@@ -162,6 +162,7 @@ function makeEvent(input: GatewayJobInput): Event {
       ownsReservation: true,
       input,
       noPersonImages: [],
+      holdMicros: micros(50_000),
     },
     instanceId: 'run-1',
     workflowName: 'gateway',
@@ -234,6 +235,27 @@ describe('GatewayGenerationWorkflow image', () => {
       jobId: 'job-1',
       outputs: [{ url: '/r2/a.png', path: 'a.png', contentType: 'image/png' }],
     });
+  });
+
+  it('charges the hold when the provider reports no cost', async () => {
+    mockGenerateImage.mockResolvedValueOnce({
+      imageUrls: ['https://fal.media/a.png'],
+      via: 'fal',
+      metadata: { usedOwnKey: false, endpointId: 'e' },
+    });
+    const { scopedDb, gatewayJobs } = makeScopedDb();
+    await makeWorkflow().runBody(makeEvent(IMAGE), makeStep(), scopedDb);
+    expect(mockDeduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        costMicros: micros(50_000),
+        reservationId: 'res-1',
+        idempotencyKey: 'run-1:gateway-settle',
+      })
+    );
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: micros(50_000) })
+    );
   });
 
   it('refuses to settle a result that used an organization key', async () => {
@@ -334,6 +356,7 @@ describe('failure', () => {
         model: 'gpt_image_2',
         reservationId: 'res-1',
         costMicros: micros(1),
+        holdMicros: micros(1),
         usedOwnKey: true,
         idempotencyKey: 'k',
       })

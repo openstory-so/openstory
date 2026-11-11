@@ -36,7 +36,15 @@ let db: Database;
 let closeDb: () => Promise<void>;
 
 const triggerWorkflow = vi.fn(async () => 'run-1');
-const requireCheckedUploadRights = vi.fn(async () => new Map());
+const requireCheckedUploadRights = vi.fn(
+  async (
+    _scopedDb: {
+      apiKeys: { resolveLlmKey: (model: string) => Promise<unknown> };
+    },
+    _urls: string[],
+    _request: unknown
+  ) => new Map()
+);
 const likenessFromLedger = vi.fn(async () => 'none' as const);
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
@@ -191,6 +199,25 @@ describe('submitGatewayJob', () => {
       expect.objectContaining({ noPersonImages: ['/r2/talent/x/start.png'] }),
       expect.anything()
     );
+  });
+
+  it('runs the likeness check on the platform LLM key, never the organization key', async () => {
+    vi.stubEnv('OPENROUTER_KEY', 'platform-openrouter');
+    try {
+      const scopedDb = createScopedDb(organizationId, userId);
+      scopedDb.apiKeys.resolveLlmKey = async () => {
+        throw new Error('organization LLM key resolved');
+      };
+      await submitGatewayJob(IMAGE, ctx(scopedDb));
+      const checked = requireCheckedUploadRights.mock.calls[0]?.[0];
+      expect(await checked?.apiKeys.resolveLlmKey('openai/gpt-5')).toEqual({
+        key: 'platform-openrouter',
+        via: 'openrouter',
+        source: 'platform',
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('replays an Idempotency-Key as the job it first made', async () => {
