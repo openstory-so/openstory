@@ -21,6 +21,10 @@ import { AssistantPanel } from '@/assistant/ui/assistant-panel';
 import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
 import { usePageContext } from '@/assistant/ui/use-page-context';
 import { useAssistantState } from '@/assistant/ui/assistant-store';
+import { useUser } from '@/platform/ui/use-user';
+import { rememberLastPage } from '@/platform/ui/auth/last-page';
+import { Button } from '@/ui/shadcn/button';
+import { Link, useRouterState } from '@tanstack/react-router';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 
@@ -102,6 +106,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   ...props
 }) => {
   const pageContext = usePageContext();
+  const { data: user } = useUser();
+  const { pathname, searchStr } = useRouterState({
+    select: (s) => s.location,
+  });
+  // Signed-out front page: no sidebar, just Sign in (#2372).
+  const bare = !user && pathname === '/';
   // Starters follow everything the composer shows: the route, what a page
   // registered (the Studio viewer), and what a button handed over.
   const { extraContext, draft } = useAssistantState();
@@ -124,30 +134,43 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <UploadRightsGateProvider>
         <TooltipProvider>
           <SidebarProvider className="h-svh">
-            <AppSidebar />
+            {!bare && <AppSidebar />}
             <AddCreditsDialog />
             <GlobalBillingGateDialog />
             <SidebarInset className="min-w-0 min-h-0">
-              <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-                <SidebarTrigger className="-ml-1" />
-                <Separator
-                  orientation="vertical"
-                  className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-                />
-                <div className="min-w-0 flex-1">
-                  <Breadcrumbs />
-                </div>
-                {/* Sequence generation progress portals in here (#1427,
+              {bare ? (
+                <header className="flex h-12 shrink-0 items-center justify-end px-4">
+                  <Button asChild variant="outline">
+                    <Link
+                      to="/login"
+                      onClick={() => rememberLastPage(`/${searchStr}`)}
+                    >
+                      Sign in
+                    </Link>
+                  </Button>
+                </header>
+              ) : (
+                <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+                  <SidebarTrigger className="-ml-1" />
+                  <Separator
+                    orientation="vertical"
+                    className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Breadcrumbs />
+                  </div>
+                  {/* Sequence generation progress portals in here (#1427,
                     #2102). `@container` so the chip sizes its label against
                     the room it has, which needs the slot to be `flex-1`;
                     `empty:hidden` so an idle slot takes nothing from the
                     breadcrumb. */}
-                <div
-                  id={SEQUENCE_HEADER_SLOT_ID}
-                  className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
-                />
-                <AssistantToggle />
-              </header>
+                  <div
+                    id={SEQUENCE_HEADER_SLOT_ID}
+                    className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
+                  />
+                  <AssistantToggle />
+                </header>
+              )}
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />
               <AutoTopUpFailedBanner />

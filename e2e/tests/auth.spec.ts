@@ -25,8 +25,8 @@ baseTest.describe('Route Protection', () => {
           'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
-      // The composer generate button is the sign-in control. The mid-page
-      // Sign in button is gone; the sidebar still has its own.
+      // The composer's arrow button is the sign-in control; the header has
+      // the only other Sign in (#2372).
       await expect(
         page.getByRole('button', { name: 'Sign in to Generate' })
       ).toBeVisible();

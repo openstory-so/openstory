@@ -176,6 +176,7 @@ import {
 import type { Sequence } from '@/platform/server/db/schema';
 import { usePostHog } from '@posthog/react';
 import {
+  ArrowUp,
   ImagePlus,
   Library,
   Loader2,
@@ -1880,45 +1881,50 @@ export const ScriptView: FC<{
                     {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
-                <Button
-                  type="submit"
-                  disabled={isDisabled}
-                  className={cn(
-                    'group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden',
-                    // Logged-out front page: this button is the sign-in control.
-                    !isAuthenticated &&
-                      'motion-safe:animate-pulse motion-safe:hover:animate-none'
-                  )}
-                >
-                  <span className="relative z-10">
-                    <InButtonCost
-                      estimate={isAuthenticated ? storyboardCostEstimate : null}
-                      hideLoggedOutPrice
-                      amountWidth={
-                        includesStage(stopAt, 'motion') ? 'double' : 'single'
-                      }
-                    >
-                      {isSubmitting || isElementBusy || isCastBusy ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <GenerateSequenceIcon className="size-4" />
-                      )}
-                      {isSubmitting
-                        ? 'Generating…'
-                        : isElementBusy
-                          ? 'Analyzing elements…'
-                          : isCastBusy
-                            ? 'Adding character images…'
-                            : !isAuthenticated
-                              ? 'Sign in to Generate'
+                {isAuthenticated ? (
+                  <Button
+                    type="submit"
+                    disabled={isDisabled}
+                    className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
+                  >
+                    <span className="relative z-10">
+                      <InButtonCost
+                        estimate={storyboardCostEstimate}
+                        amountWidth={
+                          includesStage(stopAt, 'motion') ? 'double' : 'single'
+                        }
+                      >
+                        {isSubmitting || isElementBusy || isCastBusy ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <GenerateSequenceIcon className="size-4" />
+                        )}
+                        {isSubmitting
+                          ? 'Generating…'
+                          : isElementBusy
+                            ? 'Analyzing elements…'
+                            : isCastBusy
+                              ? 'Adding character images…'
                               : isEditing
                                 ? 'Generate Copy'
                                 : 'Generate'}
-                    </InButtonCost>
-                  </span>
-                  {/* Shine effect */}
-                  <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
-                </Button>
+                      </InButtonCost>
+                    </span>
+                    {/* Shine effect */}
+                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                  </Button>
+                ) : (
+                  // Signed-out front page: a send arrow that opens sign-in (#2372).
+                  <Button
+                    type="submit"
+                    size="icon-lg"
+                    className="rounded-full"
+                    disabled={isDisabled}
+                    aria-label="Sign in to Generate"
+                  >
+                    <ArrowUp aria-hidden="true" />
+                  </Button>
+                )}
               </div>
               <button
                 type="button"
