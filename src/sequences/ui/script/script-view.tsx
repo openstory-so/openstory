@@ -176,7 +176,6 @@ import {
 import type { Sequence } from '@/platform/server/db/schema';
 import { usePostHog } from '@posthog/react';
 import {
-  ArrowUp,
   ImagePlus,
   Library,
   Loader2,
@@ -1914,16 +1913,14 @@ export const ScriptView: FC<{
                     <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
                   </Button>
                 ) : (
-                  // Signed-out front page: a send arrow that opens sign-in (#2372).
+                  // Signed-out front page: Generate opens sign-in (#2372).
                   <Button
                     type="submit"
-                    size="icon-lg"
                     variant="secondary"
-                    className="rounded-full"
                     disabled={isDisabled}
                     aria-label="Sign in to Generate"
                   >
-                    <ArrowUp aria-hidden="true" />
+                    Generate
                   </Button>
                 )}
               </div>

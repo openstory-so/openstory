@@ -25,7 +25,7 @@ baseTest.describe('Route Protection', () => {
           'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
-      // The composer's arrow button is the sign-in control; the header has
+      // The composer's Generate button is the sign-in control; the header has
       // the only other Sign in (#2372).
       await expect(
         page.getByRole('button', { name: 'Sign in to Generate' })

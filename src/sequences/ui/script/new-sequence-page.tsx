@@ -14,6 +14,12 @@ import { briefForStyle } from '@/look/brief-for-style';
 import { styleSlug } from '@/look/style-slug';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowRight } from 'lucide-react';
+import { SampleVideoCard } from '@/look/ui/sample-video-showcase';
+import { buildSampleEntries } from '@/look/ui/sample-entries';
+import {
+  DEFAULT_COMPOSER_STYLE_CATEGORY,
+  stylesForComposerCategory,
+} from '@/look/ui/composer-style-row';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const BILLING_PROMPT_KEY = 'openstory:billing-prompt-dismissed';
@@ -45,6 +51,30 @@ function GalleryLink() {
       Browse the gallery to see what you can create
       <ArrowRight className="size-4" />
     </Link>
+  );
+}
+
+// Style sample clips until the front-page films exist (#2372).
+function SampleClipRow() {
+  const { data: styles } = useStyles();
+  const entries = buildSampleEntries(
+    stylesForComposerCategory(styles ?? [], DEFAULT_COMPOSER_STYLE_CATEGORY)
+  )
+    .filter((entry) => entry.aspectRatio === '16:9')
+    .slice(0, 3);
+  return (
+    <section
+      aria-label="Sample clips"
+      className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-6 pb-12 sm:grid-cols-3"
+    >
+      {styles
+        ? entries.map((entry) => (
+            <SampleVideoCard key={entry.key} entry={entry} />
+          ))
+        : [0, 1, 2].map((i) => (
+            <Skeleton key={i} className="aspect-video w-full rounded-lg" />
+          ))}
+    </section>
   );
 }
 
@@ -293,46 +323,53 @@ export function NewSequencePage({
   // bound, so it sizes to content but never extends past the viewport bottom —
   // a large paste scrolls inside the editor (#1000).
   return (
-    <div className="h-full">
+    <div className="h-full overflow-y-auto">
       {billingGate}
-      <PageContainer
-        maxWidth="narrow"
-        padding="spacious"
-        fullHeight
-        // Phones: every row saved here goes to the script editor inside the
-        // height-bounded composer below. short-h (≤800px tall): same idea on
-        // 1280×720 laptops — the editor was collapsing to 0.
-        className="space-y-4 sm:space-y-8 short-h:space-y-3 short-h:py-4 sm:short-h:py-4"
-      >
-        <div className="flex shrink-0 flex-col items-center gap-2 sm:gap-4 short-h:gap-1">
-          <OpenStoryLogo className="h-8 sm:h-12 short-h:h-8" />
-          <div className="flex flex-col items-center gap-1">
-            <h1 className="text-center text-xl font-semibold tracking-tight sm:text-2xl">
-              {SITE_CONFIG.tagline}
-            </h1>
-            <p className="text-center text-sm text-muted-foreground text-pretty max-w-md">
-              {SITE_CONFIG.taglineSub}
-            </p>
+      {/* Sized to the card, capped short of the fold so the clips show. */}
+      <div className="flex max-h-[88%] flex-col short-h:max-h-full">
+        <PageContainer
+          maxWidth="narrow"
+          padding="spacious"
+          fullHeight
+          // Phones: every row saved here goes to the script editor inside the
+          // height-bounded composer below. short-h (≤800px tall): same idea on
+          // 1280×720 laptops — the editor was collapsing to 0.
+          className="min-h-0 space-y-4 sm:space-y-8 short-h:space-y-3 short-h:py-4 sm:short-h:py-4"
+        >
+          <div className="flex shrink-0 flex-col items-center gap-2 sm:gap-4 short-h:gap-1">
+            <OpenStoryLogo className="h-8 sm:h-12 short-h:h-8" />
+            <div className="flex flex-col items-center gap-1">
+              <h1 className="text-center text-xl font-semibold tracking-tight sm:text-2xl">
+                {SITE_CONFIG.tagline}
+              </h1>
+              <p className="text-center text-sm text-muted-foreground text-pretty max-w-md">
+                {SITE_CONFIG.taglineSub}
+              </p>
+            </div>
           </div>
-        </div>
-        {/* `#compose` target: the gallery "Try" links navigate here so the
+          {/* `#compose` target: the gallery "Try" links navigate here so the
             router scrolls the composer into view (scrollRestoration handles
             it). */}
-        <div id="compose" className="flex min-h-0 flex-1 flex-col scroll-mt-4">
-          <ScriptView
-            key={composerKey}
-            loading={false}
-            onSuccess={handleSuccess}
-            initialScript={seedScript}
-            initialStyleId={seedStyleId}
-            initialScriptIsSample={!!seedScript}
-            onStyleChange={handleStyleChange}
-          />
-          {/* Right under the card (not pinned to the viewport bottom): the
+          <div
+            id="compose"
+            className="flex min-h-0 flex-1 flex-col scroll-mt-4"
+          >
+            <ScriptView
+              key={composerKey}
+              loading={false}
+              onSuccess={handleSuccess}
+              initialScript={seedScript}
+              initialStyleId={seedStyleId}
+              initialScriptIsSample={!!seedScript}
+              onStyleChange={handleStyleChange}
+            />
+            {/* Right under the card (not pinned to the viewport bottom): the
               card is a sibling flex item that shrinks to fit above this. */}
-          <GalleryLink />
-        </div>
-      </PageContainer>
+            <GalleryLink />
+          </div>
+        </PageContainer>
+      </div>
+      <SampleClipRow />
     </div>
   );
 }
