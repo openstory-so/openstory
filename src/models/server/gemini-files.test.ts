@@ -104,4 +104,30 @@ describe('uploadClipToGemini', () => {
     expect(failed.status).toBe('rejected');
     expect(ok.status).toBe('fulfilled');
   });
+
+  it('takes over a slot its holder never released, after the deadline', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    let starts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          starts += 1;
+          // The first holder's request was torn down: it never settles.
+          if (starts === 1) return new Promise<Response>(() => {});
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    void uploadClipToGemini('stuck.mp4', 'video/mp4', 'k');
+    const next = uploadClipToGemini('next.mp4', 'video/mp4', 'k');
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(starts).toBe(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(next).resolves.toMatchObject({ name: FILE.name });
+    vi.useRealTimers();
+  });
 });

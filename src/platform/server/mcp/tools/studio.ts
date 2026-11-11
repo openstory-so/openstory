@@ -245,7 +245,7 @@ const draftStudioPromptTool = openstoryTool({
 const watchClipTool = openstoryTool({
   name: 'watch_clip',
   description:
-    'Ask one question about a stored video and get an answer from a model that watches the whole clip (uses credits unless the organization has its own Gemini key). Takes any clip URL a tool returned: a shot video, a Studio asset or an upload. Describe what happens, check continuity, judge a take, find a moment. To watch a whole sequence, watch one export: start_export, poll get_export_status until ready, then pass its media URL. Never watch a sequence shot by shot.',
+    'Ask one question about a stored video and get an answer from a model that watches the whole clip (uses credits unless the organization has its own Gemini key). Takes any clip URL a tool returned: a shot video, a Studio asset or an upload. Describe what happens, check continuity, judge a take, find a moment. To watch a whole sequence, watch one export: start_export, poll get_export_status until ready, then pass its media URL. Do not watch a sequence shot by shot; if start_export cannot render, say so and watch only the few shots the question needs.',
   scope: 'generate',
   annotations: paid,
   inputSchema: z.strictObject({

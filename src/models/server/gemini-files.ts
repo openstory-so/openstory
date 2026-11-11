@@ -48,20 +48,26 @@ async function geminiFetch(
 }
 
 // ponytail: one clip streams per isolate (#2370); a flag each waiter polls itself, since workerd must not share promises across requests.
-let streaming = false;
+let streamingSince: number | null = null;
 const QUEUE_POLL_MS = 250;
 /** Deadline per upload, so a stalled one cannot hold the slot. */
 const UPLOAD_TIMEOUT_MS = 300_000;
 
 async function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
-  while (streaming) {
+  // A slot past the deadline is free: a torn-down request may never reach its finally.
+  while (
+    streamingSince !== null &&
+    Date.now() - streamingSince < UPLOAD_TIMEOUT_MS
+  ) {
     await new Promise((resolve) => setTimeout(resolve, QUEUE_POLL_MS));
   }
-  streaming = true;
+  const mine = Date.now();
+  streamingSince = mine;
   try {
     return await task();
   } finally {
-    streaming = false;
+    // A holder that outlived its slot must not free the next one's.
+    if (streamingSince === mine) streamingSince = null;
   }
 }
 

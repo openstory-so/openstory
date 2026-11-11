@@ -158,7 +158,7 @@ picked and the cost is one call, not every turn.
 A whole sequence is watched as one export (`start_export`, then the ready
 export's URL), never shot by shot (#2370). TanStack AI runs a turn's tool
 calls in parallel, and 27 `watch_clip` calls at once ran the isolate out of
-memory, so `uploadClipToGemini` also streams one clip at a time per isolate.
+memory, so `uploadClipToGemini` also streams one clip at a time per isolate. A slot\nheld past the five-minute upload deadline counts as free, because a\ntorn-down request may never release it. Where no export can render (plain\n`bun dev`, Deploy-button installs), the model says so and watches only the\nshots the question needs.
 
 ## Shell
 
