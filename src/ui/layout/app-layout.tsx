@@ -139,8 +139,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <GlobalBillingGateDialog />
             <SidebarInset className="min-w-0 min-h-0">
               {bare ? (
-                <header className="flex h-12 shrink-0 items-center justify-end px-4">
-                  <Button asChild>
+                <header className="flex h-16 shrink-0 items-center justify-end px-6">
+                  <Button asChild size="lg" className="px-5">
                     <Link
                       to="/login"
                       onClick={() => rememberLastPage(`/${searchStr}`)}
