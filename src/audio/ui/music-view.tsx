@@ -69,6 +69,10 @@ type MusicViewProps = {
   isMusicTrackStale?: boolean;
   onRegenerateMusicPrompt?: () => void;
   isRegeneratingMusicPrompt?: boolean;
+  /** Who is making the missing prompt: the run (`queued`), a click (`writing`), or nobody. */
+  musicPromptRun: 'none' | 'queued' | 'writing';
+  /** The prompt is written from the shots; none yet, nothing to write from. */
+  hasShots: boolean;
   /**
    * Toggle whether this sequence's music plays in the theatre and is bundled
    * into MP4 exports (#834). Bound to `sequence.includeMusic`; persisted by the
@@ -97,7 +101,7 @@ const LoadingButton: React.FC<LoadingButtonProps> = ({
   children,
   ...props
 }) => (
-  <Button disabled={isLoading || props.disabled} {...props}>
+  <Button {...props} disabled={isLoading || props.disabled}>
     {isLoading ? (
       <>
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -194,6 +198,8 @@ export const MusicView: React.FC<MusicViewProps> = ({
   musicTrackCauses,
   onRegenerateMusicPrompt,
   isRegeneratingMusicPrompt,
+  musicPromptRun,
+  hasShots,
   onIncludeMusicChange,
   onSaveMusicPrompt,
   isSavingMusicPrompt = false,
@@ -472,15 +478,35 @@ export const MusicView: React.FC<MusicViewProps> = ({
     );
   }
 
-  const promptPending = !musicPrompt;
+  const promptPending = !musicPrompt && musicPromptRun !== 'none';
+  const message = musicPrompt
+    ? 'Music prompt ready'
+    : musicPromptRun === 'writing'
+      ? 'Writing music prompt…'
+      : musicPromptRun === 'queued'
+        ? 'Music prompt comes with the images'
+        : 'No music prompt yet';
 
   return (
     <StatusPanel
       icon={<Music className="h-8 w-8 text-muted-foreground" />}
-      message={promptPending ? 'Preparing music…' : 'Music prompt ready'}
+      message={message}
     >
       {stalenessBanner}
       {trackStalenessBanner}
+      {!musicPrompt && musicPromptRun === 'none' && onRegenerateMusicPrompt && (
+        <div className="flex justify-center">
+          <LoadingButton
+            variant="outline"
+            onClick={onRegenerateMusicPrompt}
+            isLoading={isRegeneratingMusicPrompt ?? false}
+            disabled={!hasShots}
+            loadingText="Writing…"
+          >
+            Write Music Prompt
+          </LoadingButton>
+        </div>
+      )}
       <FormField
         label="Prompt"
         htmlFor="music-prompt"
@@ -500,7 +526,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
           disabled={promptPending}
           placeholder={
             promptPending
-              ? 'Generating music prompt…'
+              ? 'Writing music prompt…'
               : 'Descriptive music prompt…'
           }
         />
@@ -510,7 +536,9 @@ export const MusicView: React.FC<MusicViewProps> = ({
         {musicTags ? (
           <p className="text-sm text-muted-foreground">{musicTags}</p>
         ) : (
-          <p className="text-sm text-muted-foreground/60">Generating…</p>
+          <p className="text-sm text-muted-foreground/60">
+            {promptPending ? 'Writing…' : 'None yet'}
+          </p>
         )}
       </FormField>
 
