@@ -57,4 +57,77 @@ describe('uploadClipToGemini', () => {
       method: 'DELETE',
     });
   });
+
+  it('streams one clip at a time, so parallel calls cannot fill the isolate (#2370)', async () => {
+    let open = 0;
+    let most = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          open += 1;
+          most = Math.max(most, open);
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        open -= 1;
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    await Promise.all(
+      [1, 2, 3].map(() => uploadClipToGemini('c.mp4', 'video/mp4', 'k'))
+    );
+    expect(most).toBe(1);
+  });
+
+  it('frees the slot when an upload fails', async () => {
+    let starts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          starts += 1;
+          if (starts === 1) return new Response('down', { status: 503 });
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    const [failed, ok] = await Promise.allSettled([
+      uploadClipToGemini('a.mp4', 'video/mp4', 'k'),
+      uploadClipToGemini('b.mp4', 'video/mp4', 'k'),
+    ]);
+    expect(failed.status).toBe('rejected');
+    expect(ok.status).toBe('fulfilled');
+  });
+
+  it('takes over a slot its holder never released, after the deadline', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    let starts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/upload/v1beta/files')) {
+          starts += 1;
+          // The first holder's request was torn down: it never settles.
+          if (starts === 1) return new Promise<Response>(() => {});
+          return new Response('{}', {
+            headers: { 'x-goog-upload-url': 'https://upload.example/1' },
+          });
+        }
+        return Response.json({ file: { ...FILE, state: 'ACTIVE' } });
+      })
+    );
+    void uploadClipToGemini('stuck.mp4', 'video/mp4', 'k');
+    const next = uploadClipToGemini('next.mp4', 'video/mp4', 'k');
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(starts).toBe(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(next).resolves.toMatchObject({ name: FILE.name });
+    vi.useRealTimers();
+  });
 });

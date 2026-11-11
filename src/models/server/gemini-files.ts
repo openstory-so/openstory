@@ -47,14 +47,64 @@ async function geminiFetch(
   return response;
 }
 
+// ponytail: one clip streams per isolate (#2370); a flag each waiter polls itself, since workerd must not share promises across requests.
+let streamingSince: number | null = null;
+const QUEUE_POLL_MS = 250;
+/** Deadline per upload, so a stalled one cannot hold the slot. */
+const UPLOAD_TIMEOUT_MS = 300_000;
+
+async function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+  // A slot past the deadline is free: a torn-down request may never reach its finally.
+  while (
+    streamingSince !== null &&
+    Date.now() - streamingSince < UPLOAD_TIMEOUT_MS
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, QUEUE_POLL_MS));
+  }
+  const mine = Date.now();
+  streamingSince = mine;
+  try {
+    return await task();
+  } finally {
+    // A holder that outlived its slot must not free the next one's.
+    if (streamingSince === mine) streamingSince = null;
+  }
+}
+
 /** Upload the clip at storage `key` and wait until Gemini can read it. */
 export async function uploadClipToGemini(
   key: string,
   mimeType: string,
   apiKey: string
 ): Promise<GeminiFile> {
+  const uploaded = await oneAtATime(() =>
+    streamClipToGemini(key, mimeType, apiKey)
+  );
+  const { name } = z
+    .object({ file: z.object({ name: z.string() }) })
+    .parse(uploaded).file;
+  // From here the clip is on Google: every failure deletes it.
+  try {
+    return await waitUntilActive(
+      z.object({ file: fileSchema }).parse(uploaded).file,
+      apiKey
+    );
+  } catch (error) {
+    await deleteGeminiFile(name, apiKey).catch((deleteError: unknown) => {
+      logger.warn('Could not delete a Gemini file', { name, deleteError });
+    });
+    throw error;
+  }
+}
+
+async function streamClipToGemini(
+  key: string,
+  mimeType: string,
+  apiKey: string
+): Promise<unknown> {
   const size = await storageObjectSize(key);
   if (!size) throw new Error(`Stored clip is missing or empty: ${key}`);
+  const signal = AbortSignal.timeout(UPLOAD_TIMEOUT_MS);
 
   const start = await geminiFetch(`${apiBase()}/upload/v1beta/files`, apiKey, {
     method: 'POST',
@@ -66,6 +116,7 @@ export async function uploadClipToGemini(
       'x-goog-upload-header-content-type': mimeType,
     },
     body: JSON.stringify({ file: { display_name: key.split('/').pop() } }),
+    signal,
   });
   const uploadUrl = start.headers.get('x-goog-upload-url');
   if (!uploadUrl) throw new Error('Gemini Files: no upload URL');
@@ -90,25 +141,11 @@ export async function uploadClipToGemini(
       'x-goog-upload-command': 'upload, finalize',
     },
     body,
+    signal,
     // Node's fetch (tests, scripts) refuses a stream body without it.
     duplex: 'half',
   } as RequestInit & { headers: Record<string, string> });
-  const uploaded: unknown = await finished.json();
-  const { name } = z
-    .object({ file: z.object({ name: z.string() }) })
-    .parse(uploaded).file;
-  // From here the clip is on Google: every failure deletes it.
-  try {
-    return await waitUntilActive(
-      z.object({ file: fileSchema }).parse(uploaded).file,
-      apiKey
-    );
-  } catch (error) {
-    await deleteGeminiFile(name, apiKey).catch((deleteError: unknown) => {
-      logger.warn('Could not delete a Gemini file', { name, deleteError });
-    });
-    throw error;
-  }
+  return finished.json();
 }
 
 async function waitUntilActive(
