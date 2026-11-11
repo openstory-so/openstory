@@ -88,7 +88,9 @@ type GateOperation =
   | 'update-stale-shots:video'
   | 'variant-upscale'
   | 'studio-image'
-  | 'studio-video';
+  | 'studio-video'
+  | 'gateway-image'
+  | 'gateway-video';
 
 /** Any model a fal estimate can be gated for. */
 type GateModel = TextToImageModel | ImageToVideoModel | AudioModel;

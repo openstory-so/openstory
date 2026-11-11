@@ -3,7 +3,8 @@
  *
  * Only OAuth bearer tokens are scoped; an `osk_` key has the full API. Cheap
  * reads need `sequences:read`; edits and exports need `sequences:write`;
- * anything that spends credits needs `generate`.
+ * anything that spends credits needs `generate`; every `/gateway` request,
+ * reads included, needs `models:invoke`.
  */
 
 import type { OAuthApiScope } from '@/platform/server/auth/oauth-scopes';
@@ -30,6 +31,9 @@ export function requiredOAuthScope(request: Request): OAuthApiScope | null {
     relative.startsWith('/device/')
   ) {
     return null;
+  }
+  if (relative === '/gateway' || relative.startsWith('/gateway/')) {
+    return 'models:invoke';
   }
   if (!MUTATING_METHODS.has(method)) return 'sequences:read';
   if (GENERATE_PATHS.some((pattern) => pattern.test(relative))) {

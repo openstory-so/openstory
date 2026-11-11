@@ -161,6 +161,8 @@ const EXCEPTIONS: Record<string, string> = {
   generated_assets: 'no selection pointer',
   // An export is a file per request; nothing selects between them.
   sequence_exports: 'no selection pointer',
+  // A gateway job is its own result; nothing selects between them.
+  gateway_jobs: 'no selection pointer',
   // A compliance record of a generation, not a generation result.
   content_provenance: 'audit record, not a result',
   // Legacy per-model outputs; no workflow writes it since #990 (video moved to
