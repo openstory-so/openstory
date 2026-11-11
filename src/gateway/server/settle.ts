@@ -1,58 +1,108 @@
 /**
- * Settling a finished gateway job: one capture against the job's hold. PR 2
- * replaces the single capture with a debit plus charge lines written together.
+ * Settling a finished gateway job: the debit and its charge lines in one
+ * batch (`billing.settleReservation`), then the job marked succeeded in the
+ * same step, so a replay re-runs both and a charged job never reads failed.
  */
 
-import { reportMissingBillingCost } from '@/billing/billing-observability';
-import type { Microdollars } from '@/billing/money';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
+import {
+  reportMissingBillingCost,
+  reportSkippedDeduction,
+} from '@/billing/billing-observability';
+import { type Microdollars, ZERO_MICROS } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type { MediaVia } from '@/models/via';
+import { gatewayCharge } from '@/gateway/charge-lines';
+import type { GatewayJobOutput } from '@/gateway/schema';
 import { NonRetryableError } from 'cloudflare:workflows';
 
-/** Captures the job's cost and returns what was charged: the hold when the provider reported none. */
+const WORKFLOW_NAME = 'GatewayGenerationWorkflow';
+
+/** Charges the job's lines against its hold, marks it succeeded, and returns the debit. */
 export async function settleGatewayJob(params: {
   scopedDb: WorkflowScopedDb;
   jobId: string;
   model: string;
   reservationId: string | undefined;
+  /** What the provider billed; zero or less when it reported none. */
   costMicros: Microdollars;
-  /** The estimate held at submit; charged when the provider reports no cost. */
-  holdMicros: Microdollars;
+  /** The provider estimate snapshotted at submit; charged when the provider reports no cost. */
+  estimateMicros: Microdollars;
+  /** The fee snapshotted at submit, so the charge matches the hold. */
+  platformFeeBps: number;
+  oauthClientId: string | null;
   /** Must be false: a gateway job spends platform keys only. */
   usedOwnKey: boolean;
   /** Replay-stable, e.g. `${instanceId}:gateway-settle`. */
   idempotencyKey: string;
+  result: { outputs: GatewayJobOutput[]; via: MediaVia };
   metadata?: Record<string, unknown>;
 }): Promise<Microdollars> {
+  const { scopedDb, jobId } = params;
   if (params.usedOwnKey) {
     throw new NonRetryableError(
-      `Gateway job ${params.jobId} ran on an organization key`
+      `Gateway job ${jobId} ran on an organization key`
     );
   }
   const unpriced = params.costMicros <= 0;
-  const charge = unpriced ? params.holdMicros : params.costMicros;
   if (unpriced) {
     reportMissingBillingCost({
       source: 'gateway-settle',
       modelId: params.model,
-      workflowName: 'GatewayGenerationWorkflow',
-      organizationId: params.scopedDb.organizationId,
-      metadata: { gatewayJobId: params.jobId, holdMicros: params.holdMicros },
+      workflowName: WORKFLOW_NAME,
+      organizationId: scopedDb.organizationId,
+      metadata: { gatewayJobId: jobId, estimateMicros: params.estimateMicros },
     });
   }
-  await deductWorkflowCredits({
-    scopedDb: params.scopedDb,
-    costMicros: charge,
-    usedOwnKey: false,
-    description: `Gateway (${params.model})`,
-    idempotencyKey: params.idempotencyKey,
-    reservationId: params.reservationId,
-    metadata: {
-      ...params.metadata,
-      gatewayJobId: params.jobId,
-      ...(unpriced && { chargedHold: true }),
-    },
-    workflowName: 'GatewayGenerationWorkflow',
+  const charge = gatewayCharge({
+    providerCostMicros: unpriced ? params.estimateMicros : params.costMicros,
+    platformFeeBps: params.platformFeeBps,
   });
-  return charge;
+  const description = `Gateway (${params.model})`;
+  const metadata = {
+    ...params.metadata,
+    gatewayJobId: jobId,
+    ...(unpriced && { chargedHold: true }),
+  };
+  const reportSkipped = (costMicros: Microdollars) => {
+    reportSkippedDeduction({
+      organizationId: scopedDb.organizationId,
+      workflowName: WORKFLOW_NAME,
+      description,
+      costMicros,
+      idempotencyKey: params.idempotencyKey,
+      metadata,
+    });
+    void scopedDb.billing.checkAutoTopUp().catch(() => undefined);
+  };
+
+  let captured = ZERO_MICROS;
+  if (!params.reservationId) {
+    reportSkipped(charge.totalMicros);
+  } else {
+    const settled = await scopedDb.billing.settleReservation(
+      params.reservationId,
+      charge.lines,
+      {
+        idempotencyKey: params.idempotencyKey,
+        description,
+        metadata,
+        attribution: {
+          gatewayJobId: jobId,
+          oauthClientId: params.oauthClientId,
+        },
+      }
+    );
+    if (!settled.ok) {
+      reportSkipped(charge.totalMicros);
+    } else {
+      captured = settled.captured;
+      if (settled.skippedDeltaMicros) reportSkipped(settled.skippedDeltaMicros);
+    }
+  }
+
+  await scopedDb.gatewayJobs.markSucceeded(jobId, {
+    ...params.result,
+    costMicros: captured,
+  });
+  return captured;
 }

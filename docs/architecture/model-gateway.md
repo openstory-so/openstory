@@ -1,6 +1,7 @@
 # Model gateway
 
-Status: PR 1 (gateway core and app-pays) shipped; PRs 2–4 are the plan. This
+Status: PR 1 (gateway core and app-pays) and PR 2 (charge lines) shipped;
+PRs 3–4 are the plan. This
 file is the plan and the contract; each PR in the stack updates it to match
 what it shipped. § Shipped describes the code as it is.
 
@@ -62,7 +63,16 @@ debit and one or more **charge lines**:
 | `app_charge`    | app's organization | a declared SKU's price, app-initiated |
 
 - The lines of a charge always sum to the wallet debit. Both are written in
-  one D1 batch.
+  one D1 batch, and lines exist only for a debit that happened.
+- **Short capture.** When the balance cannot cover a charge above its hold,
+  the debit is short. The lines are then filled in this order and the rest is
+  cut: `provider_cost`, `platform_fee`, `app_charge`, `app_margin`. A payee
+  line is cut first and the provider cost last: the platform paid the
+  provider, and an app never earns on money the payer did not pay. A line cut
+  to zero is not written. The shortfall is reported
+  (`billing_skipped_deduction`), never recorded as a line.
+- Each line is rounded half up to a whole microdollar on its own, and the
+  total is the sum of the lines (`gatewayCharge`).
 - `app_margin` and `app_charge` exist only on user-pays calls from a
   registered, active app. An app charging its own organization earns nothing.
 - Margin is capped at `MAX_APP_MARGIN_BPS` (5000).
@@ -116,7 +126,7 @@ Each PR is based on the one before it.
 - `src/gateway/server/platform-credentials.ts`: `platformOnlyCredentials`,
   the only credentials a run spends.
 - `src/gateway/server/settle.ts`: `settleGatewayJob`, the one place a job is
-  charged. PR 2 replaces its body with the debit and its lines.
+  charged (PR 2: the debit and its lines, then the success).
 - `src/gateway/server/workflows/gateway-generation-workflow.ts`:
   `GatewayGenerationWorkflow` (binding `GATEWAY_WORKFLOW`, trigger `/gateway`).
 - `src/gateway/server/db/gateway-jobs.ts`: `scopedDb.gatewayJobs`; table
@@ -174,13 +184,15 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    payload is the normalized input plus the no-person verdicts
    (`likenessFromLedger`) for Ark; the run reads no job row.
 2. **Image run:** generate and store to R2 in one `step.do` (#1645), record
-   fal usage, `settle`, provenance (`gateway_job`), `persist-result`.
+   fal usage, then the tail (PR 2): `record-provenance` (`gateway_job`),
+   `record-outputs`, and `settle`, which charges and marks the job succeeded
+   in one step.
 3. **Video run:** resolve the via, register Ark stills when the via is
    BytePlus (lease owner `gateway:<instanceId>`), submit, **stamp `via` and
    `providerJobId` on the row**, poll the submitted job (the poll follows the
    via on the submission, never a fresh resolution), release the Ark leases,
    price from the provider's usage (`studioVideoCostFromUsage`), store,
-   `settle`, provenance, `persist-result`.
+   then the same tail.
 4. **Failure:** `onFailure` marks the row `failed` with
    `{ code, message }` (`CONTENT_REJECTED` for a content refusal, else
    `GENERATION_FAILED`; `NOT_STARTED` when the trigger itself failed) and
@@ -199,12 +211,12 @@ Ark's InternalServiceError: one submit, and a failure is the answer.
   on the platform LLM key too (`withPlatformLlmKey`).
 - The hold is `reserveRunCredits(…, { providers: [] })`: no BYOK skip, so an
   organization with its own fal key is still held and charged.
-- The settle is `deductWorkflowCredits` with the job's `reservationId`
-  (capture), idempotency key `${instanceId}:gateway-settle`. A result the
-  provider reports no cost for is charged the hold (`holdMicros`, the
-  estimate on the payload) and reported as a missing cost, never settled
-  free. `costMicros` on the row is what was charged; the response shows it
-  as `charge.totalMicros` once the job succeeded.
+- The settle is `billing.settleReservation` with the job's `reservationId`
+  (PR 2; it was `deductWorkflowCredits` in PR 1), idempotency key
+  `${instanceId}:gateway-settle`. A result the provider reports no cost for
+  is charged the lines of the estimate (`estimateMicros` on the payload) at
+  the snapshotted fee, which is exactly the hold, and reported as a missing
+  cost, never settled free. `costMicros` on the row is the debit.
 - Insufficient credits at submit is `402 INSUFFICIENT_CREDITS` in the
   `/api/v1` error envelope, and leaves no row, so the same key can be sent
   again after a top-up.
@@ -238,6 +250,107 @@ is free again.
   (`400 ATTESTATION_REQUIRED`): the gateway has no portrait-attestation field
   yet. A raw URL is classified on first use, an organization's own upload by
   its existing verdict, and another organization's file is refused.
+
+## Shipped (PR 2)
+
+### Code
+
+- `src/billing/charge-lines.ts`: `CHARGE_LINE_KINDS` and `inFillOrder`, the
+  short-capture order. Client-safe.
+- `src/platform/server/db/schema/charge-lines.ts`: table `charge_lines`
+  (migration `20261111222021_charge_lines`, a new table only; `transactions`
+  and `credits` are untouched). Every foreign key is `restrict`.
+- `src/billing/server/db/billing.ts`: `scopedDb.billing.settleReservation`.
+  `captureReservation` and it share one capture (`capture`); every other
+  caller's capture is unchanged.
+- `src/gateway/charge-lines.ts`: `GATEWAY_PLATFORM_FEE_BPS` (0) and
+  `gatewayCharge`, the lines of a charge. Pure and client-safe; PR 4 passes
+  `appMargin: { bps, payeeOrganizationId }` to add the margin line.
+- `src/gateway/server/settle.ts`: `settleGatewayJob` settles the lines, then
+  marks the job succeeded at the debit.
+- `src/gateway/server/db/gateway-jobs.ts`: `getChargeLines`,
+  `recordOutputs`, and the guards below.
+- `src/gateway/server/read-job.ts`: `gatewayJobResource`, the document with
+  its lines, used by both routes.
+
+### The table
+
+One row per line: `organization_id` (the payer), `transaction_id` (the
+`credit_usage` debit), `kind`, `amount_micros` (> 0), `payee_organization_id`
+(null is the platform), `gateway_job_id`, `oauth_client_id`, `app_id` (plain
+text until PR 3's apps table), `sku`, `created_at`. Indexes: by
+transaction; by payer, OAuth client and time (PR 3's monthly cap); by payee
+and time (PR 4's earnings); by payer and gateway job (the job document).
+
+### The settle method
+
+`settleReservation(reservationId, lines, { idempotencyKey, description,
+metadata, attribution })` runs the existing capture (grow the hold if the
+balance covers it, debit `min(remaining, total)`, write the `credit_usage`
+row, shrink the hold) and appends one `INSERT … SELECT` per line to the same
+`db.batch`. Each line selects from the transaction row this batch inserted,
+by its id, and takes `min(amount, debit − lines ahead of it)`; a line with
+nothing left is not written. So the lines exist if and only if the debit
+does, and always sum to it. A replay of the key writes nothing and returns
+the original debit and its lines (`replay: true`). A missing reservation is
+`{ ok: false, reason: 'missing' }` and writes nothing. Lines with a zero
+amount are dropped before the batch; a negative or fractional amount is
+refused.
+
+### The hold
+
+The submit holds `gatewayCharge(estimate, GATEWAY_PLATFORM_FEE_BPS)
+.totalMicros`, the whole charge on the estimate. The payload snapshots
+`estimateMicros`, `platformFeeBps` and `oauthClientId`, so the settle
+charges at the fee the hold was taken at and attributes the lines to the
+client.
+
+### The job document
+
+`charge` is `{ totalMicros, lines: [{ kind, amountMicros }] }` once the job
+succeeded, read through `scopedDb.gatewayJobs.getChargeLines`, which returns
+only lines the reading organization paid. `totalMicros` is the debit. A job
+that settled with no debit (no hold, or nothing the balance could cover)
+reads `{ totalMicros: 0, lines: [] }`; the shortfall is reported.
+
+### A charged job never reads failed
+
+- The run records provenance and then the outputs (`record-outputs`) before
+  the charge. The `settle` step charges and marks the job succeeded; a retry
+  replays the charge and writes the success again. Nothing runs after it.
+- `markFailed` first promotes a job that has charge lines and outputs to
+  `succeeded`, at what its lines sum to, and only otherwise marks it failed.
+  So an `onFailure` after a charge, or a submit's `NOT_STARTED`, cannot fail
+  a charged job.
+
+### A lost trigger reply
+
+`triggerWorkflow` can throw after the instance was created. The submit then
+marks the job `NOT_STARTED` and zeroes the hold, but the run still executes
+and charges (the capture grows the zeroed hold when the balance covers it).
+A row failed with `NOT_STARTED` is therefore still writable by its run:
+`markRunning` revives it (clearing the error), and `stampProviderJob`,
+`recordOutputs`, `markSucceeded` and `markFailed` accept it. The job ends
+`succeeded` with its outputs and lines, or failed with the run's own error.
+A replay of its `Idempotency-Key` returns that job.
+
+### Not yet (PR 2)
+
+- A job settled before PR 2 has `costMicros` and no lines; none exist in
+  production.
+- The fee is off (`GATEWAY_PLATFORM_FEE_BPS = 0`), so no `platform_fee` line
+  is written yet.
+
+### For PR 3
+
+The cap counts `sum(amount_micros)` of `charge_lines` for the payer
+organization and `oauth_client_id` since the start of the UTC month
+(`idx_charge_lines_organization_client_created`), plus the live holds of
+that client's jobs. Holds carry no client today: PR 3 either adds the client
+to the reservation or sums `credit_reservations` joined to `gateway_jobs`
+(`reservation_id`, `oauth_client_id`) for live jobs. The check belongs in
+`submitGatewayJob` before `reserveRunCredits`, where the hold amount is
+known.
 
 ## Not in this stack
 

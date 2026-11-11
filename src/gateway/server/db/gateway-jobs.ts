@@ -1,19 +1,51 @@
 /**
  * Scoped `gateway_jobs` rows (docs/architecture/model-gateway.md). Every
  * method is bound to one organization; another organization's job reads as missing.
+ * A run may still write a job its submit marked `NOT_STARTED`: the trigger
+ * can throw after the instance was created.
  */
 
+import { inFillOrder, type ChargeLineKind } from '@/billing/charge-lines';
+import { type Microdollars, micros } from '@/billing/money';
 import type { Database } from '@/platform/server/db/client';
-import { gatewayJobs, type GatewayJob } from '@/platform/server/db/schema';
+import {
+  chargeLines,
+  gatewayJobs,
+  type GatewayJob,
+} from '@/platform/server/db/schema';
 import type { MediaVia } from '@/models/via';
 import type {
   GatewayJobError,
   GatewayJobInput,
   GatewayJobOutput,
 } from '@/gateway/schema';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 const LIVE = ['queued', 'running'] as const;
+
+/** A line of a job's charge, as its payer sees it. */
+export type GatewayJobChargeLine = {
+  kind: ChargeLineKind;
+  amountMicros: Microdollars;
+};
+
+/** Live, or failed only because the trigger threw: the run may still land. */
+const RUN_MAY_WRITE = or(
+  inArray(gatewayJobs.status, LIVE),
+  and(
+    eq(gatewayJobs.status, 'failed'),
+    sql`json_extract(${gatewayJobs.error}, '$.code') = 'NOT_STARTED'`
+  )
+);
 
 export function createGatewayJobsMethods(
   db: Database,
@@ -42,9 +74,29 @@ export function createGatewayJobsMethods(
     return row ?? null;
   }
 
+  const jobLines = (id: string) =>
+    and(
+      eq(chargeLines.organizationId, organizationId),
+      eq(chargeLines.gatewayJobId, id)
+    );
+
   return {
     getById,
     getByIdempotencyKey,
+
+    /** The lines of the job's charge this organization paid; empty until it settled. */
+    getChargeLines: async (id: string): Promise<GatewayJobChargeLine[]> => {
+      const rows = await db
+        .select({
+          kind: chargeLines.kind,
+          amountMicros: chargeLines.amountMicros,
+        })
+        .from(chargeLines)
+        .where(jobLines(id));
+      return inFillOrder(
+        rows.map((row) => ({ ...row, amountMicros: micros(row.amountMicros) }))
+      );
+    },
 
     /** Insert a queued job; a taken idempotency key returns its job with `created: false`. */
     create: async (input: {
@@ -99,8 +151,15 @@ export function createGatewayJobsMethods(
     markRunning: async (id: string): Promise<void> => {
       await db
         .update(gatewayJobs)
-        .set({ status: 'running', updatedAt: new Date() })
-        .where(and(own(id), eq(gatewayJobs.status, 'queued')));
+        .set({
+          status: 'running',
+          error: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(own(id), RUN_MAY_WRITE, sql`${gatewayJobs.status} <> 'running'`)
+        );
     },
 
     /** The via and provider id a video job was sent to; poll follows this stamp. */
@@ -111,7 +170,18 @@ export function createGatewayJobsMethods(
       await db
         .update(gatewayJobs)
         .set({ ...stamp, updatedAt: new Date() })
-        .where(and(own(id), inArray(gatewayJobs.status, LIVE)));
+        .where(and(own(id), RUN_MAY_WRITE));
+    },
+
+    /** The stored results, before the charge, so a charged job always has them. */
+    recordOutputs: async (
+      id: string,
+      result: { outputs: GatewayJobOutput[]; via: MediaVia }
+    ): Promise<void> => {
+      await db
+        .update(gatewayJobs)
+        .set({ ...result, updatedAt: new Date() })
+        .where(and(own(id), RUN_MAY_WRITE));
     },
 
     markSucceeded: async (
@@ -128,25 +198,46 @@ export function createGatewayJobsMethods(
           updatedAt: now,
           completedAt: now,
         })
-        .where(and(own(id), inArray(gatewayJobs.status, LIVE)));
+        .where(and(own(id), RUN_MAY_WRITE));
     },
 
+    /**
+     * Fails a job, unless it was charged: a job with charge lines and stored
+     * outputs ends `succeeded` at what its lines sum to, whatever failed after.
+     */
     markFailed: async (
       id: string,
       error: GatewayJobError,
       via?: MediaVia
     ): Promise<void> => {
       const now = new Date();
-      await db
-        .update(gatewayJobs)
-        .set({
-          status: 'failed',
-          error,
-          ...(via && { via }),
-          updatedAt: now,
-          completedAt: now,
-        })
-        .where(and(own(id), inArray(gatewayJobs.status, LIVE)));
+      const charged = exists(
+        db.select({ id: chargeLines.id }).from(chargeLines).where(jobLines(id))
+      );
+      await db.batch([
+        db
+          .update(gatewayJobs)
+          .set({
+            status: 'succeeded',
+            error: null,
+            costMicros: sql`(select sum(${chargeLines.amountMicros}) from ${chargeLines} where ${jobLines(id)})`,
+            updatedAt: now,
+            completedAt: now,
+          })
+          .where(
+            and(own(id), RUN_MAY_WRITE, isNotNull(gatewayJobs.outputs), charged)
+          ),
+        db
+          .update(gatewayJobs)
+          .set({
+            status: 'failed',
+            error,
+            ...(via && { via }),
+            updatedAt: now,
+            completedAt: now,
+          })
+          .where(and(own(id), RUN_MAY_WRITE)),
+      ]);
     },
   };
 }

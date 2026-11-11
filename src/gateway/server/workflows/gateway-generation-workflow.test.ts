@@ -1,19 +1,20 @@
 /**
  * GatewayGenerationWorkflow with the providers mocked: step names, the
- * settle against the job's hold, platform credentials on every provider
- * call, the via stamp the poll follows, and the release of the hold on failure.
+ * charge lines settled against the job's hold, platform credentials on every
+ * provider call, the via stamp the poll follows, success in the settle step,
+ * and the release of the hold on failure.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { micros } from '@/billing/money';
+import type { SettleReservationResult } from '@/billing/server/db/billing';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJobInput } from '@/gateway/schema';
 import { asStub } from '@/test/as-stub';
 import type { GatewayGenerationWorkflowInput } from './gateway-generation-workflow';
 
 const mockGenerateImage = vi.fn();
-const mockDeduct = vi.fn(async () => undefined);
 const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
 const mockCost = vi.fn();
@@ -28,11 +29,11 @@ vi.doMock('@/stills/server/image-generation', () => ({
   generateImageWithProvider: mockGenerateImage,
 }));
 vi.doMock('@/billing/server/workflow-deduction', () => ({
-  deductWorkflowCredits: mockDeduct,
   recordFalUsageStep: vi.fn(async () => ({})),
 }));
+const mockProvenance = vi.fn(async () => undefined);
 vi.doMock('@/platform/server/compliance/provenance', () => ({
-  recordProvenance: vi.fn(async () => undefined),
+  recordProvenance: mockProvenance,
 }));
 vi.doMock('@/gateway/server/storage', () => ({
   uploadGatewayImage: vi.fn(async () => ({
@@ -118,8 +119,27 @@ function makeScopedDb() {
   const gatewayJobs = {
     markRunning: vi.fn(async () => undefined),
     stampProviderJob: vi.fn(async () => undefined),
+    recordOutputs: vi.fn(async () => undefined),
     markSucceeded: vi.fn(async () => undefined),
     markFailed: vi.fn(async () => undefined),
+  };
+  const billing = {
+    settleReservation: vi.fn(
+      async (
+        _reservationId: string,
+        lines: { amountMicros: number }[],
+        _opts: { idempotencyKey: string }
+      ): Promise<SettleReservationResult> => ({
+        ok: true as const,
+        captured: micros(
+          lines.reduce((sum, line) => sum + line.amountMicros, 0)
+        ),
+        transactionId: 'tx-1',
+        lines: [],
+        replay: false,
+      })
+    ),
+    checkAutoTopUp: vi.fn(async () => undefined),
   };
   const bytePlusAssets = { releaseOwner: vi.fn(async () => undefined) };
   // Organization credentials throw: a gateway run must never reach them.
@@ -127,12 +147,14 @@ function makeScopedDb() {
     throw new Error('organization credentials used');
   };
   const scopedDb = asStub<WorkflowScopedDb>({
+    organizationId: 'org-1',
     gatewayJobs,
+    billing,
     bytePlusAssets,
     provenance: {},
     credentials: { resolveKey: refuse, resolveOptionalKey: refuse },
   });
-  return { scopedDb, gatewayJobs, bytePlusAssets };
+  return { scopedDb, gatewayJobs, billing, bytePlusAssets };
 }
 
 const IMAGE: GatewayJobInput = {
@@ -162,7 +184,9 @@ function makeEvent(input: GatewayJobInput): Event {
       ownsReservation: true,
       input,
       noPersonImages: [],
-      holdMicros: micros(50_000),
+      estimateMicros: micros(50_000),
+      platformFeeBps: 0,
+      oauthClientId: 'client-1',
     },
     instanceId: 'run-1',
     workflowName: 'gateway',
@@ -196,10 +220,16 @@ beforeEach(() => {
   });
 });
 
+const IMAGE_OUTPUT = {
+  url: '/r2/a.png',
+  path: 'a.png',
+  contentType: 'image/png',
+};
+
 describe('GatewayGenerationWorkflow image', () => {
-  it('generates and stores in one step, settles against the hold, then persists', async () => {
+  it('stores, records provenance and outputs, then settles and succeeds in one step', async () => {
     const step = makeStep();
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     const result = await makeWorkflow().runBody(
       makeEvent(IMAGE),
       step,
@@ -209,52 +239,88 @@ describe('GatewayGenerationWorkflow image', () => {
     expect(step.names).toEqual([
       'set-running',
       'generate-image',
-      'settle',
       'record-provenance',
-      'persist-result',
+      'record-outputs',
+      'settle',
     ]);
     const credentials = mockGenerateImage.mock.calls[0]?.[1]?.credentials;
     expect(await credentials.resolveKey('fal')).toEqual({
       key: 'platform-fal',
       source: 'platform',
     });
-    expect(mockDeduct).toHaveBeenCalledWith(
+    expect(gatewayJobs.recordOutputs).toHaveBeenCalledWith('job-1', {
+      outputs: [IMAGE_OUTPUT],
+      via: 'fal',
+    });
+    expect(billing.settleReservation).toHaveBeenCalledWith(
+      'res-1',
+      [
+        {
+          kind: 'provider_cost',
+          amountMicros: micros(12_000),
+          payeeOrganizationId: null,
+        },
+      ],
       expect.objectContaining({
-        costMicros: micros(12_000),
-        usedOwnKey: false,
-        reservationId: 'res-1',
         idempotencyKey: 'run-1:gateway-settle',
+        attribution: { gatewayJobId: 'job-1', oauthClientId: 'client-1' },
       })
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith('job-1', {
-      outputs: [{ url: '/r2/a.png', path: 'a.png', contentType: 'image/png' }],
+      outputs: [IMAGE_OUTPUT],
       costMicros: micros(12_000),
       via: 'fal',
     });
-    expect(result).toEqual({
-      jobId: 'job-1',
-      outputs: [{ url: '/r2/a.png', path: 'a.png', contentType: 'image/png' }],
-    });
+    expect(result).toEqual({ jobId: 'job-1', outputs: [IMAGE_OUTPUT] });
   });
 
-  it('charges the hold when the provider reports no cost', async () => {
+  it('adds the platform fee snapshotted on the payload', async () => {
+    const { scopedDb, billing, gatewayJobs } = makeScopedDb();
+    const event = makeEvent(IMAGE);
+    await makeWorkflow().runBody(
+      { ...event, payload: { ...event.payload, platformFeeBps: 1_000 } },
+      makeStep(),
+      scopedDb
+    );
+    expect(billing.settleReservation.mock.calls[0]?.[1]).toEqual([
+      {
+        kind: 'provider_cost',
+        amountMicros: 12_000,
+        payeeOrganizationId: null,
+      },
+      { kind: 'platform_fee', amountMicros: 1_200, payeeOrganizationId: null },
+    ]);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: micros(13_200) })
+    );
+  });
+
+  it('charges the lines of the estimate when the provider reports no cost', async () => {
     mockGenerateImage.mockResolvedValueOnce({
       imageUrls: ['https://fal.media/a.png'],
       via: 'fal',
       metadata: { usedOwnKey: false, endpointId: 'e' },
     });
-    const { scopedDb, gatewayJobs } = makeScopedDb();
-    await makeWorkflow().runBody(makeEvent(IMAGE), makeStep(), scopedDb);
-    expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({
-        costMicros: micros(50_000),
-        reservationId: 'res-1',
-        idempotencyKey: 'run-1:gateway-settle',
-      })
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    const event = makeEvent(IMAGE);
+    await makeWorkflow().runBody(
+      { ...event, payload: { ...event.payload, platformFeeBps: 500 } },
+      makeStep(),
+      scopedDb
     );
+    // The hold was the charge on the estimate at this fee: 50_000 + 2_500.
+    expect(billing.settleReservation.mock.calls[0]?.[1]).toEqual([
+      {
+        kind: 'provider_cost',
+        amountMicros: 50_000,
+        payeeOrganizationId: null,
+      },
+      { kind: 'platform_fee', amountMicros: 2_500, payeeOrganizationId: null },
+    ]);
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
       'job-1',
-      expect.objectContaining({ costMicros: micros(50_000) })
+      expect.objectContaining({ costMicros: micros(52_500) })
     );
   });
 
@@ -264,19 +330,71 @@ describe('GatewayGenerationWorkflow image', () => {
       via: 'fal',
       metadata: { cost: micros(12_000), usedOwnKey: true, endpointId: 'e' },
     });
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await expect(
       makeWorkflow().runBody(makeEvent(IMAGE), makeStep(), scopedDb)
     ).rejects.toThrow('ran on an organization key');
-    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
     expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('a provenance failure fails the job before any charge', async () => {
+    mockProvenance.mockRejectedValueOnce(new Error('ledger down'));
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    await expect(
+      makeWorkflow().runBody(makeEvent(IMAGE), makeStep(), scopedDb)
+    ).rejects.toThrow('ledger down');
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+    expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('a failed success write retries the settle step, which replays the charge', async () => {
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    gatewayJobs.markSucceeded.mockRejectedValueOnce(new Error('D1 blip'));
+    // A step that throws runs again, as the engine would retry it.
+    const names: string[] = [];
+    const step = asStub<WorkflowStep>({
+      do: vi.fn(async (name: string, fn: () => Promise<unknown>) => {
+        names.push(name);
+        try {
+          return await fn();
+        } catch {
+          return fn();
+        }
+      }),
+      sleep: vi.fn(async () => {}),
+    });
+    await makeWorkflow().runBody(makeEvent(IMAGE), step, scopedDb);
+    expect(billing.settleReservation).toHaveBeenCalledTimes(2);
+    expect(
+      billing.settleReservation.mock.calls.map((call) => call[2].idempotencyKey)
+    ).toEqual(['run-1:gateway-settle', 'run-1:gateway-settle']);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports what a short capture could not charge and succeeds at the debit', async () => {
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    billing.settleReservation.mockResolvedValueOnce({
+      ok: true,
+      captured: micros(5_000),
+      skippedDeltaMicros: micros(7_000),
+      transactionId: 'tx-1',
+      lines: [],
+      replay: false,
+    });
+    await makeWorkflow().runBody(makeEvent(IMAGE), makeStep(), scopedDb);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: micros(5_000) })
+    );
+    expect(billing.checkAutoTopUp).toHaveBeenCalled();
   });
 });
 
 describe('GatewayGenerationWorkflow video', () => {
   it('stamps the via, polls the stamped job, stores, then settles', async () => {
     const step = makeStep();
-    const { scopedDb, gatewayJobs, bytePlusAssets } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing, bytePlusAssets } = makeScopedDb();
     await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
 
     expect(step.names).toEqual([
@@ -288,9 +406,9 @@ describe('GatewayGenerationWorkflow video', () => {
       'release-byteplus-asset-leases',
       'price-video',
       'upload-video',
-      'settle',
       'record-provenance',
-      'persist-result',
+      'record-outputs',
+      'settle',
     ]);
     expect(mockSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'text', duration: 5 })
@@ -304,12 +422,16 @@ describe('GatewayGenerationWorkflow video', () => {
       via: 'fal',
     });
     expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('gateway:run-1');
-    expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({
-        costMicros: micros(70_000),
-        reservationId: 'res-1',
-        usedOwnKey: false,
-      })
+    expect(billing.settleReservation).toHaveBeenCalledWith(
+      'res-1',
+      [
+        {
+          kind: 'provider_cost',
+          amountMicros: micros(70_000),
+          payeeOrganizationId: null,
+        },
+      ],
+      expect.anything()
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
       'job-1',
@@ -319,11 +441,11 @@ describe('GatewayGenerationWorkflow video', () => {
 
   it('fails without settling when the provider fails the job', async () => {
     mockPoll.mockResolvedValueOnce({ status: 'failed', error: 'boom' });
-    const { scopedDb } = makeScopedDb();
+    const { scopedDb, billing } = makeScopedDb();
     await expect(
       makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
     ).rejects.toThrow('boom');
-    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
   });
 });
 
@@ -338,7 +460,6 @@ describe('failure', () => {
       code: 'GENERATION_FAILED',
       message: expect.stringContaining('provider down'),
     });
-    expect(mockDeduct).not.toHaveBeenCalled();
   });
 
   it('names a content refusal', () => {
@@ -349,17 +470,45 @@ describe('failure', () => {
   });
 
   it('settle never bills an own-key result', async () => {
+    const { scopedDb, billing } = makeScopedDb();
     await expect(
       settleGatewayJob({
-        scopedDb: makeScopedDb().scopedDb,
+        scopedDb,
         jobId: 'job-1',
         model: 'gpt_image_2',
         reservationId: 'res-1',
         costMicros: micros(1),
-        holdMicros: micros(1),
+        estimateMicros: micros(1),
+        platformFeeBps: 0,
+        oauthClientId: null,
         usedOwnKey: true,
         idempotencyKey: 'k',
+        result: { outputs: [IMAGE_OUTPUT], via: 'fal' },
       })
     ).rejects.toThrow('organization key');
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+  });
+
+  it('a job with no hold succeeds uncharged and reports the skip', async () => {
+    const { scopedDb, billing, gatewayJobs } = makeScopedDb();
+    const charged = await settleGatewayJob({
+      scopedDb,
+      jobId: 'job-1',
+      model: 'gpt_image_2',
+      reservationId: undefined,
+      costMicros: micros(1_000),
+      estimateMicros: micros(1_000),
+      platformFeeBps: 0,
+      oauthClientId: null,
+      usedOwnKey: false,
+      idempotencyKey: 'k',
+      result: { outputs: [IMAGE_OUTPUT], via: 'fal' },
+    });
+    expect(charged).toBe(0);
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: 0 })
+    );
   });
 });

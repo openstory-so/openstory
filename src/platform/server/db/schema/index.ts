@@ -65,6 +65,7 @@ import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
 import { gatewayJobs } from './gateway-jobs';
+import { chargeLines } from './charge-lines';
 import {
   assistantInterrupts,
   assistantMessages,
@@ -334,6 +335,10 @@ export type { Stitch } from './stitches';
 export { gatewayJobs };
 export type { GatewayJob } from './gateway-jobs';
 
+// Charge lines: the parts of a settled charge (docs/architecture/model-gateway.md)
+export { chargeLines };
+export type { ChargeLine } from './charge-lines';
+
 // In-app assistant threads and their TanStack AI persistence stores (#2155)
 export {
   assistantInterrupts,
@@ -580,6 +585,7 @@ export const schema = {
   sequenceStyleVersions,
   stitches,
   gatewayJobs,
+  chargeLines,
   assistantThreads,
   assistantMessages,
   assistantRuns,

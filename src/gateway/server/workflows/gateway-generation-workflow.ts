@@ -1,9 +1,9 @@
 /**
  * One gateway job (docs/architecture/model-gateway.md). Platform keys only:
  * the run never resolves an organization key. Image: generate and store in
- * one step (#1645), settle, persist. Video: submit, stamp the via, poll
- * following the stamp, store, settle, persist. The base class releases the
- * hold on failure (`ownsReservation`).
+ * one step (#1645), provenance, outputs, then settle and succeed in one step.
+ * Video: submit, stamp the via, poll following the stamp, store, then the
+ * same tail. The base class releases the hold on failure (`ownsReservation`).
  */
 
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
@@ -58,8 +58,12 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   input: GatewayJobInput;
   /** Reference stills the likeness ledger cleared as showing no person, at submit. */
   noPersonImages: string[];
-  /** The estimate held at submit; the charge when the provider reports no cost. */
-  holdMicros: Microdollars;
+  /** The provider estimate at submit; charged when the provider reports no cost. */
+  estimateMicros: Microdollars;
+  /** The platform fee at submit; the hold is the charge on the estimate at this fee. */
+  platformFeeBps: number;
+  /** The OAuth client that submitted; null for an `osk_` key or a session. */
+  oauthClientId: string | null;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -142,41 +146,18 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     const falUsage =
       via === 'fal' ? await recordFalUsageStep(step, scopedDb, metadata) : {};
 
-    const charged = await step.do('settle', async () =>
-      settleGatewayJob({
-        scopedDb,
-        jobId,
-        model: input.model,
-        reservationId: event.payload.reservationId,
-        costMicros: cost,
-        holdMicros: event.payload.holdMicros,
-        usedOwnKey: metadata.usedOwnKey,
-        idempotencyKey: `${event.instanceId}:gateway-settle`,
-        metadata: { ...falUsage, model: input.model, via },
-      })
-    );
-
     const outputs: GatewayJobOutput[] = [upload];
-    await step.do('record-provenance', async () => {
-      await recordProvenance(scopedDb.provenance, {
-        organizationId,
-        userId,
-        assetKind: 'gateway_job',
-        assetId: jobId,
-        storageKey: upload.path,
+    await this.finish(event, step, scopedDb, {
+      outputs,
+      via,
+      costMicros: cost,
+      usedOwnKey: metadata.usedOwnKey,
+      metadata: { ...falUsage, model: input.model, via },
+      provenance: {
         provider: via,
         model: metadata.endpointId,
         providerRequestId: metadata.requestId,
-        workflowRunId: event.instanceId,
-        prompt: input.prompt,
-      });
-    });
-    await step.do('persist-result', async () => {
-      await scopedDb.gatewayJobs.markSucceeded(jobId, {
-        outputs,
-        costMicros: charged,
-        via,
-      });
+      },
     });
     return { jobId, outputs };
   }
@@ -187,7 +168,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ jobId: string; outputs: GatewayJobOutput[] }> {
-    const { jobId, organizationId, userId } = event.payload;
+    const { jobId, organizationId } = event.payload;
     const credentials = platformOnlyCredentials(event.payload);
     const mode = gatewayVideoMode(input);
     const owner = assetLeaseOwner('gateway', event.instanceId);
@@ -356,43 +337,85 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     );
 
     // Charged only for a clip that was stored.
-    const charged = await step.do('settle', async () =>
-      settleGatewayJob({
-        scopedDb,
-        jobId,
-        model: input.model,
-        reservationId: event.payload.reservationId,
-        costMicros: billing.cost,
-        holdMicros: event.payload.holdMicros,
-        usedOwnKey: job.usedOwnKey,
-        idempotencyKey: `${event.instanceId}:gateway-settle`,
-        metadata: { model: input.model, via: job.via, requestId: job.jobId },
-      })
-    );
-
     const outputs: GatewayJobOutput[] = [upload];
+    await this.finish(event, step, scopedDb, {
+      outputs,
+      via: job.via,
+      costMicros: billing.cost,
+      usedOwnKey: job.usedOwnKey,
+      metadata: { model: input.model, via: job.via, requestId: job.jobId },
+      provenance: {
+        provider: job.via,
+        model: billing.endpointId,
+        providerRequestId: job.jobId,
+      },
+    });
+    return { jobId, outputs };
+  }
+
+  /**
+   * Provenance, then the outputs, then the charge and the success in one
+   * step: nothing after the charge can fail the job.
+   */
+  private async finish(
+    event: Event,
+    step: WorkflowStep,
+    scopedDb: WorkflowScopedDb,
+    result: {
+      outputs: GatewayJobOutput[];
+      via: MediaVia;
+      costMicros: Microdollars;
+      usedOwnKey: boolean;
+      metadata: Record<string, unknown>;
+      provenance: {
+        provider: MediaVia;
+        model: string;
+        providerRequestId?: string;
+      };
+    }
+  ): Promise<void> {
+    const { jobId, organizationId, userId, input } = event.payload;
+    const [stored] = result.outputs;
+    if (!stored) throw new Error('A gateway job finished with no output');
+    if (result.usedOwnKey) {
+      throw new NonRetryableError(
+        `Gateway job ${jobId} ran on an organization key`
+      );
+    }
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
         organizationId,
         userId,
         assetKind: 'gateway_job',
         assetId: jobId,
-        storageKey: upload.path,
-        provider: job.via,
-        model: billing.endpointId,
-        providerRequestId: job.jobId,
+        storageKey: stored.path,
+        ...result.provenance,
         workflowRunId: event.instanceId,
         prompt: input.prompt,
       });
     });
-    await step.do('persist-result', async () => {
-      await scopedDb.gatewayJobs.markSucceeded(jobId, {
-        outputs,
-        costMicros: charged,
-        via: job.via,
+    await step.do('record-outputs', async () => {
+      await scopedDb.gatewayJobs.recordOutputs(jobId, {
+        outputs: result.outputs,
+        via: result.via,
       });
     });
-    return { jobId, outputs };
+    await step.do('settle', async () => {
+      await settleGatewayJob({
+        scopedDb,
+        jobId,
+        model: input.model,
+        reservationId: event.payload.reservationId,
+        costMicros: result.costMicros,
+        estimateMicros: event.payload.estimateMicros,
+        platformFeeBps: event.payload.platformFeeBps,
+        oauthClientId: event.payload.oauthClientId,
+        usedOwnKey: result.usedOwnKey,
+        idempotencyKey: `${event.instanceId}:gateway-settle`,
+        result: { outputs: result.outputs, via: result.via },
+        metadata: result.metadata,
+      });
+    });
   }
 
   protected override async onFailure({
