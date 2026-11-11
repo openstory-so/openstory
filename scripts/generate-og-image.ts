@@ -39,11 +39,11 @@ await page
 await page.evaluate(() => document.fonts.ready);
 await page.waitForTimeout(500);
 
-// Hide the Sign in header, the sample clips under the composer, and the
+// Hide the sidebar, the Sign in header, the sample clips under the composer, and the
 // dev-only TanStack devtools overlay. CSS wins over a client re-render.
 await page.addStyleTag({
   content:
-    '[data-slot="sidebar-inset"] > header, section[aria-label="Sample clips"], [data-testid="tanstack_devtools"], #tanstack_devtools { display: none !important; }',
+    '[data-slot="sidebar"], [data-slot="sidebar-inset"] > header, section[aria-label="Sample clips"], [data-testid="tanstack_devtools"], #tanstack_devtools { display: none !important; }',
 });
 
 await mkdir(dirname(OUT), { recursive: true });

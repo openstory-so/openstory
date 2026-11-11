@@ -110,7 +110,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const { pathname, searchStr } = useRouterState({
     select: (s) => s.location,
   });
-  // Signed-out front page: no sidebar, just Sign in (#2372).
+  // Signed-out front page: collapsed sidebar, Sign in top right (#2372).
   const bare = !user && pathname === '/';
   // Starters follow everything the composer shows: the route, what a page
   // registered (the Studio viewer), and what a button handed over.
@@ -133,13 +133,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     <AuthGateProvider>
       <UploadRightsGateProvider>
         <TooltipProvider>
-          <SidebarProvider className="h-svh">
-            {!bare && <AppSidebar />}
+          <SidebarProvider className="h-svh" defaultOpen={!bare}>
+            <AppSidebar />
             <AddCreditsDialog />
             <GlobalBillingGateDialog />
             <SidebarInset className="min-w-0 min-h-0">
               {bare ? (
-                <header className="flex h-16 shrink-0 items-center justify-end px-6">
+                <header className="flex h-16 shrink-0 items-center justify-between px-6">
+                  <SidebarTrigger className="-ml-1" />
                   <Button asChild size="lg" className="px-5">
                     <Link
                       to="/login"
