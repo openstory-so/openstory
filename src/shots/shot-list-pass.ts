@@ -49,6 +49,7 @@ import type {
   ShotListPassResult,
   ShotSpec,
 } from './shot-list.schema';
+import { rescaleKeyframes } from './shot-list.schema';
 
 function editorialGrid(grid: readonly number[]): number[] {
   const maxClip = Math.max(...grid.filter((n) => n > 0));
@@ -67,6 +68,7 @@ export function defaultSingleShot(durationSeconds: number): ShotSpec {
       subjectStartState: '',
     },
     action: '',
+    keyframes: [],
     cameraMovement: { move: 'static', pacing: 'slow' },
     direction: '',
     soundCue: '',
@@ -79,6 +81,12 @@ function sceneDurationSeconds(
   scene: Pick<SceneSplittingScene, 'metadata'>
 ): number {
   return scene.metadata.durationSeconds || 3;
+}
+
+/** The longest single take the grid allows; 15 when there is no grid. */
+export function longestTakeSeconds(grid: readonly number[]): number {
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
+  return Number.isFinite(maxClip) ? maxClip : 15;
 }
 
 /** Editorial floor: a shot may be 1s; leftover packs snap to the model min. */
@@ -109,6 +117,28 @@ export function minShotsForScene(
   const maxClip = Math.max(...grid.filter((n) => n > 0));
   if (!Number.isFinite(maxClip)) return 1;
   return Math.max(1, Math.ceil(sceneSeconds / maxClip));
+}
+
+/**
+ * A shot at its final number and length. Its keyframes were timed against
+ * the length the analysis gave it, so they move with it; one that lands on
+ * or past the end is dropped.
+ */
+function timedShot(
+  shot: ShotSpec,
+  shotNumber: number,
+  durationSeconds: number
+): ShotSpec {
+  return {
+    ...shot,
+    shotNumber,
+    durationSeconds,
+    keyframes: rescaleKeyframes(
+      shot.keyframes,
+      shot.durationSeconds,
+      durationSeconds
+    ).filter((keyframe) => keyframe.atSeconds < durationSeconds),
+  };
 }
 
 /** First `count` shots; the dialogue of the cut ones moves to the last kept (#1585). */
@@ -154,8 +184,9 @@ function splitOverfullShots(
     // ponytail: every piece keeps the shot's full pacing weight, so a split
     // take gets a speech-sized share of the label; weight by words if pacing
     // around split shots ever reads wrong.
+    // A split take is no longer one continuous action: its keyframes go.
     return groups.length > 1
-      ? groups.map((dialogue) => ({ ...shot, dialogue }))
+      ? groups.map((dialogue) => ({ ...shot, dialogue, keyframes: [] }))
       : [shot];
   });
 }
@@ -206,14 +237,16 @@ export function allocateSceneShots(
     }
   }
   const maxClip = Math.max(...grid.filter((n) => n > 0));
-  return kept.map((shot, index) => ({
-    ...shot,
-    shotNumber: index + 1,
-    durationSeconds: Math.min(
-      maxClip > 0 ? maxClip : Number.POSITIVE_INFINITY,
-      seconds[index] ?? shot.durationSeconds
-    ),
-  }));
+  return kept.map((shot, index) =>
+    timedShot(
+      shot,
+      index + 1,
+      Math.min(
+        maxClip > 0 ? maxClip : Number.POSITIVE_INFINITY,
+        seconds[index] ?? shot.durationSeconds
+      )
+    )
+  );
 }
 
 /**
@@ -413,12 +446,13 @@ function timeUnlabelledShots(
     maxClip,
     sceneDurationSeconds(scene)
   );
-  return kept.map((shot, index) => ({
-    ...shot,
-    shotNumber: index + 1,
-    durationSeconds:
-      seconds[index] ?? clampToClip(shot.durationSeconds, maxClip),
-  }));
+  return kept.map((shot, index) =>
+    timedShot(
+      shot,
+      index + 1,
+      seconds[index] ?? clampToClip(shot.durationSeconds, maxClip)
+    )
+  );
 }
 
 /**

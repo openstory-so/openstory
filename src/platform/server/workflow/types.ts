@@ -1148,6 +1148,8 @@ export interface ShotSpecRewriteWorkflowInput extends SequenceWorkflowContext {
   motionWritten: boolean;
   referenceOnly: boolean;
   scene: Scene;
+  /** The shot's length, for timing its keyframes (#2386). */
+  durationSeconds: number;
   /** Other shots in the scene. This shot is not in the list. */
   siblingSpecs: Array<{ shotNumber: number | null; spec: StoredShotSpec }>;
   characterBible: CharacterBibleEntry[];

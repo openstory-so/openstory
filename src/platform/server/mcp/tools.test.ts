@@ -2884,6 +2884,7 @@ describe('shot content edits (#1979)', () => {
       subjectStartState: 'still',
     },
     action: 'Waves break on the rocks',
+    keyframes: [],
     cameraMovement: { move: 'push in', pacing: 'slow' },
     direction: 'calm',
     soundCue: 'surf',

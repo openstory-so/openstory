@@ -1,4 +1,5 @@
 import { sceneDirection } from '@/shots/scene-direction';
+import { shiftKeyframeLines } from '@/shots/keyframe-lines';
 import type { StyleConfig } from '@/look/style-config';
 /**
  * Model-Aware Motion Prompt Builder
@@ -463,7 +464,8 @@ function formatPackedShotList(
     const end = elapsed + dur;
     elapsed = end;
     const n = i + 1;
-    const body = bodies[i] ?? '';
+    // Keyframe times are shot-local; a packed clip counts from its own start.
+    const body = shiftKeyframeLines(bodies[i] ?? '', start, dur);
     if (model === 'seedance_v2_5') {
       return `Shot ${n} (${start}-${end}s): ${body}`;
     }

@@ -50,6 +50,7 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         promptVariables: {
           scene: JSON.stringify(input.scene),
           lines: JSON.stringify(input.lines),
+          durationSeconds: String(input.durationSeconds),
           currentSpec: JSON.stringify(input.currentSpec),
           siblings: JSON.stringify(input.siblingSpecs),
           // Each character in the outfit this shot's scene dresses it in,

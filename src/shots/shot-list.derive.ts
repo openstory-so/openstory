@@ -13,7 +13,7 @@ import { sceneDirection } from './scene-direction';
  *
  *   start-frame visual prompt = scene context + shot framing/start-state
  *   motion prompt             = shot action + direction + camera movement
- *                               + sound cue
+ *                               + sound cue + keyframe lines
  *                               (reference-only prefixes unique framing;
  *                               scene lighting/palette/look stay on the scene)
  *
@@ -23,7 +23,8 @@ import { sceneDirection } from './scene-direction';
 
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import type { MotionAudio } from './scene-analysis.schema';
-import type { StoredShotSpec } from './shot-list.schema';
+import { keyframeLines } from './keyframe-lines';
+import { specKeyframes, type StoredShotSpec } from './shot-list.schema';
 
 /** Join non-empty parts with a separator, dropping blanks. */
 function joinParts(parts: ReadonlyArray<string>, sep = ', '): string {
@@ -111,10 +112,14 @@ export function deriveMotionPrompt(
     [action, direction, cameraPhrase ? `Camera: ${cameraPhrase}` : ''],
     '. '
   );
+  const body = options.referenceOnly
+    ? joinParts([joinParts(framingParts(spec)), motion], '. ')
+    : motion;
   return {
-    text: options.referenceOnly
-      ? joinParts([joinParts(framingParts(spec)), motion], '. ')
-      : motion,
+    // Keyframes go last, one per line (#2386).
+    text: [body, ...keyframeLines(specKeyframes(spec))]
+      .filter((line) => line.length > 0)
+      .join('\n'),
     audio: { ambientSound: soundCue.trim(), soundEffects: [] },
   };
 }
