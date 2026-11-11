@@ -1880,49 +1880,41 @@ export const ScriptView: FC<{
                     {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
-                {isAuthenticated ? (
-                  <Button
-                    type="submit"
-                    disabled={isDisabled}
-                    className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
-                  >
-                    <span className="relative z-10">
-                      <InButtonCost
-                        estimate={storyboardCostEstimate}
-                        amountWidth={
-                          includesStage(stopAt, 'motion') ? 'double' : 'single'
-                        }
-                      >
-                        {isSubmitting || isElementBusy || isCastBusy ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <GenerateSequenceIcon className="size-4" />
-                        )}
-                        {isSubmitting
-                          ? 'Generating…'
-                          : isElementBusy
-                            ? 'Analyzing elements…'
-                            : isCastBusy
-                              ? 'Adding character images…'
-                              : isEditing
-                                ? 'Generate Copy'
-                                : 'Generate'}
-                      </InButtonCost>
-                    </span>
-                    {/* Shine effect */}
-                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
-                  </Button>
-                ) : (
-                  // Signed-out front page: Generate opens sign-in (#2372).
-                  <Button
-                    type="submit"
-                    variant="secondary"
-                    disabled={isDisabled}
-                    aria-label="Sign in to Generate"
-                  >
-                    Generate
-                  </Button>
-                )}
+                {/* Signed out it looks the same and opens sign-in (#2372). */}
+                <Button
+                  type="submit"
+                  disabled={isDisabled}
+                  aria-label={
+                    isAuthenticated ? undefined : 'Sign in to Generate'
+                  }
+                  className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
+                >
+                  <span className="relative z-10">
+                    <InButtonCost
+                      estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      amountWidth={
+                        includesStage(stopAt, 'motion') ? 'double' : 'single'
+                      }
+                    >
+                      {isSubmitting || isElementBusy || isCastBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <GenerateSequenceIcon className="size-4" />
+                      )}
+                      {isSubmitting
+                        ? 'Generating…'
+                        : isElementBusy
+                          ? 'Analyzing elements…'
+                          : isCastBusy
+                            ? 'Adding character images…'
+                            : isEditing
+                              ? 'Generate Copy'
+                              : 'Generate'}
+                    </InButtonCost>
+                  </span>
+                  {/* Shine effect */}
+                  <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                </Button>
               </div>
               <button
                 type="button"
