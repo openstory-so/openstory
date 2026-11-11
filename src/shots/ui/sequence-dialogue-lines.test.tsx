@@ -1,25 +1,35 @@
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
-import type { ShotView } from '@/shots/shot-view';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { TooltipProvider } from '@/ui/shadcn/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { SceneWithScript } from './use-scenes';
 import { SequenceDialogueLines } from './sequence-dialogue-lines';
 
-function shot(partial: Pick<ShotView, 'id'> & Partial<ShotView>): ShotView {
+type ListedShot = {
+  id: string;
+  sceneId: string | null;
+  deletedAt: Date | null;
+  dialogue: MotionDialogue | null;
+  audioClips: MotionAudioClip[] | null;
+};
+
+function shot(
+  partial: Pick<ListedShot, 'id'> & Partial<ListedShot>
+): ListedShot {
   return {
     sceneId: 'scene-1',
     deletedAt: null,
     dialogue: { presence: false, lines: [] },
     audioClips: null,
     ...partial,
-  } as ShotView;
+  };
 }
 
-const kitchen = { id: 'scene-1', title: 'Kitchen' } as SceneWithScript;
+const kitchen = { id: 'scene-1', title: 'Kitchen' };
 
-function render(shots: ShotView[]) {
+function render(shots: ListedShot[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -67,8 +77,13 @@ describe('SequenceDialogueLines', () => {
           lines: [{ character: 'Ada', line: 'The kettle is on', tone: '' }],
         },
         audioClips: [
-          { url: 'https://example.com/ada.wav', source: 'generated' },
-        ] as ShotView['audioClips'],
+          {
+            id: 'clip-1',
+            url: 'https://example.com/ada.wav',
+            token: 'DIALOGUE',
+            durationSeconds: 2,
+          },
+        ],
       }),
       shot({ id: 'shot-2' }),
     ]);

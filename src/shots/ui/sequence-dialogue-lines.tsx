@@ -16,7 +16,8 @@ import { dialogueTakeRuns } from '@/shots/dialogue-take-runs';
 import { clipSpeechId } from '@/shots/shot-dialogue';
 import { getDialogueSpeechUrlsFn } from '@/shots/shot-dialogue.fn';
 import { useQuery } from '@tanstack/react-query';
-import type { ShotView } from '@/shots/shot-view';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import {
   DialogueLineRows,
@@ -29,18 +30,27 @@ import {
   useLineTake,
   useSaveShotLines,
 } from './dialogue-lines';
-import type { SceneWithScript } from './use-scenes';
+/** What the list reads off a shot. A full shot view assigns to this. */
+type CanvasShot = {
+  id: string;
+  sceneId: string | null;
+  deletedAt: Date | null;
+  dialogue: MotionDialogue | null;
+  audioClips: MotionAudioClip[] | null;
+};
+
+type CanvasScene = { id: string; title: string | null };
 
 type SceneLines = {
   sceneId: string;
   title: string;
-  shots: ShotView[];
+  shots: CanvasShot[];
 };
 
 /** Consecutive shots of one scene, silent shots included (#2375). */
 function sceneLines(
-  shots: readonly ShotView[],
-  scenes: readonly SceneWithScript[] | undefined
+  shots: readonly CanvasShot[],
+  scenes: readonly CanvasScene[] | undefined
 ): SceneLines[] {
   const groups: SceneLines[] = [];
   for (const shot of shots) {
@@ -61,7 +71,7 @@ function sceneLines(
   return groups;
 }
 
-const shotByShotClips = (shots: readonly ShotView[]) =>
+const shotByShotClips = (shots: readonly CanvasShot[]) =>
   shots.flatMap((shot) =>
     (shot.audioClips ?? []).map((clip) => ({
       shotIds: [shot.id],
@@ -69,7 +79,7 @@ const shotByShotClips = (shots: readonly ShotView[]) =>
     }))
   );
 
-const speaks = (shot: ShotView) =>
+const speaks = (shot: CanvasShot) =>
   Boolean(shot.dialogue?.presence && shot.dialogue.lines.length > 0);
 
 /**
@@ -78,8 +88,8 @@ const speaks = (shot: ShotView) =>
  * mixes takes, or a shot has no audio yet — it then plays shot by shot.
  */
 const oneTakeOf = (
-  shown: readonly ShotView[],
-  sceneShots: readonly ShotView[]
+  shown: readonly CanvasShot[],
+  sceneShots: readonly CanvasShot[]
 ): string | undefined => {
   const voiced = sceneShots.filter(speaks);
   if (voiced.length === 0 || shown.length !== voiced.length) return undefined;
@@ -98,7 +108,7 @@ const oneTakeOf = (
  * conversation in one call and reserves exactly this (`regenerateShotDialogueFn`).
  */
 const sceneRecordingCost = (
-  sceneShots: readonly ShotView[],
+  sceneShots: readonly CanvasShot[],
   characters: readonly VoiceCharacter[]
 ) =>
   estimateTtsCost(
@@ -111,10 +121,10 @@ const sceneRecordingCost = (
 
 export const SequenceDialogueLines: React.FC<{
   sequenceId: string;
-  shots: readonly ShotView[];
+  shots: readonly CanvasShot[];
   /** Every shot of the sequence: a scene records whole, seen or not. */
-  sequenceShots: readonly ShotView[];
-  scenes: readonly SceneWithScript[] | undefined;
+  sequenceShots: readonly CanvasShot[];
+  scenes: readonly CanvasScene[] | undefined;
   /** The shot under the sequence player's playhead. */
   playingShotId: string | undefined;
   /** A line was clicked: go to its shot. */
