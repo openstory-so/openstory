@@ -132,10 +132,13 @@ export function gatewayJobDocument(
       kind: job.kind,
       model: job.modelKey,
       status: job.status,
-      outputs: (job.outputs ?? []).map((output) => ({
-        url: toShareableUrl(output.url, origin),
-        contentType: output.contentType,
-      })),
+      // Recorded before the charge, so shown only once the job succeeded.
+      outputs: (job.status === 'succeeded' ? (job.outputs ?? []) : []).map(
+        (output) => ({
+          url: toShareableUrl(output.url, origin),
+          contentType: output.contentType,
+        })
+      ),
       error: job.error ?? null,
       charge:
         job.status === 'succeeded' && job.costMicros !== null

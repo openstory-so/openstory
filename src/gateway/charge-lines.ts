@@ -30,10 +30,11 @@ function assertBps(name: string, bps: number): void {
   }
 }
 
-/** `bps` of `amount`, rounded half up to a whole microdollar. */
+/** `bps` of `amount`, rounded half up to a whole microdollar; exact in bigint. */
 function basisPointsOf(amount: Microdollars, bps: number): Microdollars {
+  const denominator = BigInt(BPS_DENOMINATOR);
   return micros(
-    Math.floor((amount * bps + BPS_DENOMINATOR / 2) / BPS_DENOMINATOR)
+    Number((BigInt(amount) * BigInt(bps) + denominator / 2n) / denominator)
   );
 }
 
@@ -72,10 +73,9 @@ export function gatewayCharge(params: {
       : []),
   ];
   const lines = candidates.filter((line) => line.amountMicros > 0);
-  return {
-    totalMicros: micros(
-      lines.reduce((sum, line) => sum + line.amountMicros, 0)
-    ),
-    lines,
-  };
+  const total = lines.reduce((sum, line) => sum + line.amountMicros, 0);
+  if (!Number.isSafeInteger(total)) {
+    throw new Error('Charge total must be a safe integer');
+  }
+  return { totalMicros: micros(total), lines };
 }

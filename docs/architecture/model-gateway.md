@@ -264,7 +264,8 @@ is free again.
   `captureReservation` and it share one capture (`capture`); every other
   caller's capture is unchanged.
 - `src/gateway/charge-lines.ts`: `GATEWAY_PLATFORM_FEE_BPS` (0) and
-  `gatewayCharge`, the lines of a charge. Pure and client-safe; PR 4 passes
+  `gatewayCharge`, the lines of a charge (basis points in bigint, so exact at
+  any safe amount). Pure and client-safe; PR 4 passes
   `appMargin: { bps, payeeOrganizationId }` to add the margin line.
 - `src/gateway/server/settle.ts`: `settleGatewayJob` settles the lines, then
   marks the job succeeded at the debit.
@@ -294,8 +295,8 @@ nothing left is not written. So the lines exist if and only if the debit
 does, and always sum to it. A replay of the key writes nothing and returns
 the original debit and its lines (`replay: true`). A missing reservation is
 `{ ok: false, reason: 'missing' }` and writes nothing. Lines with a zero
-amount are dropped before the batch; a negative or fractional amount is
-refused.
+amount are dropped before the batch; a negative or fractional amount, or
+lines that sum past a safe integer, are refused.
 
 ### The hold
 
@@ -322,6 +323,11 @@ reads `{ totalMicros: 0, lines: [] }`; the shortfall is reported.
   `succeeded`, at what its lines sum to, and only otherwise marks it failed.
   So an `onFailure` after a charge, or a submit's `NOT_STARTED`, cannot fail
   a charged job.
+- A succeeded job with lines always has `costMicros` equal to their sum:
+  `markSucceeded` rewrites it from the lines, because a `settle` re-run after
+  a first attempt that debited nothing can debit after a top-up.
+- The job document shows `outputs` only once the job succeeded: they are
+  recorded before the charge.
 
 ### A lost trigger reply
 

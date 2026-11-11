@@ -4,7 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
-import { organization, user } from '@/platform/server/db/schema';
+import { credits, organization, user } from '@/platform/server/db/schema';
+import { createBillingMethods } from '@/billing/server/db/billing';
+import { micros } from '@/billing/money';
 import type { GatewayJobInput } from '@/gateway/schema';
 import { createGatewayJobsMethods } from './gateway-jobs';
 
@@ -158,5 +160,62 @@ describe('gateway jobs rows', () => {
     });
     await own.deleteUnstarted(started.job.id);
     expect((await own.getById(started.job.id))?.id).toBe(started.job.id);
+  });
+
+  it('a settle step re-run after the success keeps the cost equal to the lines', async () => {
+    const own = createGatewayJobsMethods(db, organizationId, userId);
+    const billing = createBillingMethods(db, organizationId, userId);
+    const { job } = await own.create({
+      input,
+      idempotencyKey: null,
+      oauthClientId: null,
+    });
+    await own.markRunning(job.id);
+    const outputs = [
+      { url: '/r2/b.png', path: 'b.png', contentType: 'image/png' },
+    ];
+    await own.recordOutputs(job.id, { outputs, via: 'fal' });
+    // A zeroed hold and an empty wallet: the first attempt debits nothing.
+    const setBalance = (balance: number) =>
+      db
+        .insert(credits)
+        .values({ organizationId, balance })
+        .onConflictDoUpdate({
+          target: credits.organizationId,
+          set: { balance },
+        });
+    await setBalance(1_000);
+    const held = await billing.createReservation(micros(1_000), {
+      idempotencyKey: `gateway:${job.id}`,
+    });
+    if (!held.ok) throw new Error('fixture reservation failed');
+    await billing.zeroReservation(held.reservationId);
+    await setBalance(0);
+    const settle = async () => {
+      const settled = await billing.settleReservation(
+        held.reservationId,
+        [{ kind: 'provider_cost', amountMicros: micros(4_000) }],
+        {
+          idempotencyKey: `${job.id}:gateway-settle`,
+          attribution: { gatewayJobId: job.id },
+        }
+      );
+      if (!settled.ok) throw new Error('missing');
+      await own.markSucceeded(job.id, {
+        outputs,
+        via: 'fal',
+        costMicros: settled.captured,
+      });
+    };
+    await settle();
+    expect((await own.getById(job.id))?.costMicros).toBe(0);
+
+    // The step body ran but its result was lost; a top-up lands before the re-run.
+    await setBalance(10_000);
+    await settle();
+
+    const lines = await own.getChargeLines(job.id);
+    expect(lines).toEqual([{ kind: 'provider_cost', amountMicros: 4_000 }]);
+    expect((await own.getById(job.id))?.costMicros).toBe(4_000);
   });
 });

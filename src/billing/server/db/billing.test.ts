@@ -959,5 +959,13 @@ describe('settleReservation (charge lines)', () => {
         idempotencyKey: 'k',
       })
     ).rejects.toThrow('non-negative integer');
+    await expect(
+      billing.settleReservation(
+        reservationId,
+        [provider(Number.MAX_SAFE_INTEGER), fee(2)],
+        { idempotencyKey: 'k' }
+      )
+    ).rejects.toThrow('safe integer');
+    expect(await debits()).toHaveLength(0);
   });
 });

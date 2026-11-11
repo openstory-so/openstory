@@ -79,6 +79,12 @@ export function createGatewayJobsMethods(
       eq(chargeLines.organizationId, organizationId),
       eq(chargeLines.gatewayJobId, id)
     );
+  const linesSum = (id: string) =>
+    sql<number>`(select sum(${chargeLines.amountMicros}) from ${chargeLines} where ${jobLines(id)})`;
+  const hasLines = (id: string) =>
+    exists(
+      db.select({ id: chargeLines.id }).from(chargeLines).where(jobLines(id))
+    );
 
   return {
     getById,
@@ -189,16 +195,25 @@ export function createGatewayJobsMethods(
       result: { outputs: GatewayJobOutput[]; costMicros: number; via: MediaVia }
     ): Promise<void> => {
       const now = new Date();
-      await db
-        .update(gatewayJobs)
-        .set({
-          ...result,
-          status: 'succeeded',
-          error: null,
-          updatedAt: now,
-          completedAt: now,
-        })
-        .where(and(own(id), RUN_MAY_WRITE));
+      await db.batch([
+        db
+          .update(gatewayJobs)
+          .set({
+            ...result,
+            status: 'succeeded',
+            error: null,
+            updatedAt: now,
+            completedAt: now,
+          })
+          .where(and(own(id), RUN_MAY_WRITE)),
+        // A settle re-run after the success can debit what the first attempt could not.
+        db
+          .update(gatewayJobs)
+          .set({ costMicros: linesSum(id), updatedAt: now })
+          .where(
+            and(own(id), eq(gatewayJobs.status, 'succeeded'), hasLines(id))
+          ),
+      ]);
     },
 
     /**
@@ -211,21 +226,23 @@ export function createGatewayJobsMethods(
       via?: MediaVia
     ): Promise<void> => {
       const now = new Date();
-      const charged = exists(
-        db.select({ id: chargeLines.id }).from(chargeLines).where(jobLines(id))
-      );
       await db.batch([
         db
           .update(gatewayJobs)
           .set({
             status: 'succeeded',
             error: null,
-            costMicros: sql`(select sum(${chargeLines.amountMicros}) from ${chargeLines} where ${jobLines(id)})`,
+            costMicros: linesSum(id),
             updatedAt: now,
             completedAt: now,
           })
           .where(
-            and(own(id), RUN_MAY_WRITE, isNotNull(gatewayJobs.outputs), charged)
+            and(
+              own(id),
+              RUN_MAY_WRITE,
+              isNotNull(gatewayJobs.outputs),
+              hasLines(id)
+            )
           ),
         db
           .update(gatewayJobs)

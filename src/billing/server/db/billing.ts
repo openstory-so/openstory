@@ -1415,6 +1415,9 @@ export function createBillingMethods(
     const total = micros(
       ordered.reduce((sum, line) => sum + line.amountMicros, 0)
     );
+    if (!Number.isSafeInteger(total)) {
+      throw new ValidationError('Charge lines must sum to a safe integer');
+    }
     if (total <= 0) {
       return {
         ok: true,

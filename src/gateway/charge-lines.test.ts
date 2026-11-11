@@ -83,6 +83,22 @@ describe('gatewayCharge', () => {
     expect(charge.totalMicros).toBe(232_000);
   });
 
+  it('rounds exactly where cost times rate passes 2^53', () => {
+    const fee = (cost: number, bps: number) =>
+      gatewayCharge({
+        providerCostMicros: micros(cost),
+        platformFeeBps: bps,
+      }).lines.find((line) => line.kind === 'platform_fee')?.amountMicros;
+    // 4_000_000_000_000_003 * 9_999 is far past 2^53; float math gives …004.
+    expect(fee(4_000_000_000_000_003, 9_999)).toBe(3_999_600_000_000_003);
+    expect(() =>
+      gatewayCharge({
+        providerCostMicros: micros(Number.MAX_SAFE_INTEGER),
+        platformFeeBps: 1,
+      })
+    ).toThrow('safe integer');
+  });
+
   it('is empty for a zero cost', () => {
     expect(
       gatewayCharge({ providerCostMicros: micros(0), platformFeeBps: 500 })
