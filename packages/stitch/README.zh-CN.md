@@ -137,7 +137,7 @@ npx @openstory/stitch skill
 npx @openstory/stitch skill --global
 ```
 
-也可以安装 [OpenStory 插件](https://github.com/openstory-so/skills)，一次得到 `create-style`、`create-sequence` 和 `stitch`。插件不包含 `stitch-player`：
+也可以安装 [OpenStory 插件](https://github.com/openstory-so/skills)，一次得到 `create-style`、`create-sequence`、`stitch` 和 `stitch-player`：
 
 ```sh
 npx skills add openstory-so/skills
