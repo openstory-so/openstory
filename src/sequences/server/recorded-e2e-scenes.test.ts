@@ -101,7 +101,7 @@ describe('recorded shot preview fixtures (#1642, #2094)', () => {
   it('match the shot-spec animatic prompt the split now fires', () => {
     const previewDir = resolve(
       dirname(fileURLToPath(import.meta.url)),
-      '../../../e2e/fixtures/recorded/fal/google-nano-banana-2-lite'
+      '../../../e2e/fixtures/recorded/fal/google-nano-banana-2.1'
     );
     const previewFileSchema = z.object({
       fixtures: z.array(

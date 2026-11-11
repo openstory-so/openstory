@@ -107,6 +107,7 @@ describe('drawSpecSketch', () => {
         expect.objectContaining({
           prompt: PROMPT,
           model: SHOT_PREVIEW_IMAGE_MODEL,
+          resolution: '720p',
           frameId: 'frame-1',
           skipStorage: true,
           specVersionId: 'spec-2',
