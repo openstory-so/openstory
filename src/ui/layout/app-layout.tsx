@@ -140,7 +140,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <SidebarInset className="min-w-0 min-h-0">
               {bare ? (
                 <header className="flex h-12 shrink-0 items-center justify-end px-4">
-                  <Button asChild variant="outline">
+                  <Button asChild>
                     <Link
                       to="/login"
                       onClick={() => rememberLastPage(`/${searchStr}`)}

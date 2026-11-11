@@ -1918,6 +1918,7 @@ export const ScriptView: FC<{
                   <Button
                     type="submit"
                     size="icon-lg"
+                    variant="secondary"
                     className="rounded-full"
                     disabled={isDisabled}
                     aria-label="Sign in to Generate"
