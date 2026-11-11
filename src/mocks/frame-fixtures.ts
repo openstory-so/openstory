@@ -57,6 +57,7 @@ export function frameVariantFixture(
     pendingInputHash: null,
     dependsOnVersionId: null,
     promptVersionId: null,
+    specVersionId: null,
     discardedAt: null,
     createdAt: now,
     updatedAt: now,

@@ -44,7 +44,6 @@ import {
   loadShotPromptDialogue,
   type ShotPromptDialogue,
 } from './shot-dialogue';
-import { redrawShotPreview } from './shot-preview';
 
 type RegenerateContext = Pick<
   ShotEditContext,
@@ -180,7 +179,8 @@ export async function regenerateShotPrompt(
     await scopedDb.inputManifests.record([visualStamp, motionStamp]);
     const visualHash = visualStamp.hash;
     const motionHash = motionStamp.hash;
-    const writeVisual = !shotReferenceOnly && !visualKept;
+    // Free, and ready if the shot turns its start frame on (#2350).
+    const writeVisual = !visualKept;
     const writeMotion = !motionKept;
     if (!writeVisual && !writeMotion) return result({ alreadyUpToDate: true });
 
@@ -247,7 +247,6 @@ export async function regenerateShotPrompt(
         analysisModel,
         createdBy: user.id,
       });
-      await redrawShotPreview({ ...context, scene }, motion.text);
     }
     return result({ rebuilt: true });
   }
@@ -268,7 +267,7 @@ export async function regenerateShotPrompt(
   let visualClaimId: string | null = null;
   let motionClaimId: string | null = null;
   try {
-    if (!shotReferenceOnly && !visualKept) {
+    if (!visualKept) {
       const row = await scopedDb.framePromptVersions.createPending({
         frameId: frame.id,
         pendingInputHash: visualHash,

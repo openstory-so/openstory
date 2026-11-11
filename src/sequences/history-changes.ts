@@ -173,7 +173,8 @@ export function mediaVersionIds(data: unknown): {
     return typeof value === 'string' && value.length > 0 ? value : null;
   };
   return {
-    versionId: id('versionId'),
+    // A storyboard sketch event names its row `variantId` (#2350).
+    versionId: id('versionId') ?? id('variantId'),
     prevVersionId: id('prevVersionId'),
   };
 }

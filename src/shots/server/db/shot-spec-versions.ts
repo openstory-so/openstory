@@ -4,7 +4,7 @@
  */
 
 import { selectInChunks } from '@/platform/server/db/select-in-chunks';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import {
   shotSpecVersions,
@@ -207,6 +207,15 @@ export function createShotSpecVersionsMethods(db: Database) {
           )
         );
     },
+
+    /** Every spec version of a shot, newest first (#2350). */
+    listByShot: (shotId: string, limit = 50): Promise<ShotSpecVersion[]> =>
+      db
+        .select()
+        .from(shotSpecVersions)
+        .where(eq(shotSpecVersions.shotId, shotId))
+        .orderBy(desc(shotSpecVersions.createdAt), desc(shotSpecVersions.id))
+        .limit(limit),
 
     getSelected: async (shotId: string): Promise<ShotSpecVersion | null> => {
       const [row] = await db

@@ -30,5 +30,6 @@ export const saveShotSpecFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) =>
-    saveShotSpec(context, data.spec, data.replace)
+    // A session holds every scope, generate included.
+    saveShotSpec(context, data.spec, data.replace, { drawSketch: true })
   );

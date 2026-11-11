@@ -1147,6 +1147,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId,
       model: 'flux_2_turbo',
       promptHash: 'scene-text-hash',
+      specVersionId: 'spec-1',
       workflowRunId: 'run-preview-2',
     };
     await m.openPreview(open);
@@ -1157,7 +1158,11 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       .from(frameVariants)
       .where(eq(frameVariants.frameId, frameId));
     expect(opened).toHaveLength(1);
-    expect(opened[0]).toMatchObject({ kind: 'preview', status: 'generating' });
+    expect(opened[0]).toMatchObject({
+      kind: 'preview',
+      status: 'generating',
+      specVersionId: 'spec-1',
+    });
     // Not a claim: the claim readers never see it.
     expect(await m.listLiveClaims(frameId)).toEqual([]);
     // Nor a projected preview until it lands.
@@ -1180,6 +1185,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId,
       model: 'flux_2_turbo',
       promptHash: null,
+      specVersionId: null,
       workflowRunId: 'run-preview-3',
     });
     await m.markFailedByWorkflowRun('run-preview-3', 'content flagged');
@@ -1491,6 +1497,7 @@ describe('frameVariants primary still status (#1942)', () => {
       sequenceId,
       model: 'flux_2_turbo',
       promptHash: null,
+      specVersionId: null,
       workflowRunId: 'run-preview',
     };
     await m.openPreview(preview);

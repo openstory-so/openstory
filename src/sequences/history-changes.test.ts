@@ -79,6 +79,10 @@ describe('historyChanges', () => {
         model: 'minimax_h3_max',
       })
     ).toEqual({ versionId: 'new', prevVersionId: 'old' });
+    // A storyboard sketch event names its row variantId (#2350).
+    expect(
+      mediaVersionIds({ variantId: 'sketch', model: 'nano_banana_2_lite' })
+    ).toEqual({ versionId: 'sketch', prevVersionId: null });
     expect(mediaVersionIds({ workflow: 'StoryboardWorkflow' })).toEqual({
       versionId: null,
       prevVersionId: null,

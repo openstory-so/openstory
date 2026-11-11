@@ -780,6 +780,32 @@ sha256Hex({
 });
 ```
 
+#### 9. Storyboard sketch — `readShotStoryboard` (#2350)
+
+Every shot, start-frame ones included. Not a manifest hash: a sketch row
+records the spec version it was drawn from (`frame_variants.specVersionId`)
+and its `promptHash`. Staleness reads the hash only: the sketch on show is
+the newest whose hash equals the one below, else the newest of any.
+
+```ts
+cast = charactersToBible(
+  dressForScene(characters, scene.continuity.characterLooks)
+);
+fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
+```
+
+`missing` is none drawn. A sketch of the fresh hash is fresh, whatever
+version it is stamped with, so a rename that leaves the drawn text alone and
+a picked old version stay fresh. Otherwise `failed` if the newest row failed,
+else `changed`. Every spec save, Rewrite and analysis draws its own
+(`drawSpecSketch`, skipped when a sketch of that prompt exists), so what
+reads stale is a cast or look edit, a rename that changes the drawn text, and
+a draw that did not start. The stamp only groups sketches in History: a
+version's sketch is the newest stamped with it, else the newest of its
+prompt, which is how scene split's sketch (drawn before the analysis spec,
+so unstamped) finds its version. A shot with no spec (before #1915) is held
+to its motion prompt instead. Regenerate draws from the selected spec.
+
 ### 4.2 Hashed surface vs. actual prompt inputs — are we over-hashing? (history)
 
 > **This subsection is the #867 analysis as written, kept for the reasoning.**
@@ -1033,6 +1059,7 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
 | Staleness verify (clip)                  | `src/shots/scene-segments.ts` (`isSelectedVersionStale`, `selectedVersionDriftDetail` for causes)                                                   |
 | Staleness verify (sheets)                | `src/cast/server/production-staleness.ts` (`readReferenceStaleness`)                                                                                |
 | Staleness verify (music)                 | `src/audio/server/music-staleness.ts` (`readMusicPromptStaleness`)                                                                                  |
+| Staleness verify (storyboard sketch)     | `src/shots/server/shot-preview.ts` (`readShotStoryboard`)                                                                                           |
 | Verdict matrix (every edge, as verdicts) | `src/shots/server/staleness-matrix.test.ts`                                                                                                         |
 | Still snapshot hash                      | `src/stills/server/workflows/image-workflow-snapshot.ts`, `src/shots/server/workflows/regenerate-shots-snapshot.ts`                                 |
 | Design rationale                         | `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`                                                                                |

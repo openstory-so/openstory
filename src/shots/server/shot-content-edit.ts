@@ -18,7 +18,7 @@ import {
   regenerateShotPrompt,
 } from './regenerate-shot-prompt';
 import type { ShotEditContext } from './shot-context';
-import { redrawShotPreview } from './shot-preview';
+import { drawSpecSketch } from './shot-preview';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
@@ -110,7 +110,6 @@ export async function restoreShotPromptVersion(
     createdBy: user.id,
     ...restoredPromptProvenance(chosen),
   });
-  await redrawShotPreview(context, chosen.text);
   return { variantId: inserted.id };
 }
 
@@ -138,6 +137,7 @@ export async function readShotSpec(
 /**
  * Save an edited shot spec (#1929) and rebuild the prompts from it for free.
  * A prompt the user wrote is replaced only when `replace` says so.
+ * `drawSketch` spends credits, so only a caller allowed to generate sets it.
  */
 export async function saveShotSpec(
   context: Pick<
@@ -151,7 +151,8 @@ export async function saveShotSpec(
     | 'scene'
   >,
   edit: z.infer<typeof shotSpecEditSchema>,
-  replace: { visual: boolean; motion: boolean }
+  replace: { visual: boolean; motion: boolean },
+  options: { drawSketch: boolean }
 ) {
   const { scopedDb, shot, user, scene } = context;
   if (!scene)
@@ -171,13 +172,15 @@ export async function saveShotSpec(
   // the rebuild below would turn into a paid Rewrite shot.
   if (!unchanged || state.verdict === 'stale') {
     // The user wrote it against the script as it is now: current.
-    await scopedDb.shotSpecVersions.write({
+    const version = await scopedDb.shotSpecVersions.write({
       shotId: shot.id,
       spec,
       source: 'edit',
       inputHash: state.currencyHash,
       createdBy: user.id,
     });
+    // Every spec gets a sketch, even when the user keeps their prompts (#2350).
+    if (options.drawSketch) await drawSpecSketch(context, version);
   }
   return regenerateShotPrompt(context, scene, { force: false, replace });
 }

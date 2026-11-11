@@ -920,6 +920,7 @@ export function createFrameVariantsMethods(db: Database) {
       sequenceId: string;
       model: string;
       promptHash: string | null;
+      specVersionId: string | null;
       workflowRunId: string;
     }): Promise<void> => {
       const [existing] = await db
@@ -943,6 +944,7 @@ export function createFrameVariantsMethods(db: Database) {
         isPrimary: false,
         promptHash: input.promptHash,
         promptVersionId: null,
+        specVersionId: input.specVersionId,
         workflowRunId: input.workflowRunId,
       });
     },
@@ -992,7 +994,7 @@ export function createFrameVariantsMethods(db: Database) {
             kind: 'preview.generated',
             targetType: 'frame',
             targetId: input.frameId,
-            summary: `Generated a preview with ${mediaModelName(input.model)}`,
+            summary: `Drew a storyboard sketch with ${mediaModelName(input.model)}`,
             data: { variantId, model: input.model },
           },
           frameVariants,
@@ -1500,6 +1502,21 @@ export function createFrameVariantsMethods(db: Database) {
         .limit(1);
       return rows[0] ?? null;
     },
+
+    /** Every non-discarded `kind: 'preview'` row of a frame, newest first (#2350). */
+    listPreviews: (frameId: string, limit = 50): Promise<FrameVariant[]> =>
+      db
+        .select()
+        .from(frameVariants)
+        .where(
+          and(
+            eq(frameVariants.frameId, frameId),
+            eq(frameVariants.kind, 'preview'),
+            isNull(frameVariants.discardedAt)
+          )
+        )
+        .orderBy(...newestFirst)
+        .limit(limit),
 
     /**
      * Batch {@link getLatestPreview}, keyed by frameId — frames with no preview

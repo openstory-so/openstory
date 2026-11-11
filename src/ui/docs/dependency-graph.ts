@@ -577,6 +577,25 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     storedAs: 'frame_variants.inputHash',
   },
   {
+    id: 'storyboard',
+    versionedIn: 'frame_variants',
+    label: 'Storyboard sketch',
+    kind: 'artifact',
+    band: 'renders',
+    summary:
+      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350).",
+    counts: [
+      'The selected shot spec version (the motion prompt on a shot with no spec)',
+      'Name, gender, age, description and clothing of each character the text names, in the look the scene picks',
+    ],
+    ignored: [
+      'Style (a sketch is never styled, #1277)',
+      'Sheets and references (a sketch draws from text only)',
+      'Image model and aspect ratio',
+    ],
+    storedAs: 'frame_variants.promptHash',
+  },
+  {
     id: 'clip',
     versionedIn: 'video_variants',
     label: 'Clip',
@@ -854,6 +873,25 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the selected sheet version id',
   },
   { from: 'element', to: 'still', tracking: 'hash', note: 'the image URL' },
+  {
+    from: 'script',
+    to: 'storyboard',
+    tracking: 'pointer',
+    note: 'the selected shot spec version; each spec save draws its own sketch',
+  },
+  {
+    from: 'character',
+    to: 'storyboard',
+    tracking: 'hash',
+    note: 'the bible fields of the characters the text names',
+  },
+  {
+    from: 'look',
+    to: 'storyboard',
+    tracking: 'hash',
+    mode: 'reference-only',
+    note: 'the clothing of the look the scene picks',
+  },
   {
     from: 'motionPrompt',
     to: 'clip',

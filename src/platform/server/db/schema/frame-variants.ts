@@ -152,6 +152,10 @@ export const frameVariants = snakeCase.table(
     // restores that prompt so the still and its text stay paired. Null on
     // legacy rows or gens that had no prompt version yet.
     promptVersionId: text(),
+    // `kind: 'preview'` only: the `shot_spec_versions` row this sketch was
+    // drawn from (#2350). Soft pointer. Null on sketches from before it and
+    // on scene split's, which are drawn before the analysis spec exists.
+    specVersionId: text(),
 
     // Soft-hide a version (undoable) — replaces the old divergent/discard split.
     discardedAt: integer({ mode: 'timestamp' }),

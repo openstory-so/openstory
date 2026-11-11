@@ -1,11 +1,10 @@
 /**
- * The shot spec above a prompt (#1929). The still's tab edits framing and
- * action; the video's tab edits action, camera move, pacing, direction and
- * sound. Saving rebuilds the prompts from the spec for free. A written
+ * The shot spec (#1929), one form on the Shot tab (#2350): framing, then
+ * motion. Saving rebuilds the prompts from the spec for free. A written
  * prompt is replaced only when the user says so.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/platform/errors';
 import {
@@ -29,11 +28,17 @@ import {
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
-import { Input } from '@/ui/shadcn/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui/shadcn/dropdown-menu';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
+import type { MentionItem } from './prompt-mention/mention-items';
+import { useSequenceMentionItems } from './use-mention-items';
 import { useSaveShotSpec, useShotSpec } from './use-shot-spec';
-
-type Part = 'still' | 'motion';
 
 type Field = {
   name: string;
@@ -86,24 +91,29 @@ const FIELDS = {
   soundCue: { name: 'soundCue', label: 'Sound', read: (s) => s.soundCue },
 } satisfies Record<string, Field>;
 
-const PART_FIELDS: Record<Part, Field[]> = {
-  still: [
-    FIELDS.shotSize,
-    FIELDS.angle,
-    FIELDS.composition,
-    FIELDS.subjectStartState,
-    FIELDS.action,
-  ],
-  motion: [
-    FIELDS.action,
-    FIELDS.move,
-    FIELDS.pacing,
-    FIELDS.direction,
-    FIELDS.soundCue,
-  ],
-};
+const GROUPS: { label: string; fields: Field[] }[] = [
+  {
+    label: 'Framing',
+    fields: [
+      FIELDS.shotSize,
+      FIELDS.angle,
+      FIELDS.composition,
+      FIELDS.subjectStartState,
+    ],
+  },
+  {
+    label: 'Motion',
+    fields: [
+      FIELDS.action,
+      FIELDS.move,
+      FIELDS.pacing,
+      FIELDS.direction,
+      FIELDS.soundCue,
+    ],
+  },
+];
 
-/** The saved spec with this tab's fields read off the form. */
+/** The spec read off the form. */
 function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
   const value = (name: string, fallback: string) => {
     const entry = form.get(name);
@@ -137,11 +147,9 @@ function writtenLabel(visual: boolean, motion: boolean): string {
 export function ShotSpecForm({
   sequenceId,
   shotId,
-  part,
 }: {
   sequenceId: string;
   shotId: string;
-  part: Part;
 }) {
   const { data } = useShotSpec({ sequenceId, shotId });
   if (!data) {
@@ -165,7 +173,6 @@ export function ShotSpecForm({
       key={JSON.stringify(data.spec)}
       sequenceId={sequenceId}
       shotId={shotId}
-      part={part}
       spec={data.spec}
       verdict={data.verdict}
       visualWritten={data.visualWritten}
@@ -177,7 +184,6 @@ export function ShotSpecForm({
 function SpecFields({
   sequenceId,
   shotId,
-  part,
   spec,
   verdict,
   visualWritten,
@@ -185,16 +191,26 @@ function SpecFields({
 }: {
   sequenceId: string;
   shotId: string;
-  part: Part;
   spec: StoredShotSpec;
   verdict: 'current' | 'stale' | 'missing' | 'updating';
   visualWritten: boolean;
   motionWritten: boolean;
 }) {
   const save = useSaveShotSpec(sequenceId);
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
+  // Remounts the fields on Cancel, back to the saved spec.
+  const [resetCount, setResetCount] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<StoredShotSpec | null>(null);
   const updating = verdict === 'updating';
+  const status = updating
+    ? 'Rewriting…'
+    : dirty
+      ? 'Unsaved changes'
+      : verdict === 'stale'
+        ? 'Script changed since it was written'
+        : '';
 
   const submit = (next: StoredShotSpec, replace: boolean) => {
     setPending(null);
@@ -223,8 +239,10 @@ function SpecFields({
   return (
     <form
       className="flex flex-col gap-3"
-      onChange={() => setDirty(true)}
-      onReset={() => setDirty(false)}
+      onReset={() => {
+        setDirty(false);
+        setResetCount((count) => count + 1);
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         const parsed = shotSpecEditSchema.safeParse(
@@ -240,65 +258,60 @@ function SpecFields({
         else submit(parsed.data, false);
       }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Shot spec</span>
-        {verdict === 'stale' && (
-          <span className="text-xs text-muted-foreground">
-            Script changed since it was written
-          </span>
-        )}
-        {updating && (
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            Rewriting…
-          </span>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">Shot spec</h3>
+        <span
+          className="truncate text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          {status}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3">
+        <fieldset
+          className="flex flex-col gap-3"
+          disabled={updating || save.isPending}
+        >
+          {GROUPS.map((group) => (
+            <div key={group.label} className="flex flex-col gap-3">
+              <span className="text-xs font-medium text-muted-foreground">
+                {group.label}
+              </span>
+              {group.fields.map((field) => (
+                <SpecField
+                  key={`${field.name}-${resetCount}`}
+                  id={`${shotId}-${field.name}`}
+                  field={field}
+                  initial={field.read(spec)}
+                  disabled={updating || save.isPending}
+                  mentionItems={mentionItems}
+                  onMentionRename={onMentionRename}
+                  onEdit={() => setDirty(true)}
+                />
+              ))}
+            </div>
+          ))}
+        </fieldset>
+        {dirty && (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="reset"
+              size="sm"
+              variant="outline"
+              disabled={save.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={save.isPending || updating}
+            >
+              {save.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
         )}
       </div>
-      <fieldset
-        className="grid gap-3 sm:grid-cols-2"
-        disabled={updating || save.isPending}
-      >
-        {PART_FIELDS[part].map((field) => {
-          const id = `${shotId}-${part}-${field.name}`;
-          const listId = field.suggestions ? `${id}-suggestions` : undefined;
-          return (
-            <label key={field.name} className="text-xs" htmlFor={id}>
-              {field.label}
-              <Input
-                id={id}
-                name={field.name}
-                defaultValue={field.read(spec)}
-                maxLength={2000}
-                list={listId}
-                autoComplete="off"
-              />
-              {field.suggestions && (
-                <datalist id={listId}>
-                  {field.suggestions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </datalist>
-              )}
-            </label>
-          );
-        })}
-      </fieldset>
-      {dirty && (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            type="reset"
-            size="sm"
-            variant="outline"
-            disabled={save.isPending}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={save.isPending || updating}>
-            {save.isPending ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      )}
 
       <AlertDialog
         open={pending !== null}
@@ -334,5 +347,81 @@ function SpecFields({
         </AlertDialogContent>
       </AlertDialog>
     </form>
+  );
+}
+
+/** One spec field: grows with its text and shows cast and elements as pills. */
+function SpecField({
+  id,
+  field,
+  initial,
+  disabled,
+  mentionItems,
+  onMentionRename,
+  onEdit,
+}: {
+  id: string;
+  field: Field;
+  initial: string;
+  disabled: boolean;
+  mentionItems: MentionItem[];
+  onMentionRename: (item: MentionItem, name: string) => void;
+  onEdit: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  // The editor re-emits on mount; only a change after focus is an edit.
+  const focused = useRef(false);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <span className="text-xs">{field.label}</span>
+        {field.suggestions && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={disabled}
+                aria-label={`${field.label} presets`}
+              >
+                Presets
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72">
+              {field.suggestions.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onSelect={() => {
+                    setValue(option);
+                    onEdit();
+                  }}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      <MarkdownEditor
+        id={id}
+        aria-label={field.label}
+        value={value}
+        onValueChange={(next) => {
+          setValue(next);
+          if (focused.current) onEdit();
+        }}
+        onFocus={() => {
+          focused.current = true;
+        }}
+        disabled={disabled}
+        // Preset fields hold a phrase: one row, growing with the text.
+        className={field.suggestions ? 'min-h-9 py-1.5' : undefined}
+        mentionItems={mentionItems}
+        onMentionRename={onMentionRename}
+      />
+      <input type="hidden" name={field.name} value={value} />
+    </div>
   );
 }

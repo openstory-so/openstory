@@ -1,0 +1,1 @@
+ALTER TABLE `frame_variants` ADD `spec_version_id` text;

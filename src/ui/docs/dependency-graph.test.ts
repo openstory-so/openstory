@@ -42,6 +42,8 @@ describe('dependency graph', () => {
       'export',
       'motionPrompt',
       'still',
+      // Start-frame shots are sketched too (#2350).
+      'storyboard',
       'visualPrompt',
     ]);
     // The music brief reads scenes, not prompts (#1783).

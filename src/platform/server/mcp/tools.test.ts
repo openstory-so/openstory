@@ -83,6 +83,8 @@ import {
   stitches,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
+import { simpleHash } from '@/platform/hash';
+import { buildPreviewPrompt } from '@/sequences/server/poster-prompt';
 import {
   shotInspectionSchema,
   sceneDetailSchema,
@@ -2506,17 +2508,16 @@ describe('structure edits (#1979)', () => {
         durationSeconds: 6.5,
       })
     ).toMatchObject({ durationSeconds: 6.5 });
-    // No still yet: turning the start frame on must not start a generation.
+    // No still yet: the switch turns on, and the still is owed, not started.
+    vi.mocked(triggerWorkflow).mockClear();
     expect(
-      await call('update_shot', {
+      await data('update_shot', {
         sequenceId,
         shotId: created.shotId,
         useStartFrame: true,
       })
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
-    });
+    ).toMatchObject({ useStartFrame: true });
+    expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
     expect(
       await data('update_shot', { sequenceId, shotId, useStartFrame: true })
     ).toMatchObject({ useStartFrame: true });
@@ -2561,6 +2562,109 @@ describe('structure edits (#1979)', () => {
     expect(
       await call('create_shot', { sequenceId: otherSequence, sceneId })
     ).toMatchObject({ isError: true });
+  });
+});
+
+describe('shot storyboard (#2350)', () => {
+  const sketchOf = (text: string) => simpleHash(buildPreviewPrompt(text, []));
+  async function addSketch(
+    values: Partial<typeof frameVariants.$inferInsert> = {}
+  ) {
+    const id = generateId();
+    await db.insert(frameVariants).values({
+      id,
+      frameId,
+      sequenceId,
+      kind: 'preview',
+      model: 'nano_banana_2_lite',
+      status: 'completed',
+      isPrimary: false,
+      url: `/r2/openstory-images/${id}.png`,
+      promptHash: sketchOf('Motion prompt'),
+      ...values,
+    });
+    return id;
+  }
+  const referenceOnly = () =>
+    db.update(shots).set({ useStartFrame: false }).where(eq(shots.id, shotId));
+
+  it('reads a start-frame shot with no sketch as missing', async () => {
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      referenceOnly: false,
+      staleReason: 'missing',
+      current: null,
+    });
+  });
+
+  it('reads missing, fresh, changed and failed sketches', async () => {
+    await referenceOnly();
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ referenceOnly: true, staleReason: 'missing' });
+
+    const changed = await addSketch({ promptHash: sketchOf('Old prompt') });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ staleReason: 'changed', current: { id: changed } });
+
+    const failed = await addSketch({
+      status: 'failed',
+      url: null,
+      error: 'Content checker',
+    });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      staleReason: 'failed',
+      current: { id: changed },
+      history: [{ id: failed, error: 'Content checker' }, { id: changed }],
+    });
+
+    const fresh = await addSketch();
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({
+      staleReason: null,
+      current: {
+        id: fresh,
+        url: `https://openstory.test/r2/openstory-images/${fresh}.png`,
+      },
+    });
+
+    await addSketch({ status: 'generating', url: null });
+    expect(
+      await data('get_shot_storyboard', { sequenceId, shotId })
+    ).toMatchObject({ generating: true, staleReason: null });
+  });
+
+  it('regenerate_shot_storyboard draws a shot with no spec from its motion prompt', async () => {
+    await db
+      .insert(credits)
+      .values({ organizationId, balance: 100_000_000 })
+      .onConflictDoUpdate({
+        target: credits.organizationId,
+        set: { balance: 100_000_000 },
+      });
+    vi.mocked(triggerWorkflow).mockClear().mockResolvedValueOnce('sketch-run');
+    expect(
+      await data('regenerate_shot_storyboard', { sequenceId, shotId })
+    ).toEqual({ workflowRunId: 'sketch-run', alreadyInFlight: false });
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
+      '/image',
+      expect.objectContaining({
+        shotId,
+        frameId,
+        prompt: buildPreviewPrompt('Motion prompt', []),
+        specVersionId: null,
+      }),
+      { deduplicationId: `storyboard-${frameId}-none` }
+    );
+    await addSketch({ status: 'generating', url: null, workflowRunId: 'r2' });
+    expect(
+      await data('regenerate_shot_storyboard', { sequenceId, shotId })
+    ).toEqual({ workflowRunId: 'r2', alreadyInFlight: true });
   });
 });
 
@@ -2785,7 +2889,15 @@ describe('shot content edits (#1979)', () => {
     soundCue: 'surf',
   };
 
-  it('update_shot_spec saves the spec and rebuilds the prompts from it', async () => {
+  it('update_shot_spec saves the spec and rebuilds the prompts from it, spending nothing', async () => {
+    // Funded, so a sketch would start if the write scope could draw one.
+    await db
+      .insert(credits)
+      .values({ organizationId, balance: 100_000_000 })
+      .onConflictDoUpdate({
+        target: credits.organizationId,
+        set: { balance: 100_000_000 },
+      });
     vi.mocked(triggerWorkflow).mockClear();
     expect(
       await data('update_shot_spec', {

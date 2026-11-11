@@ -463,11 +463,9 @@ const setShotUseStartFrameSchema = z.object({
  * Set the per-shot start-frame override. Resolution and cost of a flip:
  * `usesStartFrame()`.
  *
- * Both directions are gated, because either can persist a shot that cannot
- * render: ON needs an existing still (a checkbox must never start image
- * generation and spend money), OFF needs a model with a route whose start
- * frame is optional. Ungated, one unrenderable shot rejected the whole
- * sequence's "Generate all motion", naming a sequence flag that was not set.
+ * ON with no still is allowed: the still is owed before the clip, and the
+ * switch starts nothing (#2350). OFF needs a model with a route whose start
+ * frame is optional.
  */
 export const setShotUseStartFrameFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])

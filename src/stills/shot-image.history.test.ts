@@ -20,10 +20,10 @@ describe('isImageHistoryVersion', () => {
     ).toBe(false);
   });
 
-  it('drops preview stand-ins', () => {
+  it('keeps storyboard sketches (#2350)', () => {
     expect(
       isImageHistoryVersion({ kind: 'preview', sourceVariantId: null })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps user-uploaded stills', () => {

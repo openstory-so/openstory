@@ -87,20 +87,37 @@ preview is what fills the scene rail while the clip renders — without it the
 rail has nothing to show until the video lands, and the anchor frame is where
 that preview variant hangs.
 
-**The preview follows the motion prompt.** It is the only picture of a
-reference-only shot, so an edit that changes the shot's motion prompt redraws
-it from that prompt (`redrawShotPreview`, `src/shots/server/shot-preview.ts`):
-a saved spec or Rebuild, a hand edit, a restored version, and Rewrite shot.
-The reference-only motion prompt is the spec's framing, action and camera,
-the same text the scene-split sketch is drawn from. Each redraw is a new
-`kind: 'preview'` row and the rail shows the newest: older sketches are not
-versions, since none of them reaches the clip. A shot with a start frame never
-redraws, because its still takes over.
+**The sketch follows the spec (#2350).** Every spec version gets a sketch,
+start-frame shots included: a saved spec (even with Keep mine), Rewrite shot,
+and analysis (scene split's sketch). It is drawn from the spec text scene
+split uses (`drawSpecSketch`, `src/shots/server/shot-preview.ts`) and stamped
+with the version (`frame_variants.specVersionId`). A prompt edit draws
+nothing: the picture matches the spec it sits beside. Each draw is a new
+`kind: 'preview'` row; fast saves get one each, since they are cheap. A
+prompt that already has a sketch is not drawn again.
+A sketch spends credits, so MCP `update_shot_spec` (write scope) draws none;
+the caller asks for one with `regenerate_shot_storyboard` (generate scope).
+
+**Shot, Image, Video (#2350).** Shot tabs run in the order a clip is made.
+Shot holds the storyboard (the current sketch, whether it is stale,
+Regenerate, History) and the spec. History lists every spec version, newest
+first, with its sketch ("Drawing…" or "No sketch" without one), how it was
+made and when; Use this version saves it again as a new version, keeping any
+written prompt, and draws for it. Sketches also show in the prompt history's Images list (badged Sketch, never
+selectable): a sketch's `preview.generated` event names its row `variantId`,
+which `mediaVersionIds` reads as the version. Image holds the Use start frame
+switch, then the still prompt, upload and variants, inert while the switch is
+off. The still prompt is written on every shot, reference-only included: it
+is free (`deriveStillPrompt`), and staleness and the plan ignore it until the
+switch is on. Video holds the video prompt and Generate. The canvas shows the tab's
+picture: the sketch on Shot (the still on a start-frame shot), the still or
+"No start frame yet" on Image, the clip on Video. Two Regenerates that saw the
+same newest sketch start one run (`deduplicationId`).
 
 **A sketch newer than the clip replaces it in the rail and the theatre
 (#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
 preview row's `createdAt` (`ShotView.previewCreatedAt`) with the selected
-clip's `generatedAt`. A sketch is redrawn only when the prompt changes, so a
+clip's `generatedAt`. A sketch is drawn only when the spec changes, so a
 newer sketch means the clip shows a shot that is no longer written. The rail
 thumbnails pass no clip (`shownClipUrl`), and the theatre plays the sketch for
 the shot's length with its dialogue (`withoutOutdatedClips` in
@@ -365,11 +382,11 @@ folds into the motion-prompt hash, so flipping it re-stales that shot's motion
 prompt — deliberately, because rendering a reference-only shot with an
 image-to-video prompt reinvents the composition the prompt never described.
 
-Both directions are gated at `setShotUseStartFrameFn`, because either can
-persist a shot that cannot render: ON needs an existing still (a checkbox must
-never start image generation and spend money), OFF needs a model with a
-reference-to-video route. Ungated, one unrenderable shot rejected the whole
-sequence's batch motion.
+ON is never gated (#2350): with no still, the still is a dependency. The plan
+owes it before the clip, batch motion leaves the shot out
+(`isBatchMotionEligible`), the Video tab's Generate waits for it, and the
+switch itself starts nothing. OFF is gated at `setShotUseStartFrame`: it needs
+a model with a reference-to-video route.
 
 Consequences of the override being per shot:
 

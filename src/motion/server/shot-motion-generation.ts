@@ -106,7 +106,9 @@ export async function generateShotMotion(
     ? null
     : await context.scopedDb.frameVariants.getSelected(frame.id);
   if (!referenceOnly && !selectedStill?.url) {
-    throw new ValidationError('Shot has no thumbnail to generate motion from');
+    throw new ValidationError(
+      'This shot uses a start frame and has none yet. Generate one first.'
+    );
   }
   const imageUrl = selectedStill?.url ?? undefined;
 
@@ -265,7 +267,7 @@ export async function generateShotMotion(
         : null;
       if (!firstStill?.url) {
         throw new ValidationError(
-          'Shot has no thumbnail to generate motion from'
+          'This shot uses a start frame and has none yet. Generate one first.'
         );
       }
       firstImageUrl = firstStill.url;

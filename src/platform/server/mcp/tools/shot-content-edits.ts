@@ -33,6 +33,7 @@ import {
   loadShotTarget,
   type ShotEditContext,
 } from '@/shots/server/shot-context';
+import { readShotStoryboard } from '@/shots/server/shot-preview';
 import { shotSpecEditSchema } from '@/shots/shot-list.schema';
 import { openstoryTool, productionRead } from '../tool-context';
 
@@ -99,6 +100,47 @@ const getShotSpec = productionRead(
     const context = await shotEdit(scopedDb, userId, input);
     return { shotId: context.shot.id, ...(await readShotSpec(context)) };
   }
+);
+
+const storyboardSketch = z.object({
+  id: z.string(),
+  url: z.string().nullable(),
+  status: z.string(),
+  error: z.string().nullable(),
+  model: z.string(),
+  specVersionId: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+const shotStoryboard = z.object({
+  shotId: z.string(),
+  referenceOnly: z.boolean(),
+  generating: z.boolean(),
+  staleReason: z.enum(['missing', 'failed', 'changed']).nullable(),
+  current: storyboardSketch.nullable(),
+  history: z.array(storyboardSketch),
+  versions: z.array(
+    z.object({
+      id: z.string(),
+      source: z.enum(['analysis', 'rewrite', 'rename', 'edit']),
+      createdAt: z.string(),
+      selected: z.boolean(),
+      sketch: storyboardSketch.nullable(),
+    })
+  ),
+});
+
+const getShotStoryboard = productionRead(
+  'get_shot_storyboard',
+  'Read a shot’s storyboard sketch: the grey animatic drawn from each version of its shot spec, start-frame shots included. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last sketch failed; changed: the spec or cast moved since it was drawn), whether one is drawing, every sketch drawn for it, and every spec version with its sketch, newest first. Redraw with regenerate_shot_storyboard.',
+  shotInput,
+  shotStoryboard,
+  async (input, { scopedDb, userId, origin }) =>
+    projectRead(
+      shotStoryboard,
+      await readShotStoryboard(await shotEdit(scopedDb, userId, input)),
+      origin
+    )
 );
 
 const dialogueLine = z.object({
@@ -260,7 +302,7 @@ const rebuildShotPrompts = openstoryTool({
 const updateShotSpec = openstoryTool({
   name: 'update_shot_spec',
   description:
-    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. Prompts the user wrote are kept unless replaceWritten names them. Refused while a rewrite of the shot is in flight.',
+    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: shotInput.extend({
@@ -275,7 +317,9 @@ const updateShotSpec = openstoryTool({
     const result = await saveShotSpec(
       context,
       input.spec,
-      input.replaceWritten
+      input.replaceWritten,
+      // A sketch spends credits; this tool holds only the write scope.
+      { drawSketch: false }
     );
     return { data: result, summary: rebuildSummary(result) };
   },
@@ -414,6 +458,7 @@ const selectVideoVersion = openstoryTool({
 
 export const shotContentTools = [
   getShotSpec,
+  getShotStoryboard,
   listShotDialogue,
   updateShotPrompt,
   restoreShotPrompt,

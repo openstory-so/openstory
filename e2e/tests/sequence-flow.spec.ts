@@ -212,8 +212,8 @@ testWithUser.describe('Variant Selection', () => {
       timeout: 15_000,
     });
     // Video leads the shot tabs, so the canvas opens on the clip; the still
-    // (and its variants button) is on the Start Frame tab.
-    await page.getByRole('tab', { name: 'Start Frame' }).click();
+    // (and its variants button) is on the Image tab.
+    await page.getByRole('tab', { name: 'Image' }).click();
     // `exact` so this never also matches the dialog's own "Regenerate frame
     // variants" button.
     const variantsButton = page.getByRole('button', {

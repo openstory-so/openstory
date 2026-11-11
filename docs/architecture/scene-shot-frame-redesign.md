@@ -163,9 +163,9 @@ are free text: a move may chain motions ("arc around the actor, then follow
 as she runs"). A shot from before specs has no row and keeps its text as
 written until Rewrite shot.
 
-The shot inspector edits the spec above each prompt (#1929): framing and
-action on the Start Frame tab; action, camera move, pacing, direction and
-sound on the Video tab. Suggestions come from `shot-spec-vocabulary.ts`, the
+The shot inspector edits the spec on its Shot tab (#1929, #2350): one form,
+Framing (size, angle, composition, subject at the start) then Motion
+(action, camera move, pacing, direction, sound). Suggestions come from `shot-spec-vocabulary.ts`, the
 same lists the shot-list prompt names; every field stays free text. A save
 appends a `source: 'edit'` version stamped current, then rebuilds the
 prompts from it (`saveShotSpecFn` → `regenerateShotPrompt`). When a prompt
