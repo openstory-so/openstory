@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "One greyscale storyboard frame. Frozen in this action: SCARLETT pockets the lipstick and steps out as the doors open. Framing: medium, eye level, SCARLETT and NEIGHBOUR share the mirror’s center as the opening doors reveal the busy lobby behind them. Placement only, not the pose: SCARLETT and NEIGHBOUR exchange an amused look in the elevator mirror; SCARLETT holds the lipstick. Camera, as one or two arrows: follow, brisk. Characters: Scarlett, Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even, Black fitted turtleneck, slim black trousers, small gold. Neighbour, Unspecified, Adult, unspecified, An adult neighbour seen briefly in the elevator., Rain-speckled coat; other clothing is not specified. The bodies are frozen in that action: if someone sits, they are seated; if someone reaches, the arm is extended. One figure per character. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, the set blocked in with simple shapes. Camera travel is one or two arrows. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/256a44a82dbdf564a021c3b59ad3572595ab9ef084369852680b96fd7be2a8a1.png",
+              "content_type": "image/png",
+              "file_name": "Q2rPSFbL5JmgA8tIqGUwh_ZwBA0FMk.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042124
+      }
+    }
+  ]
+}

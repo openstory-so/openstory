@@ -89,8 +89,9 @@ that preview variant hangs.
 
 **The sketch follows the spec (#2350).** Every spec version gets a sketch,
 start-frame shots included: a saved spec (even with Keep mine), Rewrite shot,
-and analysis (scene split's sketch). It is drawn from the spec text scene
-split uses (`drawSpecSketch`, `src/shots/server/shot-preview.ts`) and stamped
+and analysis (scene split's sketch). It is drawn from the action in the
+spec, with framing and the start state as placement only (`drawSpecSketch`,
+`src/shots/server/shot-preview.ts`, #2379) and stamped
 with the version (`frame_variants.specVersionId`). A prompt edit draws
 nothing: the picture matches the spec it sits beside. Each draw is a new
 `kind: 'preview'` row; fast saves get one each, since they are cheap. A

@@ -37,7 +37,7 @@ export type PreviewCharacter = Pick<
 >;
 
 const SKETCH_SUFFIX =
-  "Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels.";
+  "The bodies are frozen in that action: if someone sits, they are seated; if someone reaches, the arm is extended. One figure per character. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, the set blocked in with simple shapes. Camera travel is one or two arrows. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels.";
 
 const NO_TEXT_SUFFIX =
   'No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.';
@@ -90,10 +90,12 @@ export function buildPosterPrompt(
 /**
  * Animatic text for one shot's preview (#1642). Shot spec is the source of
  * truth, including on a 1-shot scene; the scene slice is the empty-spec
- * fallback. Every drawable field goes in (#2094); sound and dialogue are not
- * drawable and stay out. Style stays out (#1277). Location/time-of-day live
- * on the scene and already show up inside composition — appending them draws
- * signage.
+ * fallback. The action is the picture (#2379): framing and the start state
+ * only place people and the set. Sound, dialogue and direction stay out.
+ * Direction is a performance note, and lettering it made the model draw the
+ * moment before the action. Style stays out (#1277). Location/time-of-day
+ * live on the scene and already show up inside composition — appending them
+ * draws signage.
  */
 export function previewTextForShot(
   scene: PreviewShotScene,
@@ -102,21 +104,26 @@ export function previewTextForShot(
   const spec = scene.shots?.find((shot) => shot.shotNumber === shotNumber);
   if (spec) {
     const clean = (part: string) => part.trim().replace(/\.+$/, '');
+    const framing = [
+      spec.framing.shotSize,
+      spec.framing.angle,
+      spec.framing.composition,
+    ]
+      .map(clean)
+      .filter((part) => part.length > 0)
+      .join(', ');
     const camera = [spec.cameraMovement.move, spec.cameraMovement.pacing]
       .map(clean)
       .filter((part) => part.length > 0)
       .join(', ');
+    const action = clean(spec.action);
+    const start = clean(spec.framing.subjectStartState);
     const parts = [
-      spec.framing.shotSize,
-      spec.framing.angle,
-      spec.framing.composition,
-      spec.framing.subjectStartState,
-      spec.action && `Then: ${spec.action}`,
-      camera && `Camera: ${camera}`,
-      spec.direction,
-    ]
-      .map(clean)
-      .filter((part) => part.length > 0);
+      action && `Frozen in this action: ${action}`,
+      framing && `Framing: ${framing}`,
+      start && `Placement only, not the pose: ${start}`,
+      camera && `Camera, as one or two arrows: ${camera}`,
+    ].filter((part) => part.length > 0);
     if (parts.length > 0) return parts.join('. ');
   }
   return (
@@ -210,7 +217,7 @@ export function buildPreviewPrompt(
 
   return clampPrompt(
     [
-      `Storyboard animatic frame. ${excerpt}.`,
+      `One greyscale storyboard frame. ${excerpt}.`,
       characters && `Characters: ${characters}`,
       SKETCH_SUFFIX,
       NO_TEXT_SUFFIX,

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "One greyscale storyboard frame. Frozen in this action: Scarlett turns toward camera, raises the lipstick, and grins before disappearing into the office crowd. Framing: medium close-up, eye level, Scarlett occupies the foreground as office workers stream behind her, with the raised coral lipstick framed against the sunlit taxi and changing walk signal. Placement only, not the pose: Scarlett reaches the far curb still moving forward, holding the lipstick low at her side as the walk signal changes behind her. Camera, as one or two arrows: pull-out, smooth. Characters: Scarlett, Female, 20s, A sharp-eyed young woman of medium height, A sleek black turtleneck with a streamlined black-and-neutral. The bodies are frozen in that action: if someone sits, they are seated; if someone reaches, the arm is extended. One figure per character. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, the set blocked in with simple shapes. Camera travel is one or two arrows. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/54f31e7df3eccd5ca8dbb685e649db557e9e86f20a6d9825455e68aadc3f93aa.png",
+              "content_type": "image/png",
+              "file_name": "7kz8Htf3ppwzkzTv_LZkT_Jcsrd5Rn.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.04
+      }
+    }
+  ]
+}
