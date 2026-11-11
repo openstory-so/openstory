@@ -171,19 +171,25 @@ function main() {
 
   // One branch: a newer sync replaces an unmerged one instead of racing it.
   const base = inPlugin('git', ['rev-parse', 'HEAD']);
-  const ref = `repos/${REPO}/git/refs/heads/${BRANCH}`;
-  try {
+  // matching-refs answers 200 with [] when the branch is gone; any other failure throws.
+  const exists = inPlugin('gh', [
+    'api',
+    `repos/${REPO}/git/matching-refs/heads/${BRANCH}`,
+    '--jq',
+    `.[] | select(.ref == "refs/heads/${BRANCH}") | .ref`,
+  ]);
+  if (exists) {
     inPlugin('gh', [
       'api',
       '-X',
       'PATCH',
-      ref,
+      `repos/${REPO}/git/refs/heads/${BRANCH}`,
       '-f',
       `sha=${base}`,
       '-F',
       'force=true',
     ]);
-  } catch {
+  } else {
     inPlugin('gh', [
       'api',
       `repos/${REPO}/git/refs`,
