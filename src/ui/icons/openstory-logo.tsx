@@ -33,12 +33,10 @@ export const OpenStoryIcon: React.FC<OpenStoryLogoProps> = ({
       viewBox="0 0 173 173"
       xmlns="http://www.w3.org/2000/svg"
       // Ids are per instance: a hidden copy's gradient does not paint (#2372).
-      style={
-        {
-          '--twilight-light': `url(#${id}-light)`,
-          '--twilight-dark': `url(#${id}-dark)`,
-        } as React.CSSProperties
-      }
+      style={{
+        ['--twilight-light' as string]: `url(#${id}-light)`,
+        ['--twilight-dark' as string]: `url(#${id}-dark)`,
+      }}
       className={cn(
         openStoryLogoVariants({ size }),
         'aspect-square',
@@ -77,12 +75,10 @@ export const OpenStoryLogo: React.FC<OpenStoryLogoProps> = ({
       viewBox="0 0 275 60"
       xmlns="http://www.w3.org/2000/svg"
       // Ids are per instance: a hidden copy's gradient does not paint (#2372).
-      style={
-        {
-          '--twilight-light': `url(#${id}-light)`,
-          '--twilight-dark': `url(#${id}-dark)`,
-        } as React.CSSProperties
-      }
+      style={{
+        ['--twilight-light' as string]: `url(#${id}-light)`,
+        ['--twilight-dark' as string]: `url(#${id}-dark)`,
+      }}
       className={cn(openStoryLogoVariants({ size }), 'w-auto', className)}
     >
       <defs>
