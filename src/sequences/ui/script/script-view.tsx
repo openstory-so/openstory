@@ -1880,18 +1880,24 @@ export const ScriptView: FC<{
                     {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
-                {/* Signed out it looks the same and opens sign-in (#2372). */}
+                {/* Signed out it is secondary and opens sign-in (#2372). */}
                 <Button
                   type="submit"
                   disabled={isDisabled}
                   aria-label={
                     isAuthenticated ? undefined : 'Sign in to Generate'
                   }
-                  className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
+                  variant={isAuthenticated ? 'default' : 'secondary'}
+                  className={cn(
+                    'group relative px-6 font-semibold tracking-wide overflow-hidden',
+                    isAuthenticated &&
+                      'bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/30'
+                  )}
                 >
                   <span className="relative z-10">
                     <InButtonCost
                       estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      onPrimary={isAuthenticated}
                       amountWidth={
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
                       }

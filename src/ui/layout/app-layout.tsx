@@ -24,6 +24,7 @@ import { useAssistantState } from '@/assistant/ui/assistant-store';
 import { useUser } from '@/platform/ui/use-user';
 import { rememberLastPage } from '@/platform/ui/auth/last-page';
 import { Button } from '@/ui/shadcn/button';
+import { SITE_CONFIG } from '@/ui/marketing/constants';
 import { Link, useRouterState } from '@tanstack/react-router';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
@@ -141,14 +142,30 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               {bare ? (
                 <header className="flex h-16 shrink-0 items-center justify-between px-6">
                   <SidebarTrigger className="-ml-1" />
-                  <Button asChild size="lg" className="px-5">
-                    <Link
-                      to="/login"
-                      onClick={() => rememberLastPage(`/${searchStr}`)}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      asChild
+                      size="lg"
+                      variant="secondary"
+                      className="px-5"
                     >
-                      Sign in
-                    </Link>
-                  </Button>
+                      <a
+                        href={SITE_CONFIG.githubHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        GitHub
+                      </a>
+                    </Button>
+                    <Button asChild size="lg" className="px-5">
+                      <Link
+                        to="/login"
+                        onClick={() => rememberLastPage(`/${searchStr}`)}
+                      >
+                        Sign in
+                      </Link>
+                    </Button>
+                  </div>
                 </header>
               ) : (
                 <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
