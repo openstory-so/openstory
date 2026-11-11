@@ -13,7 +13,7 @@ import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import type { MediaVia } from '@/models/via';
-import { ZERO_MICROS } from '@/billing/money';
+import { type Microdollars, ZERO_MICROS } from '@/billing/money';
 import { recordFalUsageStep } from '@/billing/server/workflow-deduction';
 import { resolveMotionVia } from '@/motion/server/motion-generation';
 import {
@@ -58,6 +58,8 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   input: GatewayJobInput;
   /** Reference stills the likeness ledger cleared as showing no person, at submit. */
   noPersonImages: string[];
+  /** The estimate held at submit; the charge when the provider reports no cost. */
+  holdMicros: Microdollars;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -140,18 +142,19 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     const falUsage =
       via === 'fal' ? await recordFalUsageStep(step, scopedDb, metadata) : {};
 
-    await step.do('settle', async () => {
-      await settleGatewayJob({
+    const charged = await step.do('settle', async () =>
+      settleGatewayJob({
         scopedDb,
         jobId,
         model: input.model,
         reservationId: event.payload.reservationId,
         costMicros: cost,
+        holdMicros: event.payload.holdMicros,
         usedOwnKey: metadata.usedOwnKey,
         idempotencyKey: `${event.instanceId}:gateway-settle`,
         metadata: { ...falUsage, model: input.model, via },
-      });
-    });
+      })
+    );
 
     const outputs: GatewayJobOutput[] = [upload];
     await step.do('record-provenance', async () => {
@@ -171,7 +174,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     await step.do('persist-result', async () => {
       await scopedDb.gatewayJobs.markSucceeded(jobId, {
         outputs,
-        costMicros: cost,
+        costMicros: charged,
         via,
       });
     });
@@ -353,18 +356,19 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     );
 
     // Charged only for a clip that was stored.
-    await step.do('settle', async () => {
-      await settleGatewayJob({
+    const charged = await step.do('settle', async () =>
+      settleGatewayJob({
         scopedDb,
         jobId,
         model: input.model,
         reservationId: event.payload.reservationId,
         costMicros: billing.cost,
+        holdMicros: event.payload.holdMicros,
         usedOwnKey: job.usedOwnKey,
         idempotencyKey: `${event.instanceId}:gateway-settle`,
         metadata: { model: input.model, via: job.via, requestId: job.jobId },
-      });
-    });
+      })
+    );
 
     const outputs: GatewayJobOutput[] = [upload];
     await step.do('record-provenance', async () => {
@@ -384,7 +388,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     await step.do('persist-result', async () => {
       await scopedDb.gatewayJobs.markSucceeded(jobId, {
         outputs,
-        costMicros: billing.cost,
+        costMicros: charged,
         via: job.via,
       });
     });
