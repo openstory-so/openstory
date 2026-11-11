@@ -136,10 +136,9 @@ function sketchLook(part: string): string {
     .split(/\s+/)
     .filter((word) => word.length > 0)
     .slice(0, LOOK_WORDS);
-  while (
-    words.length > 1 &&
-    TRAILING_LOOK_WORD.test(words[words.length - 1]!.replace(/[,:;]+$/, ''))
-  ) {
+  while (words.length > 1) {
+    const last = words[words.length - 1]?.replace(/[,:;]+$/, '') ?? '';
+    if (!TRAILING_LOOK_WORD.test(last)) break;
     words.pop();
   }
   return words.join(' ').replace(/[,:;]+$/, '');
