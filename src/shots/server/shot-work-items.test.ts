@@ -44,6 +44,7 @@ function spec(
       subjectStartState: 'standing',
     },
     action,
+    keyframes: [],
     cameraMovement: { move: 'static', pacing: 'slow' },
     direction: '',
     soundCue: '',

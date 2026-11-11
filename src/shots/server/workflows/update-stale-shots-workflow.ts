@@ -47,6 +47,7 @@
  * are skipped, not rendered from stale inputs.
  */
 
+import { durationSecondsOf } from '@/shots/packed-clip-window';
 import { withLookSheet } from '@/cast/character-looks';
 import {
   assertQueuedWithLooks,
@@ -1685,6 +1686,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       motionWritten: target.motionWritten === true,
                       referenceOnly: !target.usesStartFrame,
                       scene: scenes.scene,
+                      durationSeconds: durationSecondsOf(target.durationMs),
                       siblingSpecs: siblings,
                       characterBible: context.characterBible,
                       locationBible: context.locationBible,

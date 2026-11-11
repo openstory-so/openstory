@@ -10,6 +10,8 @@
  * and the server-only API layer, so the client transform drops them.
  */
 
+import { durationGridForModel } from '@/motion/model-capabilities';
+import { longestTakeSeconds } from '@/shots/shot-list-pass';
 import { getEnv } from '#env';
 import type { EnhanceScriptInput } from '@/models/ai.fn';
 import {
@@ -142,6 +144,9 @@ export async function* streamScriptEnhancement(
   const sanitized = sanitizeScriptContent(data.script);
   const { compiled } = await getPrompt('script/enhance', {
     userCountry: getRequestCountry() ?? '',
+    longestTakeSeconds: String(
+      longestTakeSeconds(durationGridForModel(videoModel))
+    ),
   });
   const elements = data.elements ?? [];
   const userPrompt = createUserPrompt(sanitized, {

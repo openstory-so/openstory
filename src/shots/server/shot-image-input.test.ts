@@ -245,6 +245,7 @@ describe('prepareShotImageWorkflowInput never prompts a still with the script (#
       subjectStartState: 'MARA leans over the dough',
     },
     action: 'MARA kneads the dough',
+    keyframes: [],
     cameraMovement: { move: 'handheld drift', pacing: 'unhurried' },
     direction: '',
     soundCue: '',

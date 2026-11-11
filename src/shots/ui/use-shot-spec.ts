@@ -7,7 +7,7 @@ import {
 import { getShotSpecFn, saveShotSpecFn } from '@/shots/shot-spec.fn';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
-import type { StoredShotSpec } from '@/shots/shot-list.schema';
+import type { ShotSpecEdit } from '@/shots/shot-list.schema';
 
 /**
  * Under the staleness namespace: whatever moves a shot's staleness (a prompt
@@ -54,7 +54,7 @@ export function useSaveShotSpec(sequenceId: string) {
   return useMutation({
     mutationFn: (input: {
       shotId: string;
-      spec: StoredShotSpec;
+      spec: ShotSpecEdit;
       replace: { visual: boolean; motion: boolean };
     }) => saveShotSpecFn({ data: { sequenceId, ...input } }),
     onSuccess: (_result, input) =>

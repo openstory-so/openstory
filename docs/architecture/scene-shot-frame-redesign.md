@@ -174,6 +174,41 @@ it. The Rebuild prompt button reads Rewrite shot when the spec is stale or
 missing, and asks the same question before it touches written text. A save
 while a rewrite is in flight is refused.
 
+### Keyframes (#2386)
+
+A keyframe is a timed action inside one long continuous take: `atSeconds`
+from the start of the shot, and the action from that moment. A spec holds an
+ordered list of them (`keyframes`), empty on a shot with one action. It is
+text on the spec. It is not a `frames` row and has no still; the `key` frame
+role is still unused.
+
+- **Stored only when present.** `canonicalStoredShotSpec` leaves the key out
+  when the list is empty, so no digest stamped before #2386 moves. Read them
+  with `specKeyframes`, which sorts by time and drops blanks. `readShotSpec`
+  always answers with `keyframes`, so a read can be sent straight back to
+  `update_shot_spec`, where the field is required.
+- **Timed against the shot.** The shot-list pass times keyframes against its
+  own `durationSeconds`. When the system then sets the shot's real length,
+  `timedShot` in `shot-list-pass.ts` moves them by the same ratio and drops
+  any that land past the end. A shot split for speech loses its keyframes. A
+  save refuses a keyframe at or past the shot's length. Shortening a shot
+  afterwards does not re-time them.
+- **One line format.** `src/shots/keyframe-lines.ts` writes the lines
+  (`0-4 seconds: ...`, the last `9 seconds to the end: ...`), finds them for
+  the highlight, and re-times them for a packed clip. `deriveMotionPrompt`
+  puts them last in the motion prompt, one per line. Seconds are shot-local;
+  `formatPackedShotList` shifts them to clip seconds for a shot that does
+  not start its clip.
+- **Highlight.** The prompt editor and the Optimised prompt panel tint any
+  line in that format, whoever wrote it.
+- **Who writes them.** The shot-list prompt and Rewrite shot are told the
+  model's longest take (`longestTakeSeconds`) and the shot's length. Script
+  enhancement is told the longest take too, and keeps continuous action in
+  one scene as an unbroken run.
+
+A shot still cannot run past the model's longest clip. Chaining clips past
+that cap with first and last frames is not built.
+
 ### Video variants + the 15s constraint _(Phase 3)_
 
 Render models cap a single render at **15s** (multi-shot included). Scenes are

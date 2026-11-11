@@ -14,6 +14,7 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import type { Shot } from '@/platform/server/db/schema';
 import {
   canonicalStoredShotSpec,
+  specKeyframes,
   type StoredShotSpec,
 } from '@/shots/shot-list.schema';
 
@@ -59,6 +60,10 @@ export function renameTokenInSpec(
       subjectStartState: text(spec.framing.subjectStartState),
     },
     action: text(spec.action),
+    keyframes: specKeyframes(spec).map((keyframe) => ({
+      ...keyframe,
+      action: text(keyframe.action),
+    })),
     cameraMovement: {
       move: text(spec.cameraMovement.move),
       pacing: text(spec.cameraMovement.pacing),
