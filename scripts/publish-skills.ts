@@ -69,6 +69,22 @@ export function setJsonString(
   return next;
 }
 
+/** `git diff --name-status -z` as createCommitOnBranch file changes. */
+export function fileChanges(
+  nameStatus: string,
+  read: (file: string) => string
+) {
+  const parts = nameStatus.split('\0').filter(Boolean);
+  const additions: { path: string; contents: string }[] = [];
+  const deletions: { path: string }[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const [status, file = ''] = [parts[i], parts[i + 1]];
+    if (status === 'D') deletions.push({ path: file });
+    else additions.push({ path: file, contents: read(file) });
+  }
+  return { additions, deletions };
+}
+
 function run(cmd: string, args: string[], options: ExecFileSyncOptions = {}) {
   return execFileSync(cmd, args, {
     encoding: 'utf8',
@@ -87,7 +103,7 @@ function required(name: string): string {
 
 function main() {
   const sha = required('SHA');
-  const token = required('GH_TOKEN');
+  required('GH_TOKEN');
   const short = sha.slice(0, 7);
 
   // Test runs finish out of order: only main's tip may publish.
@@ -154,25 +170,59 @@ function main() {
   }
 
   // One branch: a newer sync replaces an unmerged one instead of racing it.
-  inPlugin('git', ['config', 'user.name', 'github-actions[bot]']);
-  inPlugin('git', [
-    'config',
-    'user.email',
-    '41898282+github-actions[bot]@users.noreply.github.com',
-  ]);
-  inPlugin('git', ['checkout', '-B', BRANCH]);
+  const base = inPlugin('git', ['rev-parse', 'HEAD']);
+  const ref = `repos/${REPO}/git/refs/heads/${BRANCH}`;
+  try {
+    inPlugin('gh', [
+      'api',
+      '-X',
+      'PATCH',
+      ref,
+      '-f',
+      `sha=${base}`,
+      '-F',
+      'force=true',
+    ]);
+  } catch {
+    inPlugin('gh', [
+      'api',
+      `repos/${REPO}/git/refs`,
+      '-f',
+      `ref=refs/heads/${BRANCH}`,
+      '-f',
+      `sha=${base}`,
+    ]);
+  }
+  // main requires signed commits: GitHub signs createCommitOnBranch, not a git push.
   inPlugin('git', ['add', '-A']);
-  inPlugin('git', [
-    'commit',
-    '-qm',
-    `Sync skills from openstory-so/openstory@${short} (${version})`,
-  ]);
-  inPlugin('git', [
-    'push',
-    '--force',
-    `https://x-access-token:${token}@github.com/${REPO}.git`,
-    BRANCH,
-  ]);
+  const changes = fileChanges(
+    inPlugin('git', [
+      'diff',
+      '--cached',
+      '--name-status',
+      '--no-renames',
+      '-z',
+    ]),
+    (file) => readFileSync(path.join(PLUGIN, file)).toString('base64')
+  );
+  run('gh', ['api', 'graphql', '--input', '-'], {
+    cwd: PLUGIN,
+    stdio: ['pipe', 'pipe', 'inherit'],
+    input: JSON.stringify({
+      query:
+        'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }',
+      variables: {
+        input: {
+          branch: { repositoryNameWithOwner: REPO, branchName: BRANCH },
+          expectedHeadOid: base,
+          message: {
+            headline: `Sync skills from openstory-so/openstory@${short} (${version})`,
+          },
+          fileChanges: changes,
+        },
+      },
+    }),
+  });
   const title = `Sync skills (${version})`;
   if (pr) gh('pr', 'edit', pr, '--title', title, '--body', notes);
   const number =

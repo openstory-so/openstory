@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nextVersion, readJsonString, setJsonString } from './publish-skills';
+import {
+  fileChanges,
+  nextVersion,
+  readJsonString,
+  setJsonString,
+} from './publish-skills';
 
 describe('nextVersion', () => {
   it('bumps the patch, or the minor for a new skill', () => {
@@ -34,5 +39,22 @@ describe('setJsonString', () => {
     expect(() =>
       setJsonString(`{"version": "1", "a": {"version": "2"}}`, 'version', '3')
     ).toThrow();
+  });
+});
+
+describe('fileChanges', () => {
+  it('splits a -z name-status into additions and deletions', () => {
+    expect(
+      fileChanges(
+        'M\0plugin.json\0A\0skills/a b/SKILL.md\0D\0skills/old.md\0',
+        (f) => `<${f}>`
+      )
+    ).toEqual({
+      additions: [
+        { path: 'plugin.json', contents: '<plugin.json>' },
+        { path: 'skills/a b/SKILL.md', contents: '<skills/a b/SKILL.md>' },
+      ],
+      deletions: [{ path: 'skills/old.md' }],
+    });
   });
 });
