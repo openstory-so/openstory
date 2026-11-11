@@ -6,7 +6,7 @@
 import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { gatewayJobRequestSchema } from '@/gateway/schema';
-import { gatewayJobDocument } from '@/gateway/server/api-documents';
+import { gatewayJobResource } from '@/gateway/server/read-job';
 import { assertGatewayRate } from '@/gateway/server/rate-limit';
 import {
   readIdempotencyKey,
@@ -42,7 +42,11 @@ export const Route = createFileRoute('/api/v1/gateway/jobs')({
             oauthClientId: context.oauth?.clientId ?? null,
           });
           return Response.json(
-            gatewayJobDocument(job, new URL(request.url).origin),
+            await gatewayJobResource(
+              context.scopedDb,
+              job,
+              new URL(request.url).origin
+            ),
             { status: 202 }
           );
         }),

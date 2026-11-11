@@ -329,7 +329,9 @@ changing the area, and update it in the same PR.**
   `scopedDb.credentials`) and is always billed: hold at submit, charge in
   `settleGatewayJob`, release on failure. A margin is never a request
   parameter; it lives on the app row. A charge's lines always sum to its
-  wallet debit, written in one batch.
+  wallet debit, written in one batch (`billing.settleReservation`). Nothing
+  runs after the `settle` step, which also marks the job succeeded: a
+  charged job never reads failed.
 - **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
   runs `MCP_TOOLS` through `chat()` under the session; never add an
   assistant-only tool, add an MCP tool. Only a delete

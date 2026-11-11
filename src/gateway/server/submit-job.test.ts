@@ -18,11 +18,13 @@ import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
+  chargeLines,
   creditReservations,
   credits,
   gatewayJobs,
   organization,
   organizationApiKeys,
+  transactions,
   user,
 } from '@/platform/server/db/schema';
 import {
@@ -30,12 +32,24 @@ import {
   InsufficientCreditsError,
 } from '@/platform/errors';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
+import { micros } from '@/billing/money';
+import {
+  GATEWAY_PLATFORM_FEE_BPS,
+  gatewayCharge,
+} from '@/gateway/charge-lines';
 import { gatewayJobRequestSchema } from '@/gateway/schema';
+import type { GatewayGenerationWorkflowInput } from './workflows/gateway-generation-workflow';
 
 let db: Database;
 let closeDb: () => Promise<void>;
 
-const triggerWorkflow = vi.fn(async () => 'run-1');
+const triggerWorkflow = vi.fn(
+  async (
+    _path: string,
+    _payload: GatewayGenerationWorkflowInput,
+    _opts?: { deduplicationId?: string }
+  ) => 'run-1'
+);
 const requireCheckedUploadRights = vi.fn(
   async (
     _scopedDb: {
@@ -64,7 +78,10 @@ vi.doMock('@/gateway/server/models', async () => ({
 
 const { submitGatewayJob } = await import('./submit-job');
 const { readGatewayJob } = await import('./read-job');
+const { settleGatewayJob } = await import('./settle');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
+const { toWorkflowScopedDb } =
+  await import('@/platform/server/db/scoped-workflow');
 
 const organizationId = generateId();
 const otherOrganizationId = generateId();
@@ -81,10 +98,19 @@ const IMAGE = gatewayJobRequestSchema.parse({
 
 function ctx(
   scopedDb: ReturnType<typeof createScopedDb>,
-  idempotencyKey: string | null = null
+  idempotencyKey: string | null = null,
+  oauthClientId: string | null = null
 ) {
-  return { scopedDb, request, idempotencyKey, oauthClientId: null };
+  return { scopedDb, request, idempotencyKey, oauthClientId };
 }
+
+function lastPayload(): GatewayGenerationWorkflowInput {
+  const payload = triggerWorkflow.mock.lastCall?.[1];
+  if (!payload) throw new Error('no run was triggered');
+  return payload;
+}
+
+const OUTPUT = { url: '/r2/a.png', path: 'a.png', contentType: 'image/png' };
 
 async function reservationsFor(orgId: string) {
   return db
@@ -312,5 +338,205 @@ describe('readGatewayJob', () => {
       )
     );
     expect(response.status).toBe(404);
+  });
+});
+
+describe('the charge', () => {
+  const origin = 'https://openstory.test';
+
+  /** What the run does at its end, against the real tables. */
+  async function finishRun(
+    scopedDb: ReturnType<typeof createScopedDb>,
+    payload: GatewayGenerationWorkflowInput,
+    costMicros: number
+  ) {
+    const run = toWorkflowScopedDb(scopedDb);
+    await run.gatewayJobs.markRunning(payload.jobId);
+    await run.gatewayJobs.recordOutputs(payload.jobId, {
+      outputs: [OUTPUT],
+      via: 'fal',
+    });
+    return settleGatewayJob({
+      scopedDb: run,
+      jobId: payload.jobId,
+      model: 'gpt_image_2',
+      reservationId: payload.reservationId,
+      costMicros: micros(costMicros),
+      estimateMicros: payload.estimateMicros,
+      platformFeeBps: payload.platformFeeBps,
+      oauthClientId: payload.oauthClientId,
+      usedOwnKey: false,
+      idempotencyKey: `${payload.jobId}:gateway-settle`,
+      result: { outputs: [OUTPUT], via: 'fal' },
+    });
+  }
+
+  it('holds every line of the charge on the estimate, at the fee snapshotted on the payload', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(
+      IMAGE,
+      ctx(scopedDb, null, 'client-1')
+    );
+    const payload = lastPayload();
+    expect(payload.platformFeeBps).toBe(GATEWAY_PLATFORM_FEE_BPS);
+    expect(payload.oauthClientId).toBe('client-1');
+    expect(payload.estimateMicros).toBeGreaterThan(0);
+    const [hold] = (await reservationsFor(organizationId)).filter(
+      (row) => row.id === job.reservationId
+    );
+    expect(hold?.originalAmount).toBe(
+      gatewayCharge({
+        providerCostMicros: payload.estimateMicros,
+        platformFeeBps: payload.platformFeeBps,
+      }).totalMicros
+    );
+  });
+
+  it('settles into lines the job document shows, summing to the debit', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(
+      IMAGE,
+      ctx(scopedDb, null, 'client-1')
+    );
+    const payload = lastPayload();
+    const charged = await finishRun(scopedDb, payload, 12_345);
+    expect(charged).toBe(12_345);
+
+    const document = await readGatewayJob(scopedDb, job.id, {
+      origin,
+      waitMs: 0,
+    });
+    expect(document).toMatchObject({
+      status: 'succeeded',
+      outputs: [{ url: `${origin}/r2/a.png`, contentType: 'image/png' }],
+      charge: {
+        totalMicros: 12_345,
+        lines: [{ kind: 'provider_cost', amountMicros: 12_345 }],
+      },
+    });
+    const lines = await db
+      .select()
+      .from(chargeLines)
+      .where(eq(chargeLines.gatewayJobId, job.id));
+    expect(lines).toEqual([
+      expect.objectContaining({
+        organizationId,
+        payeeOrganizationId: null,
+        oauthClientId: 'client-1',
+        amountMicros: 12_345,
+      }),
+    ]);
+    const [debit] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, lines[0]?.transactionId ?? ''));
+    expect(debit?.amount).toBe(-12_345);
+
+    // Another organization sees no lines of a job it did not pay for.
+    const other = createScopedDb(otherOrganizationId, userId);
+    expect(await other.gatewayJobs.getChargeLines(job.id)).toEqual([]);
+  });
+
+  it('a charged job whose success write never landed ends succeeded, not failed', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(IMAGE, ctx(scopedDb));
+    const payload = lastPayload();
+    // The settle's debit and lines land; the run then dies before markSucceeded.
+    await scopedDb.gatewayJobs.markRunning(job.id);
+    await scopedDb.gatewayJobs.recordOutputs(job.id, {
+      outputs: [OUTPUT],
+      via: 'fal',
+    });
+    await scopedDb.billing.settleReservation(
+      payload.reservationId ?? '',
+      gatewayCharge({
+        providerCostMicros: micros(9_000),
+        platformFeeBps: 0,
+      }).lines,
+      {
+        idempotencyKey: 'dies:gateway-settle',
+        attribution: { gatewayJobId: job.id },
+      }
+    );
+    await scopedDb.gatewayJobs.markFailed(job.id, {
+      code: 'GENERATION_FAILED',
+      message: 'persist failed',
+    });
+
+    expect(await scopedDb.gatewayJobs.getById(job.id)).toMatchObject({
+      status: 'succeeded',
+      error: null,
+      costMicros: 9_000,
+      outputs: [OUTPUT],
+    });
+  });
+
+  it('an uncharged job still fails', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(IMAGE, ctx(scopedDb));
+    await scopedDb.gatewayJobs.markRunning(job.id);
+    await scopedDb.gatewayJobs.recordOutputs(job.id, {
+      outputs: [OUTPUT],
+      via: 'fal',
+    });
+    await scopedDb.gatewayJobs.markFailed(job.id, {
+      code: 'GENERATION_FAILED',
+      message: 'boom',
+    });
+    expect(await scopedDb.gatewayJobs.getById(job.id)).toMatchObject({
+      status: 'failed',
+      error: { code: 'GENERATION_FAILED' },
+    });
+  });
+
+  it('a run that started although its trigger threw lands as succeeded, charged, with its outputs', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    triggerWorkflow.mockRejectedValueOnce(new Error('lost reply'));
+    await expect(
+      submitGatewayJob(IMAGE, ctx(scopedDb, 'trigger-lost'))
+    ).rejects.toThrow('lost reply');
+    const payload = lastPayload();
+    expect((await scopedDb.gatewayJobs.getById(payload.jobId))?.status).toBe(
+      'failed'
+    );
+
+    // The instance was created after all and runs to the end.
+    const charged = await finishRun(scopedDb, payload, 7_000);
+    expect(charged).toBe(7_000);
+
+    const replay = await submitGatewayJob(IMAGE, ctx(scopedDb, 'trigger-lost'));
+    expect(replay.replay).toBe(true);
+    const document = await readGatewayJob(scopedDb, payload.jobId, {
+      origin,
+      waitMs: 0,
+    });
+    expect(document).toMatchObject({
+      status: 'succeeded',
+      error: null,
+      outputs: [{ url: `${origin}/r2/a.png` }],
+      charge: {
+        totalMicros: 7_000,
+        lines: [{ kind: 'provider_cost', amountMicros: 7_000 }],
+      },
+    });
+  });
+
+  it('a real failure after a lost trigger replaces NOT_STARTED with its own error', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    triggerWorkflow.mockRejectedValueOnce(new Error('lost reply'));
+    await expect(submitGatewayJob(IMAGE, ctx(scopedDb))).rejects.toThrow(
+      'lost reply'
+    );
+    const { jobId } = lastPayload();
+    await scopedDb.gatewayJobs.markRunning(jobId);
+    expect((await scopedDb.gatewayJobs.getById(jobId))?.status).toBe('running');
+    await scopedDb.gatewayJobs.markFailed(jobId, {
+      code: 'CONTENT_REJECTED',
+      message: 'flagged',
+    });
+    expect((await scopedDb.gatewayJobs.getById(jobId))?.error).toEqual({
+      code: 'CONTENT_REJECTED',
+      message: 'flagged',
+    });
   });
 });

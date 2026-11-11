@@ -37,6 +37,7 @@ import type {
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
 import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
+import { type ChargeLineKind, inFillOrder } from '@/billing/charge-lines';
 import {
   giftRedeemHolderReason,
   normalizeGiftCode,
@@ -45,8 +46,13 @@ import {
 import { ValidationError } from '@/platform/errors';
 import { getBillingChannel } from '@/platform/realtime';
 import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { generateId } from '@/platform/id';
-import { giftTokenRedemptions, giftTokens } from '@/platform/server/db/schema';
+import {
+  chargeLines,
+  giftTokenRedemptions,
+  giftTokens,
+} from '@/platform/server/db/schema';
 
 import { getLogger } from '@/platform/logger';
 import { onPrimary } from '@/platform/server/db/d1-session';
@@ -131,6 +137,41 @@ export type CaptureReservationResult =
       ok: true;
       captured: Microdollars;
       skippedDeltaMicros?: Microdollars;
+    };
+
+export type ChargeLineInput = {
+  kind: ChargeLineKind;
+  amountMicros: Microdollars;
+  /** Null is the platform. */
+  payeeOrganizationId?: string | null;
+  sku?: string | null;
+};
+
+/** What every line of one charge is attributed to. */
+export type ChargeLineAttribution = {
+  gatewayJobId?: string | null;
+  oauthClientId?: string | null;
+  appId?: string | null;
+};
+
+export type SettledChargeLine = {
+  id: string;
+  kind: ChargeLineKind;
+  amountMicros: Microdollars;
+  payeeOrganizationId: string | null;
+  sku: string | null;
+};
+
+export type SettleReservationResult =
+  | { ok: false; reason: 'missing' }
+  | {
+      ok: true;
+      captured: Microdollars;
+      skippedDeltaMicros?: Microdollars;
+      /** Null when nothing was debited; then there are no lines. */
+      transactionId: string | null;
+      lines: SettledChargeLine[];
+      replay: boolean;
     };
 
 function skippedCaptureDelta(
@@ -1072,19 +1113,34 @@ export function createBillingMethods(
     return { ok: true, remaining: micros(updated.remaining) };
   }
 
-  async function captureReservation(
+  /**
+   * The one capture: grow the hold if the balance covers the extra, debit
+   * `min(remaining, actual)`, write the `credit_usage` row, shrink the hold,
+   * then `afterDebit` statements keyed on the new transaction id, all in one
+   * batch. `transactionId` is null when nothing was debited.
+   */
+  async function capture(
     reservationId: string,
     actualMicros: Microdollars,
     opts: {
       idempotencyKey: string;
       description?: string;
       metadata?: Record<string, unknown>;
-    }
-  ): Promise<CaptureReservationResult> {
-    if (actualMicros <= 0) {
-      return { ok: true, captured: ZERO_MICROS };
-    }
-
+    },
+    afterDebit?: (
+      transactionId: string,
+      nowSeconds: number
+    ) => BatchItem<'sqlite'>[]
+  ): Promise<
+    | { ok: false; reason: 'missing' }
+    | {
+        ok: true;
+        captured: Microdollars;
+        skippedDeltaMicros?: Microdollars;
+        transactionId: string | null;
+        replay: boolean;
+      }
+  > {
     // Replay before grow — a retried over-actual capture must not inflate
     // remaining a second time.
     const already = await getTransactionByIdempotencyKey(opts.idempotencyKey);
@@ -1094,6 +1150,8 @@ export function createBillingMethods(
         ok: true,
         captured,
         skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+        transactionId: already.id,
+        replay: true,
       };
     }
 
@@ -1209,6 +1267,7 @@ export function createBillingMethods(
       .onConflictDoNothing()
       .returning({ id: transactions.id, amount: transactions.amount });
 
+    // `changes()` here reads the transaction insert, so it must stay right after it.
     const reduceRemaining = db
       .update(creditReservations)
       .set({
@@ -1233,6 +1292,7 @@ export function createBillingMethods(
       insertTransaction,
       reduceRemaining,
       readBackBalance,
+      ...(afterDebit?.(txId, nowSeconds) ?? []),
     ]);
 
     const inserted = insertedRows[0];
@@ -1244,12 +1304,16 @@ export function createBillingMethods(
           ok: true,
           captured,
           skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+          transactionId: raced.id,
+          replay: true,
         };
       }
       return {
         ok: true,
         captured: ZERO_MICROS,
         skippedDeltaMicros: skippedCaptureDelta(actualMicros, ZERO_MICROS),
+        transactionId: null,
+        replay: false,
       };
     }
 
@@ -1275,6 +1339,158 @@ export function createBillingMethods(
       ok: true,
       captured,
       skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+      transactionId: inserted.id,
+      replay: false,
+    };
+  }
+
+  async function captureReservation(
+    reservationId: string,
+    actualMicros: Microdollars,
+    opts: {
+      idempotencyKey: string;
+      description?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<CaptureReservationResult> {
+    if (actualMicros <= 0) {
+      return { ok: true, captured: ZERO_MICROS };
+    }
+    const result = await capture(reservationId, actualMicros, opts);
+    if (!result.ok) return result;
+    const { captured, skippedDeltaMicros } = result;
+    return skippedDeltaMicros
+      ? { ok: true, captured, skippedDeltaMicros }
+      : { ok: true, captured };
+  }
+
+  async function listChargeLinesOfTransaction(
+    transactionId: string
+  ): Promise<SettledChargeLine[]> {
+    const rows = await db
+      .select({
+        id: chargeLines.id,
+        kind: chargeLines.kind,
+        amountMicros: chargeLines.amountMicros,
+        payeeOrganizationId: chargeLines.payeeOrganizationId,
+        sku: chargeLines.sku,
+      })
+      .from(chargeLines)
+      .where(
+        and(
+          eq(chargeLines.organizationId, organizationId),
+          eq(chargeLines.transactionId, transactionId)
+        )
+      );
+    return inFillOrder(
+      rows.map((row) => ({ ...row, amountMicros: micros(row.amountMicros) }))
+    );
+  }
+
+  /**
+   * Capture a reservation for a charge made of lines: the debit, its
+   * `credit_usage` row and its lines in one batch. Lines are written only
+   * when the debit is, and always sum to it: a short capture fills them in
+   * `inFillOrder`, so payee lines are cut first and the provider cost last.
+   * A replay of the key writes nothing and returns the original lines.
+   */
+  async function settleReservation(
+    reservationId: string,
+    lines: readonly ChargeLineInput[],
+    opts: {
+      idempotencyKey: string;
+      description?: string;
+      metadata?: Record<string, unknown>;
+      attribution?: ChargeLineAttribution;
+    }
+  ): Promise<SettleReservationResult> {
+    for (const line of lines) {
+      if (!Number.isSafeInteger(line.amountMicros) || line.amountMicros < 0) {
+        throw new ValidationError(
+          `Charge line ${line.kind} must be a non-negative integer`
+        );
+      }
+    }
+    const ordered = inFillOrder(lines.filter((line) => line.amountMicros > 0));
+    const total = micros(
+      ordered.reduce((sum, line) => sum + line.amountMicros, 0)
+    );
+    if (!Number.isSafeInteger(total)) {
+      throw new ValidationError('Charge lines must sum to a safe integer');
+    }
+    if (total <= 0) {
+      return {
+        ok: true,
+        captured: ZERO_MICROS,
+        transactionId: null,
+        lines: [],
+        replay: false,
+      };
+    }
+
+    const attribution = opts.attribution ?? {};
+    const result = await capture(
+      reservationId,
+      total,
+      opts,
+      (transactionId, nowSeconds) => {
+        let before = 0;
+        return ordered.map((line) => {
+          const prefix = before;
+          before += line.amountMicros;
+          // What is left of the debit after the lines ahead of this one, capped at this line.
+          const left = sql`(-${transactions.amount} - ${prefix})`;
+          return db.insert(chargeLines).select(
+            db
+              .select({
+                id: sql<string>`${generateId()}`.as('id'),
+                organizationId: sql<string>`${organizationId}`.as(
+                  'organization_id'
+                ),
+                transactionId: transactions.id,
+                kind: sql<string>`${line.kind}`.as('kind'),
+                amountMicros:
+                  sql<number>`min(${line.amountMicros}, ${left})`.as(
+                    'amount_micros'
+                  ),
+                payeeOrganizationId:
+                  sql`${line.payeeOrganizationId ?? null}`.as(
+                    'payee_organization_id'
+                  ),
+                gatewayJobId: sql`${attribution.gatewayJobId ?? null}`.as(
+                  'gateway_job_id'
+                ),
+                oauthClientId: sql`${attribution.oauthClientId ?? null}`.as(
+                  'oauth_client_id'
+                ),
+                appId: sql`${attribution.appId ?? null}`.as('app_id'),
+                sku: sql`${line.sku ?? null}`.as('sku'),
+                createdAt: sql`${nowSeconds}`.as('created_at'),
+              })
+              .from(transactions)
+              .where(
+                and(
+                  eq(transactions.id, transactionId),
+                  eq(transactions.organizationId, organizationId),
+                  sql`${left} > 0`
+                )
+              )
+          );
+        });
+      }
+    );
+    if (!result.ok) return result;
+    return {
+      ok: true,
+      captured: result.captured,
+      ...(result.skippedDeltaMicros && {
+        skippedDeltaMicros: result.skippedDeltaMicros,
+      }),
+      transactionId: result.transactionId,
+      lines: result.transactionId
+        ? await listChargeLinesOfTransaction(result.transactionId)
+        : [],
+      replay: result.replay,
     };
   }
 
@@ -1654,6 +1870,7 @@ export function createBillingMethods(
     createReservation,
     growReservation,
     captureReservation,
+    settleReservation,
     zeroReservation,
     updateAutoTopUpSettings,
     checkAutoTopUp,

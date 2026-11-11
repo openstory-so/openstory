@@ -14,6 +14,7 @@ import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
+  chargeLines,
   creditReservations,
   credits,
   organization,
@@ -32,6 +33,7 @@ let userId = '';
 const STARTING_BALANCE = 100_000_000; // $100
 
 async function seed() {
+  await db.delete(chargeLines);
   await db.delete(transactions);
   await db.delete(creditReservations);
   await db.delete(credits);
@@ -680,5 +682,290 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
       .from(transactions)
       .where(eq(transactions.organizationId, organizationId));
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('settleReservation (charge lines)', () => {
+  const hold = micros(1_000_000);
+  const provider = (amount: number) => ({
+    kind: 'provider_cost' as const,
+    amountMicros: micros(amount),
+  });
+  const fee = (amount: number) => ({
+    kind: 'platform_fee' as const,
+    amountMicros: micros(amount),
+  });
+
+  async function reserve(amount = hold) {
+    const billing = createBillingMethods(db, organizationId, userId);
+    const created = await billing.createReservation(amount, {
+      idempotencyKey: 'job-1:reserve',
+    });
+    if (!created.ok) throw new Error('fixture reservation failed');
+    return { billing, reservationId: created.reservationId };
+  }
+
+  async function storedLines() {
+    return db
+      .select()
+      .from(chargeLines)
+      .where(eq(chargeLines.organizationId, organizationId));
+  }
+
+  async function debits() {
+    return db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.organizationId, organizationId));
+  }
+
+  it('debits the sum and writes lines that sum to the debit, in one batch', async () => {
+    const { billing, reservationId } = await reserve();
+    const settled = await billing.settleReservation(
+      reservationId,
+      [provider(700_000), fee(70_000)],
+      {
+        idempotencyKey: 'run-1:gateway-settle',
+        description: 'Gateway',
+        attribution: { gatewayJobId: null, oauthClientId: 'client-1' },
+      }
+    );
+
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    expect(settled.captured).toBe(770_000);
+    expect(settled.replay).toBe(false);
+    expect(settled.skippedDeltaMicros).toBeUndefined();
+    expect(
+      settled.lines.map(({ kind, amountMicros }) => ({ kind, amountMicros }))
+    ).toEqual([
+      { kind: 'provider_cost', amountMicros: 700_000 },
+      { kind: 'platform_fee', amountMicros: 70_000 },
+    ]);
+
+    const [debit] = await debits();
+    expect(debit?.id).toBe(settled.transactionId);
+    expect(debit?.amount).toBe(-770_000);
+    const rows = await storedLines();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.transactionId === debit?.id)).toBe(true);
+    expect(rows.every((row) => row.oauthClientId === 'client-1')).toBe(true);
+    expect(rows.every((row) => row.payeeOrganizationId === null)).toBe(true);
+    expect(rows.reduce((sum, row) => sum + row.amountMicros, 0)).toBe(
+      -(debit?.amount ?? 0)
+    );
+    expect(await billing.getBalance()).toBe(STARTING_BALANCE - 770_000);
+    // The leftover stays held until the run zeroes it.
+    expect((await billing.getAvailable()).reserved).toBe(230_000);
+  });
+
+  it('never writes a zero-amount line', async () => {
+    const { billing, reservationId } = await reserve();
+    const settled = await billing.settleReservation(
+      reservationId,
+      [provider(400_000), fee(0)],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+    expect(settled.ok && settled.lines.map((line) => line.kind)).toEqual([
+      'provider_cost',
+    ]);
+    expect(await storedLines()).toHaveLength(1);
+  });
+
+  it('a replay writes nothing and returns the original charge with its lines', async () => {
+    const { billing, reservationId } = await reserve();
+    const lines = [provider(500_000), fee(50_000)];
+    const first = await billing.settleReservation(reservationId, lines, {
+      idempotencyKey: 'run-1:gateway-settle',
+    });
+    const replay = await billing.settleReservation(reservationId, lines, {
+      idempotencyKey: 'run-1:gateway-settle',
+    });
+
+    expect(first.ok && replay.ok).toBe(true);
+    if (!first.ok || !replay.ok) return;
+    expect(replay.replay).toBe(true);
+    expect(replay.transactionId).toBe(first.transactionId);
+    expect(replay.captured).toBe(first.captured);
+    expect(replay.lines).toEqual(first.lines);
+    expect(await debits()).toHaveLength(1);
+    expect(await storedLines()).toHaveLength(2);
+    expect(await billing.getBalance()).toBe(STARTING_BALANCE - 550_000);
+  });
+
+  it('grows the hold to cover a charge above it when the balance can', async () => {
+    const { billing, reservationId } = await reserve();
+    const settled = await billing.settleReservation(
+      reservationId,
+      [provider(1_100_000), fee(110_000)],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+    expect(settled.ok && settled.captured).toBe(1_210_000);
+    expect(
+      (await storedLines()).reduce((sum, row) => sum + row.amountMicros, 0)
+    ).toBe(1_210_000);
+  });
+
+  it('a short capture cuts payee lines first, then the fee, and the lines still sum to the debit', async () => {
+    // The balance is exactly the hold, so growth beyond it cannot be paid.
+    await db
+      .update(credits)
+      .set({ balance: hold })
+      .where(eq(credits.organizationId, organizationId));
+    const payee = generateId();
+    await db
+      .insert(organization)
+      .values({ id: payee, name: 'App', slug: `app-${payee}` });
+    const { billing, reservationId } = await reserve();
+
+    const settled = await billing.settleReservation(
+      reservationId,
+      [
+        {
+          kind: 'app_margin',
+          amountMicros: micros(300_000),
+          payeeOrganizationId: payee,
+        },
+        provider(800_000),
+        fee(100_000),
+      ],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    expect(settled.captured).toBe(hold);
+    expect(settled.skippedDeltaMicros).toBe(200_000);
+    expect(
+      settled.lines.map(({ kind, amountMicros, payeeOrganizationId }) => ({
+        kind,
+        amountMicros,
+        payeeOrganizationId,
+      }))
+    ).toEqual([
+      {
+        kind: 'provider_cost',
+        amountMicros: 800_000,
+        payeeOrganizationId: null,
+      },
+      {
+        kind: 'platform_fee',
+        amountMicros: 100_000,
+        payeeOrganizationId: null,
+      },
+      { kind: 'app_margin', amountMicros: 100_000, payeeOrganizationId: payee },
+    ]);
+    const [debit] = await debits();
+    expect(
+      (await storedLines()).reduce((sum, row) => sum + row.amountMicros, 0)
+    ).toBe(-(debit?.amount ?? 0));
+    expect(await billing.getBalance()).toBe(0);
+
+    await db.delete(chargeLines);
+    await db.delete(organization).where(eq(organization.id, payee));
+  });
+
+  it('a capture short of the provider cost drops the later lines and cuts the provider line', async () => {
+    const { billing, reservationId } = await reserve();
+    await billing.captureReservation(reservationId, micros(700_000), {
+      idempotencyKey: 'run-1:earlier',
+    });
+    await db
+      .update(credits)
+      .set({ balance: 300_000 })
+      .where(eq(credits.organizationId, organizationId));
+
+    const settled = await billing.settleReservation(
+      reservationId,
+      [provider(500_000), fee(50_000)],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    expect(settled.captured).toBe(300_000);
+    expect(settled.skippedDeltaMicros).toBe(250_000);
+    expect(
+      settled.lines.map(({ kind, amountMicros }) => ({ kind, amountMicros }))
+    ).toEqual([{ kind: 'provider_cost', amountMicros: 300_000 }]);
+  });
+
+  it('writes no lines when nothing was debited', async () => {
+    await db
+      .update(credits)
+      .set({ balance: hold })
+      .where(eq(credits.organizationId, organizationId));
+    const { billing, reservationId } = await reserve();
+    // The hold is spent and the balance is gone.
+    await billing.captureReservation(reservationId, hold, {
+      idempotencyKey: 'run-1:earlier',
+    });
+
+    const settled = await billing.settleReservation(
+      reservationId,
+      [provider(200_000)],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+    expect(settled).toEqual({
+      ok: true,
+      captured: 0,
+      skippedDeltaMicros: 200_000,
+      transactionId: null,
+      lines: [],
+      replay: false,
+    });
+    expect(await storedLines()).toHaveLength(0);
+    expect(await debits()).toHaveLength(1);
+  });
+
+  it('refuses a missing reservation and writes nothing', async () => {
+    const billing = createBillingMethods(db, organizationId, userId);
+    const settled = await billing.settleReservation(
+      'missing',
+      [provider(200_000)],
+      { idempotencyKey: 'run-1:gateway-settle' }
+    );
+    expect(settled).toEqual({ ok: false, reason: 'missing' });
+    expect(await storedLines()).toHaveLength(0);
+    expect(await debits()).toHaveLength(0);
+    expect(await billing.getBalance()).toBe(STARTING_BALANCE);
+  });
+
+  it('another organization cannot settle against the hold', async () => {
+    const { reservationId } = await reserve();
+    const otherOrganizationId = generateId();
+    await db
+      .insert(organization)
+      .values({ id: otherOrganizationId, name: 'O', slug: 'o' });
+    const other = createBillingMethods(db, otherOrganizationId, userId);
+    expect(
+      await other.settleReservation(reservationId, [provider(1)], {
+        idempotencyKey: 'k',
+      })
+    ).toEqual({ ok: false, reason: 'missing' });
+    await db
+      .delete(organization)
+      .where(eq(organization.id, otherOrganizationId));
+  });
+
+  it('refuses a negative or fractional line', async () => {
+    const { billing, reservationId } = await reserve();
+    await expect(
+      billing.settleReservation(reservationId, [provider(-1)], {
+        idempotencyKey: 'k',
+      })
+    ).rejects.toThrow('non-negative integer');
+    await expect(
+      billing.settleReservation(reservationId, [provider(1.5)], {
+        idempotencyKey: 'k',
+      })
+    ).rejects.toThrow('non-negative integer');
+    await expect(
+      billing.settleReservation(
+        reservationId,
+        [provider(Number.MAX_SAFE_INTEGER), fee(2)],
+        { idempotencyKey: 'k' }
+      )
+    ).rejects.toThrow('safe integer');
+    expect(await debits()).toHaveLength(0);
   });
 });
