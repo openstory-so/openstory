@@ -56,6 +56,7 @@ const PROVENANCE_ASSET_KINDS = [
   'sequence_export',
   'generated_asset',
   'style_preview',
+  'gateway_job',
 ] as const;
 export type ProvenanceAssetKind = (typeof PROVENANCE_ASSET_KINDS)[number];
 

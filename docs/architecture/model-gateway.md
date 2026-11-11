@@ -1,7 +1,8 @@
 # Model gateway
 
-Status: in progress. This file is the plan and the contract; each PR in the
-stack updates it to match what it shipped.
+Status: PR 1 (gateway core and app-pays) shipped; PRs 2–4 are the plan. This
+file is the plan and the contract; each PR in the stack updates it to match
+what it shipped. § Shipped describes the code as it is.
 
 The gateway is OpenStory's own model API: one fal-shaped surface (submit a
 job, poll it, read a result URL) under `/api/v1/gateway`, in front of every
@@ -33,7 +34,7 @@ after the contract has held for the main app and for third parties.
 | ------------------------------------ | ------------------------------------------- |
 | `GET /api/v1/gateway/models`         | Models the gateway serves, with input shape |
 | `POST /api/v1/gateway/jobs`          | Submit. Returns `202` and the job           |
-| `GET /api/v1/gateway/jobs/$id`       | Status, result URLs, the charge             |
+| `GET /api/v1/gateway/jobs/$id`       | Status, result URLs, the charge (`?wait`)   |
 | `POST /api/v1/gateway/jobs/estimate` | Price before submitting (PR 4)              |
 | `POST /api/v1/gateway/charges`       | An app's own billing line (PR 4)            |
 
@@ -97,6 +98,143 @@ Each PR is based on the one before it.
    `app_margin` line, declared SKUs and `POST /gateway/charges`,
    `gateway_earnings` with the hold and the maturing sweep, the estimate
    endpoint and the price breakdown on the consent screen.
+
+## Shipped (PR 1)
+
+### Code
+
+- `src/gateway/schema.ts`: the request schema (`gatewayJobRequestSchema`,
+  OpenAPI `GatewayJobRequest`), the stored input, output and error types, and
+  the model keys the gateway can serve. Client-safe.
+- `src/gateway/server/models.ts`: the catalog `GET /gateway/models` lists,
+  the platform vias (`gatewayVias`), and the hold estimate
+  (`estimateGatewayJobCost`, the Studio estimators).
+- `src/gateway/server/submit-job.ts`: `submitGatewayJob`, the whole submit.
+- `src/gateway/server/read-job.ts`: the organization-scoped read behind GET.
+- `src/gateway/server/api-documents.ts`: the response documents
+  (`GatewayModelsResult`, `GatewayJob`) and their links.
+- `src/gateway/server/platform-credentials.ts`: `platformOnlyCredentials`,
+  the only credentials a run spends.
+- `src/gateway/server/settle.ts`: `settleGatewayJob`, the one place a job is
+  charged. PR 2 replaces its body with the debit and its lines.
+- `src/gateway/server/workflows/gateway-generation-workflow.ts`:
+  `GatewayGenerationWorkflow` (binding `GATEWAY_WORKFLOW`, trigger `/gateway`).
+- `src/gateway/server/db/gateway-jobs.ts`: `scopedDb.gatewayJobs`; table
+  `gateway_jobs` (`src/platform/server/db/schema/gateway-jobs.ts`).
+- Routes: `src/routes/api/v1/gateway.models.ts`, `gateway.jobs.ts`,
+  `gateway.jobs.$id.ts`. Thin; the logic is in `src/gateway/server/`.
+
+### Request
+
+```json
+{ "kind": "image", "model": "gpt_image_2", "prompt": "…", "aspectRatio": "16:9",
+  "referenceImageUrls": ["https://…"] }
+{ "kind": "video", "model": "seedance_v2", "prompt": "…", "aspectRatio": "9:16",
+  "duration": 8, "startImageUrl": "https://…" }
+```
+
+- `aspectRatio` is `16:9`, `9:16` or `1:1` (default `16:9`). Resolution is
+  the app default (720p); it is not a request field yet.
+- Video `duration` is snapped to the nearest length the model accepts and
+  stored snapped; omitted, the shortest. A video takes a start frame **or**
+  reference images, never both. The video mode follows: start frame →
+  `frames`, references → `reference`, neither → `text` (the Studio
+  endpoints, `studio-video-generation.ts`).
+
+### Models
+
+Image: every visible sequence still model (`IMAGE_MODELS` without `hidden`),
+through `generateImageWithProvider`. Video: every visible sequence video
+model (`IMAGE_TO_VIDEO_MODELS` without `hidden`) through the Studio
+submit/poll, and a `requiresVia: 'byteplus'` model (Seedance 2.5, Seedance
+2.0 Mini) only where the platform claims BytePlus Ark.
+
+Not served, and why:
+
+- Hidden models (Kling 3.0 Pro, Nano Banana 2, Krea 2 Turbo): no picker
+  offers them either.
+- The `/models` catalog's arbitrary fal endpoints: the gateway names model
+  keys, never endpoints.
+- Video edit mode, reference clips and audio, end frames, Ark drafts and a
+  `count` above one: Studio-only today; each needs its own input checks
+  (clip chains, lengths) before it can face a third party.
+- Audio and LLM kinds: later in the stack (§ Not in this stack).
+
+### Job lifecycle
+
+`queued` → `running` → `succeeded` | `failed`. The row is written only
+through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
+`claim-discipline` exception like `generated_assets`.
+
+1. **Submit** (`submitGatewayJob`): a known `Idempotency-Key` returns its
+   job; else the model is checked against the platform vias, the account
+   against the generation gate, every reference URL through
+   `requireCheckedUploadRights`, the estimate is priced, the row is
+   inserted, the hold is reserved, and the run is triggered. The run's
+   payload is the normalized input plus the no-person verdicts
+   (`likenessFromLedger`) for Ark; the run reads no job row.
+2. **Image run:** generate and store to R2 in one `step.do` (#1645), record
+   fal usage, `settle`, provenance (`gateway_job`), `persist-result`.
+3. **Video run:** resolve the via, register Ark stills when the via is
+   BytePlus (lease owner `gateway:<instanceId>`), submit, **stamp `via` and
+   `providerJobId` on the row**, poll the submitted job (the poll follows the
+   via on the submission, never a fresh resolution), release the Ark leases,
+   price from the provider's usage (`studioVideoCostFromUsage`), store,
+   `settle`, provenance, `persist-result`.
+4. **Failure:** `onFailure` marks the row `failed` with
+   `{ code, message }` (`CONTENT_REJECTED` for a content refusal, else
+   `GENERATION_FAILED`; `NOT_STARTED` when the trigger itself failed) and
+   releases Ark leases. The base class zeroes the hold (`ownsReservation`).
+
+Unlike Studio, a video run does not resubmit after a content flag or after
+Ark's InternalServiceError: one submit, and a failure is the answer.
+
+### Keys and money
+
+- `platformOnlyCredentials` resolves through `resolvePlatformOptionalKey`
+  (`src/models/server/db/api-keys.ts`), which reads env and never the
+  organization's key row. The run never touches `scopedDb.credentials`; a
+  source test pins that, and `settleGatewayJob` refuses a result that
+  reports `usedOwnKey`.
+- The hold is `reserveRunCredits(…, { providers: [] })`: no BYOK skip, so an
+  organization with its own fal key is still held and charged.
+- The settle is `deductWorkflowCredits` with the job's `reservationId`
+  (capture), idempotency key `${instanceId}:gateway-settle`. `costMicros` on
+  the row is what the provider billed; the response shows it as
+  `charge.totalMicros` once the job succeeded.
+- Insufficient credits at submit is `402 INSUFFICIENT_CREDITS` in the
+  `/api/v1` error envelope, and leaves no row, so the same key can be sent
+  again after a top-up.
+
+### Idempotency
+
+The `Idempotency-Key` header (≤ 255 characters) is unique per organization
+on `gateway_jobs`. The key binds the job; the job binds the rest: the
+reservation key is `gateway:<jobId>` and the trigger's `deduplicationId` is
+`gateway-<jobId>`. A replay returns the first job whatever the body says. A
+key whose first submit was refused before the hold (credits, a bad upload)
+is free again.
+
+### Auth and limits
+
+- `requiredOAuthScope` answers `models:invoke` for every `/api/v1/gateway`
+  request, reads included. `osk_` keys are unscoped (app pays: the key's
+  organization is charged). `oauthClientId` on the row is the token's
+  client, for PR 3.
+- `GATEWAY_RATE_LIMITER` (60 submits a minute per organization, namespace
+  `2380`) is declared in all three wrangler blocks. A 429 is
+  `{ error: { code: 'RATE_LIMITED' } }` with `Retry-After`. Reads are not
+  throttled beyond the per-key limiter.
+
+### Not yet (PR 1)
+
+- No reconcile sweep for a job left `running` when both the run and its
+  `onFailure` die; the hold expires on its own TTL.
+- No estimate endpoint; the hold is not shown before submit.
+- A reference image the check finds a real person in is refused
+  (`400 ATTESTATION_REQUIRED`): the gateway has no portrait-attestation field
+  yet. A raw URL is classified on first use, an organization's own upload by
+  its existing verdict, and another organization's file is refused.
 
 ## Not in this stack
 
