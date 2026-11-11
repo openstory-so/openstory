@@ -506,6 +506,13 @@ export function studioVideoSupportsAudio(model: ImageToVideoModel): boolean {
   return STUDIO_VIDEO_HAS_AUDIO[model];
 }
 
+/** The aspect ratios the model's T2V sibling accepts. */
+export function studioVideoAspectRatios(
+  model: ImageToVideoModel
+): readonly AspectRatio[] {
+  return STUDIO_VIDEO_ASPECTS[model];
+}
+
 /** Every second count the model accepts, ascending. Empty = not a request field. */
 export function studioVideoDurations(
   model: ImageToVideoModel

@@ -122,6 +122,13 @@
       "namespace_id": "1457",
       "simple": { "limit": 100, "period": 10 },
     },
+    // Per-organization throttle on POST /api/v1/gateway/jobs (model gateway).
+    // Not inherited by env blocks — redeclared below.
+    {
+      "name": "GATEWAY_RATE_LIMITER",
+      "namespace_id": "2380",
+      "simple": { "limit": 60, "period": 60 },
+    },
   ],
   "workflows": [
     // All durable async work runs on Cloudflare Workflows. Each class is
@@ -297,6 +304,11 @@
       "class_name": "StudioGenerationWorkflow",
     },
     {
+      "name": "gateway-generation-workflow",
+      "binding": "GATEWAY_WORKFLOW",
+      "class_name": "GatewayGenerationWorkflow",
+    },
+    {
       "name": "upload-check-workflow",
       "binding": "UPLOAD_CHECK_WORKFLOW",
       "class_name": "UploadCheckWorkflow",
@@ -424,7 +436,7 @@
           "name": "SEND_EMAIL",
         },
       ],
-      // Device-code login throttle and MCP JWT throttle (not inherited;
+      // Device-code login, MCP JWT and gateway throttles (not inherited;
       // see top-level block).
       "ratelimits": [
         {
@@ -436,6 +448,11 @@
           "name": "MCP_JWT_RATE_LIMITER",
           "namespace_id": "1457",
           "simple": { "limit": 100, "period": 10 },
+        },
+        {
+          "name": "GATEWAY_RATE_LIMITER",
+          "namespace_id": "2380",
+          "simple": { "limit": 60, "period": 60 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
@@ -606,6 +623,11 @@
           "name": "studio-generation-workflow",
           "binding": "STUDIO_WORKFLOW",
           "class_name": "StudioGenerationWorkflow",
+        },
+        {
+          "name": "gateway-generation-workflow",
+          "binding": "GATEWAY_WORKFLOW",
+          "class_name": "GatewayGenerationWorkflow",
         },
         {
           "name": "upload-check-workflow",
@@ -738,7 +760,7 @@
           "name": "SEND_EMAIL",
         },
       ],
-      // Device-code login throttle and MCP JWT throttle (not inherited;
+      // Device-code login, MCP JWT and gateway throttles (not inherited;
       // see top-level block).
       "ratelimits": [
         {
@@ -750,6 +772,11 @@
           "name": "MCP_JWT_RATE_LIMITER",
           "namespace_id": "1457",
           "simple": { "limit": 100, "period": 10 },
+        },
+        {
+          "name": "GATEWAY_RATE_LIMITER",
+          "namespace_id": "2380",
+          "simple": { "limit": 60, "period": 60 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
@@ -920,6 +947,11 @@
           "name": "studio-generation-workflow",
           "binding": "STUDIO_WORKFLOW",
           "class_name": "StudioGenerationWorkflow",
+        },
+        {
+          "name": "gateway-generation-workflow",
+          "binding": "GATEWAY_WORKFLOW",
+          "class_name": "GatewayGenerationWorkflow",
         },
         {
           "name": "upload-check-workflow",

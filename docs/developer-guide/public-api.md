@@ -78,12 +78,13 @@ Authorization: Bearer <access_token>
 
 Tokens are **scoped**, unlike keys:
 
-| Scope             | Grants                                                    |
-| ----------------- | --------------------------------------------------------- |
-| `sequences:read`  | Every `GET`                                               |
-| `sequences:write` | Edits and exports (`POST …/exports`, style mutations)     |
-| `generate`        | Anything that spends credits (`POST /sequences`, enhance) |
-| `credits:read`    | Credit balance (reserved for the MCP endpoint)            |
+| Scope             | Grants                                                     |
+| ----------------- | ---------------------------------------------------------- |
+| `sequences:read`  | Every `GET`                                                |
+| `sequences:write` | Edits and exports (`POST …/exports`, style mutations)      |
+| `generate`        | Anything that spends credits (`POST /sequences`, enhance)  |
+| `credits:read`    | Credit balance (reserved for the MCP endpoint)             |
+| `models:invoke`   | Every `/api/v1/gateway` call (runs models on your credits) |
 
 A token without the scope a route needs gets `403` with a
 `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` challenge
@@ -205,6 +206,34 @@ curl "https://openstory.so/api/v1/sequences?limit=20" \
 Page with `?limit` (default 20, max 100) and the opaque `?cursor` returned in the
 response's `_links.next`. Follow that link to fetch the next page; its absence
 means you've reached the end. Archived sequences are excluded.
+
+## Run one model (gateway)
+
+The gateway runs a single image or video model on OpenStory's own provider
+keys and charges your organization what the provider billed. List the models
+and what each accepts, then submit a job and poll it:
+
+```bash
+curl "https://openstory.so/api/v1/gateway/models" -H "x-api-key: $OPENSTORY_API_KEY"
+
+curl -X POST "https://openstory.so/api/v1/gateway/jobs" \
+  -H "x-api-key: $OPENSTORY_API_KEY" \
+  -H "Idempotency-Key: my-retry-safe-id" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"image","model":"gpt_image_2","prompt":"A lighthouse at dusk"}'
+
+curl "https://openstory.so/api/v1/gateway/jobs/<id>?wait=60s" \
+  -H "x-api-key: $OPENSTORY_API_KEY"
+```
+
+A video job takes `duration` (seconds, snapped to what the model accepts) and
+either a `startImageUrl` or `referenceImageUrls`. The submit answers `202` with
+the job; it ends `succeeded` with absolute URLs in `outputs` and the charge in
+`charge.totalMicros`, or `failed` with an `error`. The estimate is held at
+submit (`402 INSUFFICIENT_CREDITS` when it cannot be) and released if the job
+fails. Reference images are checked for a real person first, as uploads are.
+Repeating an `Idempotency-Key` returns the first job. OAuth tokens need the
+`models:invoke` scope.
 
 ## Long-polling with `?wait`
 
