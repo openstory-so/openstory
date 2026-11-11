@@ -495,6 +495,7 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
         onRegenerateMusicPrompt={() => regenerateMusicPrompt.mutate()}
         isRegeneratingMusicPrompt={regenerateMusicPrompt.isPending}
         musicPromptRun={musicPromptRun}
+        hasShots={!!shots?.length}
         onSaveMusicPrompt={(prompt) => saveMusicPrompt.mutate(prompt)}
         isSavingMusicPrompt={saveMusicPrompt.isPending}
         promptEditedSinceTrack={promptEditedSinceTrack}

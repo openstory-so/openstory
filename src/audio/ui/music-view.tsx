@@ -71,6 +71,8 @@ type MusicViewProps = {
   isRegeneratingMusicPrompt?: boolean;
   /** Who is making the missing prompt: the run (`queued`), a click (`writing`), or nobody. */
   musicPromptRun: 'none' | 'queued' | 'writing';
+  /** The prompt is written from the shots; none yet, nothing to write from. */
+  hasShots: boolean;
   /**
    * Toggle whether this sequence's music plays in the theatre and is bundled
    * into MP4 exports (#834). Bound to `sequence.includeMusic`; persisted by the
@@ -99,7 +101,7 @@ const LoadingButton: React.FC<LoadingButtonProps> = ({
   children,
   ...props
 }) => (
-  <Button disabled={isLoading || props.disabled} {...props}>
+  <Button {...props} disabled={isLoading || props.disabled}>
     {isLoading ? (
       <>
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -197,6 +199,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
   onRegenerateMusicPrompt,
   isRegeneratingMusicPrompt,
   musicPromptRun,
+  hasShots,
   onIncludeMusicChange,
   onSaveMusicPrompt,
   isSavingMusicPrompt = false,
@@ -497,6 +500,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
             variant="outline"
             onClick={onRegenerateMusicPrompt}
             isLoading={isRegeneratingMusicPrompt ?? false}
+            disabled={!hasShots}
             loadingText="Writing…"
           >
             Write Music Prompt
