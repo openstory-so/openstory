@@ -1,3 +1,4 @@
+import { specKeyframes } from '@/shots/shot-list.schema';
 import { Suspense } from 'react';
 import {
   queryOptions,
@@ -262,7 +263,10 @@ const SpecVersionList: React.FC<PanelProps> = ({ sequenceId, shotId }) => {
                     save.mutate(
                       {
                         shotId,
-                        spec: version.spec,
+                        spec: {
+                          ...version.spec,
+                          keyframes: specKeyframes(version.spec),
+                        },
                         replace: { visual: false, motion: false },
                       },
                       {
