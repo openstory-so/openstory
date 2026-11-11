@@ -2,8 +2,9 @@ name: Publish skills
 
 # Publishes the skills to openstory-so/skills (#2357): scripts/publish-skills.ts.
 # Nobody edits that repo's skills/ by hand.
-# Needs: secret SKILLS_REPO_TOKEN (fine-grained, openstory-so/skills,
-# contents + pull requests write), and "Allow auto-merge" on that repo.
+# Needs: SKILLS_REPO_TOKEN in the publish-skills environment (fine-grained,
+# openstory-so/skills, contents + pull requests write), and "Allow auto-merge"
+# on that repo.
 # Runs after Test passes on a push to main, on the commit Test ran on, or by
 # hand (Run workflow) to catch up after a red Test.
 
@@ -30,6 +31,8 @@ jobs:
         github.event.workflow_run.head_repository.full_name == github.repository
       )
     runs-on: ubuntu-latest
+    # Holds SKILLS_REPO_TOKEN; only main may deploy to it.
+    environment: publish-skills
     permissions:
       contents: read
     steps:
