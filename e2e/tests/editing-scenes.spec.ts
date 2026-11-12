@@ -219,11 +219,18 @@ async function expectDialogueOrder(
   await openScenes();
   const block = page.getByRole('region', { name: 'Dialogue' }).first();
   await expect(block).toBeVisible({ timeout: 15_000 });
-  const text = (await block.innerText()).replace(/\s+/g, ' ').toLowerCase();
   let at = -1;
   for (const id of order) {
-    const heading = text.indexOf((await labelOf(id)).toLowerCase(), at + 1);
-    expect(heading, `${id} heading after offset ${at}`).toBeGreaterThan(at);
+    const label = (await labelOf(id)).toLowerCase();
+    // The region mounts before its scene headings. Read the text after the
+    // heading is actually there, or the first scene looks missing.
+    await expect(block).toContainText(label, { timeout: 15_000 });
+    const text = (await block.innerText()).replace(/\s+/g, ' ').toLowerCase();
+    const heading = text.indexOf(label, at + 1);
+    expect(
+      heading,
+      `${id} (${label}) heading after offset ${at}`
+    ).toBeGreaterThan(at);
     at = heading;
     for (const line of inScene(rows, id).flatMap((r) => r.lines)) {
       const found = text.indexOf(line.toLowerCase(), at);
