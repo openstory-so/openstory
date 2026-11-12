@@ -75,7 +75,7 @@
     "prepare:e2e-built": "mkdir -p .wrangler/deploy && printf '%s' '{\"configPath\":\"../../dist/server/wrangler.json\",\"auxiliaryWorkers\":[]}' > .wrangler/deploy/config.json",
     "test:e2e:setup": "bun run db:migrate:test && bun scripts/seed.ts --test",
     "db:generate": "bun drizzle-kit generate --config=drizzle.config.d1.ts",
-    "auth:generate": "bun x auth@1.7.18 generate --config src/platform/server/auth/cli-config.ts",
+    "auth:generate": "bun x auth@latest generate --config src/platform/server/auth/cli-config.ts",
     "db:check": "bun drizzle-kit check --config=drizzle.config.d1.ts",
     "db:migrate:local": "bun scripts/migrate-local-d1.ts",
     "db:migrate:test": "bun scripts/migrate-local-d1.ts --test",
