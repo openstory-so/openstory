@@ -1,5 +1,11 @@
 # @openstory/stitch
 
+## 0.5.1
+
+### Patch Changes
+
+- 8fef292: The stitch skill names the MCP tool `openstory_create_stitch`, as clients list it.
+
 ## 0.5.0
 
 ### Minor Changes
