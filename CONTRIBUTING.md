@@ -28,6 +28,23 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) — you should see the app running.
 
+## Tech Stack
+
+| Category       | Tools                                                                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Runtime**    | [Bun](https://bun.com)                                                                                                                                                                        |
+| **Framework**  | [TanStack Start](https://tanstack.com/start) + [TanStack Router](https://tanstack.com/router) + [Vite](https://vite.dev)                                                                      |
+| **Database**   | [Drizzle ORM](https://orm.drizzle.team) + [Cloudflare D1](https://developers.cloudflare.com/d1) (SQLite)                                                                                      |
+| **AI**         | [TanStack AI](https://tanstack.com/ai) + [Fal.ai](https://fal.ai) + [OpenRouter](https://openrouter.ai) + [PostHog](https://posthog.com) (LLM observability)                                  |
+| **Workflows**  | [Cloudflare Workflows](https://developers.cloudflare.com/workflows) (durable execution)                                                                                                       |
+| **Realtime**   | [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects) (SSE progress updates)                                                                                        |
+| **Storage**    | [Cloudflare R2](https://developers.cloudflare.com/r2) (S3-compatible)                                                                                                                         |
+| **Auth**       | [Better Auth](https://www.better-auth.com)                                                                                                                                                    |
+| **Styling**    | [Tailwind v4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)                                                                                                                   |
+| **Quality**    | [oxlint](https://oxc.rs/docs/guide/usage/linter) + [oxfmt](https://oxc.rs) + [tsgo](https://github.com/microsoft/typescript-go) + [Lefthook](https://lefthook.dev) + [Knip](https://knip.dev) |
+| **Testing**    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev)                                                                                                                           |
+| **Deployment** | [Cloudflare Workers](https://developers.cloudflare.com/workers)                                                                                                                               |
+
 ## Development Workflow
 
 ### Branch Naming
