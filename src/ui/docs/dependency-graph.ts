@@ -590,6 +590,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ],
     ignored: [
       'Style (a sketch is never styled, #1277)',
+      'Direction, sound and dialogue (the picture is the action, #2379)',
       'Sheets and references (a sketch draws from text only)',
       'Image model and aspect ratio',
     ],
@@ -877,7 +878,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'script',
     to: 'storyboard',
     tracking: 'pointer',
-    note: 'the selected shot spec version; each spec save draws its own sketch',
+    note: 'the action, framing and start state of the selected spec; a direction-only edit leaves the sketch (#2379)',
   },
   {
     from: 'character',

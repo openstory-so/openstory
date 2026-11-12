@@ -794,6 +794,9 @@ cast = charactersToBible(
 fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
 ```
 
+The prompt stages the action in the bodies. Direction, sound and dialogue
+are not in it, so a direction-only edit does not move the hash (#2379).
+
 `missing` is none drawn. A sketch of the fresh hash is fresh, whatever
 version it is stamped with, so a rename that leaves the drawn text alone and
 a picked old version stay fresh. Otherwise `failed` if the newest row failed,

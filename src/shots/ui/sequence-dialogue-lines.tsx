@@ -7,6 +7,7 @@
  */
 
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { plainSceneTitle } from '@/platform/markdown-plain';
 import {
   ttsCharacterCount,
   voicedDialogueLines,
@@ -64,7 +65,7 @@ function sceneLines(
     const scene = scenes?.[index];
     groups.push({
       sceneId,
-      title: scene?.title || `Scene ${index + 1}`,
+      title: plainSceneTitle(scene?.title) || `Scene ${index + 1}`,
       shots: [shot],
     });
   }

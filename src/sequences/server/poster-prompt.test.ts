@@ -52,12 +52,18 @@ function scene(overrides: Partial<PreviewShotScene> = {}): PreviewShotScene {
 describe('previewTextForShot', () => {
   it('uses the shot spec even when the scene has only one shot', () => {
     const text = previewTextForShot(scene(), 1);
-    expect(text).toContain('medium close-up');
-    expect(text).toContain('She fills the right third, doorway left');
-    expect(text).toContain('She stands at the door, hand on the frame');
-    expect(text).toContain('Then: She opens the door');
-    expect(text).toContain('Camera: push-in, slow');
-    expect(text).toContain('Hesitant, as if listening');
+    expect(text.startsWith('Frozen in this action: She opens the door')).toBe(
+      true
+    );
+    expect(text).toContain(
+      'Framing: medium close-up, eye level, She fills the right third, doorway left'
+    );
+    expect(text).toContain(
+      'Placement only, not the pose: She stands at the door, hand on the frame'
+    );
+    expect(text).toContain('Camera, as one or two arrows: push-in, slow');
+    expect(text).not.toContain('Then:');
+    expect(text).not.toContain('Hesitant, as if listening');
     expect(text).not.toContain('Apartment hallway');
     expect(text).not.toContain('screenplay slice');
   });
@@ -143,7 +149,8 @@ describe('previewTextForShot', () => {
 describe('buildPreviewPrompt', () => {
   it('asks for a greyscale animatic frame and forbids text', () => {
     const prompt = buildPreviewPrompt(previewTextForShot(scene(), 1), []);
-    expect(prompt.startsWith('Storyboard animatic frame.')).toBe(true);
+    expect(prompt.startsWith('One greyscale storyboard frame.')).toBe(true);
+    expect(prompt).toContain('frozen in that action');
     expect(prompt).toContain('greyscale only');
     expect(prompt.toLowerCase()).toContain('no text');
     expect(prompt).not.toContain('Art style');
@@ -183,7 +190,7 @@ describe('buildPreviewPrompt', () => {
     ]);
     const line = prompt.slice(
       prompt.indexOf('Characters:'),
-      prompt.indexOf(' Drawn as')
+      prompt.indexOf(' The bodies are frozen')
     );
     expect(line).not.toContain('Mina:');
     expect(line).toContain('turtleneck');
