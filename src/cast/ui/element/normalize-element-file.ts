@@ -15,12 +15,15 @@
  */
 
 import { elementKindFromFile } from '@/cast/element-kind';
+import { normalizeImageFile } from '@/ui/normalize-image-file';
 
 /** Audio formats every model that documents its formats accepts. */
 const ACCEPTED_AUDIO_EXTENSIONS = new Set(['mp3', 'wav']);
 
 export async function normalizeElementFile(file: File): Promise<File> {
-  if (elementKindFromFile(file) !== 'audio') return file;
+  const kind = elementKindFromFile(file);
+  if (kind === 'image') return normalizeImageFile(file);
+  if (kind !== 'audio') return file;
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (ACCEPTED_AUDIO_EXTENSIONS.has(ext)) return file;
 

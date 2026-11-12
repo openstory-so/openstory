@@ -27,6 +27,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
+import { normalizeImageFile } from '@/ui/normalize-image-file';
 import { putToR2, snapshotFile } from '@/ui/upload';
 import { toast } from 'sonner';
 
@@ -243,7 +244,7 @@ export function useUploadStudioMedia() {
       file: File;
       onProgress?: (percent: number) => void;
     }) => {
-      const file = await snapshotFile(data.file);
+      const file = await normalizeImageFile(await snapshotFile(data.file));
       const presign = await presignStudioUploadFn({
         data: { filename: file.name },
       });

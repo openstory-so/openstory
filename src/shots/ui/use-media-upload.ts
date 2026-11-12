@@ -29,6 +29,7 @@ import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 import { normalizeElementFile } from '@/cast/ui/element/normalize-element-file';
+import { normalizeImageFile } from '@/ui/normalize-image-file';
 import { putToR2, snapshotFile } from '@/ui/upload';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { fitImageFileToAspectRatio } from '@/ui/fit-image-aspect';
@@ -72,7 +73,7 @@ export function useReplaceFrameImage() {
       onProgress?: (percent: number) => void;
     }): Promise<{ promptChanged: boolean; cropped: boolean }> => {
       const fitted = await fitImageFileToAspectRatio(
-        input.file,
+        await normalizeImageFile(input.file),
         input.aspectRatio
       );
       const publicUrl = await presignPut(
@@ -233,15 +234,16 @@ export function useUploadCharacterSheet() {
       lookId?: string;
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await normalizeImageFile(input.file);
       const publicUrl = await presignPut(
         presignCharacterSheetUploadFn({
           data: {
             sequenceId: input.sequenceId,
             characterId: input.characterId,
-            filename: input.file.name,
+            filename: file.name,
           },
         }),
-        input.file,
+        file,
         input.onProgress
       );
       await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
@@ -288,7 +290,7 @@ export function useUploadDraftCharacterSheet() {
       file: File;
       onProgress?: (percent: number) => void;
     }): Promise<string> => {
-      const file = await snapshotFile(input.file);
+      const file = await normalizeImageFile(await snapshotFile(input.file));
       const publicUrl = await presignPut(
         presignCharacterDraftUploadFn({ data: { filename: file.name } }),
         file,
@@ -316,15 +318,16 @@ export function useUploadLocationReference() {
       locationDbId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await normalizeImageFile(input.file);
       const publicUrl = await presignPut(
         presignLocationSheetUploadFn({
           data: {
             sequenceId: input.sequenceId,
             locationDbId: input.locationDbId,
-            filename: input.file.name,
+            filename: file.name,
           },
         }),
-        input.file,
+        file,
         input.onProgress
       );
       await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
