@@ -68,6 +68,8 @@ export default {
     '@testing-library/jest-dom',
     '@testing-library/react',
     '@testing-library/user-event',
+    // Pinned so Dependabot moves it with @better-auth/mcp (#2393).
+    '@better-auth/oauth-provider',
     // shadcn CLI.
     'shadcn',
     // Local binary spawned from scripts/pull-motion-schemas.ts

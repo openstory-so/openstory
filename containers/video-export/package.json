@@ -11,8 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mediabunny/server": "^1.65.0",
-    "mediabunny": "^1.65.0"
+    "@mediabunny/server": "^1.65.2",
+    "mediabunny": "^1.65.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
