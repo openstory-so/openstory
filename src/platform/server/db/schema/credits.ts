@@ -17,6 +17,8 @@ const TRANSACTION_TYPES = [
   'credit_usage',
   'credit_refund',
   'credit_adjustment',
+  // A matured gateway earning (docs/architecture/model-gateway.md § Earnings).
+  'credit_earned',
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
@@ -200,6 +202,7 @@ const CREDIT_BATCH_SOURCES = [
   'gift_code',
   'adjustment',
   'migration',
+  'earned',
 ] as const;
 export type CreditBatchSource = (typeof CREDIT_BATCH_SOURCES)[number];
 

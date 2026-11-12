@@ -23,7 +23,13 @@
     // (#1519 — BYTEPLUS_ASSETS_RECONCILE_CRON). Production's same tick also
     // deletes leftover `openstory-virtual-pr-*` groups whose PRs are closed
     // (#1635).
-    "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
+    "crons": [
+      "*/5 * * * *",
+      "17 3 * * *",
+      "37 * * * *",
+      "53 * * * *",
+      "11 * * * *",
+    ],
   },
   "observability": {
     "enabled": true,
@@ -693,7 +699,13 @@
         },
       ],
       "triggers": {
-        "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
+        "crons": [
+          "*/5 * * * *",
+          "17 3 * * *",
+          "37 * * * *",
+          "53 * * * *",
+          "11 * * * *",
+        ],
       },
     },
     // Playwright e2e environment. D1 AND R2 are local (Miniflare) for

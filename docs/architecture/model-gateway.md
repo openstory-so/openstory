@@ -1,9 +1,8 @@
 # Model gateway
 
-Status: PR 1 (gateway core and app-pays), PR 2 (charge lines) and PR 3
-(apps and user-pays) shipped; PR 4 is the plan. This
-file is the plan and the contract; each PR in the stack updates it to match
-what it shipped. § Shipped describes the code as it is.
+Status: the stack is shipped: PR 1 (gateway core and app-pays), PR 2
+(charge lines), PR 3 (apps and user-pays) and PR 4 (margin, app charges and
+earnings). This file is the contract; § Shipped describes the code as it is.
 
 The gateway is OpenStory's own model API: one fal-shaped surface (submit a
 job, poll it, read a result URL) under `/api/v1/gateway`, in front of every
@@ -37,8 +36,8 @@ after the contract has held for the main app and for third parties.
 | `POST /api/v1/gateway/jobs`          | Submit. Returns `202` and the job           |
 | `GET /api/v1/gateway/jobs/$id`       | Status, result URLs, the charge (`?wait`)   |
 | `GET /api/v1/gateway/grant`          | The caller's cap, spend and remaining       |
-| `POST /api/v1/gateway/jobs/estimate` | Price before submitting (PR 4)              |
-| `POST /api/v1/gateway/charges`       | An app's own billing line (PR 4)            |
+| `POST /api/v1/gateway/jobs/estimate` | Price before submitting, as lines           |
+| `POST /api/v1/gateway/charges`       | An app charges one of its SKUs              |
 
 - A request names a model **key**, never an endpoint. The job is stamped with
   its `via`; poll follows the stamp; a job never hops between providers.
@@ -75,19 +74,26 @@ debit and one or more **charge lines**:
 - Each line is rounded half up to a whole microdollar on its own, and the
   total is the sum of the lines (`gatewayCharge`).
 - `app_margin` and `app_charge` exist only on user-pays calls from a
-  registered, active app. An app charging its own organization earns nothing.
-- Margin is capped at `MAX_APP_MARGIN_BPS` (5000).
-- An `app_charge` names a SKU the app declared in advance; an app cannot
-  charge an arbitrary amount.
+  registered, active app. An app charging its own organization earns nothing:
+  no margin, and `POST /gateway/charges` refuses it.
+- Margin is capped at `MAX_APP_MARGIN_BPS` (5000). The margin a job applies
+  is the lower of the app's current margin and the one the user accepted on
+  the grant (§ Shipped (PR 4) § Consent).
+- An `app_charge` names a SKU the app declared in advance, at most
+  `MAX_APP_SKU_PRICE_MICROS` ($100); an app cannot charge an arbitrary amount,
+  nor a price above the one the user accepted.
 - The cap on a grant counts every line: settled lines this calendar month
   (UTC) plus live holds for that client and organization (§ Shipped (PR 3)).
 
 ## Earnings
 
-A payee line creates an earning row in state `pending`. After
-`EARNING_HOLD_DAYS` (14) it matures: the app's organization wallet is credited
-with a `credit_earned` transaction and a `creditBatches` row with source
-`earned`. A charge reversed inside the hold cancels the earning instead.
+A payee line creates an earning row in state `pending`, in the line's own
+batch and at the line's written amount. After `EARNING_HOLD_DAYS` (14) the
+hourly sweep matures it: the app's organization wallet is credited with a
+`credit_earned` transaction and a `creditBatches` row with source `earned`,
+exactly once. A charge reversed inside the hold cancels the earning instead
+(`earnings.cancelPending`; no refund flow calls it yet). Earnings are credits
+only: not transferable, not redeemable, and there is no payout code.
 
 ## The stack
 
@@ -106,9 +112,10 @@ Each PR is based on the one before it.
    spend and cap in Settings → Authorized apps, app registration in Settings →
    Developer.
 4. **Margin, app charges and earnings.** `marginBps` on the app, the
-   `app_margin` line, declared SKUs and `POST /gateway/charges`,
-   `gateway_earnings` with the hold and the maturing sweep, the estimate
-   endpoint and the price breakdown on the consent screen.
+   consented margin and SKU prices on the grant, the `app_margin` line,
+   declared SKUs and `POST /gateway/charges`, `gateway_earnings` with the
+   hold and the maturing sweep, the estimate endpoint, the price on the
+   consent screen, and job reads scoped to the OAuth client.
 
 ## Shipped (PR 1)
 
@@ -225,7 +232,8 @@ Ark's InternalServiceError: one submit, and a failure is the answer.
 ### Idempotency
 
 The `Idempotency-Key` header (≤ 255 characters) is unique per organization
-on `gateway_jobs`. The key binds the job; the job binds the rest: the
+and caller on `gateway_jobs` (PR 4: each OAuth client has its own key space,
+and `osk_` keys and sessions share the organization's). The key binds the job; the job binds the rest: the
 reservation key is `gateway:<jobId>` and the trigger's `deduplicationId` is
 `gateway-<jobId>`. A replay returns the first job whatever the body says. A
 key whose first submit was refused before the hold (credits, a bad upload)
@@ -246,7 +254,6 @@ is free again.
 
 - No reconcile sweep for a job left `running` when both the run and its
   `onFailure` die; the hold expires on its own TTL.
-- No estimate endpoint; the hold is not shown before submit.
 - A reference image the check finds a real person in is refused
   (`400 ATTESTATION_REQUIRED`): the gateway has no portrait-attestation field
   yet. A raw URL is classified on first use, an organization's own upload by
@@ -401,9 +408,12 @@ hour, so the grant is looked up on every submit, not carried in the token.
 - **Settings → Authorized apps.** A consent with `models:invoke` shows its
   cap, settled spend this month and remaining, and a cap editor
   (optimistic, rolled back on error). A consent that has `models:invoke` but
-  no grant (one approved before PR 3, or one whose authorize request named no
-  `scope` and got the client's defaults) shows "no spend cap yet" and can set
-  one there; until then the gateway refuses it.
+  no grant (one approved before PR 3) shows "no spend cap yet" and can set
+  one there; until then the gateway refuses it. An authorize request that
+  names no `scope` is not such a case: the provider writes the client's
+  registered scopes (else its own defaults) into the signed query before the
+  redirect (`authorize` in `@better-auth/oauth-provider`), so the consent
+  page sees `models:invoke` and asks for a cap like any other.
 
 ### The cap
 
@@ -467,21 +477,170 @@ periodEnd }` for an OAuth caller (403 without a live grant) and `payer:
 'app'` with the cap fields null for a key. `/api/v1` error `details` are
 sent only for a `PublicApiError`.
 
-### For PR 4
+## Shipped (PR 4)
 
-- Margin: add `margin_bps` to `gateway_apps` with `ADD COLUMN`, snapshot it
-  on the payload next to `appId` at submit, and pass `appMargin: { bps,
-  payeeOrganizationId: app.organizationId }` to `gatewayCharge` in both the
-  hold and `settleGatewayJob`. Skip it when the payer is the app's own
-  organization. The hold then includes the margin, so the cap guard counts
-  it with no change.
-- `POST /gateway/charges`: reserve with the same `spendCap` (the caller's
-  client and `appId`) so an app charge is capped like a job, and settle with
-  attribution `{ oauthClientId, appId }`.
-- Earnings: payee lines carry `app_id`; `idx_charge_lines_payee_created`
-  serves the sweep.
-- The estimate endpoint and the consent price breakdown can read
-  `getStanding` for "remaining this month".
+### Code
+
+- `src/gateway/apps.ts`: `MAX_APP_MARGIN_BPS` (5000),
+  `MAX_APP_SKU_PRICE_MICROS` ($100), `APP_SKU_KEY_PATTERN`, and the consent
+  arithmetic: `appliedMarginBps`, `boundedTerms`, `termsNeedApproval`,
+  `termsOfView`. Client-safe; the consent page and Settings use it.
+- Schema (migration `20261111232918_gateway_margin_and_earnings`: two new
+  tables, three `ADD COLUMN`s, one index replaced; nothing is rebuilt):
+  `gateway_apps.margin_bps`; `gateway_grants.accepted_margin_bps` and
+  `accepted_sku_prices`; `gateway_app_skus`
+  (`src/platform/server/db/schema/gateway-apps.ts`); `gateway_earnings`
+  (`schema/gateway-earnings.ts`); `gateway_jobs`' idempotency index now
+  `(organization_id, coalesce(oauth_client_id, ''), idempotency_key)`.
+- `src/gateway/server/db/gateway-apps.ts`: `setMargin`, `saveSku`,
+  `archiveSku`, `listSkus`, `getActiveSku`, `getTermsByOAuthClient`.
+- `src/gateway/server/db/gateway-grants.ts`: the accepted terms on
+  `getStanding` / `listStandings`, `setCap({ shownTerms })`, `acceptTerms`.
+- `src/gateway/server/user-pays.ts`: `resolveUserPays` (app, grant, the
+  margin to apply) and `holdCharge`, shared by submit, estimate and charges.
+- `src/gateway/server/estimate-job.ts`, `app-charge.ts`, `manage-app.ts`;
+  routes `gateway.jobs.estimate.ts`, `gateway.charges.ts`.
+- `src/billing/server/db/billing.ts`: `settleReservation` writes the
+  earning of each payee line; `getSettledCharge`; `creditEarning` (the
+  sweep's one-batch credit).
+- `src/billing/server/db/earnings.ts`: `scopedDb.earnings` (`byApp`,
+  `cancelPending`) and the sweep's functions.
+  `src/billing/server/mature-earnings.ts`: the sweep (`MATURE_EARNINGS_CRON`,
+  `11 * * * *`).
+- UI: the consent page (`routes/_app/oauth/consent.tsx`), Settings →
+  Developer → Apps (`gateway/ui/gateway-apps-settings.tsx`: margin, SKUs,
+  earnings) and → Authorized apps (`ui/settings/developer-authorized-apps.tsx`:
+  current and approved terms, "Accept new prices").
+
+### Margin and SKUs
+
+An app's owners or admins set `margin_bps` (0 to 5000) and declare SKUs
+(`key` unique per app, `name`, `price_micros` above 0 and at most $100,
+`status` `active` | `archived`) in Settings. Both are server-side rows; no
+request body or token claim can name a margin, a price or a payee.
+
+At submit an OAuth caller's client is resolved once (`resolveUserPays`):
+suspended → `403 APP_SUSPENDED`; no live grant → `403 GRANT_REQUIRED`;
+otherwise the margin is `min(app.margin_bps, grant.accepted_margin_bps)`,
+and none when the client is not a registered app or the payer is the app's
+own organization. `appMargin: { bps, payeeOrganizationId }` (or null) is
+snapshotted on the payload next to `appId`; the hold is
+`gatewayCharge({ estimate, fee, appMargin }).totalMicros`, so the cap guard
+counts the margin, and `settleGatewayJob` charges the same `appMargin`, so a
+margin changed mid-run never reaches that run. An `osk_` key or a session
+gets no margin.
+
+### Consent
+
+What the user agreed to is on their grant: `accepted_margin_bps` (integer)
+and `accepted_sku_prices` (JSON `{ key: priceMicros }`). One read at submit
+or charge (`getStanding`) has both; a SKU key is limited to
+`[a-z0-9][a-z0-9_-]{0,63}`, so `json_extract(accepted_sku_prices,
+'$."<key>"')` is also usable in SQL.
+
+- **Approving.** The consent page lists the app's margin ("This app adds 20%
+  on top of model costs, paid to <owner organization>") and active SKUs with
+  their prices, and posts back what it showed. `setCap` records
+  `boundedTerms(shown, current)`: the margin no higher than shown or than the
+  app asks now, and each SKU both shown and active at no more than either
+  price. A page that showed nothing records nothing. Changing the cap in
+  Settings keeps the terms.
+- **Lowering.** `setMargin` and `saveSku` lower every grant that accepted
+  more, in the same batch; `archiveSku` removes the key from every grant. So
+  what a grant holds is the lowest the user has seen since approving, and
+  raising back needs approval too.
+- **Raising** applies to no existing user until they approve again: through
+  authorization with `prompt=consent` (an existing consent covering the
+  scopes otherwise skips the page), or "Accept new prices" in Settings →
+  Authorized apps (`acceptTerms`, live grant only, bounded the same way).
+  Until then jobs carry the accepted margin, and a dearer or new SKU is
+  `403 SKU_NOT_APPROVED`.
+- A grant from before PR 4, or from before the client was registered, has
+  `0` and `{}`: no margin, no SKU.
+
+### App charges
+
+`POST /api/v1/gateway/charges` `{ sku }` with an `Idempotency-Key`
+(`createAppCharge`). Refusals, in order: an `osk_` key or session
+`403 USER_PAYS_ONLY`; no key `400 IDEMPOTENCY_KEY_REQUIRED`; then a settled
+charge under the key is returned as it is (`200`, `replay: true`, whatever
+the body says); suspended app `403 APP_SUSPENDED`; no grant
+`403 GRANT_REQUIRED`; not a registered app `403 APP_NOT_REGISTERED`; payer is
+the app's organization `403 OWN_ORGANIZATION`; no active SKU
+`404 UNKNOWN_SKU`; price above the accepted one (or none accepted)
+`403 SKU_NOT_APPROVED`. The charge is held with `createReservation(price, {
+idempotencyKey: app-charge:<client>:<key>, spendCap: { …, sku } })`, the
+same guarded statement as a job, so the cap and the balance refuse it the
+same way (`402 SPEND_CAP_EXCEEDED` / `INSUFFICIENT_CREDITS`). The same
+statement also requires the SKU still active at the price read and the
+grant's accepted price at least that, so a price change or archive racing
+the charge is refused (`SKU_NOT_APPROVED` / `UNKNOWN_SKU` on a re-read), and
+the charge is settled at once as
+one `app_charge` line (`sku` set, payee the app's organization, attribution
+client and app). A key already held for another price with no settle is
+`409 IDEMPOTENCY_CONFLICT`. `201` answers the charge: its id is the debit's
+transaction id.
+
+### Earnings
+
+`gateway_earnings`: one row per payee line (unique `charge_line_id`),
+`payer_organization_id`, `payee_organization_id`, `app_id`, `amount_micros`,
+`status` (`pending` | `matured` | `cancelled`), `available_at` (charge time
+plus 14 days), `matured_at`, `transaction_id` (the `credit_earned` row),
+`cancelled_at`. Every foreign key is `restrict`.
+
+- **Written with its line.** `settleReservation` appends, after each payee
+  line's `INSERT … SELECT`, an `INSERT … SELECT` from `charge_lines` by that
+  line's id. The earning exists if and only if the line was written, at the
+  line's amount after any short-capture cut. A payee line without an
+  `appId` in the attribution is refused before anything is written.
+- **Maturing exactly once.** The sweep lists due ids, then claims each with
+  `UPDATE … SET status = 'matured' WHERE id = ? AND status = 'pending' AND
+  available_at <= now RETURNING`: one caller gets the row, and a cancel after
+  it finds nothing pending. The claimant credits the payee with
+  `billing.creditEarning`: one `db.batch` writes the `credit_earned` row
+  (user null, amount read from the earning row, only while it is `matured`
+  and unlinked) under the idempotency key `earning:<id>`, unique per
+  organization on `transactions`, the balance, the `earned` batch and the
+  link, so a crash or a racing retry cannot move the balance without the
+  ledger row (`addCredits` is several statements). A claim whose credit or link was lost (`matured`, no
+  `transaction_id`, claimed over ten minutes ago) is retried by later sweeps
+  under the same key: a credit that already landed is found and linked, not
+  repeated.
+- **Cron.** `MATURE_EARNINGS_CRON` (`11 * * * *`) is in the default block,
+  `[env.production]` and `scheduled()`, which returns before the reconcile
+  fall-through; `mature-earnings.test.ts` pins all three. It reads the raw D1
+  handle, so it is on the `boundaries/no-raw-db` allowlist.
+- **Developer view.** Settings → Developer → Apps shows, per app, pending and
+  matured totals and the latest five rows (`earnings.byApp`), read-only.
+
+### Estimate
+
+`POST /api/v1/gateway/jobs/estimate` takes the submit body and runs the
+submit's checks up to the price: the body, the model against the vias, and
+for an OAuth caller `resolveUserPays` (so suspended and grant refusals are
+the same). It returns `{ payer, kind, model, totalMicros, lines,
+remainingMicros, fitsUnderCap }`; `lines` is `gatewayCharge` on the
+estimate with this caller's margin. It reads the grant and the app and
+nothing else: no row, no hold, no trigger, and no upload check (that
+classifies and records a verdict, so it waits for the submit).
+
+### Caller isolation
+
+PR 3's reads and replays were scoped to the organization only, so one OAuth
+app acting for an organization could read another app's jobs, or the
+organization's `osk_` jobs, by id, and a colliding `Idempotency-Key` replayed
+another caller's job. Now `GET /gateway/jobs/$id` (`getForCaller`) shows an
+OAuth caller only jobs with its own `oauth_client_id` and an `osk_` key or
+session every job of the organization; an idempotency key is looked up, and
+unique, in the caller's own key space.
+
+### Not yet (PR 4)
+
+- No refund flow; `earnings.cancelPending` is its hook.
+- No suspend control in Settings; suspension is an operator write.
+- Earned credits get the same batch expiry as purchased ones
+  (`calculateExpiryDate`).
 
 ## Not in this stack
 

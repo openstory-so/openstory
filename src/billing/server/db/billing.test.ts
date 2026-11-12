@@ -17,6 +17,8 @@ import {
   chargeLines,
   creditReservations,
   credits,
+  gatewayApps,
+  gatewayEarnings,
   organization,
   transactions,
   user,
@@ -33,6 +35,8 @@ let userId = '';
 const STARTING_BALANCE = 100_000_000; // $100
 
 async function seed() {
+  await db.delete(gatewayEarnings);
+  await db.delete(gatewayApps);
   await db.delete(chargeLines);
   await db.delete(transactions);
   await db.delete(creditReservations);
@@ -816,6 +820,15 @@ describe('settleReservation (charge lines)', () => {
     await db
       .insert(organization)
       .values({ id: payee, name: 'App', slug: `app-${payee}` });
+    const [app] = await db
+      .insert(gatewayApps)
+      .values({
+        organizationId: payee,
+        oauthClientId: 'client-app',
+        name: 'App',
+        createdByUserId: userId,
+      })
+      .returning();
     const { billing, reservationId } = await reserve();
 
     const settled = await billing.settleReservation(
@@ -829,7 +842,10 @@ describe('settleReservation (charge lines)', () => {
         provider(800_000),
         fee(100_000),
       ],
-      { idempotencyKey: 'run-1:gateway-settle' }
+      {
+        idempotencyKey: 'run-1:gateway-settle',
+        attribution: { appId: app?.id ?? null },
+      }
     );
 
     expect(settled.ok).toBe(true);
@@ -860,9 +876,64 @@ describe('settleReservation (charge lines)', () => {
       (await storedLines()).reduce((sum, row) => sum + row.amountMicros, 0)
     ).toBe(-(debit?.amount ?? 0));
     expect(await billing.getBalance()).toBe(0);
+    // The earning is the payee line as written: cut, not as asked.
+    const marginLine = settled.lines.find((line) => line.kind === 'app_margin');
+    expect(await db.select().from(gatewayEarnings)).toEqual([
+      expect.objectContaining({
+        chargeLineId: marginLine?.id,
+        payerOrganizationId: organizationId,
+        payeeOrganizationId: payee,
+        appId: app?.id,
+        amountMicros: 100_000,
+        status: 'pending',
+      }),
+    ]);
 
+    await db.delete(gatewayEarnings);
     await db.delete(chargeLines);
+    await db.delete(gatewayApps);
     await db.delete(organization).where(eq(organization.id, payee));
+  });
+
+  it('refuses a payee line with no app to earn it', async () => {
+    const { billing, reservationId } = await reserve();
+    await expect(
+      billing.settleReservation(
+        reservationId,
+        [
+          provider(500_000),
+          {
+            kind: 'app_margin',
+            amountMicros: micros(50_000),
+            payeeOrganizationId: organizationId,
+          },
+        ],
+        { idempotencyKey: 'run-1:gateway-settle' }
+      )
+    ).rejects.toThrow('A payee line needs the app');
+    expect(await debits()).toEqual([]);
+  });
+
+  it('refuses a payee line that pays the payer', async () => {
+    const { billing, reservationId } = await reserve();
+    await expect(
+      billing.settleReservation(
+        reservationId,
+        [
+          provider(500_000),
+          {
+            kind: 'app_margin',
+            amountMicros: micros(50_000),
+            payeeOrganizationId: organizationId,
+          },
+        ],
+        {
+          idempotencyKey: 'run-1:gateway-settle',
+          attribution: { appId: 'app-1' },
+        }
+      )
+    ).rejects.toThrow('cannot pay itself');
+    expect(await debits()).toEqual([]);
   });
 
   it('a capture short of the provider cost drops the later lines and cuts the provider line', async () => {

@@ -7,7 +7,10 @@ import {
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
 import { apiCreateStyleSchema } from './style-input-schema';
-import { gatewayJobRequestSchema } from '@/gateway/schema';
+import {
+  gatewayChargeRequestSchema,
+  gatewayJobRequestSchema,
+} from '@/gateway/schema';
 
 describe('buildRootDocument', () => {
   it('reads like MCP-style instructions and self-describes the API', () => {
@@ -125,5 +128,24 @@ describe('model gateway', () => {
     expect(instructions).toMatch(/GET \/api\/v1\/gateway\/grant/);
     expect(instructions).toMatch(/SPEND_CAP_EXCEEDED/);
     expect(instructions).toMatch(/GRANT_REQUIRED/);
+  });
+
+  it('advertises the estimate and the app charge with a parseable example', () => {
+    const { _links, instructions } = buildRootDocument();
+    expect(instructions).toMatch(/POST \/api\/v1\/gateway\/jobs\/estimate/);
+    expect(instructions).toMatch(/POST \/api\/v1\/gateway\/charges/);
+    expect(instructions).toMatch(/USER_PAYS_ONLY/);
+    expect(_links['estimate-gateway-job']).toMatchObject({
+      href: '/api/v1/gateway/jobs/estimate',
+      method: 'POST',
+    });
+    const charge = _links['create-gateway-charge'];
+    expect(charge).toMatchObject({
+      href: '/api/v1/gateway/charges',
+      method: 'POST',
+    });
+    expect(() =>
+      gatewayChargeRequestSchema.parse(charge?.examples?.[0])
+    ).not.toThrow();
   });
 });

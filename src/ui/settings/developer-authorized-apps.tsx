@@ -2,7 +2,8 @@
  * Authorized apps — OAuth grants the user has approved (#1456): hosted MCP
  * clients, forks, anything that ran "login with OpenStory". Revoking deletes
  * the grant, its spend cap and its refresh tokens; the app has to ask again.
- * An app with `models:invoke` shows its monthly cap and this month's spend.
+ * An app with `models:invoke` shows its monthly cap and this month's spend,
+ * and asks the user to accept a margin or SKU price the app has raised.
  */
 
 import {
@@ -26,11 +27,17 @@ import {
 } from '@/ui/shadcn/card';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import {
+  acceptAuthorizedAppTermsFn,
   listAuthorizedAppsFn,
   revokeAuthorizedAppFn,
   setAuthorizedAppCapFn,
   type AuthorizedApp,
 } from '@/platform/oauth-consent.fn';
+import {
+  formatMarginBps,
+  termsNeedApproval,
+  termsOfView,
+} from '@/gateway/apps';
 import {
   MAX_MONTHLY_CAP_USD,
   MIN_MONTHLY_CAP_USD,
@@ -175,6 +182,7 @@ function AppRow({ app }: { app: AuthorizedApp }) {
         </AlertDialog>
       </div>
       {app.invokesModels && app.organization ? <SpendCap app={app} /> : null}
+      {app.invokesModels && app.organization ? <AppTerms app={app} /> : null}
     </li>
   );
 }
@@ -293,6 +301,83 @@ function SpendCap({ app }: { app: AuthorizedApp }) {
           {setCap.isPending ? 'Saving…' : grant ? 'Change cap' : 'Set cap'}
         </Button>
       </form>
+    </div>
+  );
+}
+
+/** The app's margin and SKU prices, and an accept when it asks for more than the user approved. */
+function AppTerms({ app }: { app: AuthorizedApp }) {
+  const queryClient = useQueryClient();
+  const accept = useMutation({
+    mutationFn: () =>
+      acceptAuthorizedAppTermsFn({
+        data: {
+          consentId: app.consentId,
+          shownTerms: termsOfView(app.appTerms),
+        },
+      }),
+    onSuccess: () =>
+      toast.success(`Accepted new prices for ${app.client.name}`),
+    onError: (err) => toast.error(errorMessage(err, 'Failed to accept')),
+    onSettled: () =>
+      void queryClient.invalidateQueries({
+        queryKey: AUTHORIZED_APPS_QUERY_KEY,
+      }),
+  });
+  const { appTerms, accepted } = app;
+  if (!appTerms || !accepted) return null;
+  if (appTerms.ownerOrganizationId === app.organization?.id) return null;
+  const current = termsOfView(appTerms);
+  if (current.marginBps === 0 && appTerms.skus.length === 0) return null;
+  const needsApproval = termsNeedApproval(current, accepted);
+  const marginRaised = current.marginBps > accepted.marginBps;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <dl className="flex flex-col gap-1 tabular-nums">
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">
+            Margin on model costs, paid to {appTerms.ownerOrganizationName}
+          </dt>
+          <dd>
+            {marginRaised
+              ? `${formatMarginBps(accepted.marginBps)} approved, now asks ${formatMarginBps(current.marginBps)}`
+              : formatMarginBps(
+                  Math.min(current.marginBps, accepted.marginBps)
+                )}
+          </dd>
+        </div>
+        {appTerms.skus.map((sku) => {
+          const ok = accepted.skuPrices[sku.key];
+          const price = usd(sku.priceMicros);
+          return (
+            <div key={sku.key} className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">{sku.name}</dt>
+              <dd>
+                {ok === undefined
+                  ? `not approved, asks ${price}`
+                  : sku.priceMicros > ok
+                    ? `${usd(ok)} approved, now asks ${price}`
+                    : price}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {needsApproval ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-muted-foreground">
+            Until you accept, it adds only the margin you approved and cannot
+            charge a new or raised price.
+          </p>
+          <Button
+            variant="outline"
+            disabled={accept.isPending}
+            onClick={() => accept.mutate()}
+          >
+            {accept.isPending ? 'Accepting…' : 'Accept new prices'}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

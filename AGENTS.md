@@ -334,7 +334,13 @@ changing the area, and update it in the same PR.**
   charged job never reads failed. A user-pays (OAuth) cap is enforced in
   the hold's own SQL (`createReservation`'s `spendCap`), never by
   check-then-reserve; a missing or revoked grant refuses the job, and an
-  OAuth token without a client is never treated as app-pays.
+  OAuth token without a client is never treated as app-pays. A margin
+  or SKU price applies only up to what the user accepted on the grant
+  (`appliedMarginBps`, `accepted_sku_prices`); never raise a grant's terms
+  except through consent or `acceptTerms`. Earnings are written in the
+  payee line's batch and matured only by the guarded claim plus the
+  `earning:<id>` credit key; no payout code. An OAuth caller reads and
+  replays only its own client's jobs.
 - **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
   runs `MCP_TOOLS` through `chat()` under the session; never add an
   assistant-only tool, add an MCP tool. Only a delete
@@ -405,7 +411,7 @@ Read the via's doc before touching it, and update it in the same PR:
 - **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth. Pre-flight estimates read the stored modelschemas rate card on that row (#1605); a refusal stays null and never copies a sibling endpoint's price.
 - **Lip-sync (#2263)** — `docs/architecture/media-vias.md` (Sync lipsync). A finished clip plus its dialogue section through `fal-ai/sync-lipsync/v3` (`sync-lipsync-3`, `source: 'lipsync'`). Motion runs it after the clip when the model cannot take an audio upload (Kling, Omni Flash, Grok), including a packed clip against its one spanning dialogue file. Update all lip-syncs when only the audio moved on a single-shot clip.
 
-**Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it.
+**Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it (and `mature-earnings.test.ts` for `MATURE_EARNINGS_CRON`).
 
 ---
 

@@ -4,9 +4,11 @@
  * guard and every read that shows a grant's standing.
  */
 
+import { APP_SKU_KEY_PATTERN } from '@/gateway/apps';
 import {
   chargeLines,
   creditReservations,
+  gatewayAppSkus,
   gatewayGrants,
 } from '@/platform/server/db/schema';
 import { and, eq, isNull, sql, type Column, type SQL } from 'drizzle-orm';
@@ -79,15 +81,38 @@ export function liveGrantWhere(
   );
 }
 
-/** True when a live grant exists and `amountMicros` more fits under its cap. */
+/** An app SKU charged at `priceMicros`: still active at that price, and approved at least that on the grant. */
+export type SkuChargeGuard = {
+  appId: string;
+  key: string;
+  priceMicros: number;
+};
+
+function skuApprovedSql(sku: SkuChargeGuard): SQL {
+  if (!APP_SKU_KEY_PATTERN.test(sku.key)) {
+    throw new Error(`Invalid SKU key ${JSON.stringify(sku.key)}`);
+  }
+  return sql`and json_extract(${gatewayGrants.acceptedSkuPrices}, ${`$."${sku.key}"`}) >= ${sku.priceMicros}
+      and exists (
+        select 1 from ${gatewayAppSkus}
+        where ${gatewayAppSkus.appId} = ${sku.appId}
+          and ${gatewayAppSkus.key} = ${sku.key}
+          and ${gatewayAppSkus.status} = 'active'
+          and ${gatewayAppSkus.priceMicros} = ${sku.priceMicros}
+      )`;
+}
+
+/** True when a live grant exists and `amountMicros` more fits under its cap (and, for a SKU, its price is approved). */
 export function fitsUnderCapSql(
   scope: SpendCapScope & { organizationId: string; oauthClientId: string },
   userId: string,
-  amountMicros: number
+  amountMicros: number,
+  sku?: SkuChargeGuard
 ): SQL {
   return sql`exists (
     select 1 from ${gatewayGrants}
     where ${liveGrantWhere(scope.organizationId, scope.oauthClientId, userId)}
       and ${gatewayGrants.monthlyCapMicros} >= ${monthSpendSql(scope)} + ${liveHoldsSql(scope)} + ${amountMicros}
+      ${sku ? skuApprovedSql(sku) : sql``}
   )`;
 }

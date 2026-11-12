@@ -31,9 +31,15 @@ import { sequenceAssetsResultSchema } from './sequence-assets';
 import { organizationResultSchema } from './organization';
 import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
-import { gatewayJobRequestSchema } from '@/gateway/schema';
+import {
+  gatewayChargeRequestSchema,
+  gatewayJobRequestSchema,
+} from '@/gateway/schema';
 import {
   EXAMPLE_GATEWAY_JOB_BODY,
+  EXAMPLE_GATEWAY_CHARGE_BODY,
+  gatewayChargeResourceSchema,
+  gatewayEstimateResourceSchema,
   gatewayGrantResourceSchema,
   gatewayJobResourceSchema,
   gatewayModelsResultSchema,
@@ -848,7 +854,7 @@ export function buildOpenApiDocument(): JsonObject {
               in: 'header',
               required: false,
               description:
-                'Up to 255 characters. A repeat with the same key returns the first job.',
+                'Up to 255 characters, scoped to the caller (an OAuth client, or the organization for an osk_ key). A repeat with the same key returns the first job.',
               schema: { type: 'string', maxLength: 255 },
             },
           ],
@@ -886,6 +892,100 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/gateway/jobs/estimate`]: {
+        post: {
+          tags: ['gateway'],
+          summary: 'Estimate a gateway job',
+          description:
+            "Price a job for this caller before submitting it. Takes the submit body and returns what the submit would hold, as charge lines: provider cost, the platform fee and, for an OAuth caller of a registered app, the app's margin (the lower of the app's margin and the one the user approved). For an OAuth caller it also returns what the monthly cap leaves. Nothing is held, written or started, and reference URLs are not checked until the submit. A finished job is charged its actual cost.",
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GatewayJobRequest' },
+                example: EXAMPLE_GATEWAY_JOB_BODY,
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'The estimate.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayEstimate' },
+                },
+              },
+            },
+            '400': errorResponse('Invalid JSON or body, or an unknown model.'),
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse(
+              'No organization, or an OAuth token without `models:invoke`. GRANT_REQUIRED — an OAuth caller with no live grant. APP_SUSPENDED — the client is a suspended app.'
+            ),
+          },
+        },
+      },
+      [`${API_V1_BASE}/gateway/charges`]: {
+        post: {
+          tags: ['gateway'],
+          summary: 'Charge for an app SKU',
+          description:
+            "A registered, active app charges the signed-in user's organization for one of the SKUs it declared under Settings → Developer → Apps, at the SKU's price. User-pays only: the caller sends the user's OAuth token (`models:invoke`). The user must have approved the SKU at a price at least its current one; the charge counts against their monthly cap like a job, is debited at once, and is credited to the app's organization as a pending earning that matures after the hold. An app never charges its own organization. Send an `Idempotency-Key`: a repeat returns the first charge with `replay: true`.",
+          parameters: [
+            {
+              name: 'Idempotency-Key',
+              in: 'header',
+              required: true,
+              description:
+                'Up to 255 characters, scoped to the app. A repeat returns the first charge.',
+              schema: { type: 'string', maxLength: 255 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GatewayChargeRequest' },
+                example: EXAMPLE_GATEWAY_CHARGE_BODY,
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'The charge this Idempotency-Key already made.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayCharge' },
+                },
+              },
+            },
+            '201': {
+              description: 'The charge.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayCharge' },
+                },
+              },
+            },
+            '400': errorResponse(
+              'Invalid JSON or body. IDEMPOTENCY_KEY_REQUIRED — no Idempotency-Key header.'
+            ),
+            '401': errorResponse('Missing or invalid API key.'),
+            '402': errorResponse(
+              'INSUFFICIENT_CREDITS — the organization cannot cover the price. SPEND_CAP_EXCEEDED — the charge would pass the monthly cap the user set; `details` has the numbers.'
+            ),
+            '403': errorResponse(
+              "USER_PAYS_ONLY — an osk_ key or a session cannot charge. APP_NOT_REGISTERED — the OAuth client is not a registered app. APP_SUSPENDED — the app is suspended. OWN_ORGANIZATION — the user's organization owns the app. GRANT_REQUIRED — no live grant. SKU_NOT_APPROVED — the user never approved this SKU at its current price; `details` has `priceMicros` and `acceptedPriceMicros`."
+            ),
+            '404': errorResponse('UNKNOWN_SKU — no active SKU with that key.'),
+            '409': errorResponse(
+              'IDEMPOTENCY_CONFLICT — the key was used for a charge of another price.'
+            ),
+            '429': errorResponse(
+              'RATE_LIMITED — too many requests for this organization; honour Retry-After.'
+            ),
+          },
+        },
+      },
       [`${API_V1_BASE}/gateway/grant`]: {
         get: {
           tags: ['gateway'],
@@ -913,7 +1013,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['gateway'],
           summary: 'Get a gateway job',
           description:
-            "Status, absolute result URLs once it succeeded, the error once it failed, and the charge once it settled. With ?wait, long-polls until the job changes or ends. Another organization's job is a 404.",
+            "Status, absolute result URLs once it succeeded, the error once it failed, and the charge once it settled. With ?wait, long-polls until the job changes or ends. Another organization's job is a 404, and so is another OAuth client's: a token reads only its own client's jobs, an `osk_` key reads the organization's.",
           parameters: [gatewayJobIdParam, waitParam],
           responses: {
             '200': {
@@ -977,6 +1077,9 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(gatewayModelsResultSchema),
         ...componentDefs(gatewayJobResourceSchema),
         ...componentDefs(gatewayGrantResourceSchema),
+        ...componentDefs(gatewayEstimateResourceSchema),
+        ...componentDefs(gatewayChargeRequestSchema),
+        ...componentDefs(gatewayChargeResourceSchema),
       },
     },
   };

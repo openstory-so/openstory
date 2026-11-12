@@ -99,6 +99,7 @@ import { Route as AppSequencesNewIndexRouteImport } from './routes/_app/sequence
 import { Route as AppSequencesNewScenesRouteImport } from './routes/_app/sequences/new/scenes'
 import { Route as ApiV1DeviceCodeRouteImport } from './routes/api/v1/device.code'
 import { Route as ApiV1DeviceTokenRouteImport } from './routes/api/v1/device.token'
+import { Route as ApiV1GatewayChargesRouteImport } from './routes/api/v1/gateway.charges'
 import { Route as ApiV1GatewayGrantRouteImport } from './routes/api/v1/gateway.grant'
 import { Route as ApiV1GatewayJobsRouteImport } from './routes/api/v1/gateway.jobs'
 import { Route as ApiV1GatewayModelsRouteImport } from './routes/api/v1/gateway.models'
@@ -110,6 +111,7 @@ import { Route as AppSequencesIdCastIndexRouteImport } from './routes/_app/seque
 import { Route as AppSequencesIdElementsIndexRouteImport } from './routes/_app/sequences/$id/elements/index'
 import { Route as AppSequencesIdLocationsIndexRouteImport } from './routes/_app/sequences/$id/locations/index'
 import { Route as ApiV1GatewayJobsIdRouteImport } from './routes/api/v1/gateway.jobs.$id'
+import { Route as ApiV1GatewayJobsEstimateRouteImport } from './routes/api/v1/gateway.jobs.estimate'
 import { Route as ApiV1SequencesIdAssetsRouteImport } from './routes/api/v1/sequences.$id.assets'
 import { Route as ApiV1SequencesIdExportsRouteImport } from './routes/api/v1/sequences.$id.exports'
 import { Route as ApiV1StitchesIdPublishRouteImport } from './routes/api/v1/stitches.$id.publish'
@@ -567,6 +569,11 @@ const ApiV1DeviceTokenRoute = ApiV1DeviceTokenRouteImport.update({
   path: '/api/v1/device/token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1GatewayChargesRoute = ApiV1GatewayChargesRouteImport.update({
+  id: '/api/v1/gateway/charges',
+  path: '/api/v1/gateway/charges',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1GatewayGrantRoute = ApiV1GatewayGrantRouteImport.update({
   id: '/api/v1/gateway/grant',
   path: '/api/v1/gateway/grant',
@@ -625,6 +632,12 @@ const ApiV1GatewayJobsIdRoute = ApiV1GatewayJobsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiV1GatewayJobsRoute,
 } as any)
+const ApiV1GatewayJobsEstimateRoute =
+  ApiV1GatewayJobsEstimateRouteImport.update({
+    id: '/estimate',
+    path: '/estimate',
+    getParentRoute: () => ApiV1GatewayJobsRoute,
+  } as any)
 const ApiV1SequencesIdAssetsRoute = ApiV1SequencesIdAssetsRouteImport.update({
   id: '/assets',
   path: '/assets',
@@ -752,6 +765,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
@@ -761,6 +775,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/': typeof AppSequencesNewIndexRoute
   '/sequences/$id/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/gateway/jobs/$id': typeof ApiV1GatewayJobsIdRoute
+  '/api/v1/gateway/jobs/estimate': typeof ApiV1GatewayJobsEstimateRoute
   '/api/v1/sequences/$id/assets': typeof ApiV1SequencesIdAssetsRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
   '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
@@ -857,6 +872,7 @@ export interface FileRoutesByTo {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
@@ -866,6 +882,7 @@ export interface FileRoutesByTo {
   '/sequences/new': typeof AppSequencesNewIndexRoute
   '/sequences/$id/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/gateway/jobs/$id': typeof ApiV1GatewayJobsIdRoute
+  '/api/v1/gateway/jobs/estimate': typeof ApiV1GatewayJobsEstimateRoute
   '/api/v1/sequences/$id/assets': typeof ApiV1SequencesIdAssetsRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
   '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
@@ -968,6 +985,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/jobs': typeof ApiV1GatewayJobsRouteWithChildren
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
@@ -977,6 +995,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/': typeof AppSequencesNewIndexRoute
   '/_app/sequences/$id/_workspace/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/gateway/jobs/$id': typeof ApiV1GatewayJobsIdRoute
+  '/api/v1/gateway/jobs/estimate': typeof ApiV1GatewayJobsEstimateRoute
   '/api/v1/sequences/$id/assets': typeof ApiV1SequencesIdAssetsRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
   '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
@@ -1077,6 +1096,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
@@ -1086,6 +1106,7 @@ export interface FileRouteTypes {
     | '/sequences/new/'
     | '/sequences/$id/scenes'
     | '/api/v1/gateway/jobs/$id'
+    | '/api/v1/gateway/jobs/estimate'
     | '/api/v1/sequences/$id/assets'
     | '/api/v1/sequences/$id/exports'
     | '/api/v1/stitches/$id/publish'
@@ -1182,6 +1203,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
@@ -1191,6 +1213,7 @@ export interface FileRouteTypes {
     | '/sequences/new'
     | '/sequences/$id/scenes'
     | '/api/v1/gateway/jobs/$id'
+    | '/api/v1/gateway/jobs/estimate'
     | '/api/v1/sequences/$id/assets'
     | '/api/v1/sequences/$id/exports'
     | '/api/v1/stitches/$id/publish'
@@ -1292,6 +1315,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/jobs'
     | '/api/v1/gateway/models'
@@ -1301,6 +1325,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/'
     | '/_app/sequences/$id/_workspace/scenes'
     | '/api/v1/gateway/jobs/$id'
+    | '/api/v1/gateway/jobs/estimate'
     | '/api/v1/sequences/$id/assets'
     | '/api/v1/sequences/$id/exports'
     | '/api/v1/stitches/$id/publish'
@@ -1346,6 +1371,7 @@ export interface RootRouteChildren {
   ApiV1IndexRoute: typeof ApiV1IndexRoute
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
+  ApiV1GatewayChargesRoute: typeof ApiV1GatewayChargesRoute
   ApiV1GatewayGrantRoute: typeof ApiV1GatewayGrantRoute
   ApiV1GatewayJobsRoute: typeof ApiV1GatewayJobsRouteWithChildren
   ApiV1GatewayModelsRoute: typeof ApiV1GatewayModelsRoute
@@ -1985,6 +2011,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1DeviceTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/gateway/charges': {
+      id: '/api/v1/gateway/charges'
+      path: '/api/v1/gateway/charges'
+      fullPath: '/api/v1/gateway/charges'
+      preLoaderRoute: typeof ApiV1GatewayChargesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/gateway/grant': {
       id: '/api/v1/gateway/grant'
       path: '/api/v1/gateway/grant'
@@ -2060,6 +2093,13 @@ declare module '@tanstack/react-router' {
       path: '/$id'
       fullPath: '/api/v1/gateway/jobs/$id'
       preLoaderRoute: typeof ApiV1GatewayJobsIdRouteImport
+      parentRoute: typeof ApiV1GatewayJobsRoute
+    }
+    '/api/v1/gateway/jobs/estimate': {
+      id: '/api/v1/gateway/jobs/estimate'
+      path: '/estimate'
+      fullPath: '/api/v1/gateway/jobs/estimate'
+      preLoaderRoute: typeof ApiV1GatewayJobsEstimateRouteImport
       parentRoute: typeof ApiV1GatewayJobsRoute
     }
     '/api/v1/sequences/$id/assets': {
@@ -2377,10 +2417,12 @@ const ApiV1StylesRouteWithChildren = ApiV1StylesRoute._addFileChildren(
 
 interface ApiV1GatewayJobsRouteChildren {
   ApiV1GatewayJobsIdRoute: typeof ApiV1GatewayJobsIdRoute
+  ApiV1GatewayJobsEstimateRoute: typeof ApiV1GatewayJobsEstimateRoute
 }
 
 const ApiV1GatewayJobsRouteChildren: ApiV1GatewayJobsRouteChildren = {
   ApiV1GatewayJobsIdRoute: ApiV1GatewayJobsIdRoute,
+  ApiV1GatewayJobsEstimateRoute: ApiV1GatewayJobsEstimateRoute,
 }
 
 const ApiV1GatewayJobsRouteWithChildren =
@@ -2419,6 +2461,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1IndexRoute: ApiV1IndexRoute,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
+  ApiV1GatewayChargesRoute: ApiV1GatewayChargesRoute,
   ApiV1GatewayGrantRoute: ApiV1GatewayGrantRoute,
   ApiV1GatewayJobsRoute: ApiV1GatewayJobsRouteWithChildren,
   ApiV1GatewayModelsRoute: ApiV1GatewayModelsRoute,

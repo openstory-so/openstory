@@ -22,6 +22,7 @@ const RAW_DB_ALLOWLIST = [
   'src/platform/server/auth/config.ts',
   'src/platform/server/cron/reconcile-all.ts',
   'src/billing/server/reconcile-fal-billing.ts',
+  'src/billing/server/mature-earnings.ts',
   'src/models/server/reconcile-byteplus-assets.ts',
   'src/billing/server/refresh-fal-pricing.ts',
   'src/billing/server/fal-pricing-live.ts',

@@ -333,6 +333,7 @@ describe('readGatewayJob', () => {
     const document = await readGatewayJob(own, job.id, {
       origin: 'https://openstory.test',
       waitMs: 0,
+      oauthClientId: null,
     });
     expect(document).toMatchObject({ id: job.id, status: 'queued' });
     expect(document._links.self?.href).toBe(`/api/v1/gateway/jobs/${job.id}`);
@@ -342,6 +343,7 @@ describe('readGatewayJob', () => {
         await readGatewayJob(other, job.id, {
           origin: 'https://openstory.test',
           waitMs: 0,
+          oauthClientId: null,
         })
       )
     );
@@ -413,6 +415,7 @@ describe('the charge', () => {
     const document = await readGatewayJob(scopedDb, job.id, {
       origin,
       waitMs: 0,
+      oauthClientId: null,
     });
     expect(document).toMatchObject({
       status: 'succeeded',
@@ -517,6 +520,7 @@ describe('the charge', () => {
     const document = await readGatewayJob(scopedDb, payload.jobId, {
       origin,
       waitMs: 0,
+      oauthClientId: null,
     });
     expect(document).toMatchObject({
       status: 'succeeded',

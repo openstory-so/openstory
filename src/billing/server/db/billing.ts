@@ -37,7 +37,11 @@ import type {
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
 import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
-import { type ChargeLineKind, inFillOrder } from '@/billing/charge-lines';
+import {
+  type ChargeLineKind,
+  EARNING_HOLD_DAYS,
+  inFillOrder,
+} from '@/billing/charge-lines';
 import {
   giftRedeemHolderReason,
   normalizeGiftCode,
@@ -48,15 +52,21 @@ import { getBillingChannel } from '@/platform/realtime';
 import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { generateId } from '@/platform/id';
+import { earningCreditKey } from '@/billing/server/db/earnings';
 import {
   chargeLines,
+  gatewayEarnings,
   giftTokenRedemptions,
   giftTokens,
 } from '@/platform/server/db/schema';
 
 import { getLogger } from '@/platform/logger';
 import { onPrimary } from '@/platform/server/db/d1-session';
-import { fitsUnderCapSql, spendCapScope } from '@/billing/server/db/spend-cap';
+import {
+  fitsUnderCapSql,
+  type SkuChargeGuard,
+  spendCapScope,
+} from '@/billing/server/db/spend-cap';
 
 /**
  * Best-effort live balance push for the credit pill (#1090).
@@ -191,6 +201,7 @@ function mapBatchSource(
   if (metadata?.giftTokenId) return 'gift_code';
   if (metadata?.autoTopUp) return 'auto_topup';
   if (type === 'credit_adjustment') return 'adjustment';
+  if (type === 'credit_earned') return 'earned';
   return 'stripe_checkout';
 }
 
@@ -575,6 +586,121 @@ export function createBillingMethods(
     return { newBalance, transactionId };
   }
 
+  /**
+   * Credit a matured, unlinked earning paid to this organization, in one
+   * batch: the `credit_earned` row, the balance, the `earned` batch and the
+   * link land together or not at all. Returns the new transaction id, or
+   * null when the key or a link already exists.
+   */
+  async function creditEarning(earning: {
+    id: string;
+    appId: string;
+    chargeLineId: string;
+  }): Promise<string | null> {
+    const transactionId = generateId();
+    const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const landed = sql`exists (select 1 from ${transactions} where ${transactions.id} = ${transactionId})`;
+    const amount = gatewayEarnings.amountMicros;
+    await db.batch([
+      db
+        .insert(credits)
+        .values({ organizationId, balance: 0 })
+        .onConflictDoNothing(),
+      db
+        .insert(transactions)
+        .select(
+          db
+            .select({
+              id: sql<string>`${transactionId}`.as('id'),
+              organizationId: credits.organizationId,
+              userId: sql`null`.as('user_id'),
+              type: sql<string>`'credit_earned'`.as('type'),
+              amount,
+              balanceAfter: sql<number>`${credits.balance} + ${amount}`.as(
+                'balance_after'
+              ),
+              metadata: sql<string>`${JSON.stringify({
+                gatewayEarningId: earning.id,
+                appId: earning.appId,
+                chargeLineId: earning.chargeLineId,
+              })}`.as('metadata'),
+              stripeSessionId: sql`null`.as('stripe_session_id'),
+              description: sql<string>`'App earnings'`.as('description'),
+              idempotencyKey: sql<string>`${earningCreditKey(earning.id)}`.as(
+                'idempotency_key'
+              ),
+              createdAt: sql`${nowSeconds}`.as('created_at'),
+            })
+            .from(gatewayEarnings)
+            .innerJoin(
+              credits,
+              eq(credits.organizationId, gatewayEarnings.payeeOrganizationId)
+            )
+            .where(
+              and(
+                eq(gatewayEarnings.id, earning.id),
+                eq(gatewayEarnings.payeeOrganizationId, organizationId),
+                eq(gatewayEarnings.status, 'matured'),
+                isNull(gatewayEarnings.transactionId),
+                sql`${amount} > 0`
+              )
+            )
+        )
+        .onConflictDoNothing(),
+      db
+        .update(credits)
+        .set({
+          balance: sql`${credits.balance} + (select ${transactions.amount} from ${transactions} where ${transactions.id} = ${transactionId})`,
+          updatedAt: now,
+        })
+        .where(and(eq(credits.organizationId, organizationId), landed)),
+      db.insert(creditBatches).select(
+        db
+          .select({
+            id: sql<string>`${generateId()}`.as('id'),
+            organizationId: transactions.organizationId,
+            originalAmount: transactions.amount,
+            remainingAmount: sql<number>`${transactions.amount}`.as(
+              'remaining_amount'
+            ),
+            source: sql<string>`'earned'`.as('source'),
+            transactionId: transactions.id,
+            expiresAt:
+              sql`${Math.floor(calculateExpiryDate().getTime() / 1000)}`.as(
+                'expires_at'
+              ),
+            createdAt: sql`${nowSeconds}`.as('created_at'),
+          })
+          .from(transactions)
+          .where(eq(transactions.id, transactionId))
+      ),
+      db
+        .update(gatewayEarnings)
+        .set({ transactionId })
+        .where(
+          and(
+            eq(gatewayEarnings.id, earning.id),
+            eq(gatewayEarnings.status, 'matured'),
+            isNull(gatewayEarnings.transactionId),
+            landed
+          )
+        ),
+    ]);
+    const [row] = await db
+      .select({ amount: transactions.amount })
+      .from(transactions)
+      .where(eq(transactions.id, transactionId))
+      .limit(1);
+    if (!row) return null;
+    await emitOrganizationFunds({
+      amountMicros: micros(row.amount),
+      transactionId,
+      type: 'credit_earned',
+    });
+    return transactionId;
+  }
+
   async function saveStripeCustomerId(stripeCustomerId: string): Promise<void> {
     await db
       .insert(organizationBillingSettings)
@@ -955,7 +1081,12 @@ export function createBillingMethods(
       idempotencyKey: string;
       sequenceId?: string;
       ttlMs?: number;
-      spendCap?: { oauthClientId: string; appId: string | null };
+      spendCap?: {
+        oauthClientId: string;
+        appId: string | null;
+        /** An app charge: refused unless this SKU is active at its price and approved on the grant. */
+        sku?: SkuChargeGuard;
+      };
     }
   ): Promise<CreateReservationResult> {
     if (amountMicros <= 0) return { ok: false };
@@ -997,7 +1128,8 @@ export function createBillingMethods(
       ? fitsUnderCapSql(
           spendCapScope(organizationId, spendCap.oauthClientId, now),
           userId,
-          amountMicros
+          amountMicros,
+          spendCap.sku
         )
       : undefined;
 
@@ -1413,7 +1545,9 @@ export function createBillingMethods(
    * `credit_usage` row and its lines in one batch. Lines are written only
    * when the debit is, and always sum to it: a short capture fills them in
    * `inFillOrder`, so payee lines are cut first and the provider cost last.
-   * A replay of the key writes nothing and returns the original lines.
+   * Each payee line writes its pending earning in the same batch, at the
+   * line's written amount. A replay of the key writes nothing and returns
+   * the original lines.
    */
   async function settleReservation(
     reservationId: string,
@@ -1450,21 +1584,31 @@ export function createBillingMethods(
     }
 
     const attribution = opts.attribution ?? {};
+    if (
+      ordered.some((line) => line.payeeOrganizationId) &&
+      !attribution.appId
+    ) {
+      throw new ValidationError('A payee line needs the app it is earned by');
+    }
+    if (ordered.some((line) => line.payeeOrganizationId === organizationId)) {
+      throw new ValidationError('An organization cannot pay itself');
+    }
     const result = await capture(
       reservationId,
       total,
       opts,
       (transactionId, nowSeconds) => {
         let before = 0;
-        return ordered.map((line) => {
+        return ordered.flatMap((line) => {
           const prefix = before;
           before += line.amountMicros;
+          const lineId = generateId();
           // What is left of the debit after the lines ahead of this one, capped at this line.
           const left = sql`(-${transactions.amount} - ${prefix})`;
-          return db.insert(chargeLines).select(
+          const insertLine = db.insert(chargeLines).select(
             db
               .select({
-                id: sql<string>`${generateId()}`.as('id'),
+                id: sql<string>`${lineId}`.as('id'),
                 organizationId: sql<string>`${organizationId}`.as(
                   'organization_id'
                 ),
@@ -1497,6 +1641,38 @@ export function createBillingMethods(
                 )
               )
           );
+          if (!line.payeeOrganizationId) return [insertLine];
+          // The earning reads the line this batch just wrote, so it exists iff the line does, at its amount.
+          const insertEarning = db.insert(gatewayEarnings).select(
+            db
+              .select({
+                id: sql<string>`${generateId()}`.as('id'),
+                chargeLineId: chargeLines.id,
+                payerOrganizationId: chargeLines.organizationId,
+                payeeOrganizationId:
+                  sql<string>`${line.payeeOrganizationId}`.as(
+                    'payee_organization_id'
+                  ),
+                appId: sql<string>`${attribution.appId ?? null}`.as('app_id'),
+                amountMicros: chargeLines.amountMicros,
+                status: sql<string>`'pending'`.as('status'),
+                availableAt: sql`${nowSeconds + EARNING_HOLD_DAYS * 86_400}`.as(
+                  'available_at'
+                ),
+                maturedAt: sql`null`.as('matured_at'),
+                transactionId: sql`null`.as('transaction_id'),
+                cancelledAt: sql`null`.as('cancelled_at'),
+                createdAt: sql`${nowSeconds}`.as('created_at'),
+              })
+              .from(chargeLines)
+              .where(
+                and(
+                  eq(chargeLines.id, lineId),
+                  eq(chargeLines.organizationId, organizationId)
+                )
+              )
+          );
+          return [insertLine, insertEarning];
         });
       }
     );
@@ -1512,6 +1688,23 @@ export function createBillingMethods(
         ? await listChargeLinesOfTransaction(result.transactionId)
         : [],
       replay: result.replay,
+    };
+  }
+
+  /** A charge `settleReservation` already debited under this key, with its lines; null when none. */
+  async function getSettledCharge(idempotencyKey: string): Promise<{
+    transactionId: string;
+    captured: Microdollars;
+    createdAt: Date;
+    lines: SettledChargeLine[];
+  } | null> {
+    const row = await getTransactionByIdempotencyKey(idempotencyKey);
+    if (!row) return null;
+    return {
+      transactionId: row.id,
+      captured: micros(Math.abs(row.amount)),
+      createdAt: row.createdAt,
+      lines: await listChargeLinesOfTransaction(row.id),
     };
   }
 
@@ -1884,6 +2077,7 @@ export function createBillingMethods(
   return {
     ...read,
     addCredits,
+    creditEarning,
     saveStripeCustomerId,
     clearAutoTopUpFailure,
     deductCredits,
@@ -1892,6 +2086,7 @@ export function createBillingMethods(
     growReservation,
     captureReservation,
     settleReservation,
+    getSettledCharge,
     zeroReservation,
     updateAutoTopUpSettings,
     checkAutoTopUp,
