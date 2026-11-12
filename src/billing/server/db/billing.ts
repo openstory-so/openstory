@@ -1590,6 +1590,9 @@ export function createBillingMethods(
     ) {
       throw new ValidationError('A payee line needs the app it is earned by');
     }
+    if (ordered.some((line) => line.payeeOrganizationId === organizationId)) {
+      throw new ValidationError('An organization cannot pay itself');
+    }
     const result = await capture(
       reservationId,
       total,

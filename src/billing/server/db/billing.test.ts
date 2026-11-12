@@ -914,6 +914,28 @@ describe('settleReservation (charge lines)', () => {
     expect(await debits()).toEqual([]);
   });
 
+  it('refuses a payee line that pays the payer', async () => {
+    const { billing, reservationId } = await reserve();
+    await expect(
+      billing.settleReservation(
+        reservationId,
+        [
+          provider(500_000),
+          {
+            kind: 'app_margin',
+            amountMicros: micros(50_000),
+            payeeOrganizationId: organizationId,
+          },
+        ],
+        {
+          idempotencyKey: 'run-1:gateway-settle',
+          attribution: { appId: 'app-1' },
+        }
+      )
+    ).rejects.toThrow('cannot pay itself');
+    expect(await debits()).toEqual([]);
+  });
+
   it('a capture short of the provider cost drops the later lines and cuts the provider line', async () => {
     const { billing, reservationId } = await reserve();
     await billing.captureReservation(reservationId, micros(700_000), {
