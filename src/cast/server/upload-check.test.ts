@@ -7,7 +7,8 @@ vi.doMock('@/platform/server/db/scoped', () => ({
   loadComplianceRecords: mockLoadComplianceRecords,
 }));
 
-const { requireUploadCheckAllowed } = await import('./upload-check');
+const { checkFailure, requireUploadCheckAllowed } =
+  await import('./upload-check');
 const { STORAGE_BUCKETS } = await import('@/platform/server/storage/buckets');
 
 const suspended: EnforcementRow = {
@@ -44,5 +45,30 @@ describe('requireUploadCheckAllowed (#2192)', () => {
   it('lets a clean account through', async () => {
     mockLoadComplianceRecords.mockResolvedValue({ enforcement: [] });
     await requireUploadCheckAllowed(upload('video/mp4'));
+  });
+});
+
+describe('checkFailure', () => {
+  const failed = (error: string | null) =>
+    checkFailure({ attempt: 1, status: 'errored', error });
+
+  it('keeps a refusal the engine reports as `Error: CODE: message`', () => {
+    const error = failed(
+      'Error: INSUFFICIENT_CREDITS: Insufficient credits for talent vision'
+    );
+    expect(error.code).toBe('INSUFFICIENT_CREDITS');
+    expect(error.message).toBe('Insufficient credits for talent vision');
+    expect(error.statusCode).toBe(400);
+  });
+
+  it('keeps a refusal reported as `CODE: message`', () => {
+    expect(failed('VALIDATION_ERROR: Not readable').code).toBe(
+      'VALIDATION_ERROR'
+    );
+  });
+
+  it('reports any other failure as a stopped check', () => {
+    expect(failed('Error: fetch failed').code).toBe('UPLOAD_CHECK_FAILED');
+    expect(failed(null).code).toBe('UPLOAD_CHECK_FAILED');
   });
 });
