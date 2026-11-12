@@ -5,7 +5,16 @@
 <h1 align="center">OpenStory</h1>
 
 <p align="center">
-  Transform scripts into styled video productions using AI.
+  <strong>An open-source AI film studio that runs on your own machine.</strong><br />
+  Paste a script. Get a film with the same characters in every shot, their voices, and a score.
+</p>
+
+<p align="center">
+  <a href="#run-it-on-your-machine">Run it</a> &nbsp;·&nbsp;
+  <a href="#your-first-film">Your first film</a> &nbsp;·&nbsp;
+  <a href="#drive-it-from-your-agent">Use with your agent</a> &nbsp;·&nbsp;
+  <a href="https://openstory.so/gallery">Gallery</a> &nbsp;·&nbsp;
+  <a href="https://openstory.so">Hosted version</a>
 </p>
 
 <p align="center">
@@ -14,47 +23,24 @@
   <img src="https://img.shields.io/badge/bun-%3E%3D1.3.9-f9f1e1" alt="Bun >= 1.3.9" />
 </p>
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/openstory-so/openstory)
+<table>
+  <tr>
+    <td width="33%"><a href="https://assets.openstory.so/styles/action/canonical.mp4"><img src="https://assets.openstory.so/styles/action/thumbnail.webp" alt="Action sample film" width="100%" /></a></td>
+    <td width="33%"><a href="https://assets.openstory.so/styles/award-season/canonical.mp4"><img src="https://assets.openstory.so/styles/award-season/thumbnail.webp" alt="Award Season sample film" width="100%" /></a></td>
+    <td width="33%"><a href="https://assets.openstory.so/styles/documentary/canonical.mp4"><img src="https://assets.openstory.so/styles/documentary/thumbnail.webp" alt="Documentary sample film" width="100%" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://assets.openstory.so/styles/action/canonical.mp4">▶ Action</a></td>
+    <td align="center"><a href="https://assets.openstory.so/styles/award-season/canonical.mp4">▶ Award Season</a></td>
+    <td align="center"><a href="https://assets.openstory.so/styles/documentary/canonical.mp4">▶ Documentary</a></td>
+  </tr>
+</table>
 
-OpenStory takes a script and produces a sequence of AI-generated frames — images, motion video, audio — with consistent style across every scene. Organizations collaborate on shared libraries of characters, locations, and visual styles, and the platform handles the heavy lifting of prompt engineering, generation, and compositing.
+<p align="center">
+  Each one was made in OpenStory from a one-line brief. <a href="https://openstory.so/gallery">More in the gallery</a>.
+</p>
 
-## Features
-
-- **Script analysis** — paste a script and get an automatic scene breakdown with camera angles, mood treatments, and continuity tracking
-- **AI image generation** — generate scene images via [Fal.ai](https://fal.ai) with multiple model options
-- **Image-to-video motion** — turn still frames into motion video clips
-- **Publish to social** (optional) — with your own [Upload-Post](https://www.upload-post.com) key, post a finished render to TikTok, Instagram, YouTube, LinkedIn, X and more
-- **Style consistency** — characters, locations, color palettes, and lighting carry across scenes automatically
-- **Organization workspaces** (coming soon) — shared libraries of styles, characters, VFX, and audio
-- **Passkey authentication** — passwordless sign-in via Better Auth
-- **Edge deployment** — runs on Cloudflare Workers with global CDN
-
-## Tech Stack
-
-| Category       | Tools                                                                                                                                                                                         |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Runtime**    | [Bun](https://bun.com)                                                                                                                                                                        |
-| **Framework**  | [TanStack Start](https://tanstack.com/start) + [TanStack Router](https://tanstack.com/router) + [Vite](https://vite.dev)                                                                      |
-| **Database**   | [Drizzle ORM](https://orm.drizzle.team) + [Cloudflare D1](https://developers.cloudflare.com/d1) (SQLite)                                                                                      |
-| **AI**         | [TanStack AI](https://tanstack.com/ai) + [Fal.ai](https://fal.ai) + [OpenRouter](https://openrouter.ai) + [PostHog](https://posthog.com) (LLM observability)                                  |
-| **Workflows**  | [Cloudflare Workflows](https://developers.cloudflare.com/workflows) (durable execution)                                                                                                       |
-| **Realtime**   | [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects) (SSE progress updates)                                                                                        |
-| **Storage**    | [Cloudflare R2](https://developers.cloudflare.com/r2) (S3-compatible)                                                                                                                         |
-| **Auth**       | [Better Auth](https://www.better-auth.com)                                                                                                                                                    |
-| **Styling**    | [Tailwind v4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)                                                                                                                   |
-| **Quality**    | [oxlint](https://oxc.rs/docs/guide/usage/linter) + [oxfmt](https://oxc.rs) + [tsgo](https://github.com/microsoft/typescript-go) + [Lefthook](https://lefthook.dev) + [Knip](https://knip.dev) |
-| **Testing**    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev)                                                                                                                           |
-| **Deployment** | [Cloudflare Workers](https://developers.cloudflare.com/workers)                                                                                                                               |
-
-> See [AGENTS.md](AGENTS.md) for full architecture documentation, server handler patterns, workflow patterns, and React conventions.
-
-## Prerequisites
-
-- **Bun** >= 1.3.9 — [install](https://bun.com/docs/installation)
-
-That's it. No Docker, no external database, no Cloudflare account — local dev runs the full stack (D1, R2, Workflows, Durable Objects, email) inside Workerd via Miniflare.
-
-## Quick Start
+## Run it on your machine
 
 ```bash
 git clone https://github.com/openstory-so/openstory.git
@@ -65,122 +51,114 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`bun dev` does everything: it generates `.env.local` (with auth/encryption secrets) on first run, migrates and seeds the local database, and starts the dev server.
+The only thing to install first is [Bun](https://bun.com/docs/installation) 1.3.9 or newer. No Docker, no database to set up, no cloud account. `bun dev` writes its own config, creates the local database, and starts the app.
 
-To use AI generation features you need two API keys — run `bun setup` to add them interactively, or paste them into `.env.local`:
+### Add your keys
 
-- `FAL_KEY` — [fal.ai](https://fal.ai/dashboard/keys) for image, video & audio generation
-- `OPENROUTER_KEY` — [OpenRouter](https://openrouter.ai/settings/keys) for LLM script analysis
+You pay each provider directly. OpenStory adds nothing on top. There are two ways to add a key:
 
-See [`.env.example`](.env.example) for all optional configuration (Google OAuth, Stripe, PostHog, remote R2).
+- **In the app.** Settings → API Keys takes a fal, OpenRouter, Google or xAI key, the same as on openstory.so.
+- **In `.env.local`.** `bun setup` asks for the fal, OpenRouter, ElevenLabs and BytePlus keys and writes them there. Press Enter to skip any of them. ElevenLabs and BytePlus keys can only be set this way.
 
-## Scripts
+| Key                  | Where to get it                                              | What it turns on                                                                                                                                                             | In the app |
+| -------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `FAL_KEY`            | [fal.ai](https://fal.ai/dashboard/keys)                      | Script breakdown, stills, video, music. This one key is enough to start.                                                                                                     | Yes        |
+| `ELEVENLABS_API_KEY` | [elevenlabs.io](https://elevenlabs.io/app/settings/api-keys) | Character voices, spoken dialogue, ElevenLabs music                                                                                                                          | No         |
+| `OPENROUTER_KEY`     | [openrouter.ai](https://openrouter.ai/settings/keys)         | Optional. Script breakdown through OpenRouter instead of fal                                                                                                                 | Yes        |
+| `GEMINI_API_KEY`     | [aistudio.google.com](https://aistudio.google.com/apikey)    | Optional. Gemini and Omni Flash direct from Google                                                                                                                           | Yes        |
+| `XAI_API_KEY`        | [console.x.ai](https://console.x.ai)                         | Optional. Grok direct from xAI                                                                                                                                               | Yes        |
+| `ARK_API_KEY`        | [console.byteplus.com](https://console.byteplus.com/ark)     | Optional. Seedance and Seedream direct from BytePlus instead of through fal. Realistic faces on Seedance 2.5 also need the two BytePlus IAM keys; `bun setup` asks for them. | No         |
 
-### Development
+Every other setting is in [`.env.example`](.env.example).
 
-| Command                | Description                                                |
-| ---------------------- | ---------------------------------------------------------- |
-| `bun dev`              | Bootstrap env, migrate + seed DB, start dev server         |
-| `bun setup`            | Interactive setup — add AI keys (`--prod` for deployments) |
-| `bun tunnel:provision` | Optional: 10 random public HTTPS names for ports 3000–3009 |
-| `bun tunnel`           | Print this laptop's hostname map                           |
-| `bun storybook`        | Start Storybook on port 6006                               |
+## Your first film
 
-### Quality
+Paste this into the box on the front page, pick a style, and press Generate. The button shows the price before anything is spent.
 
-| Command            | Description                      |
-| ------------------ | -------------------------------- |
-| `bun lint`         | Lint with oxlint (type-aware)    |
-| `bun lint:fix`     | Lint and auto-fix                |
-| `bun format`       | Format with oxfmt                |
-| `bun format:check` | Check formatting without writing |
-| `bun typecheck`    | Type-check with tsgo             |
-| `bun dead-code`    | Find unused exports with Knip    |
+```text
+INT. LAUNDROMAT - NIGHT
 
-### Testing
+MARLOWE (50s, grey overcoat) feeds coins into the last working dryer.
+DOT (19, bike courier, yellow jacket) drops a wet envelope on the folding table.
 
-| Command             | Description                        |
-| ------------------- | ---------------------------------- |
-| `bun run test`      | Run unit tests (Vitest)            |
-| `bun test:watch`    | Run tests in watch mode            |
-| `bun test:coverage` | Run tests with coverage            |
-| `bun test:e2e`      | Run Playwright end-to-end tests    |
-| `bun test:e2e:ui`   | Run Playwright with interactive UI |
+DOT
+You're Marlowe. This is yours.
 
-### Database
+MARLOWE
+I didn't order anything.
 
-| Command                | Description                                       |
-| ---------------------- | ------------------------------------------------- |
-| `bun db:generate`      | Generate migrations from schema changes           |
-| `bun db:migrate:local` | Apply migrations (also runs as part of `bun dev`) |
-| `bun db:studio:local`  | Open Drizzle Studio against the local database    |
+DOT
+Nobody ever does.
 
-### Build & Deploy
-
-| Command             | Description                                         |
-| ------------------- | --------------------------------------------------- |
-| `bun run build`     | Build for production (note: not `bun build`)        |
-| `bun setup --prod`  | Interactive production setup + deploy               |
-| `bun cf:deploy:prd` | Manual production deploy (build → migrate → deploy) |
-
-## Stitch
-
-The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
-
-Run a local cut with npx. It prints an `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
-
-```sh
-npx @openstory/stitch --music score.mp3 shot.mp4
+She leaves. Marlowe opens the envelope. Inside is a photograph of himself,
+asleep, in this laundromat.
 ```
 
-Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `setup`, `create-style`, `create-sequence`, `stitch` (`/stitch`) and `stitch-player`, the contract for embedding the React player. `npx @openstory/stitch skill` copies only `/stitch` and `stitch-player`. The skills are written in this repo (`skills/` and `packages/stitch/skills/`) and published to the plugin on merge.
+A single line works too ("a bike courier delivers a letter nobody ordered"). OpenStory writes the script from it.
+
+With only a fal key you get the stills, the clips and music. For Marlowe and Dot to speak in their own voices, add the ElevenLabs key.
+
+## What you get
+
+- **The same character in every shot.** Each character gets a reference sheet, and every shot is drawn from it. Change their clothes per scene with looks.
+- **Places that stay the same.** Locations get a sheet too, and are shared across all your films.
+- **Voices and dialogue.** Each character has a voice. Lines are recorded per scene and lip-synced to the clip.
+- **Music.** A score written for the film.
+- **Any model, per shot.** Seedance, Kling, Grok, Nano Banana and more. Switch model on one shot without touching the rest.
+- **Nothing is lost.** Every still, clip, voice take and prompt is kept as a version. Go back to any of them.
+- **It tells you what is out of date.** Edit a character and the shots that used the old version are marked.
+- **Export.** Play the cut in the browser, or download every file.
+
+## Your films are files
+
+Everything you make is kept in `~/openstory`, outside the repo, so deleting the clone does not delete your work. Run `npx @openstory/cli@latest login --origin http://localhost:3000` once and `bun dev` keeps a readable copy there as you work:
+
+```
+~/openstory/personal/the-laundromat/
+  scenes/01-the-envelope/shots/01-wide-marlowe-at-dryer/still.png
+  cast/marlowe/looks/default/sheet.png
+  locations/laundromat/sheet.png
+```
+
+Open them in any editor.
+
+## Drive it from your agent
+
+OpenStory is also an MCP server. Point Claude, Cursor, Codex or any MCP client at `http://localhost:3000/mcp` and it can read a whole production, edit scenes, plan and run generation, and export. See [Use OpenStory from an agent](docs/developer-guide/agents.md).
+
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills:
 
 ```sh
 npx skills add openstory-so/skills
 ```
 
-Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the OpenStory plugin. The per-client commands are in that repo.
+That install includes `setup`, `create-style`, `create-sequence`, `stitch` (`/stitch`) and `stitch-player`, the contract for embedding the React player. Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the plugin. The per-client commands are in that repo. The skills are written in this repo (`skills/` and `packages/stitch/skills/`) and published to the plugin on merge.
 
-The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md). That page is also in [中文](packages/stitch/README.zh-CN.md), [français](packages/stitch/README.fr.md), and [español](packages/stitch/README.es.md).
+### Stitch
 
-## Project Structure
+The player is its own package, [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch), in [`packages/stitch`](packages/stitch). It plays local stills, dialogue, music and video as one cut, with no OpenStory server:
 
-```
-src/
-  components/     # React UI components (shadcn/ui based)
-  functions/      # Server functions (all business logic endpoints)
-  lib/            # Shared utilities, services, types
-    ai/           # AI model configs and prompt schemas
-    db/           # Database schema and clients (Drizzle)
-    services/     # Core business services
-    workflows/    # Cloudflare Workflows durable definitions
-  routes/         # TanStack Router file-based routes
-    api/          # Webhooks: workflows and auth only
-    _app/         # App shell (anonymous-browsable; actions gated behind login)
-e2e/              # Playwright end-to-end tests
-packages/stitch/  # Theatre player, the stitch command, and the stitch skills
-scripts/          # CLI utilities and setup
+```sh
+npx @openstory/stitch --music score.mp3 shot.mp4
 ```
 
-> See [AGENTS.md](AGENTS.md) for detailed architecture, data model, server handler patterns, and code conventions.
+It prints an `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C. `npx @openstory/stitch skill` copies only `/stitch` and `stitch-player`. The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md), also in [中文](packages/stitch/README.zh-CN.md), [français](packages/stitch/README.fr.md), and [español](packages/stitch/README.es.md).
 
-## Deployment
+## Don't want to run it?
 
-**Cloudflare Workers** — edge runtime, R2 storage, D1 database, global CDN.
+[openstory.so](https://openstory.so) is the same app, hosted. No subscription: buy credits, or add your own keys in Settings and pay the providers directly.
+
+## Deploy your own
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/openstory-so/openstory)
 
-The deploy button clones the repo into your Cloudflare account, provisions the resources declared in [`wrangler.jsonc`](wrangler.jsonc), and sets up CI. For a guided setup from your own clone, run `bun setup --prod`.
-
-**CI/CD:** Cloudflare Workers Builds auto-deploys on push to `main` — the same mechanism deploy-button clones use. Pull requests get GitHub Actions preview deployments with dedicated D1 databases.
-
-> See the [Platform & Deployment](AGENTS.md#platform--deployment) section in AGENTS.md for environment variable configuration and platform detection.
+The button clones the repo into your Cloudflare account, creates the resources in [`wrangler.jsonc`](wrangler.jsonc), and deploys on every push to `main`. From your own clone, `bun setup --prod` walks you through it. Details: [docs/deployment/cloudflare.md](docs/deployment/cloudflare.md).
 
 ## Contributing
 
-We'd love your help building OpenStory! Whether it's fixing a bug, adding a feature, improving docs, or just sharing ideas — all contributions are welcome. Check out the issues labeled [`good first issue`](https://github.com/openstory-so/openstory/labels/good%20first%20issue) for a great place to start.
+Bug fixes, features, docs and ideas are all welcome. Issues labelled [`good first issue`](https://github.com/openstory-so/openstory/labels/good%20first%20issue) are a good place to start.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, branch naming, code quality, and the pull request process.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the tech stack, the commands and the pull request process. [AGENTS.md](AGENTS.md) has the architecture.
 
 ## License
 

@@ -34,10 +34,14 @@ To expose worktrees on public HTTPS (Google OAuth, inbound webhooks), see [Local
 
 ## AI Keys
 
-To use AI generation features you need two API keys — run `bun setup` to add them interactively, or paste them into `.env.local`:
+Run `bun setup` to add keys interactively, or paste them into `.env.local`. One key is enough to start:
 
-- `FAL_KEY` — [fal.ai](https://fal.ai/dashboard/keys) for image, video & audio generation
-- `OPENROUTER_KEY` — [OpenRouter](https://openrouter.ai/settings/keys) for LLM script analysis
+- `FAL_KEY` — [fal.ai](https://fal.ai/dashboard/keys) for script analysis, image, video & music generation
+
+Optional:
+
+- `ELEVENLABS_API_KEY` — [ElevenLabs](https://elevenlabs.io/app/settings/api-keys) for character voices and dialogue
+- `OPENROUTER_KEY` — [OpenRouter](https://openrouter.ai/settings/keys) for script analysis through OpenRouter instead of fal
 
 ## Environment Variables
 

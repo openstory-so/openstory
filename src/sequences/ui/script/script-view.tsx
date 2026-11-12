@@ -1880,19 +1880,24 @@ export const ScriptView: FC<{
                     {blankSequence.isPending ? 'Starting…' : 'Start blank'}
                   </Button>
                 )}
+                {/* Signed out it is an outline button and opens sign-in (#2372). */}
                 <Button
                   type="submit"
                   disabled={isDisabled}
+                  aria-label={
+                    isAuthenticated ? undefined : 'Sign in to Generate'
+                  }
+                  variant={isAuthenticated ? 'default' : 'outline'}
                   className={cn(
-                    'group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden',
-                    // Logged-out front page: this button is the sign-in control.
-                    !isAuthenticated &&
-                      'motion-safe:animate-pulse motion-safe:hover:animate-none'
+                    'group relative px-6 font-semibold tracking-wide overflow-hidden',
+                    isAuthenticated &&
+                      'bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/30'
                   )}
                 >
                   <span className="relative z-10">
                     <InButtonCost
                       estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      onPrimary={isAuthenticated}
                       hideLoggedOutPrice
                       amountWidth={
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
@@ -1909,11 +1914,9 @@ export const ScriptView: FC<{
                           ? 'Analyzing elements…'
                           : isCastBusy
                             ? 'Adding character images…'
-                            : !isAuthenticated
-                              ? 'Sign in to Generate'
-                              : isEditing
-                                ? 'Generate Copy'
-                                : 'Generate'}
+                            : isEditing
+                              ? 'Generate Copy'
+                              : 'Generate'}
                     </InButtonCost>
                   </span>
                   {/* Shine effect */}

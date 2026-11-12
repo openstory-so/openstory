@@ -39,24 +39,11 @@ await page
 await page.evaluate(() => document.fonts.ready);
 await page.waitForTimeout(500);
 
-// Drop the nav so the hero centers in the card instead of sitting off to the
-// right behind it. The sidebar must be *removed*, not just display:none'd: the
-// OpenStory logo fills from an SVG gradient (id="twilight-dark") that the
-// sidebar's own logo also defines first in the DOM, and a display:none gradient
-// stops painting — so the hero logo only resolves its own def once the sidebar
-// node is gone. Also drop the breadcrumb header (chrome, no logo).
-await page.evaluate(() => {
-  document.querySelector('[data-slot="sidebar"]')?.remove();
-  document.querySelector('[data-slot="sidebar-inset"] > header')?.remove();
-  // Drop the "See what you can create" sample showcase below the composer so
-  // it doesn't peek into the bottom of the card.
-  document.querySelector('#compose ~ section')?.remove();
-});
-// Hide the dev-only TanStack devtools overlay (absent in prod builds). CSS wins
-// over the client re-mounting the trigger.
+// Hide the sidebar, the Sign in header, the sample clips under the composer, and the
+// dev-only TanStack devtools overlay. CSS wins over a client re-render.
 await page.addStyleTag({
   content:
-    '[data-testid="tanstack_devtools"], #tanstack_devtools { display: none !important; }',
+    '[data-slot="sidebar"], [data-slot="sidebar-inset"] > header, section[aria-label="Sample clips"], [data-testid="tanstack_devtools"], #tanstack_devtools { display: none !important; }',
 });
 
 await mkdir(dirname(OUT), { recursive: true });

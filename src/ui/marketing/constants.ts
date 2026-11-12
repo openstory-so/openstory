@@ -20,12 +20,12 @@ export const FOUNDER_EMAIL = 'tom@openstory.so';
 export const SITE_CONFIG = {
   name: APP_NAME,
   description:
-    'Create 5-minute AI films with consistent characters. Iterate until you nail it. Open source and free to self-host.',
+    'Films, microdramas and brand episodes with consistent characters. Iterate until you nail it. Open source and free to self-host.',
   /** Logged-out homepage heading. */
   tagline: 'Tell your whole story',
   /** Logged-out homepage subtitle — what the product does. */
   taglineSub:
-    'Create 5-minute AI films with consistent characters. Iterate until you nail it.',
+    'Films, microdramas and brand episodes with consistent characters. Iterate until you nail it.',
   url: APP_URL,
   contactEmail: CONTACT_EMAIL,
   privacyEmail: PRIVACY_EMAIL,
@@ -115,7 +115,7 @@ export const FAQ_ITEMS = [
   {
     question: 'What is OpenStory?',
     answer:
-      'OpenStory is an open source AI video production platform. Paste a script or a one-liner and it builds a multi-scene film \u2014 consistent characters, locations, and look across every shot, up to around five minutes. Iterate on scenes until you nail it, then export. Free to self-host.',
+      'OpenStory is an open source AI video production platform. Paste a script or a one-liner and it builds a multi-scene film \u2014 consistent characters, locations, and look across every shot. Iterate on scenes until you nail it, then export. Free to self-host.',
   },
   {
     question: 'Do I need to write a full script?',
