@@ -25,12 +25,14 @@ baseTest.describe('Route Protection', () => {
           'Films, microdramas and brand episodes with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
-      // The composer's Generate button is the sign-in control; the header has
-      // the only other Sign in (#2372).
+      // Generate opens sign-in; the header has the only other Sign in (#2372).
       await expect(
         page.getByRole('button', { name: 'Sign in to Generate' })
       ).toBeVisible();
-      await expect(page.getByText('~$x.xx')).toHaveCount(0);
+      await expect(
+        page.getByRole('link', { name: 'Sign in', exact: true })
+      ).toHaveCount(1);
+      await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
     }
   );
 
