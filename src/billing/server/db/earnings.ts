@@ -51,6 +51,21 @@ export function createEarningsMethods(db: Database, organizationId: string) {
         eq(gatewayEarnings.payeeOrganizationId, organizationId),
         inArray(gatewayEarnings.appId, appIds)
       );
+      const ranked = db
+        .select({
+          id: gatewayEarnings.id,
+          appId: gatewayEarnings.appId,
+          amountMicros: gatewayEarnings.amountMicros,
+          status: gatewayEarnings.status,
+          availableAt: gatewayEarnings.availableAt,
+          createdAt: gatewayEarnings.createdAt,
+          rank: sql<number>`row_number() over (partition by ${gatewayEarnings.appId} order by ${gatewayEarnings.createdAt} desc, ${gatewayEarnings.id} desc)`.as(
+            'rank'
+          ),
+        })
+        .from(gatewayEarnings)
+        .where(mine)
+        .as('ranked');
       const [totals, recent] = await Promise.all([
         db
           .select({
@@ -61,19 +76,19 @@ export function createEarningsMethods(db: Database, organizationId: string) {
           .from(gatewayEarnings)
           .where(mine)
           .groupBy(gatewayEarnings.appId, gatewayEarnings.status),
+        // Ranked in SQL so only `recentPerApp` rows per app leave D1.
         db
           .select({
-            id: gatewayEarnings.id,
-            appId: gatewayEarnings.appId,
-            amountMicros: gatewayEarnings.amountMicros,
-            status: gatewayEarnings.status,
-            availableAt: gatewayEarnings.availableAt,
-            createdAt: gatewayEarnings.createdAt,
-            rank: sql<number>`row_number() over (partition by ${gatewayEarnings.appId} order by ${gatewayEarnings.createdAt} desc, ${gatewayEarnings.id} desc)`,
+            id: ranked.id,
+            appId: ranked.appId,
+            amountMicros: ranked.amountMicros,
+            status: ranked.status,
+            availableAt: ranked.availableAt,
+            createdAt: ranked.createdAt,
           })
-          .from(gatewayEarnings)
-          .where(mine)
-          .orderBy(desc(gatewayEarnings.createdAt), desc(gatewayEarnings.id)),
+          .from(ranked)
+          .where(lte(ranked.rank, recentPerApp))
+          .orderBy(desc(ranked.createdAt), desc(ranked.id)),
       ]);
       return appIds.map((appId) => {
         const total = (status: EarningStatus) =>
@@ -88,8 +103,8 @@ export function createEarningsMethods(db: Database, organizationId: string) {
           pendingMicros: total('pending'),
           maturedMicros: total('matured'),
           recent: recent
-            .filter((row) => row.appId === appId && row.rank <= recentPerApp)
-            .map(({ appId: _app, rank: _rank, ...row }) => ({
+            .filter((row) => row.appId === appId)
+            .map(({ appId: _app, ...row }) => ({
               ...row,
               amountMicros: micros(row.amountMicros),
             })),

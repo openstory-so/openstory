@@ -257,6 +257,45 @@ describe('createAppCharge', () => {
     await nothingCharged();
   });
 
+  it('is refused when the SKU changes between the check and the hold', async () => {
+    const owner = createScopedDb(appOrganizationId, userId).gatewayApps;
+    const racing = (change: () => Promise<unknown>) => {
+      const scopedDb = scoped();
+      const read = scopedDb.gatewayApps.getActiveSku;
+      let first = true;
+      scopedDb.gatewayApps.getActiveSku = async (...args) => {
+        const sku = await read(...args);
+        if (first) {
+          first = false;
+          await change();
+        }
+        return sku;
+      };
+      return createAppCharge({
+        scopedDb,
+        oauthClientId: CLIENT,
+        idempotencyKey: generateId(),
+        sku: 'export-hd',
+      });
+    };
+    // A lower price ratchets the grant down; the stale read must not charge the old one.
+    expect(
+      await refusal(
+        racing(() =>
+          owner.saveSku(appId, {
+            key: 'export-hd',
+            name: 'HD export',
+            priceMicros: PRICE - 1,
+          })
+        )
+      )
+    ).toMatchObject({ status: 403, code: 'SKU_NOT_APPROVED' });
+    expect(
+      await refusal(racing(() => owner.archiveSku(appId, 'export-hd')))
+    ).toMatchObject({ status: 404, code: 'UNKNOWN_SKU' });
+    await nothingCharged();
+  });
+
   it('charges a lowered price, never the accepted one', async () => {
     await db
       .update(gatewayAppSkus)

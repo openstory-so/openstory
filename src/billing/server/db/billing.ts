@@ -52,6 +52,7 @@ import { getBillingChannel } from '@/platform/realtime';
 import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { generateId } from '@/platform/id';
+import { earningCreditKey } from '@/billing/server/db/earnings';
 import {
   chargeLines,
   gatewayEarnings,
@@ -61,7 +62,11 @@ import {
 
 import { getLogger } from '@/platform/logger';
 import { onPrimary } from '@/platform/server/db/d1-session';
-import { fitsUnderCapSql, spendCapScope } from '@/billing/server/db/spend-cap';
+import {
+  fitsUnderCapSql,
+  type SkuChargeGuard,
+  spendCapScope,
+} from '@/billing/server/db/spend-cap';
 
 /**
  * Best-effort live balance push for the credit pill (#1090).
@@ -491,8 +496,6 @@ export function createBillingMethods(
        * retried credit is applied twice.
        */
       idempotencyKey?: string;
-      /** Who the ledger row names; defaults to the scoped user, null for a sweep. */
-      userId?: string | null;
     } = {}
   ): Promise<{ newBalance: Microdollars; transactionId: string } | null> {
     if (amountMicros <= 0) {
@@ -525,7 +528,7 @@ export function createBillingMethods(
       .insert(transactions)
       .values({
         organizationId,
-        userId: opts.userId === undefined ? userId : opts.userId,
+        userId,
         type: txType,
         amount: amountMicros,
         balanceAfter: updated.balance,
@@ -581,6 +584,121 @@ export function createBillingMethods(
     }
 
     return { newBalance, transactionId };
+  }
+
+  /**
+   * Credit a matured, unlinked earning paid to this organization, in one
+   * batch: the `credit_earned` row, the balance, the `earned` batch and the
+   * link land together or not at all. Returns the new transaction id, or
+   * null when the key or a link already exists.
+   */
+  async function creditEarning(earning: {
+    id: string;
+    appId: string;
+    chargeLineId: string;
+  }): Promise<string | null> {
+    const transactionId = generateId();
+    const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const landed = sql`exists (select 1 from ${transactions} where ${transactions.id} = ${transactionId})`;
+    const amount = gatewayEarnings.amountMicros;
+    await db.batch([
+      db
+        .insert(credits)
+        .values({ organizationId, balance: 0 })
+        .onConflictDoNothing(),
+      db
+        .insert(transactions)
+        .select(
+          db
+            .select({
+              id: sql<string>`${transactionId}`.as('id'),
+              organizationId: credits.organizationId,
+              userId: sql`null`.as('user_id'),
+              type: sql<string>`'credit_earned'`.as('type'),
+              amount,
+              balanceAfter: sql<number>`${credits.balance} + ${amount}`.as(
+                'balance_after'
+              ),
+              metadata: sql<string>`${JSON.stringify({
+                gatewayEarningId: earning.id,
+                appId: earning.appId,
+                chargeLineId: earning.chargeLineId,
+              })}`.as('metadata'),
+              stripeSessionId: sql`null`.as('stripe_session_id'),
+              description: sql<string>`'App earnings'`.as('description'),
+              idempotencyKey: sql<string>`${earningCreditKey(earning.id)}`.as(
+                'idempotency_key'
+              ),
+              createdAt: sql`${nowSeconds}`.as('created_at'),
+            })
+            .from(gatewayEarnings)
+            .innerJoin(
+              credits,
+              eq(credits.organizationId, gatewayEarnings.payeeOrganizationId)
+            )
+            .where(
+              and(
+                eq(gatewayEarnings.id, earning.id),
+                eq(gatewayEarnings.payeeOrganizationId, organizationId),
+                eq(gatewayEarnings.status, 'matured'),
+                isNull(gatewayEarnings.transactionId),
+                sql`${amount} > 0`
+              )
+            )
+        )
+        .onConflictDoNothing(),
+      db
+        .update(credits)
+        .set({
+          balance: sql`${credits.balance} + (select ${transactions.amount} from ${transactions} where ${transactions.id} = ${transactionId})`,
+          updatedAt: now,
+        })
+        .where(and(eq(credits.organizationId, organizationId), landed)),
+      db.insert(creditBatches).select(
+        db
+          .select({
+            id: sql<string>`${generateId()}`.as('id'),
+            organizationId: transactions.organizationId,
+            originalAmount: transactions.amount,
+            remainingAmount: sql<number>`${transactions.amount}`.as(
+              'remaining_amount'
+            ),
+            source: sql<string>`'earned'`.as('source'),
+            transactionId: transactions.id,
+            expiresAt:
+              sql`${Math.floor(calculateExpiryDate().getTime() / 1000)}`.as(
+                'expires_at'
+              ),
+            createdAt: sql`${nowSeconds}`.as('created_at'),
+          })
+          .from(transactions)
+          .where(eq(transactions.id, transactionId))
+      ),
+      db
+        .update(gatewayEarnings)
+        .set({ transactionId })
+        .where(
+          and(
+            eq(gatewayEarnings.id, earning.id),
+            eq(gatewayEarnings.status, 'matured'),
+            isNull(gatewayEarnings.transactionId),
+            landed
+          )
+        ),
+    ]);
+    const [row] = await db
+      .select({ amount: transactions.amount })
+      .from(transactions)
+      .where(eq(transactions.id, transactionId))
+      .limit(1);
+    if (!row) return null;
+    await emitOrganizationFunds({
+      amountMicros: micros(row.amount),
+      transactionId,
+      type: 'credit_earned',
+    });
+    return transactionId;
   }
 
   async function saveStripeCustomerId(stripeCustomerId: string): Promise<void> {
@@ -963,7 +1081,12 @@ export function createBillingMethods(
       idempotencyKey: string;
       sequenceId?: string;
       ttlMs?: number;
-      spendCap?: { oauthClientId: string; appId: string | null };
+      spendCap?: {
+        oauthClientId: string;
+        appId: string | null;
+        /** An app charge: refused unless this SKU is active at its price and approved on the grant. */
+        sku?: SkuChargeGuard;
+      };
     }
   ): Promise<CreateReservationResult> {
     if (amountMicros <= 0) return { ok: false };
@@ -1005,7 +1128,8 @@ export function createBillingMethods(
       ? fitsUnderCapSql(
           spendCapScope(organizationId, spendCap.oauthClientId, now),
           userId,
-          amountMicros
+          amountMicros,
+          spendCap.sku
         )
       : undefined;
 
@@ -1950,6 +2074,7 @@ export function createBillingMethods(
   return {
     ...read,
     addCredits,
+    creditEarning,
     saveStripeCustomerId,
     clearAutoTopUpFailure,
     deductCredits,

@@ -11,7 +11,6 @@ import { type Microdollars, micros } from '@/billing/money';
 import { createBillingMethods } from '@/billing/server/db/billing';
 import {
   claimDueEarning,
-  earningCreditKey,
   findEarningCredit,
   listDueEarningIds,
   listUncreditedEarnings,
@@ -49,25 +48,12 @@ async function credit(db: Database, earning: ClaimedEarning): Promise<number> {
     earning.payeeOrganizationId,
     NO_USER
   );
-  const amount = micros(earning.amountMicros);
-  const result =
-    amount > 0
-      ? await billing.addCredits(amount, {
-          type: 'credit_earned',
-          description: 'App earnings',
-          metadata: {
-            gatewayEarningId: earning.id,
-            appId: earning.appId,
-            chargeLineId: earning.chargeLineId,
-          },
-          idempotencyKey: earningCreditKey(earning.id),
-          userId: null,
-        })
-      : null;
-  const transactionId =
-    result?.transactionId ?? (await findEarningCredit(db, earning));
-  if (transactionId) await recordEarningCredit(db, earning.id, transactionId);
-  return result ? amount : 0;
+  const transactionId = await billing.creditEarning(earning);
+  if (transactionId) return earning.amountMicros;
+  // Nothing written: a credit under the key already landed, so link it.
+  const prior = await findEarningCredit(db, earning);
+  if (prior) await recordEarningCredit(db, earning.id, prior);
+  return 0;
 }
 
 export async function matureEarnings(

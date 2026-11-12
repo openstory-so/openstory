@@ -501,7 +501,8 @@ sent only for a `PublicApiError`.
 - `src/gateway/server/estimate-job.ts`, `app-charge.ts`, `manage-app.ts`;
   routes `gateway.jobs.estimate.ts`, `gateway.charges.ts`.
 - `src/billing/server/db/billing.ts`: `settleReservation` writes the
-  earning of each payee line; `getSettledCharge`; `addCredits({ userId })`.
+  earning of each payee line; `getSettledCharge`; `creditEarning` (the
+  sweep's one-batch credit).
 - `src/billing/server/db/earnings.ts`: `scopedDb.earnings` (`byApp`,
   `cancelPending`) and the sweep's functions.
   `src/billing/server/mature-earnings.ts`: the sweep (`MATURE_EARNINGS_CRON`,
@@ -568,9 +569,13 @@ the body says); suspended app `403 APP_SUSPENDED`; no grant
 the app's organization `403 OWN_ORGANIZATION`; no active SKU
 `404 UNKNOWN_SKU`; price above the accepted one (or none accepted)
 `403 SKU_NOT_APPROVED`. The charge is held with `createReservation(price, {
-idempotencyKey: app-charge:<client>:<key>, spendCap })`, the same guarded
-statement as a job, so the cap and the balance refuse it the same way
-(`402 SPEND_CAP_EXCEEDED` / `INSUFFICIENT_CREDITS`), and settled at once as
+idempotencyKey: app-charge:<client>:<key>, spendCap: { …, sku } })`, the
+same guarded statement as a job, so the cap and the balance refuse it the
+same way (`402 SPEND_CAP_EXCEEDED` / `INSUFFICIENT_CREDITS`). The same
+statement also requires the SKU still active at the price read and the
+grant's accepted price at least that, so a price change or archive racing
+the charge is refused (`SKU_NOT_APPROVED` / `UNKNOWN_SKU` on a re-read), and
+the charge is settled at once as
 one `app_charge` line (`sku` set, payee the app's organization, attribution
 client and app). A key already held for another price with no settle is
 `409 IDEMPOTENCY_CONFLICT`. `201` answers the charge: its id is the debit's
@@ -592,10 +597,13 @@ plus 14 days), `matured_at`, `transaction_id` (the `credit_earned` row),
 - **Maturing exactly once.** The sweep lists due ids, then claims each with
   `UPDATE … SET status = 'matured' WHERE id = ? AND status = 'pending' AND
   available_at <= now RETURNING`: one caller gets the row, and a cancel after
-  it finds nothing pending. The claimant credits the payee with `addCredits`
-  (`credit_earned`, batch `earned`, user null) under the idempotency key
-  `earning:<id>`, unique per organization on `transactions`, then links the
-  transaction. A claim whose credit or link was lost (`matured`, no
+  it finds nothing pending. The claimant credits the payee with
+  `billing.creditEarning`: one `db.batch` writes the `credit_earned` row
+  (user null, amount read from the earning row, only while it is `matured`
+  and unlinked) under the idempotency key `earning:<id>`, unique per
+  organization on `transactions`, the balance, the `earned` batch and the
+  link, so a crash or a racing retry cannot move the balance without the
+  ledger row (`addCredits` is several statements). A claim whose credit or link was lost (`matured`, no
   `transaction_id`, claimed over ten minutes ago) is retried by later sweeps
   under the same key: a credit that already landed is found and linked, not
   repeated.

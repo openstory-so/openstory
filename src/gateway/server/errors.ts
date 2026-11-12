@@ -7,11 +7,11 @@
 import type { GrantStanding } from '@/gateway/apps';
 import { PublicApiError } from '@/platform/server/api-v1/errors';
 
-/** The hold would take the client past the user's monthly cap. */
+/** The hold for a job or an app charge would take the client past the user's monthly cap. */
 export class SpendCapExceededError extends PublicApiError {
   constructor(standing: GrantStanding, requestedMicros: number) {
     super(
-      'This job would exceed the monthly spend cap the user set for this app. Ask them to raise it under Settings → Developer → Authorized apps, or wait for the next calendar month (UTC).',
+      'This would exceed the monthly spend cap the user set for this app. Ask them to raise it under Settings → Developer → Authorized apps, or wait for the next calendar month (UTC).',
       'SPEND_CAP_EXCEEDED',
       402,
       { ...standing, requestedMicros }

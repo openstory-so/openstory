@@ -6,7 +6,15 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
@@ -22,6 +30,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { EARNING_HOLD_DAYS } from '@/billing/charge-lines';
+import { createBillingMethods } from './db/billing';
 import { createEarningsMethods, earningCreditKey } from './db/earnings';
 import { MATURE_EARNINGS_CRON, matureEarnings } from './mature-earnings';
 import { FAL_PRICING_CRON } from './refresh-fal-pricing';
@@ -268,6 +277,67 @@ describe('matureEarnings', () => {
     expect((await rowOf(lost))?.transactionId).not.toBeNull();
   });
 
+  it('a credit cut off midway leaves nothing, so its retry credits exactly once', async () => {
+    const id = await earning(2_000, 30);
+    // The credit's second insert is its ledger row: fail it once, as a crash after the balance moved would.
+    const insert = db.insert.bind(db);
+    let calls = 0;
+    const spy = vi.spyOn(db, 'insert').mockImplementation((table) => {
+      calls += 1;
+      if (calls === 2) throw new Error('isolate killed');
+      return insert(table);
+    });
+    try {
+      expect(await matureEarnings({ db, now })).toMatchObject({
+        matured: 1,
+        credited: 0,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await balance()).toBe(0);
+    expect(await db.select().from(creditBatches)).toEqual([]);
+    expect(await rowOf(id)).toMatchObject({
+      status: 'matured',
+      transactionId: null,
+    });
+
+    const later = new Date(now.getTime() + DAY_MS);
+    expect(await matureEarnings({ db, now: later })).toMatchObject({
+      retried: 1,
+      credited: 2_000,
+    });
+    expect(await balance()).toBe(2_000);
+    expect(await earned()).toHaveLength(1);
+    expect(await db.select().from(creditBatches)).toHaveLength(1);
+  });
+
+  it('credits a matured earning only once, and never a cancelled one, when called directly', async () => {
+    const id = await earning(2_000, 30);
+    const cancelled = await earning(3_000, 30);
+    await db
+      .update(gatewayEarnings)
+      .set({ status: 'matured', maturedAt: now })
+      .where(eq(gatewayEarnings.id, id));
+    await db
+      .update(gatewayEarnings)
+      .set({ status: 'cancelled', cancelledAt: now })
+      .where(eq(gatewayEarnings.id, cancelled));
+    const billing = createBillingMethods(db, payeeId, '');
+    const first = { id, appId, chargeLineId: '' };
+    const [a, b] = await Promise.all([
+      billing.creditEarning(first),
+      billing.creditEarning(first),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(
+      await billing.creditEarning({ id: cancelled, appId, chargeLineId: '' })
+    ).toBeNull();
+    expect(await balance()).toBe(2_000);
+    expect(await earned()).toHaveLength(1);
+    expect((await rowOf(id))?.transactionId).toBe(a ?? b);
+  });
+
   it('a cancelled earning never matures, and a matured one cannot be cancelled', async () => {
     const cancelled = await earning(2_000, 1);
     const matured = await earning(3_000, 20);
@@ -303,5 +373,18 @@ describe('matureEarnings', () => {
     expect(await createEarningsMethods(db, payerId).byApp([appId])).toEqual([
       { appId, pendingMicros: 0, maturedMicros: 0, recent: [] },
     ]);
+  });
+
+  it('reads only the latest rows per app, newest first', async () => {
+    for (let age = 1; age <= 7; age += 1) await earning(age * 1_000, age);
+    const [summary] = await createEarningsMethods(db, payeeId).byApp(
+      [appId],
+      3
+    );
+    expect(summary?.pendingMicros).toBe(28_000);
+    expect(summary?.recent.map((row) => row.amountMicros)).toEqual([
+      1_000, 2_000, 3_000,
+    ]);
+    expect(summary?.recent[0]?.createdAt).toBeInstanceOf(Date);
   });
 });

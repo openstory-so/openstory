@@ -58,6 +58,33 @@ function toResult(
   };
 }
 
+/** A hold refused in its own statement: tell a SKU changed since the check apart from an empty wallet. */
+async function assertStillApproved(
+  scopedDb: ScopedDb,
+  oauthClientId: string,
+  appId: string,
+  charged: { key: string; priceMicros: number }
+): Promise<void> {
+  const sku = await scopedDb.gatewayApps.getActiveSku(appId, charged.key);
+  if (!sku) throw new UnknownSkuError(charged.key);
+  const standing = await scopedDb.gatewayGrants.getStanding(
+    oauthClientId,
+    scopedDb.organizationId
+  );
+  const accepted = standing?.accepted.skuPrices[sku.key];
+  if (
+    sku.priceMicros !== charged.priceMicros ||
+    accepted === undefined ||
+    charged.priceMicros > accepted
+  ) {
+    throw new SkuNotApprovedError({
+      sku: sku.key,
+      priceMicros: sku.priceMicros,
+      acceptedPriceMicros: accepted ?? null,
+    });
+  }
+}
+
 export async function createAppCharge(input: {
   scopedDb: ScopedDb;
   /** Null for an `osk_` key or a session, which cannot charge. */
@@ -96,6 +123,12 @@ export async function createAppCharge(input: {
   const hold = await holdCharge(scopedDb, price, key, {
     oauthClientId,
     appId: app.id,
+    sku: { appId: app.id, key: sku.key, priceMicros: price },
+  }).catch(async (error: unknown) => {
+    if (error instanceof InsufficientCreditsError) {
+      await assertStillApproved(scopedDb, oauthClientId, app.id, sku);
+    }
+    throw error;
   });
   // A held key from a first attempt that never settled must be for the same price.
   if (hold.replay && hold.remaining !== price) {

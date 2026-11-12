@@ -5,6 +5,7 @@
  */
 
 import type { Microdollars } from '@/billing/money';
+import type { SkuChargeGuard } from '@/billing/server/db/spend-cap';
 import { InsufficientCreditsError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { appliedMarginBps } from '@/gateway/apps';
@@ -66,7 +67,11 @@ export async function holdCharge(
   scopedDb: ScopedDb,
   hold: Microdollars,
   idempotencyKey: string,
-  userPays: { oauthClientId: string; appId: string | null } | null
+  userPays: {
+    oauthClientId: string;
+    appId: string | null;
+    sku?: SkuChargeGuard;
+  } | null
 ): Promise<{
   reservationId: string;
   remaining: Microdollars;
