@@ -24,7 +24,7 @@ bun install
 bun dev
 ```
 
-`bun dev` handles everything: it generates `.env.local` (with auth/encryption secrets) on first run, migrates and seeds the local database, and starts the dev server. To use AI generation features, run `bun setup` to add `FAL_KEY` and `OPENROUTER_KEY` (or paste them into `.env.local`).
+`bun dev` handles everything: it generates `.env.local` (with auth/encryption secrets) on first run, migrates and seeds the local database, and starts the dev server. To use AI generation features, run `bun setup` to add your keys (or paste them into `.env.local`). `FAL_KEY` alone is enough to start; the [README](README.md#add-your-keys) lists the rest.
 
 Open [http://localhost:3000](http://localhost:3000) — you should see the app running.
 

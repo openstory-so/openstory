@@ -96,6 +96,8 @@ asleep, in this laundromat.
 
 A single line works too ("a bike courier delivers a letter nobody ordered"). OpenStory writes the script from it.
 
+With only a fal key you get the stills, the clips and music. For Marlowe and Dot to speak in their own voices, add the ElevenLabs key.
+
 ## What you get
 
 - **The same character in every shot.** Each character gets a reference sheet, and every shot is drawn from it. Change their clothes per scene with looks.
