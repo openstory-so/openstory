@@ -33,7 +33,7 @@ import {
   requestsModelsInvoke,
 } from '@/platform/auth/oauth-spend-cap';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { GrantStanding } from '@/gateway/apps';
+import type { AppTerms, AppTermsView, GrantStanding } from '@/gateway/apps';
 import { APIError } from 'better-auth/api';
 
 const logger = getLogger(['openstory', 'serverFn', 'oauth-consent']);
@@ -59,6 +59,8 @@ export type OAuthConsentContext = {
   needsSpendCap: boolean;
   /** The live cap this client already has, per organization id, in microdollars. */
   currentCaps: Record<string, number>;
+  /** What a registered app adds on top of model costs and its SKUs; approving accepts them. */
+  appTerms: AppTermsView | null;
 };
 
 export type AuthorizedApp = {
@@ -71,6 +73,10 @@ export type AuthorizedApp = {
   invokesModels: boolean;
   /** The live spend cap and this month's use; null when there is none. */
   grant: GrantStanding | null;
+  /** The margin and SKU prices the user approved on the grant; null without one. */
+  accepted: AppTerms | null;
+  /** What the app asks now, when it is a registered, active app. */
+  appTerms: AppTermsView | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -78,8 +84,14 @@ export type AuthorizedApp = {
 /** The grant methods the consent flows write through (the signed-in user's). */
 type UserGrants = Pick<
   ScopedDb['gatewayGrants'],
-  'listStandings' | 'setCap' | 'revoke'
+  'listStandings' | 'setCap' | 'revoke' | 'acceptTerms'
 >;
+
+/** Reads a client's app terms (any organization's app). */
+type AppTermsReader = Pick<ScopedDb['gatewayApps'], 'getTermsByOAuthClient'>;
+
+/** Approving accepts nothing the page did not show. */
+const NOTHING_SHOWN: AppTerms = { marginBps: 0, skuPrices: {} };
 
 const scopeSummaries = (scope: string): OAuthScopeSummary[] =>
   scope
@@ -132,6 +144,7 @@ export async function loadOAuthConsentContext(input: {
   redirectUri?: string;
   headers: Headers;
   grants: Pick<UserGrants, 'listStandings'>;
+  apps: AppTermsReader;
 }): Promise<OAuthConsentContext> {
   const auth = getAuth();
   let client: OAuthClientSummary | null = null;
@@ -161,6 +174,10 @@ export async function loadOAuthConsentContext(input: {
     activeOrganizationId: input.organizationId,
     needsSpendCap,
     currentCaps,
+    appTerms:
+      client && needsSpendCap
+        ? await input.apps.getTermsByOAuthClient(input.clientId)
+        : null,
   };
 }
 
@@ -297,6 +314,8 @@ export async function decideOAuthConsent(input: {
   oauthQuery: string;
   /** Required to approve a request for `models:invoke`; ignored otherwise. */
   monthlyCapMicros?: number | null;
+  /** The app's margin and SKU prices the page showed; approving records no more. */
+  shownTerms?: AppTerms | null;
   headers: Headers;
   grants: Pick<UserGrants, 'setCap'>;
 }): Promise<{ url: string }> {
@@ -363,6 +382,7 @@ export async function decideOAuthConsent(input: {
         oauthClientId: clientId,
         organizationId: input.organizationId,
         monthlyCapMicros: capMicros,
+        shownTerms: input.shownTerms ?? NOTHING_SHOWN,
       });
       if (!written) {
         throw new ValidationError('You are not a member of that organization');
@@ -374,6 +394,8 @@ export async function decideOAuthConsent(input: {
       accept: input.accept,
       clientId,
       monthlyCapMicros: capMicros,
+      shownMarginBps:
+        capMicros === null ? null : (input.shownTerms?.marginBps ?? 0),
     });
     return { url: rewriteAuthorizationIss(redirect, origin) };
   }
@@ -405,6 +427,7 @@ export async function listAuthorizedApps(input: {
   userId: string;
   headers: Headers;
   grants: Pick<UserGrants, 'listStandings'>;
+  apps: AppTermsReader;
 }): Promise<AuthorizedApp[]> {
   const { headers } = input;
   const auth = getAuth();
@@ -414,6 +437,13 @@ export async function listAuthorizedApps(input: {
     input.grants.listStandings(),
   ]);
   const clients = new Map<string, OAuthClientSummary>();
+  const terms = new Map<string, AppTermsView | null>();
+  const termsOf = async (clientId: string) => {
+    if (!terms.has(clientId)) {
+      terms.set(clientId, await input.apps.getTermsByOAuthClient(clientId));
+    }
+    return terms.get(clientId) ?? null;
+  };
   const apps: AuthorizedApp[] = [];
   for (const consent of consents) {
     let client = clients.get(consent.clientId);
@@ -450,6 +480,7 @@ export async function listAuthorizedApps(input: {
             grant.organizationId === organization.id
         )
       : undefined;
+    const invokesModels = consent.scopes.includes(MODELS_INVOKE_SCOPE);
     apps.push({
       consentId: consent.id,
       client,
@@ -458,7 +489,7 @@ export async function listAuthorizedApps(input: {
         description: OAUTH_SCOPE_DESCRIPTIONS[id] ?? id,
       })),
       organization,
-      invokesModels: consent.scopes.includes(MODELS_INVOKE_SCOPE),
+      invokesModels,
       grant: standing
         ? {
             monthlyCapMicros: standing.monthlyCapMicros,
@@ -467,6 +498,8 @@ export async function listAuthorizedApps(input: {
             remainingMicros: standing.remainingMicros,
           }
         : null,
+      accepted: standing?.accepted ?? null,
+      appTerms: invokesModels ? await termsOf(consent.clientId) : null,
       createdAt: consent.createdAt,
       updatedAt: consent.updatedAt,
     });
@@ -544,6 +577,35 @@ export async function setAuthorizedAppCap(input: {
   if (!written) {
     throw new ValidationError(
       'You are no longer a member of the organization this app bills.'
+    );
+  }
+}
+
+/**
+ * Approve an authorized app's current margin and SKU prices, as Settings
+ * showed them. Needs a live grant; records no more than the app asks now.
+ */
+export async function acceptAuthorizedAppTerms(input: {
+  consentId: string;
+  shownTerms: AppTerms;
+  headers: Headers;
+  grants: Pick<UserGrants, 'acceptTerms'>;
+}): Promise<void> {
+  const consents = await getAuth().api.getOAuthConsents({
+    headers: input.headers,
+  });
+  const consent = consents.find((row) => row.id === input.consentId);
+  if (!consent?.referenceId || !consent.scopes.includes(MODELS_INVOKE_SCOPE)) {
+    throw new ValidationError('This app cannot spend credits through models.');
+  }
+  const written = await input.grants.acceptTerms({
+    oauthClientId: consent.clientId,
+    organizationId: consent.referenceId,
+    shownTerms: input.shownTerms,
+  });
+  if (!written) {
+    throw new ValidationError(
+      'Set a monthly spend cap for this app before accepting its prices.'
     );
   }
 }

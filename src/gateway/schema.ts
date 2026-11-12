@@ -13,6 +13,7 @@ import {
 import { aspectRatioSchema } from '@/models/aspect-ratios';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { studioReferenceLimit } from '@/studio/text-to-video';
+import { APP_SKU_KEY_PATTERN } from '@/gateway/apps';
 import { z } from 'zod';
 
 export const GATEWAY_JOB_KINDS = ['image', 'video'] as const;
@@ -163,3 +164,15 @@ export type GatewayJobOutput = {
 };
 
 export type GatewayJobError = { code: string; message: string };
+
+/** `POST /api/v1/gateway/charges`: one of the caller app's declared SKUs. */
+export const gatewayChargeRequestSchema = z
+  .object({
+    sku: z
+      .string()
+      .regex(APP_SKU_KEY_PATTERN, 'A SKU key from Settings → Developer → Apps')
+      .describe(
+        "The key of an active SKU the app declared. Its price is the app's, never the request's."
+      ),
+  })
+  .meta({ id: 'GatewayChargeRequest' });

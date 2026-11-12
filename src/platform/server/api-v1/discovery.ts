@@ -24,6 +24,8 @@ import {
   GATEWAY_GRANT_PATH,
   GATEWAY_JOBS_PATH,
   GATEWAY_MODELS_PATH,
+  createGatewayChargeLink,
+  estimateGatewayJobLink,
   submitGatewayJobLink,
 } from '@/gateway/server/api-documents';
 import { z } from 'zod';
@@ -88,6 +90,13 @@ Model gateway (run one model, pay per job):
   cap, this month's spend and what remains (an osk_ key reads payer 'app').
   A job past the cap is 402 SPEND_CAP_EXCEEDED; a revoked or missing grant
   is 403 GRANT_REQUIRED (send the user through authorization again).
+  POST /api/v1/gateway/jobs/estimate takes the submit body and returns the
+  charge as lines (provider cost, platform fee, the app's margin) and, for
+  an OAuth caller, what the cap leaves; it holds nothing and starts nothing.
+  A registered app's own billing: POST /api/v1/gateway/charges with { sku }
+  and an Idempotency-Key charges the user's organization one of the app's
+  declared SKUs at the price the user approved (OAuth only; an osk_ key is
+  403 USER_PAYS_ONLY, a raised price 403 SKU_NOT_APPROVED).
 
 Authentication:
   Every endpoint except this root and the device-login pair requires an osk_
@@ -319,6 +328,8 @@ export function buildRootDocument(): RootDocument {
         'Models the gateway serves, with what each accepts'
       ),
       'submit-gateway-job': submitGatewayJobLink(),
+      'estimate-gateway-job': estimateGatewayJobLink(),
+      'create-gateway-charge': createGatewayChargeLink(),
       'gateway-grant': getLink(
         GATEWAY_GRANT_PATH,
         "The caller's monthly spend cap, spend this month and what remains"

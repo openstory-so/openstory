@@ -41,6 +41,7 @@ export const realtimeSchema = {
           'credit_usage',
           'credit_refund',
           'credit_adjustment',
+          'credit_earned',
         ])
         .optional(),
     }),

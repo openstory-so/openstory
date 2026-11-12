@@ -8,10 +8,14 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
   gatewayApps,
+  gatewayGrants,
   oauthClient,
   organization,
   user,
 } from '@/platform/server/db/schema';
+import { ValidationError } from '@/platform/errors';
+import { MAX_APP_MARGIN_BPS, MAX_APP_SKU_PRICE_MICROS } from '@/gateway/apps';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createGatewayAppsMethods } from './gateway-apps';
 
@@ -98,5 +102,132 @@ describe('gatewayApps', () => {
     });
     expect(await payer.getByOAuthClient('theirs')).toBeNull();
     expect(await payer.list()).toEqual([]);
+  });
+});
+
+describe('margin and SKUs', () => {
+  const apps = () => createGatewayAppsMethods(db, organizationId, userId);
+  const appId = async () => {
+    const app = await apps().getByOAuthClient('mine');
+    if (!app) throw new Error('expected the registered app');
+    return app.id;
+  };
+  const grantOf = async (id: string) => {
+    const [row] = await db
+      .select()
+      .from(gatewayGrants)
+      .where(eq(gatewayGrants.id, id));
+    return row;
+  };
+  async function grant(acceptedMarginBps: number, skuPrices = {}) {
+    const [row] = await db
+      .insert(gatewayGrants)
+      .values({
+        oauthClientId: 'mine',
+        userId: generateId(),
+        organizationId: payerOrganizationId,
+        monthlyCapMicros: 10_000_000,
+        acceptedMarginBps,
+        acceptedSkuPrices: skuPrices,
+      })
+      .returning();
+    if (!row) throw new Error('expected a grant');
+    return row.id;
+  }
+
+  it('bounds the margin to 0..MAX_APP_MARGIN_BPS in whole basis points', async () => {
+    const id = await appId();
+    for (const bad of [-1, MAX_APP_MARGIN_BPS + 1, 12.5]) {
+      await expect(apps().setMargin(id, bad)).rejects.toBeInstanceOf(
+        ValidationError
+      );
+    }
+    expect(await apps().setMargin(id, MAX_APP_MARGIN_BPS)).toBe(true);
+    expect((await apps().getByOAuthClient('mine'))?.marginBps).toBe(
+      MAX_APP_MARGIN_BPS
+    );
+    expect(await apps().setMargin(id, 0)).toBe(true);
+  });
+
+  it("refuses another organization's app", async () => {
+    const elsewhere = createGatewayAppsMethods(db, payerOrganizationId, userId);
+    expect(await elsewhere.setMargin(await appId(), 100)).toBe(false);
+    expect(
+      await elsewhere.saveSku(await appId(), {
+        key: 'hd',
+        name: 'HD',
+        priceMicros: 1,
+      })
+    ).toBeNull();
+  });
+
+  it('lowering the margin lowers what grants accepted; raising leaves them', async () => {
+    const id = await appId();
+    await apps().setMargin(id, 2000);
+    const high = await grant(2000);
+    const low = await grant(500);
+    await apps().setMargin(id, 1000);
+    expect((await grantOf(high))?.acceptedMarginBps).toBe(1000);
+    expect((await grantOf(low))?.acceptedMarginBps).toBe(500);
+    await apps().setMargin(id, 3000);
+    expect((await grantOf(high))?.acceptedMarginBps).toBe(1000);
+  });
+
+  it('declares SKUs within the ceiling and shows active ones on the terms', async () => {
+    const id = await appId();
+    await expect(
+      apps().saveSku(id, {
+        key: 'hd',
+        name: 'HD',
+        priceMicros: MAX_APP_SKU_PRICE_MICROS + 1,
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      apps().saveSku(id, { key: 'Bad Key', name: 'X', priceMicros: 1 })
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(
+      await apps().saveSku(id, { key: 'hd', name: 'HD', priceMicros: 500_000 })
+    ).toMatchObject({ key: 'hd', priceMicros: 500_000, status: 'active' });
+    expect(await apps().getActiveSku(id, 'hd')).toMatchObject({
+      priceMicros: 500_000,
+    });
+    expect(await apps().getTermsByOAuthClient('mine')).toMatchObject({
+      appId: id,
+      ownerOrganizationId: organizationId,
+      ownerOrganizationName: 'T',
+      skus: [{ key: 'hd', name: 'HD', priceMicros: 500_000 }],
+    });
+    expect(await apps().listSkus([id])).toHaveLength(1);
+  });
+
+  it('a lower price lowers accepted prices; archiving forgets them', async () => {
+    const id = await appId();
+    const accepted = await grant(0, { hd: 500_000, other: 9 });
+    await apps().saveSku(id, { key: 'hd', name: 'HD', priceMicros: 400_000 });
+    expect((await grantOf(accepted))?.acceptedSkuPrices).toEqual({
+      hd: 400_000,
+      other: 9,
+    });
+    await apps().saveSku(id, { key: 'hd', name: 'HD', priceMicros: 450_000 });
+    expect((await grantOf(accepted))?.acceptedSkuPrices).toMatchObject({
+      hd: 400_000,
+    });
+    expect(await apps().archiveSku(id, 'hd')).toBe(true);
+    expect(await apps().getActiveSku(id, 'hd')).toBeNull();
+    expect((await grantOf(accepted))?.acceptedSkuPrices).toEqual({ other: 9 });
+    expect((await apps().getTermsByOAuthClient('mine'))?.skus).toEqual([]);
+    expect(await apps().archiveSku(id, 'missing')).toBe(false);
+  });
+
+  it('a suspended app has no terms to show', async () => {
+    await db
+      .update(gatewayApps)
+      .set({ status: 'suspended' })
+      .where(eq(gatewayApps.oauthClientId, 'mine'));
+    expect(await apps().getTermsByOAuthClient('mine')).toBeNull();
+    await db
+      .update(gatewayApps)
+      .set({ status: 'active' })
+      .where(eq(gatewayApps.oauthClientId, 'mine'));
   });
 });

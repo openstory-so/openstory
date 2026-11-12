@@ -1,6 +1,7 @@
 /**
  * Scoped `gateway_jobs` rows (docs/architecture/model-gateway.md). Every
- * method is bound to one organization; another organization's job reads as missing.
+ * method is bound to one organization; another organization's job reads as
+ * missing. API reads and idempotency are also bound to the caller's client.
  * A run may still write a job its submit marked `NOT_STARTED`: the trigger
  * can throw after the instance was created.
  */
@@ -60,13 +61,45 @@ export function createGatewayJobsMethods(
     return row ?? null;
   }
 
-  async function getByIdempotencyKey(key: string): Promise<GatewayJob | null> {
+  /** The caller's key space: its OAuth client's, or the organization's own (null). */
+  const callerKeySpace = (oauthClientId: string | null) =>
+    sql`coalesce(${gatewayJobs.oauthClientId}, '') = ${oauthClientId ?? ''}`;
+
+  /**
+   * A job as an API caller may read it: an OAuth client sees only its own
+   * jobs; an `osk_` key or a session (null) sees the organization's.
+   */
+  async function getForCaller(
+    id: string,
+    oauthClientId: string | null
+  ): Promise<GatewayJob | null> {
+    const [row] = await db
+      .select()
+      .from(gatewayJobs)
+      .where(
+        and(
+          own(id),
+          oauthClientId === null
+            ? undefined
+            : eq(gatewayJobs.oauthClientId, oauthClientId)
+        )
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /** The job a caller's `Idempotency-Key` made, in that caller's own key space. */
+  async function getByIdempotencyKey(
+    key: string,
+    oauthClientId: string | null
+  ): Promise<GatewayJob | null> {
     const [row] = await db
       .select()
       .from(gatewayJobs)
       .where(
         and(
           eq(gatewayJobs.organizationId, organizationId),
+          callerKeySpace(oauthClientId),
           eq(gatewayJobs.idempotencyKey, key)
         )
       )
@@ -88,6 +121,7 @@ export function createGatewayJobsMethods(
 
   return {
     getById,
+    getForCaller,
     getByIdempotencyKey,
 
     /** The lines of the job's charge this organization paid; empty until it settled. */
@@ -125,7 +159,7 @@ export function createGatewayJobsMethods(
         .returning();
       if (row) return { job: row, created: true };
       const existing = input.idempotencyKey
-        ? await getByIdempotencyKey(input.idempotencyKey)
+        ? await getByIdempotencyKey(input.idempotencyKey, input.oauthClientId)
         : null;
       if (!existing) throw new Error('gateway job insert returned no row');
       return { job: existing, created: false };

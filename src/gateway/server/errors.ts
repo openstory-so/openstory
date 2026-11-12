@@ -48,3 +48,72 @@ export function userPaysClientId(
   if (!oauth.clientId) throw new GrantRequiredError();
   return oauth.clientId;
 }
+
+/** An app charge needs a user who approved it: an `osk_` key or a session cannot charge. */
+export class UserPaysOnlyError extends PublicApiError {
+  constructor() {
+    super(
+      'App charges are user-pays only. Send the OAuth access token of a user who approved this app; an osk_ key cannot charge.',
+      'USER_PAYS_ONLY',
+      403
+    );
+  }
+}
+
+/** The OAuth client is not a registered app, so it has no SKUs to charge. */
+export class AppNotRegisteredError extends PublicApiError {
+  constructor() {
+    super(
+      'This OAuth client is not a registered app. Register it under Settings → Developer → Apps.',
+      'APP_NOT_REGISTERED',
+      403
+    );
+  }
+}
+
+/** The payer is the app's own organization, which an app never charges. */
+export class OwnOrganizationChargeError extends PublicApiError {
+  constructor() {
+    super(
+      'An app cannot charge its own organization.',
+      'OWN_ORGANIZATION',
+      403
+    );
+  }
+}
+
+/** No active SKU with that key on the caller's app. */
+export class UnknownSkuError extends PublicApiError {
+  constructor(sku: string) {
+    super(`This app has no active SKU "${sku}".`, 'UNKNOWN_SKU', 404, { sku });
+  }
+}
+
+/** The user never approved this SKU at its current price. */
+export class SkuNotApprovedError extends PublicApiError {
+  constructor(details: {
+    sku: string;
+    priceMicros: number;
+    acceptedPriceMicros: number | null;
+  }) {
+    super(
+      'The user has not approved this price. Send them through authorization again with prompt=consent, or ask them to accept the new terms under Settings → Developer → Authorized apps.',
+      'SKU_NOT_APPROVED',
+      403,
+      details
+    );
+  }
+}
+
+/** A charge without an `Idempotency-Key`, or one reused for another charge. */
+export class IdempotencyKeyError extends PublicApiError {
+  constructor(code: 'IDEMPOTENCY_KEY_REQUIRED' | 'IDEMPOTENCY_CONFLICT') {
+    super(
+      code === 'IDEMPOTENCY_KEY_REQUIRED'
+        ? 'Send an Idempotency-Key header so a retried charge is not charged twice.'
+        : 'This Idempotency-Key was used for a different charge.',
+      code,
+      code === 'IDEMPOTENCY_KEY_REQUIRED' ? 400 : 409
+    );
+  }
+}

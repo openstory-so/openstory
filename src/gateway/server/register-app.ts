@@ -20,7 +20,7 @@ import type { GatewayApp } from '@/platform/server/db/schema';
 /** One app as Settings lists it. */
 export type GatewayAppSummary = Pick<
   GatewayApp,
-  'id' | 'name' | 'oauthClientId' | 'status' | 'createdAt'
+  'id' | 'name' | 'oauthClientId' | 'status' | 'marginBps' | 'createdAt'
 >;
 
 export function toGatewayAppSummary(app: GatewayApp): GatewayAppSummary {
@@ -29,8 +29,22 @@ export function toGatewayAppSummary(app: GatewayApp): GatewayAppSummary {
     name: app.name,
     oauthClientId: app.oauthClientId,
     status: app.status,
+    marginBps: app.marginBps,
     createdAt: app.createdAt,
   };
+}
+
+/** Managing an organization's apps is an owner's or admin's act. */
+export async function requireAppManager(scopedDb: ScopedDb): Promise<void> {
+  const membership = await getUserOrganizationMembership(
+    scopedDb.userId,
+    scopedDb.organizationId
+  );
+  if (membership?.role !== 'owner' && membership?.role !== 'admin') {
+    throw new AuthorizationError(
+      "Only an owner or admin can manage this organization's apps."
+    );
+  }
 }
 
 function isLoopbackOrCustomScheme(uri: string): boolean {
@@ -70,15 +84,7 @@ export async function registerGatewayApp(input: {
   redirectUris?: string[];
 }): Promise<GatewayAppSummary> {
   const { scopedDb } = input;
-  const membership = await getUserOrganizationMembership(
-    scopedDb.userId,
-    scopedDb.organizationId
-  );
-  if (membership?.role !== 'owner' && membership?.role !== 'admin') {
-    throw new AuthorizationError(
-      'Only an owner or admin can register an app for this organization.'
-    );
-  }
+  await requireAppManager(scopedDb);
   let clientId = input.clientId;
   if (!clientId) {
     if (!input.redirectUris?.length) {

@@ -39,6 +39,7 @@ import type { GatewayJobInput, GatewayJobOutput } from '@/gateway/schema';
 import { gatewayVideoMode } from '@/gateway/server/models';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import { settleGatewayJob } from '@/gateway/server/settle';
+import type { AppMargin } from '@/gateway/server/user-pays';
 import {
   uploadGatewayImage,
   uploadGatewayVideo,
@@ -66,6 +67,8 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   oauthClientId: string | null;
   /** The registered app that client is, at submit; absent on runs from before apps. */
   appId?: string | null;
+  /** The margin applied at submit and its payee; the hold included it. Absent before margins. */
+  appMargin?: AppMargin | null;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -413,6 +416,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         platformFeeBps: event.payload.platformFeeBps,
         oauthClientId: event.payload.oauthClientId,
         appId: event.payload.appId ?? null,
+        appMargin: event.payload.appMargin ?? null,
         usedOwnKey: result.usedOwnKey,
         idempotencyKey: `${event.instanceId}:gateway-settle`,
         result: { outputs: result.outputs, via: result.via },

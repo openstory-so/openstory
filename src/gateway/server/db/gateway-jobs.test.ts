@@ -78,7 +78,9 @@ describe('gateway jobs rows', () => {
       oauthClientId: null,
     });
     expect(again).toEqual({ job: first.job, created: false });
-    expect((await own.getByIdempotencyKey('key-1'))?.id).toBe(first.job.id);
+    expect((await own.getByIdempotencyKey('key-1', null))?.id).toBe(
+      first.job.id
+    );
 
     // The same key in another organization is its own job.
     const theirs = await other.create({
@@ -147,7 +149,7 @@ describe('gateway jobs rows', () => {
     });
     await own.deleteUnstarted(unstarted.job.id);
     expect(await own.getById(unstarted.job.id)).toBeNull();
-    expect(await own.getByIdempotencyKey('drop-me')).toBeNull();
+    expect(await own.getByIdempotencyKey('drop-me', null)).toBeNull();
 
     const started = await own.create({
       input,
@@ -217,5 +219,59 @@ describe('gateway jobs rows', () => {
     const lines = await own.getChargeLines(job.id);
     expect(lines).toEqual([{ kind: 'provider_cost', amountMicros: 4_000 }]);
     expect((await own.getById(job.id))?.costMicros).toBe(4_000);
+  });
+});
+
+describe('caller isolation within one organization', () => {
+  const jobs = () => createGatewayJobsMethods(db, organizationId, userId);
+
+  it("an OAuth client reads only its own jobs; an osk_ key reads the organization's", async () => {
+    const a = await jobs().create({
+      input,
+      idempotencyKey: null,
+      oauthClientId: 'app-a',
+    });
+    const own = await jobs().create({
+      input,
+      idempotencyKey: null,
+      oauthClientId: null,
+    });
+    expect((await jobs().getForCaller(a.job.id, 'app-a'))?.id).toBe(a.job.id);
+    expect(await jobs().getForCaller(a.job.id, 'app-b')).toBeNull();
+    expect(await jobs().getForCaller(own.job.id, 'app-a')).toBeNull();
+    expect((await jobs().getForCaller(a.job.id, null))?.id).toBe(a.job.id);
+    expect((await jobs().getForCaller(own.job.id, null))?.id).toBe(own.job.id);
+  });
+
+  it('gives each client and the organization its own Idempotency-Key space', async () => {
+    const a = await jobs().create({
+      input,
+      idempotencyKey: 'shared-key',
+      oauthClientId: 'app-a',
+    });
+    const b = await jobs().create({
+      input,
+      idempotencyKey: 'shared-key',
+      oauthClientId: 'app-b',
+    });
+    const key = await jobs().create({
+      input,
+      idempotencyKey: 'shared-key',
+      oauthClientId: null,
+    });
+    expect([a.created, b.created, key.created]).toEqual([true, true, true]);
+    expect(new Set([a.job.id, b.job.id, key.job.id]).size).toBe(3);
+    expect((await jobs().getByIdempotencyKey('shared-key', 'app-b'))?.id).toBe(
+      b.job.id
+    );
+    expect((await jobs().getByIdempotencyKey('shared-key', null))?.id).toBe(
+      key.job.id
+    );
+    const again = await jobs().create({
+      input,
+      idempotencyKey: 'shared-key',
+      oauthClientId: 'app-a',
+    });
+    expect(again).toMatchObject({ created: false, job: { id: a.job.id } });
   });
 });

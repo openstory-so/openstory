@@ -9,6 +9,8 @@ import { generateId } from '@/platform/id';
 import {
   chargeLines,
   creditReservations,
+  gatewayAppSkus,
+  gatewayApps,
   gatewayGrants,
   member,
   organization,
@@ -156,6 +158,7 @@ describe('gatewayGrants', () => {
       spentMicros: 7_000_000,
       heldMicros: 6_000_000,
       remainingMicros: 0,
+      accepted: { marginBps: 0, skuPrices: {} },
     };
     expect(await grants().getStanding('c3', organizationId)).toEqual(expected);
     expect(await grants().listStandings()).toContainEqual(expected);
@@ -173,5 +176,108 @@ describe('gatewayGrants', () => {
     expect(
       (await grants().listStandings()).map((grant) => grant.oauthClientId)
     ).not.toContain('c4');
+  });
+});
+
+describe('accepted terms', () => {
+  const grants = () => createGatewayGrantsMethods(db, userId);
+  const shown = { marginBps: 2500, skuPrices: { hd: 900_000, ghost: 1 } };
+
+  beforeAll(async () => {
+    const [app] = await db
+      .insert(gatewayApps)
+      .values({
+        organizationId: strangerOrganizationId,
+        oauthClientId: 'paid',
+        name: 'Paid',
+        createdByUserId: userId,
+        marginBps: 2000,
+      })
+      .returning();
+    if (!app) throw new Error('expected an app');
+    await db.insert(gatewayAppSkus).values([
+      { appId: app.id, key: 'hd', name: 'HD', priceMicros: 500_000 },
+      {
+        appId: app.id,
+        key: 'old',
+        name: 'Old',
+        priceMicros: 1,
+        status: 'archived',
+      },
+    ]);
+  });
+
+  it('a new grant without shown terms accepts nothing', async () => {
+    await grants().setCap({
+      oauthClientId: 'paid',
+      organizationId,
+      monthlyCapMicros: 10_000_000,
+    });
+    expect(
+      (await grants().getStanding('paid', organizationId))?.accepted
+    ).toEqual({ marginBps: 0, skuPrices: {} });
+  });
+
+  it('consent records what was shown, bounded by what the app asks now', async () => {
+    await grants().setCap({
+      oauthClientId: 'paid',
+      organizationId,
+      monthlyCapMicros: 10_000_000,
+      shownTerms: shown,
+    });
+    expect(
+      (await grants().getStanding('paid', organizationId))?.accepted
+    ).toEqual({ marginBps: 2000, skuPrices: { hd: 500_000 } });
+  });
+
+  it('changing the cap alone keeps the accepted terms', async () => {
+    await grants().setCap({
+      oauthClientId: 'paid',
+      organizationId,
+      monthlyCapMicros: 30_000_000,
+    });
+    expect(
+      (await grants().getStanding('paid', organizationId))?.accepted
+    ).toEqual({ marginBps: 2000, skuPrices: { hd: 500_000 } });
+  });
+
+  it('acceptTerms needs a live grant and records no more than the app asks', async () => {
+    expect(
+      await grants().acceptTerms({
+        oauthClientId: 'paid',
+        organizationId,
+        shownTerms: { marginBps: 100, skuPrices: {} },
+      })
+    ).toBe(true);
+    expect(
+      (await grants().getStanding('paid', organizationId))?.accepted
+    ).toEqual({ marginBps: 100, skuPrices: {} });
+    expect(
+      await grants().acceptTerms({
+        oauthClientId: 'paid',
+        organizationId: strangerOrganizationId,
+        shownTerms: shown,
+      })
+    ).toBe(false);
+    await grants().revoke({ oauthClientId: 'paid', organizationId });
+    expect(
+      await grants().acceptTerms({
+        oauthClientId: 'paid',
+        organizationId,
+        shownTerms: shown,
+      })
+    ).toBe(false);
+  });
+
+  it('an unregistered client records nothing whatever was shown', async () => {
+    await grants().setCap({
+      oauthClientId: 'unregistered',
+      organizationId,
+      monthlyCapMicros: 10_000_000,
+      shownTerms: shown,
+    });
+    expect(
+      (await grants().getStanding('unregistered', organizationId))?.accepted
+    ).toEqual({ marginBps: 0, skuPrices: {} });
   });
 });

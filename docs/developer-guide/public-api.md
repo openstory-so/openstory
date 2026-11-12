@@ -235,7 +235,68 @@ total), or `failed` with an `error`. A job that was charged never ends
 `failed`. The estimate of the whole charge is held at submit
 (`402 INSUFFICIENT_CREDITS` when it cannot be) and released if the job fails. Reference images are checked for a real person first, as uploads are.
 Repeating an `Idempotency-Key` returns the first job. OAuth tokens need the
-`models:invoke` scope.
+`models:invoke` scope. A key is scoped to its caller: each OAuth app has its
+own key space, and so does the organization's `osk_` keys. An OAuth token
+reads only jobs its own app submitted; an `osk_` key reads every job of its
+organization.
+
+### Price a job first
+
+`POST /api/v1/gateway/jobs/estimate` takes the same body as a submit and
+answers with what the submit would hold, as lines, without holding or
+starting anything:
+
+```bash
+curl -X POST "https://openstory.so/api/v1/gateway/jobs/estimate" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"image","model":"gpt_image_2","prompt":"A lighthouse at dusk"}'
+```
+
+`lines` holds `provider_cost`, a `platform_fee` when one applies and, for an
+OAuth caller of a registered app, the app's `app_margin`; `totalMicros` is
+their sum. An OAuth caller also gets `remainingMicros`, what the user's
+monthly cap leaves this month, and `fitsUnderCap`. A finished job is charged
+its actual cost, not the estimate. Reference URLs are checked only at submit.
+
+### Apps: margin and SKUs
+
+An app registered under Settings → Developer → Apps is paid in wallet
+credits by the users who sign in to it (OAuth, user pays). It earns two ways,
+both set on the app by the organization's owners or admins, never by a
+request:
+
+- **Margin:** a percent on top of provider cost, up to 50%, on every job the
+  app submits for a user. The user sees it on the consent screen; the job
+  charge carries it as an `app_margin` line.
+- **SKUs:** fixed prices for the app's own features, up to $100 each. The app
+  charges one with `POST /api/v1/gateway/charges`:
+
+```bash
+curl -X POST "https://openstory.so/api/v1/gateway/charges" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Idempotency-Key: order-1234" \
+  -H "Content-Type: application/json" \
+  -d '{"sku":"export-hd"}'
+```
+
+The charge is debited from the user's organization at once, as one
+`app_charge` line, and counts against their monthly cap (`402
+SPEND_CAP_EXCEEDED`). `201` returns it; repeating the `Idempotency-Key`
+returns the same charge with `200` and `replay: true`. An `osk_` key cannot
+charge (`403 USER_PAYS_ONLY`), nor can an app charge its own organization
+(`403 OWN_ORGANIZATION`).
+
+The user agrees to the price. Approving the consent screen accepts the margin
+and the SKU prices it showed. A lower margin or price applies at once and
+becomes what the user accepted; a higher one applies only once the user
+approves it again, through authorization with `prompt=consent` or under
+Settings → Developer → Authorized apps. Until then jobs carry the margin the
+user accepted, and a SKU that is new or dearer is refused with `403
+SKU_NOT_APPROVED` (`details` has `priceMicros` and `acceptedPriceMicros`).
+
+Earnings are credits in the app organization's wallet, held 14 days before
+they can be spent. They cannot be transferred or paid out as cash.
 
 ## Long-polling with `?wait`
 

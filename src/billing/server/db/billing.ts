@@ -37,7 +37,11 @@ import type {
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
 import { createOrganizationManagementMethods } from '@/platform/server/db/scoped/organization-management';
-import { type ChargeLineKind, inFillOrder } from '@/billing/charge-lines';
+import {
+  type ChargeLineKind,
+  EARNING_HOLD_DAYS,
+  inFillOrder,
+} from '@/billing/charge-lines';
 import {
   giftRedeemHolderReason,
   normalizeGiftCode,
@@ -50,6 +54,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { generateId } from '@/platform/id';
 import {
   chargeLines,
+  gatewayEarnings,
   giftTokenRedemptions,
   giftTokens,
 } from '@/platform/server/db/schema';
@@ -191,6 +196,7 @@ function mapBatchSource(
   if (metadata?.giftTokenId) return 'gift_code';
   if (metadata?.autoTopUp) return 'auto_topup';
   if (type === 'credit_adjustment') return 'adjustment';
+  if (type === 'credit_earned') return 'earned';
   return 'stripe_checkout';
 }
 
@@ -485,6 +491,8 @@ export function createBillingMethods(
        * retried credit is applied twice.
        */
       idempotencyKey?: string;
+      /** Who the ledger row names; defaults to the scoped user, null for a sweep. */
+      userId?: string | null;
     } = {}
   ): Promise<{ newBalance: Microdollars; transactionId: string } | null> {
     if (amountMicros <= 0) {
@@ -517,7 +525,7 @@ export function createBillingMethods(
       .insert(transactions)
       .values({
         organizationId,
-        userId,
+        userId: opts.userId === undefined ? userId : opts.userId,
         type: txType,
         amount: amountMicros,
         balanceAfter: updated.balance,
@@ -1413,7 +1421,9 @@ export function createBillingMethods(
    * `credit_usage` row and its lines in one batch. Lines are written only
    * when the debit is, and always sum to it: a short capture fills them in
    * `inFillOrder`, so payee lines are cut first and the provider cost last.
-   * A replay of the key writes nothing and returns the original lines.
+   * Each payee line writes its pending earning in the same batch, at the
+   * line's written amount. A replay of the key writes nothing and returns
+   * the original lines.
    */
   async function settleReservation(
     reservationId: string,
@@ -1450,21 +1460,28 @@ export function createBillingMethods(
     }
 
     const attribution = opts.attribution ?? {};
+    if (
+      ordered.some((line) => line.payeeOrganizationId) &&
+      !attribution.appId
+    ) {
+      throw new ValidationError('A payee line needs the app it is earned by');
+    }
     const result = await capture(
       reservationId,
       total,
       opts,
       (transactionId, nowSeconds) => {
         let before = 0;
-        return ordered.map((line) => {
+        return ordered.flatMap((line) => {
           const prefix = before;
           before += line.amountMicros;
+          const lineId = generateId();
           // What is left of the debit after the lines ahead of this one, capped at this line.
           const left = sql`(-${transactions.amount} - ${prefix})`;
-          return db.insert(chargeLines).select(
+          const insertLine = db.insert(chargeLines).select(
             db
               .select({
-                id: sql<string>`${generateId()}`.as('id'),
+                id: sql<string>`${lineId}`.as('id'),
                 organizationId: sql<string>`${organizationId}`.as(
                   'organization_id'
                 ),
@@ -1497,6 +1514,38 @@ export function createBillingMethods(
                 )
               )
           );
+          if (!line.payeeOrganizationId) return [insertLine];
+          // The earning reads the line this batch just wrote, so it exists iff the line does, at its amount.
+          const insertEarning = db.insert(gatewayEarnings).select(
+            db
+              .select({
+                id: sql<string>`${generateId()}`.as('id'),
+                chargeLineId: chargeLines.id,
+                payerOrganizationId: chargeLines.organizationId,
+                payeeOrganizationId:
+                  sql<string>`${line.payeeOrganizationId}`.as(
+                    'payee_organization_id'
+                  ),
+                appId: sql<string>`${attribution.appId ?? null}`.as('app_id'),
+                amountMicros: chargeLines.amountMicros,
+                status: sql<string>`'pending'`.as('status'),
+                availableAt: sql`${nowSeconds + EARNING_HOLD_DAYS * 86_400}`.as(
+                  'available_at'
+                ),
+                maturedAt: sql`null`.as('matured_at'),
+                transactionId: sql`null`.as('transaction_id'),
+                cancelledAt: sql`null`.as('cancelled_at'),
+                createdAt: sql`${nowSeconds}`.as('created_at'),
+              })
+              .from(chargeLines)
+              .where(
+                and(
+                  eq(chargeLines.id, lineId),
+                  eq(chargeLines.organizationId, organizationId)
+                )
+              )
+          );
+          return [insertLine, insertEarning];
         });
       }
     );
@@ -1512,6 +1561,23 @@ export function createBillingMethods(
         ? await listChargeLinesOfTransaction(result.transactionId)
         : [],
       replay: result.replay,
+    };
+  }
+
+  /** A charge `settleReservation` already debited under this key, with its lines; null when none. */
+  async function getSettledCharge(idempotencyKey: string): Promise<{
+    transactionId: string;
+    captured: Microdollars;
+    createdAt: Date;
+    lines: SettledChargeLine[];
+  } | null> {
+    const row = await getTransactionByIdempotencyKey(idempotencyKey);
+    if (!row) return null;
+    return {
+      transactionId: row.id,
+      captured: micros(Math.abs(row.amount)),
+      createdAt: row.createdAt,
+      lines: await listChargeLinesOfTransaction(row.id),
     };
   }
 
@@ -1892,6 +1958,7 @@ export function createBillingMethods(
     growReservation,
     captureReservation,
     settleReservation,
+    getSettledCharge,
     zeroReservation,
     updateAutoTopUpSettings,
     checkAutoTopUp,

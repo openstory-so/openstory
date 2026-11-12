@@ -6,7 +6,6 @@
  */
 
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import type { Microdollars } from '@/billing/money';
 import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import {
   likenessFromLedger,
@@ -14,7 +13,7 @@ import {
 } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
 import { isOfferedVideoModel } from '@/models/models';
-import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
+import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GatewayJob } from '@/platform/server/db/schema';
@@ -24,15 +23,17 @@ import { studioBillableSeconds } from '@/studio/text-to-video';
 import {
   GATEWAY_PLATFORM_FEE_BPS,
   gatewayCharge,
+  type GatewayCharge,
 } from '@/gateway/charge-lines';
+import type { Microdollars } from '@/billing/money';
 import type { GatewayJobInput, GatewayJobRequest } from '@/gateway/schema';
 import { estimateGatewayJobCost, gatewayVias } from '@/gateway/server/models';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import {
-  AppSuspendedError,
-  GrantRequiredError,
-  SpendCapExceededError,
-} from '@/gateway/server/errors';
+  holdCharge,
+  resolveUserPays,
+  type AppMargin,
+} from '@/gateway/server/user-pays';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 
 const logger = getLogger(['openstory', 'gateway', 'submit']);
@@ -59,7 +60,9 @@ export function readIdempotencyKey(headers: Headers): string | null {
 }
 
 /** The request as the run will see it: durations snapped, defaults applied. */
-function normalizeGatewayRequest(request: GatewayJobRequest): GatewayJobInput {
+export function normalizeGatewayRequest(
+  request: GatewayJobRequest
+): GatewayJobInput {
   if (request.kind === 'image') {
     return {
       kind: 'image',
@@ -89,51 +92,26 @@ function gatedMedia(input: GatewayJobInput): string[] {
   ];
 }
 
-/**
- * A user-pays caller's app: refused when suspended, its id when active,
- * null when the client is not a registered app. Then the grant must be live.
- */
-async function userPaysApp(
-  scopedDb: ScopedDb,
-  oauthClientId: string
-): Promise<string | null> {
-  const app = await scopedDb.gatewayApps.getByOAuthClient(oauthClientId);
-  if (app?.status === 'suspended') throw new AppSuspendedError();
-  const standing = await scopedDb.gatewayGrants.getStanding(
-    oauthClientId,
-    scopedDb.organizationId
-  );
-  if (!standing) throw new GrantRequiredError();
-  return app?.id ?? null;
+/** Refuses a video model the platform vias cannot serve. */
+export function assertServedModel(input: GatewayJobInput): void {
+  if (
+    input.kind === 'video' &&
+    !isOfferedVideoModel(input.model, gatewayVias())
+  ) {
+    throw new ValidationError('Unknown video model');
+  }
 }
 
-/**
- * Hold the charge. A user-pays hold carries its client and is refused in
- * the same statement when it would pass the grant's cap; the refusal is
- * then told apart by reading the grant again.
- */
-async function holdCharge(
-  scopedDb: ScopedDb,
-  hold: Microdollars,
-  jobId: string,
-  userPays: { oauthClientId: string; appId: string | null } | null
-): Promise<string> {
-  const result = await scopedDb.billing.createReservation(hold, {
-    idempotencyKey: `gateway:${jobId}`,
-    ...(userPays && { spendCap: userPays }),
+/** The charge an estimate would settle to, at today's fee and the caller's margin. */
+export function chargeOnEstimate(
+  estimateMicros: Microdollars,
+  appMargin: AppMargin | null
+): GatewayCharge {
+  return gatewayCharge({
+    providerCostMicros: estimateMicros,
+    platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+    ...(appMargin && { appMargin }),
   });
-  if (result.ok) return result.reservationId;
-  if (userPays) {
-    const standing = await scopedDb.gatewayGrants.getStanding(
-      userPays.oauthClientId,
-      scopedDb.organizationId
-    );
-    if (!standing) throw new GrantRequiredError();
-    if (hold > standing.remainingMicros) {
-      throw new SpendCapExceededError(standing, hold);
-    }
-  }
-  throw new InsufficientCreditsError('Insufficient credits for this model');
 }
 
 export async function submitGatewayJob(
@@ -143,21 +121,19 @@ export async function submitGatewayJob(
   const { scopedDb } = ctx;
   if (ctx.idempotencyKey) {
     const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
-      ctx.idempotencyKey
+      ctx.idempotencyKey,
+      ctx.oauthClientId
     );
     if (existing) return { job: existing, replay: true };
   }
 
   const input = normalizeGatewayRequest(request);
-  if (
-    input.kind === 'video' &&
-    !isOfferedVideoModel(input.model, gatewayVias())
-  ) {
-    throw new ValidationError('Unknown video model');
-  }
-  const appId = ctx.oauthClientId
-    ? await userPaysApp(scopedDb, ctx.oauthClientId)
+  assertServedModel(input);
+  const userPays = ctx.oauthClientId
+    ? await resolveUserPays(scopedDb, ctx.oauthClientId)
     : null;
+  const appId = userPays?.app?.id ?? null;
+  const appMargin = userPays?.appMargin ?? null;
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
@@ -182,15 +158,9 @@ export async function submitGatewayJob(
     input,
     await getEffectiveFalPricing()
   );
-  // The hold covers every line of the charge the estimate would settle to.
+  // The hold covers every line of the charge the estimate would settle to, margin included.
   const platformFeeBps = GATEWAY_PLATFORM_FEE_BPS;
-  const hold = gatewayCharge({
-    providerCostMicros: estimate,
-    platformFeeBps,
-  }).totalMicros;
-  const userPays = ctx.oauthClientId
-    ? { oauthClientId: ctx.oauthClientId, appId }
-    : null;
+  const hold = chargeOnEstimate(estimate, appMargin).totalMicros;
 
   const { job, created } = await scopedDb.gatewayJobs.create({
     input,
@@ -202,7 +172,12 @@ export async function submitGatewayJob(
   // Platform keys only, so no BYOK skip: the hold is always taken.
   let reservationId: string;
   try {
-    reservationId = await holdCharge(scopedDb, hold, job.id, userPays);
+    ({ reservationId } = await holdCharge(
+      scopedDb,
+      hold,
+      `gateway:${job.id}`,
+      userPays && { oauthClientId: userPays.oauthClientId, appId }
+    ));
   } catch (error) {
     await scopedDb.gatewayJobs.deleteUnstarted(job.id);
     throw error;
@@ -220,6 +195,7 @@ export async function submitGatewayJob(
     platformFeeBps,
     oauthClientId: ctx.oauthClientId,
     appId,
+    appMargin,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
