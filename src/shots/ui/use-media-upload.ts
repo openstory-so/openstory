@@ -246,7 +246,7 @@ export function useUploadCharacterSheet() {
         file,
         input.onProgress
       );
-      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
+      await ensureUploadRights([{ url: publicUrl, filename: file.name }]);
       return setCharacterSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
@@ -298,7 +298,7 @@ export function useUploadDraftCharacterSheet() {
       );
       // The bytes are in; the caller now shows the check.
       input.onProgress?.(100);
-      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
+      await ensureUploadRights([{ url: publicUrl, filename: file.name }]);
       return publicUrl;
     },
   });
@@ -330,7 +330,7 @@ export function useUploadLocationReference() {
         file,
         input.onProgress
       );
-      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
+      await ensureUploadRights([{ url: publicUrl, filename: file.name }]);
       return setLocationSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,

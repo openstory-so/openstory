@@ -173,7 +173,7 @@ async function latestCheckRun(
  * can still offer what fixes it.
  */
 export function checkFailure(run: CheckRun): OpenStoryError {
-  // The engine reports `Error: CODE: message`, not `CODE: message`.
+  // The engine prefixes the error's class: `Error: CODE: message`.
   const [, code, message] =
     /^(?:\w*Error: )?([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '') ?? [];
   return code && message

@@ -9,6 +9,7 @@
  */
 
 import { getSignedUploadUrl } from '#storage';
+import { requireReadableImage } from '@/shots/server/upload-media';
 import {
   ORGANIZATION_USER_UPLOAD_PREFIX,
   organizationUserUploadStoragePath,
@@ -92,6 +93,7 @@ export const presignStudioUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
+    requireReadableImage(data.filename);
     const ext = getExtensionFromUrl(data.filename);
     return getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,

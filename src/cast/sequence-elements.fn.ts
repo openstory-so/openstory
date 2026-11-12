@@ -1,5 +1,6 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { getSignedUploadUrl } from '#storage';
+import { requireReadableImage } from '@/shots/server/upload-media';
 import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
@@ -48,6 +49,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
+    requireReadableImage(data.filename);
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
@@ -71,6 +73,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
+    requireReadableImage(data.filename);
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);

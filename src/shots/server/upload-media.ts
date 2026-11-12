@@ -10,6 +10,8 @@
  * tier wherever a real model is required.
  */
 
+import { elementKindFromFilename } from '@/cast/element-kind';
+import { ValidationError } from '@/platform/errors';
 import { organizationKeyPrefix } from '@/platform/server/storage/buckets';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import type { ShotImageInputHash, Stamped } from '@/shots/input-hash';
@@ -60,8 +62,34 @@ export function resolveUploadExtension(
 }
 
 /** Human-readable accepted list, for the rejection message. */
-export function uploadExtensionList(surface: UploadMediaSurface): string {
+function uploadExtensionList(surface: UploadMediaSurface): string {
   return UPLOAD_EXTENSIONS[surface].join(', ');
+}
+
+/**
+ * Extension for an upload, rejecting anything outside the surface's allow-list.
+ * The PUT route trusts its `contentType` query param, so this is the only
+ * server-side control over what lands in a bucket the worker serves
+ * same-origin — an `.svg` still would be a stored-XSS vector on `/r2/`.
+ */
+export function requireUploadExtension(
+  filename: string,
+  surface: UploadMediaSurface
+): string {
+  const ext = resolveUploadExtension(filename, surface);
+  if (!ext) {
+    throw new ValidationError(
+      `Unsupported ${surface} file type. Accepted: ${uploadExtensionList(surface)}`
+    );
+  }
+  return ext;
+}
+
+/** Refuses an image the likeness check cannot read, on a surface that also takes clips and audio. */
+export function requireReadableImage(filename: string): void {
+  if (elementKindFromFilename(filename) === 'image') {
+    requireUploadExtension(filename, 'image');
+  }
 }
 
 /**

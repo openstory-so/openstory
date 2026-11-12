@@ -215,9 +215,9 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
             patch(id, { status: 'ready', text: await readText(file) });
             return;
           }
-          // The preview is for the model's eyes and the chip; a format the
-          // browser cannot decode (HEIC, a huge PNG) still uploads, and the
-          // chip says the model will not see it.
+          // The preview is for the model's eyes and the chip; an image the
+          // browser cannot preview (a huge PNG) still uploads, and the chip
+          // says the model will not see it.
           if (kind === 'image') {
             try {
               patch(id, { preview: await imagePreview(file) });

@@ -60,6 +60,10 @@ const IMAGE_EXTENSIONS = new Set([
   'svg',
   'avif',
   'heic',
+  'heif',
+  'bmp',
+  'tif',
+  'tiff',
 ]);
 
 /** `null` for a type we don't store as an element. */

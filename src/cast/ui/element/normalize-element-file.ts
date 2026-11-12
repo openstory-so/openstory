@@ -1,6 +1,7 @@
 /**
- * Get an element file into a format every reference model accepts, before it
- * is uploaded (#1559).
+ * Get an element file into a format the likeness check and every reference
+ * model accept, before it is uploaded (#1559): an image through
+ * `normalizeImageFile`, audio as below.
  *
  * The models that state their formats — the whole Seedance family, on fal and
  * on Ark — take MP3 or WAV audio. An M4A voice memo was accepted, stored, and
