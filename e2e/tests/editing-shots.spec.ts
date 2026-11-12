@@ -66,6 +66,7 @@ const Staleness = z.object({
       motionPrompt: z.string(),
       dialogue: z.string(),
       video: z.string(),
+      causes: z.array(z.string()),
     })
   ),
 });
@@ -116,6 +117,7 @@ type ShotState = Verdicts & {
   number: number;
   still: string | null;
   lines: string[];
+  causes: string[];
 };
 
 let user: Awaited<ReturnType<typeof createTestUser>>;
@@ -162,6 +164,7 @@ async function readShots(): Promise<ShotState[]> {
       );
       out.push({
         ...verdict,
+        causes: verdict.causes,
         id: shot.id,
         frameId: shot.anchorFrame?.id ?? '',
         scene: scene.title ?? `Scene ${index + 1}`,
@@ -501,6 +504,23 @@ test.describe('Editing shots', () => {
     await settleVersions('image', row.frameId, 2);
     await expectShot(target.id, { thumbnail: 'fresh', video: 'stale' });
     await expectOthers(target.id, { video: 'untracked' });
+    // The variant grid is a later image version. Wait until it has finished
+    // so it cannot re-select a still after the restore below.
+    await settleVersions('image', row.frameId, 2);
+    await expect
+      .poll(
+        async () => {
+          const { versions } = await call(
+            request,
+            'list_versions',
+            { ...s(), kind: 'image', entityId: row.frameId },
+            Versions
+          );
+          return versions.every((v) => v.status === 'completed');
+        },
+        { timeout: E2E_RECORDING ? 600_000 : 60_000 }
+      )
+      .toBe(true);
 
     // Picking the earlier still brings the clip back in step.
     await call(request, 'select_shot_image_version', {
@@ -508,7 +528,15 @@ test.describe('Editing shots', () => {
       shotId: target.id,
       versionId: freshStill,
     });
-    await expectShot(target.id, { video: 'fresh' });
+    await expect
+      .poll(
+        async () => {
+          const current = byId(await readShots(), target.id);
+          return `${current.still} ${current.video} ${current.causes.join(' | ')}`;
+        },
+        { timeout: 60_000, intervals: [1_000, 2_000, 5_000] }
+      )
+      .toBe(`${freshStill} fresh `);
   });
 
   test('a retime stales the clip, never the shot prompts', async () => {

@@ -48,7 +48,40 @@ const AI_KEYS = [
     message: 'OpenRouter API key — LLM script analysis',
     hint: 'Get one at: https://openrouter.ai/settings/keys (Enter to skip)',
   },
-] as const;
+  {
+    key: 'ELEVENLABS_API_KEY',
+    message: 'ElevenLabs API key — character voices, dialogue & music',
+    hint: 'Get one at: https://elevenlabs.io/app/settings/api-keys (Enter to skip)',
+  },
+  {
+    key: 'SEED_SPEECH_API_KEY',
+    needs: 'ELEVENLABS_API_KEY',
+    message: 'BytePlus Seed Speech API key — Seed Audio character voices',
+    hint: 'Optional: https://console.byteplus.com/voice/new/setting/apikeys (Enter to skip)',
+  },
+  {
+    key: 'ARK_API_KEY',
+    message: 'BytePlus Ark API key — Seedance & Seedream direct from BytePlus',
+    hint: 'Optional, ap-southeast only: https://console.byteplus.com/ark (Enter to skip)',
+  },
+  {
+    key: 'BYTEPLUS_ACCESS_KEY',
+    needs: 'ARK_API_KEY',
+    message: 'BytePlus IAM Access Key — realistic faces on Seedance 2.5',
+    hint: 'BytePlus console → IAM → Key management (Enter to skip)',
+  },
+  {
+    key: 'BYTEPLUS_SECRET_KEY',
+    needs: 'BYTEPLUS_ACCESS_KEY',
+    message: 'BytePlus IAM Secret Key — pairs with the Access Key',
+    hint: 'Shown once when the Access Key is created (Enter to skip)',
+  },
+] satisfies readonly {
+  key: string;
+  needs?: string;
+  message: string;
+  hint: string;
+}[];
 
 async function localSetup() {
   p.intro(chalk.bold('Welcome to OpenStory Setup'));
@@ -67,11 +100,13 @@ async function localSetup() {
   // optional and documented in .env.example.
   const vars = parseEnvFile(ENV_FILE);
 
-  for (const { key, message, hint } of AI_KEYS) {
+  for (const { key, needs, message, hint } of AI_KEYS) {
     if (vars.has(key)) {
       p.log.success(`${key} — already configured`);
       continue;
     }
+    // Re-read: the key this one needs may have been saved a moment ago.
+    if (needs && !parseEnvFile(ENV_FILE).has(needs)) continue;
 
     const raw = await p.text({
       message: `${message}\n${chalk.dim(hint)}`,

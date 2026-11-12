@@ -583,13 +583,14 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'renders',
     summary:
-      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350).",
+      "A shot's grey animatic, drawn from each spec version and stamped with it, start-frame shots included. A sketch of an older spec, or of an older cast, reads stale (#2350). While the sequence is processing, a mismatch is not stale (#2369).",
     counts: [
       'The selected shot spec version (the motion prompt on a shot with no spec)',
       'Name, gender, age, description and clothing of each character the text names, in the look the scene picks',
     ],
     ignored: [
       'Style (a sketch is never styled, #1277)',
+      'Direction, sound and dialogue (the picture is the action, #2379)',
       'Sheets and references (a sketch draws from text only)',
       'Image model and aspect ratio',
     ],
@@ -877,7 +878,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'script',
     to: 'storyboard',
     tracking: 'pointer',
-    note: 'the selected shot spec version; each spec save draws its own sketch',
+    note: 'the action, framing and start state of the selected spec; a direction-only edit leaves the sketch (#2379)',
   },
   {
     from: 'character',

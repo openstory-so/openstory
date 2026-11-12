@@ -107,6 +107,7 @@ describe('drawSpecSketch', () => {
         expect.objectContaining({
           prompt: PROMPT,
           model: SHOT_PREVIEW_IMAGE_MODEL,
+          resolution: '720p',
           frameId: 'frame-1',
           skipStorage: true,
           specVersionId: 'spec-2',
@@ -178,6 +179,40 @@ describe('readShotStoryboard', () => {
     expect(board.current?.id).toBe('old');
     expect(board.staleReason).toBe('changed');
     expect(board.versions[0]?.sketch).toBeNull();
+  });
+
+  it('does not call a fresh sketch changed while the sequence is still processing', async () => {
+    listPreviews.mockResolvedValue([
+      sketch({ id: 'split', specVersionId: 'spec-1' }),
+    ]);
+    listByShot.mockResolvedValue([
+      { ...version('spec-2', 'analysis', 2), spec: EDITED },
+    ]);
+    const context = contextFor(false);
+    context.sequence.status = 'processing';
+    const board = await readShotStoryboard(context);
+    expect(board.current?.id).toBe('split');
+    expect(board.staleReason).toBeNull();
+  });
+
+  it('still reads a failed sketch as failed while the sequence is processing', async () => {
+    listPreviews.mockResolvedValue([
+      sketch({
+        id: 'failed',
+        status: 'failed',
+        url: null,
+        specVersionId: 'spec-2',
+      }),
+      sketch({ id: 'old', specVersionId: 'spec-1' }),
+    ]);
+    listByShot.mockResolvedValue([
+      { ...version('spec-2', 'edit', 30), spec: EDITED },
+      version('spec-1', 'analysis', 2),
+    ]);
+    const context = contextFor(false);
+    context.sequence.status = 'processing';
+    const board = await readShotStoryboard(context);
+    expect(board.staleReason).toBe('failed');
   });
 
   it('a rename that leaves the drawn text alone stays fresh', async () => {

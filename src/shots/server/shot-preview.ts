@@ -14,6 +14,7 @@ import {
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { SHOT_PREVIEW_IMAGE_MODEL } from '@/models/models';
+import type { Resolution } from '@/models/resolutions';
 import { simpleHash } from '@/platform/hash';
 import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -35,6 +36,9 @@ import { rendersReferenceOnly } from '@/shots/use-start-frame';
 import type { ShotEditContext } from './shot-context';
 
 const logger = getLogger(['openstory', 'shots', 'shot-preview']);
+
+/** 720p is Nano Banana 2.1's 1K. The model's own default is 2K. */
+const SHOT_PREVIEW_RESOLUTION: Resolution = '720p';
 
 type PreviewTarget = {
   userId: string;
@@ -67,6 +71,7 @@ export function triggerShotPreview(
       sequenceId: target.sequenceId,
       prompt: target.prompt,
       model: SHOT_PREVIEW_IMAGE_MODEL,
+      resolution: SHOT_PREVIEW_RESOLUTION,
       imageSize: aspectRatioToImageSize(target.aspectRatio),
       numImages: 1,
       shotId: target.shotId,
@@ -84,6 +89,7 @@ async function previewCostMicros(aspectRatio: AspectRatio) {
   return gateEstimate(
     estimateImageCost(SHOT_PREVIEW_IMAGE_MODEL, aspectRatio, 1, {
       pricing: await getEffectiveFalPricing(),
+      resolution: SHOT_PREVIEW_RESOLUTION,
     }),
     { model: SHOT_PREVIEW_IMAGE_MODEL, operation: 'shot-preview' }
   );
@@ -229,15 +235,18 @@ export async function readShotStoryboard(context: PreviewContext) {
     rows.find(done) ??
     null;
   const generating = rows[0] ? isLive(rows[0]) : false;
-  const staleReason: StoryboardStaleReason | null = generating
-    ? null
-    : !current
-      ? 'missing'
-      : current.promptHash === fresh
-        ? null
-        : rows[0]?.status === 'failed'
-          ? 'failed'
-          : 'changed';
+  const mismatch: StoryboardStaleReason | null = !current
+    ? 'missing'
+    : current.promptHash === fresh
+      ? null
+      : rows[0]?.status === 'failed'
+        ? 'failed'
+        : 'changed';
+  // Scene split draws the sketch before the cast is saved, so a read in that gap rebuilds a different prompt (#2369).
+  const staleReason: StoryboardStaleReason | null =
+    generating || (sequence.status === 'processing' && mismatch === 'changed')
+      ? null
+      : mismatch;
 
   const sketch = (row: FrameVariant) => ({
     id: row.id,

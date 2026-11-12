@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "One greyscale storyboard frame. Frozen in this action: SCARLETT catches the earring before it rolls beneath the door. Framing: close-up, slightly above, The dropped earring and SCARLETT’s hand are foregrounded, with NEIGHBOUR’s rain-speckled sleeve at the edge of frame. Placement only, not the pose: SCARLETT’s hand reaches toward the earring on the elevator floor; NEIGHBOUR is crouched beside it. Camera, as one or two arrows: quick tilt down, snappy. Characters: Scarlett, Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even, Black fitted turtleneck, slim black trousers, small gold. Neighbour, Unspecified, Adult, unspecified, An adult neighbour seen briefly in the elevator., Rain-speckled coat; other clothing is not specified. The bodies are frozen in that action: if someone sits, they are seated; if someone reaches, the arm is extended. One figure per character. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, the set blocked in with simple shapes. Camera travel is one or two arrows. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2.1"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/47c95c00723d53e9b300e15210df1e3f329a17384fa9ca56aff65e41859a908e.png",
+              "content_type": "image/png",
+              "file_name": "zDjCm_yOOcCULLWW1tF9q_ZEBihKTz.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042127
+      }
+    }
+  ]
+}

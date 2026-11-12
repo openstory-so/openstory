@@ -24,9 +24,26 @@ bun install
 bun dev
 ```
 
-`bun dev` handles everything: it generates `.env.local` (with auth/encryption secrets) on first run, migrates and seeds the local database, and starts the dev server. To use AI generation features, run `bun setup` to add `FAL_KEY` and `OPENROUTER_KEY` (or paste them into `.env.local`).
+`bun dev` handles everything: it generates `.env.local` (with auth/encryption secrets) on first run, migrates and seeds the local database, and starts the dev server. To use AI generation features, run `bun setup` to add your keys (or paste them into `.env.local`). `FAL_KEY` alone is enough to start; the [README](README.md#add-your-keys) lists the rest.
 
 Open [http://localhost:3000](http://localhost:3000) — you should see the app running.
+
+## Tech Stack
+
+| Category       | Tools                                                                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Runtime**    | [Bun](https://bun.com)                                                                                                                                                                        |
+| **Framework**  | [TanStack Start](https://tanstack.com/start) + [TanStack Router](https://tanstack.com/router) + [Vite](https://vite.dev)                                                                      |
+| **Database**   | [Drizzle ORM](https://orm.drizzle.team) + [Cloudflare D1](https://developers.cloudflare.com/d1) (SQLite)                                                                                      |
+| **AI**         | [TanStack AI](https://tanstack.com/ai) + [Fal.ai](https://fal.ai) + [OpenRouter](https://openrouter.ai) + [PostHog](https://posthog.com) (LLM observability)                                  |
+| **Workflows**  | [Cloudflare Workflows](https://developers.cloudflare.com/workflows) (durable execution)                                                                                                       |
+| **Realtime**   | [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects) (SSE progress updates)                                                                                        |
+| **Storage**    | [Cloudflare R2](https://developers.cloudflare.com/r2) (S3-compatible)                                                                                                                         |
+| **Auth**       | [Better Auth](https://www.better-auth.com)                                                                                                                                                    |
+| **Styling**    | [Tailwind v4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)                                                                                                                   |
+| **Quality**    | [oxlint](https://oxc.rs/docs/guide/usage/linter) + [oxfmt](https://oxc.rs) + [tsgo](https://github.com/microsoft/typescript-go) + [Lefthook](https://lefthook.dev) + [Knip](https://knip.dev) |
+| **Testing**    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev)                                                                                                                           |
+| **Deployment** | [Cloudflare Workers](https://developers.cloudflare.com/workers)                                                                                                                               |
 
 ## Development Workflow
 

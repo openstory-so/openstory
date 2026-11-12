@@ -52,12 +52,18 @@ function scene(overrides: Partial<PreviewShotScene> = {}): PreviewShotScene {
 describe('previewTextForShot', () => {
   it('uses the shot spec even when the scene has only one shot', () => {
     const text = previewTextForShot(scene(), 1);
-    expect(text).toContain('medium close-up');
-    expect(text).toContain('She fills the right third, doorway left');
-    expect(text).toContain('She stands at the door, hand on the frame');
-    expect(text).toContain('Then: She opens the door');
-    expect(text).toContain('Camera: push-in, slow');
-    expect(text).toContain('Hesitant, as if listening');
+    expect(text.startsWith('Frozen in this action: She opens the door')).toBe(
+      true
+    );
+    expect(text).toContain(
+      'Framing: medium close-up, eye level, She fills the right third, doorway left'
+    );
+    expect(text).toContain(
+      'Placement only, not the pose: She stands at the door, hand on the frame'
+    );
+    expect(text).toContain('Camera, as one or two arrows: push-in, slow');
+    expect(text).not.toContain('Then:');
+    expect(text).not.toContain('Hesitant, as if listening');
     expect(text).not.toContain('Apartment hallway');
     expect(text).not.toContain('screenplay slice');
   });
@@ -143,7 +149,8 @@ describe('previewTextForShot', () => {
 describe('buildPreviewPrompt', () => {
   it('asks for a greyscale animatic frame and forbids text', () => {
     const prompt = buildPreviewPrompt(previewTextForShot(scene(), 1), []);
-    expect(prompt.startsWith('Storyboard animatic frame.')).toBe(true);
+    expect(prompt.startsWith('One greyscale storyboard frame.')).toBe(true);
+    expect(prompt).toContain('frozen in that action');
     expect(prompt).toContain('greyscale only');
     expect(prompt.toLowerCase()).toContain('no text');
     expect(prompt).not.toContain('Art style');
@@ -157,8 +164,9 @@ describe('buildPreviewPrompt', () => {
       character({ name: 'Radio', voiceOnly: true }),
     ]);
     expect(prompt).toContain(
-      'Characters: Mina: Female, 30s, Tall, cropped silver hair, wearing a long grey coat.'
+      'Characters: Mina, Female, 30s, Tall, cropped silver hair, a long grey coat.'
     );
+    expect(prompt).not.toContain('Mina:');
     expect(prompt).not.toContain('Otto');
     expect(prompt).not.toContain('Radio:');
   });
@@ -168,6 +176,26 @@ describe('buildPreviewPrompt', () => {
       character({ physicalDescription: REFERENCE_LIKENESS_INSTRUCTION }),
     ]);
     expect(prompt).not.toContain('reference image');
-    expect(prompt).toContain('Mina: Female, 30s, wearing a long grey coat.');
+    expect(prompt).toContain('Mina, Female, 30s, a long grey coat.');
+  });
+
+  it('clips a bible paragraph so the line is not a caption', () => {
+    const prompt = buildPreviewPrompt('Mina waits.', [
+      character({
+        physicalDescription:
+          'A striking, fresh-faced beauty creator with dewy skin and a sleek dark bob, then several more sentences a sketch would letter on as a caption.',
+        standardClothing:
+          'A sleek black turtleneck with a streamlined city outfit and a coat described for far longer than a sketch should letter.',
+      }),
+    ]);
+    const line = prompt.slice(
+      prompt.indexOf('Characters:'),
+      prompt.indexOf(' The bodies are frozen')
+    );
+    expect(line).not.toContain('Mina:');
+    expect(line).toContain('turtleneck');
+    expect(line).not.toContain('caption');
+    expect(line.length).toBeLessThan(220);
+    expect(prompt).toContain('No text, no titles');
   });
 });

@@ -482,7 +482,7 @@ Respond with up to {{expectedMatches}} matches, only including high-confidence m
       role: 'system',
       content: `You refill ONE shot's spec. The shot already exists. Keep its camera move unless the script moved.
 
-A chained move is one string (dolly in, then pan left), not two shots. Do not return a shot number, a duration, or dialogue. Use an empty string when a field has nothing to say. Name characters and elements by the tokens already in the scene. Neighbour shots are context. Do not rewrite them.
+A chained move is one string (dolly in, then pan left), not two shots. Do not return a shot number, a duration, or dialogue. Use an empty string when a field has nothing to say. Name characters and elements by the tokens already in the scene, and write each character's name in ALL CAPS in every field (MAGGIE, not Maggie). Neighbour shots are context. Do not rewrite them.
 
 You will be called via a structured output tool. Follow the schema exactly.`,
     },
@@ -674,7 +674,7 @@ The style's camera, shot selection, pace, and energy decide coverage:
 ## On-screen cast and arrivals
 
 The cast list covers the whole script; it is not a roster to put in every shot. Track entrances, exits, and remote callers joining in script order. A participant who joins later must not appear in earlier shots, even as a listening reaction, thumbnail, or background figure.
-In framing.subjectStartState and framing.composition, name every character actually visible at the START of this shot using their exact <CHARACTERS> name in ALL CAPS. Frame only the selected subject(s); do not list off-camera listeners or future arrivals. A voice speaking off camera does not make its owner visible. If someone enters during a shot, describe their entrance in action rather than placing them in its starting frame. Respect single-participant webcam framing when the style calls for it.
+Name a character with their exact <CHARACTERS> name in ALL CAPS in every spec field that names them (framing, action, camera move, direction, sound cue): MAGGIE in the action, not Maggie. Mention pills match that capital form only. dialogue.character stays the spelling <CHARACTERS> uses, so the pipeline can find the speaker. In framing.subjectStartState and framing.composition, name every character actually visible at the START of this shot. Frame only the selected subject(s); do not list off-camera listeners or future arrivals. A voice speaking off camera does not make its owner visible. If someone enters during a shot, describe their entrance in action rather than placing them in its starting frame. Respect single-participant webcam framing when the style calls for it.
 
 ## Rules
 

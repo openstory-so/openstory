@@ -72,7 +72,8 @@ same catalog keys stay on fal (`google/nano-banana-2.1`,
 Nano Banana 2.1 is its own key, `nano_banana_2_1` (#2063). `nano_banana_2`
 is hidden but keeps its v2 endpoints, so a stored variant still names the
 model that drew it and an old sequence still renders on v2. 2.1's tiers are
-1K/2K/4K only (no 0.5K), and both vias send minimal thinking (`thinking_level:
+1K/2K/4K only (no 0.5K). A storyboard sketch passes `resolution: '720p'`,
+which resolves to 1K; omitting it draws 2K. Both vias send minimal thinking (`thinking_level:
 'minimal'` on fal, whose enum has no `low`; `ThinkingLevel.MINIMAL` native),
 because 2.1 thinks at `medium` by default. On fal it is token-billed, reported
 as `units` at $1 like GPT Image, so it estimates per call from the typical

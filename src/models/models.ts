@@ -418,10 +418,9 @@ export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
  *  flux_2_turbo before it. */
 export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
 
-/** Model that draws a shot's storyboard sketch (#2094). Krea could not hold
- *  a staged frame from the full shot spec; Lite can, at about five times
- *  the price and a few seconds more. */
-export const SHOT_PREVIEW_IMAGE_MODEL: TextToImageModel = 'nano_banana_2_lite';
+/** Model that draws a shot's storyboard sketch (#2094, #2379). The trigger
+ *  passes the 720p tier, which is this model's 1K. Unset, it draws 2K. */
+export const SHOT_PREVIEW_IMAGE_MODEL: TextToImageModel = 'nano_banana_2_1';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(

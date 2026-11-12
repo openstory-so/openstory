@@ -22,14 +22,17 @@ baseTest.describe('Route Protection', () => {
       ).toBeVisible();
       await expect(
         page.getByText(
-          'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
+          'Films, microdramas and brand episodes with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
-      // The composer generate button is the sign-in control. The mid-page
-      // Sign in button is gone; the sidebar still has its own.
+      // Generate opens sign-in; the header has the only other Sign in (#2372).
       await expect(
         page.getByRole('button', { name: 'Sign in to Generate' })
       ).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: 'Sign in', exact: true })
+      ).toHaveCount(1);
+      await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
       await expect(page.getByText('~$x.xx')).toHaveCount(0);
     }
   );
