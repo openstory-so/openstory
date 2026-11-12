@@ -64,6 +64,7 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
+import { gatewayJobs } from './gateway-jobs';
 import {
   assistantInterrupts,
   assistantMessages,
@@ -329,6 +330,10 @@ export { sequenceExports };
 export { stitches };
 export type { Stitch } from './stitches';
 
+// Model gateway jobs (docs/architecture/model-gateway.md)
+export { gatewayJobs };
+export type { GatewayJob } from './gateway-jobs';
+
 // In-app assistant threads and their TanStack AI persistence stores (#2155)
 export {
   assistantInterrupts,
@@ -574,6 +579,7 @@ export const schema = {
   sequenceExports,
   sequenceStyleVersions,
   stitches,
+  gatewayJobs,
   assistantThreads,
   assistantMessages,
   assistantRuns,

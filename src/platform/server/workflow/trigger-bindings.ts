@@ -55,6 +55,7 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   'sequence-export': 'SEQUENCE_EXPORT_WORKFLOW',
   asset: 'ASSET_WORKFLOW',
   studio: 'STUDIO_WORKFLOW',
+  gateway: 'GATEWAY_WORKFLOW',
   'upload-check': 'UPLOAD_CHECK_WORKFLOW',
 };
 
@@ -97,6 +98,7 @@ const WORKFLOW_CLASS_TO_BINDING = {
   SequenceExportWorkflow: 'SEQUENCE_EXPORT_WORKFLOW',
   AssetGenerationWorkflow: 'ASSET_WORKFLOW',
   StudioGenerationWorkflow: 'STUDIO_WORKFLOW',
+  GatewayGenerationWorkflow: 'GATEWAY_WORKFLOW',
   UploadCheckWorkflow: 'UPLOAD_CHECK_WORKFLOW',
 } as const satisfies Record<string, keyof CloudflareEnv>;
 

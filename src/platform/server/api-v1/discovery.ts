@@ -20,6 +20,11 @@ import {
 } from './hal';
 import { apiCreateSequenceSchema } from './input-schema';
 import { EXAMPLE_CREATE_STYLE_BODY } from './style-input-schema';
+import {
+  GATEWAY_JOBS_PATH,
+  GATEWAY_MODELS_PATH,
+  submitGatewayJobLink,
+} from '@/gateway/server/api-documents';
 import { z } from 'zod';
 
 const INSTRUCTIONS = `OpenStory public API v1 — create AI video sequences from a script in one call.
@@ -66,6 +71,18 @@ Styles (create your own look):
   name media/<n>.<ext>, then PUT each file to the templated 'upload' link in
   the 201. The response 'url' is a public player page.
 
+Model gateway (run one model, pay per job):
+  GET /api/v1/gateway/models lists the image and video models the gateway
+  serves, each with the aspect ratios, lengths and references it accepts.
+  POST /api/v1/gateway/jobs with { kind, model, prompt, ... } runs one on
+  OpenStory's own provider keys: the estimate is held, the provider's actual
+  cost is charged to your organization when the job finishes, and a failed
+  job releases the hold. 202 returns the job; GET /api/v1/gateway/jobs/{id}
+  (with ?wait) until status is 'succeeded' (absolute result URLs in
+  'outputs') or 'failed'. Send an Idempotency-Key header so a retry returns
+  the same job. 402 INSUFFICIENT_CREDITS when the hold cannot be covered; 429
+  RATE_LIMITED past the per-organization submit rate.
+
 Authentication:
   Every endpoint except this root and the device-login pair requires an osk_
   key or an OAuth access token. Two ways to get a key:
@@ -90,8 +107,9 @@ Authentication:
   request 'resource' = <origin>/api/v1 so the token is issued for this API),
   then send the access token as 'Authorization: Bearer <token>'. Tokens are
   scoped: reads need 'sequences:read', edits and exports 'sequences:write',
-  anything that spends credits 'generate'; a 403 with an insufficient_scope
-  challenge names the scope to re-authorize with. The user reviews and revokes
+  anything that spends credits 'generate', every /gateway call
+  'models:invoke'; a 403 with an insufficient_scope challenge names the scope
+  to re-authorize with. The user reviews and revokes
   grants under Settings → Developer → Authorized apps.
 
 Conventions (apply to every endpoint):
@@ -289,6 +307,17 @@ export function buildRootDocument(): RootDocument {
         method: 'GET',
         templated: true,
         title: 'Get sequence status (supports ?wait long-polling)',
+      },
+      'gateway-models': getLink(
+        GATEWAY_MODELS_PATH,
+        'Models the gateway serves, with what each accepts'
+      ),
+      'submit-gateway-job': submitGatewayJobLink(),
+      'gateway-job': {
+        href: `${GATEWAY_JOBS_PATH}/{id}{?wait}`,
+        method: 'GET',
+        templated: true,
+        title: 'Get a gateway job (supports ?wait long-polling)',
       },
       'agent-guide': getLink(
         '/docs/developer-guide/agents',

@@ -88,7 +88,7 @@ export async function arkAssetIdentities(
  * string in the ledger says which kind of run to look for.
  */
 export function assetLeaseOwner(
-  workflow: 'motion' | 'studio',
+  workflow: 'motion' | 'studio' | 'gateway',
   instanceId: string
 ): string {
   return `${workflow}:${instanceId}`;

@@ -3,6 +3,7 @@ import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
 import { apiCreateStyleSchema } from './style-input-schema';
 import { buildOpenApiDocument } from './openapi';
+import { gatewayJobRequestSchema } from '@/gateway/schema';
 
 /** Collect every `$ref` string anywhere in the document. */
 function collectRefs(node: unknown, acc: string[] = []): string[] {
@@ -43,6 +44,27 @@ describe('buildOpenApiDocument', () => {
     expect(doc.paths['/api/v1/styles/{id}'].get).toBeDefined();
     expect(doc.paths['/api/v1/stitches'].post).toBeDefined();
     expect(doc.paths['/api/v1/stitches/{id}/publish'].post).toBeDefined();
+  });
+
+  it('documents the gateway endpoints with a valid example', () => {
+    expect(doc.paths['/api/v1/gateway/models'].get).toBeDefined();
+    expect(
+      doc.paths['/api/v1/gateway/jobs/{id}'].get.responses['404']
+    ).toBeDefined();
+    const submit = doc.paths['/api/v1/gateway/jobs'].post;
+    expect(submit.responses['202'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GatewayJob',
+    });
+    expect(submit.responses['402']).toBeDefined();
+    expect(submit.responses['429']).toBeDefined();
+    expect(submit.parameters.map((p: { name: string }) => p.name)).toContain(
+      'Idempotency-Key'
+    );
+    const example = submit.requestBody.content['application/json'].example;
+    expect(() => gatewayJobRequestSchema.parse(example)).not.toThrow();
+    expect(doc.components.schemas).toHaveProperty('GatewayJobRequest');
+    expect(doc.components.schemas).toHaveProperty('GatewayModelsResult');
+    expect(doc.components.schemas.GatewayJob.required).toContain('_links');
   });
 
   it('documents the create-style endpoint with a valid example and a 409', () => {
