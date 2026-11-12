@@ -157,8 +157,9 @@ describe('buildPreviewPrompt', () => {
       character({ name: 'Radio', voiceOnly: true }),
     ]);
     expect(prompt).toContain(
-      'Characters: Mina: Female, 30s, Tall, cropped silver hair, wearing a long grey coat.'
+      'Characters: Mina, Female, 30s, Tall, cropped silver hair, a long grey coat.'
     );
+    expect(prompt).not.toContain('Mina:');
     expect(prompt).not.toContain('Otto');
     expect(prompt).not.toContain('Radio:');
   });
@@ -168,6 +169,26 @@ describe('buildPreviewPrompt', () => {
       character({ physicalDescription: REFERENCE_LIKENESS_INSTRUCTION }),
     ]);
     expect(prompt).not.toContain('reference image');
-    expect(prompt).toContain('Mina: Female, 30s, wearing a long grey coat.');
+    expect(prompt).toContain('Mina, Female, 30s, a long grey coat.');
+  });
+
+  it('clips a bible paragraph so the line is not a caption', () => {
+    const prompt = buildPreviewPrompt('Mina waits.', [
+      character({
+        physicalDescription:
+          'A striking, fresh-faced beauty creator with dewy skin and a sleek dark bob, then several more sentences a sketch would letter on as a caption.',
+        standardClothing:
+          'A sleek black turtleneck with a streamlined city outfit and a coat described for far longer than a sketch should letter.',
+      }),
+    ]);
+    const line = prompt.slice(
+      prompt.indexOf('Characters:'),
+      prompt.indexOf(' Drawn as')
+    );
+    expect(line).not.toContain('Mina:');
+    expect(line).toContain('turtleneck');
+    expect(line).not.toContain('caption');
+    expect(line.length).toBeLessThan(220);
+    expect(prompt).toContain('No text, no titles');
   });
 });

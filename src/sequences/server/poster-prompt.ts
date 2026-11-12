@@ -11,7 +11,6 @@ const MAX_SCRIPT_LENGTH = 500;
 // field cannot crowd out the drawing instructions.
 const MAX_SHOT_TEXT_LENGTH = 1600;
 const MAX_CAST_IN_SHOT = 4;
-const MAX_CHARACTER_LENGTH = 400;
 const MAX_PREVIEW_PROMPT_LENGTH = 4000;
 
 /** Scene fields the preview prompt reads. Narrower than SceneSplittingScene. */
@@ -125,10 +124,30 @@ export function previewTextForShot(
   );
 }
 
+const LOOK_WORDS = 8;
+const TRAILING_LOOK_WORD =
+  /^(with|of|and|or|a|an|the|in|on|her|his|to|for|from)$/i;
+
+/** A few words of a look. A bible sentence is what the sketch was lettering. */
+function sketchLook(part: string): string {
+  const words = part
+    .trim()
+    .replace(/[.]+$/, '')
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .slice(0, LOOK_WORDS);
+  while (words.length > 1) {
+    const last = words[words.length - 1]?.replace(/[,:;]+$/, '') ?? '';
+    if (!TRAILING_LOOK_WORD.test(last)) break;
+    words.pop();
+  }
+  return words.join(' ').replace(/[,:;]+$/, '');
+}
+
 /**
- * The characters a shot's text names, described from the bible (#2094). The
+ * The characters a shot's text names, as a short look (#2094, #2369). The
  * bibles call has finished before the first shot list lands, so a preview can
- * draw the cast as written without waiting for a sheet.
+ * draw the cast as written without waiting for a sheet. No "Name:" caption.
  */
 function previewCastForShot(
   shotText: string,
@@ -146,25 +165,23 @@ function previewCastForShot(
           text.includes(entry.name.trim().toLowerCase())
       )
       .slice(0, MAX_CAST_IN_SHOT)
-      .map((entry) => {
-        const who = [
-          entry.gender,
-          entry.age,
-          // A stored likeness instruction points at a sheet this preview does not send.
-          entry.physicalDescription.replace(REFERENCE_LIKENESS_INSTRUCTION, ''),
+      .map((entry) =>
+        [
+          entry.name.trim(),
+          entry.gender.trim(),
+          entry.age.trim(),
+          sketchLook(
+            entry.physicalDescription.replace(
+              REFERENCE_LIKENESS_INSTRUCTION,
+              ''
+            )
+          ),
+          sketchLook(entry.standardClothing),
         ]
-          .map((part) => part.trim().replace(/\.+$/, ''))
           .filter((part) => part.length > 0)
-          .join(', ');
-        const clothing = entry.standardClothing.trim().replace(/\.+$/, '');
-        const line = [who, clothing && `wearing ${clothing}`]
-          .filter((part) => part.length > 0)
-          .join(', ');
-        const text = `${entry.name.trim()}: ${line}`;
-        return text.length > MAX_CHARACTER_LENGTH
-          ? text.slice(0, MAX_CHARACTER_LENGTH).replace(/\s+\S*$/, '')
-          : text;
-      })
+          .join(', ')
+      )
+      .filter((line) => line.length > 0)
       .map((line) => `${line}.`)
       .join(' ')
   );

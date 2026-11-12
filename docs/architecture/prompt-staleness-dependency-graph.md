@@ -797,7 +797,10 @@ fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
 `missing` is none drawn. A sketch of the fresh hash is fresh, whatever
 version it is stamped with, so a rename that leaves the drawn text alone and
 a picked old version stay fresh. Otherwise `failed` if the newest row failed,
-else `changed`. Every spec save, Rewrite and analysis draws its own
+else `changed`. While `sequences.status` is `processing` a mismatch is not
+`changed`: scene split draws the sketch from the bible before the cast rows
+exist, so a read in that gap rebuilds the prompt with no cast (#2369).
+`missing` and `failed` still report. Every spec save, Rewrite and analysis draws its own
 (`drawSpecSketch`, skipped when a sketch of that prompt exists), so what
 reads stale is a cast or look edit, a rename that changes the drawn text, and
 a draw that did not start. The stamp only groups sketches in History: a

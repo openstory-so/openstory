@@ -132,7 +132,7 @@ const shotStoryboard = z.object({
 
 const getShotStoryboard = productionRead(
   'get_shot_storyboard',
-  'Read a shot’s storyboard sketch: the grey animatic drawn from each version of its shot spec, start-frame shots included. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last sketch failed; changed: the spec or cast moved since it was drawn), whether one is drawing, every sketch drawn for it, and every spec version with its sketch, newest first. Redraw with regenerate_shot_storyboard.',
+  'Read a shot’s storyboard sketch: the grey animatic drawn from each version of its shot spec, start-frame shots included. Returns the sketch on show, whether it is stale (missing: none drawn; failed: the last sketch failed; changed: the spec or cast moved since it was drawn; a sequence still processing does not read changed), whether one is drawing, every sketch drawn for it, and every spec version with its sketch, newest first. Redraw with regenerate_shot_storyboard.',
   shotInput,
   shotStoryboard,
   async (input, { scopedDb, userId, origin }) =>

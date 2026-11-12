@@ -229,15 +229,18 @@ export async function readShotStoryboard(context: PreviewContext) {
     rows.find(done) ??
     null;
   const generating = rows[0] ? isLive(rows[0]) : false;
-  const staleReason: StoryboardStaleReason | null = generating
-    ? null
-    : !current
-      ? 'missing'
-      : current.promptHash === fresh
-        ? null
-        : rows[0]?.status === 'failed'
-          ? 'failed'
-          : 'changed';
+  const mismatch: StoryboardStaleReason | null = !current
+    ? 'missing'
+    : current.promptHash === fresh
+      ? null
+      : rows[0]?.status === 'failed'
+        ? 'failed'
+        : 'changed';
+  // Scene split draws the sketch before the cast is saved, so a read in that gap rebuilds a different prompt (#2369).
+  const staleReason: StoryboardStaleReason | null =
+    generating || (sequence.status === 'processing' && mismatch === 'changed')
+      ? null
+      : mismatch;
 
   const sketch = (row: FrameVariant) => ({
     id: row.id,
