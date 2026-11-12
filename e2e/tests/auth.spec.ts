@@ -33,6 +33,7 @@ baseTest.describe('Route Protection', () => {
         page.getByRole('link', { name: 'Sign in', exact: true })
       ).toHaveCount(1);
       await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+      await expect(page.getByText('~$x.xx')).toHaveCount(0);
     }
   );
 

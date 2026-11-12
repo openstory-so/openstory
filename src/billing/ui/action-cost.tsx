@@ -7,7 +7,8 @@
  * - estimate is still loading and no value yet
  *
  * Logged out: the amount slot is the glyph `~$x.xx`, not a calculated
- * figure. The estimate fn is authed; we do not call it (#1575).
+ * figure, unless `hideLoggedOutPrice` (the front-page sign-in generate
+ * button). The estimate fn is authed; we do not call it (#1575).
  *
  * Callers should pass an honest single-action estimate (`estimateImageCost` /
  * video / audio → null when unknown). Storyboard totals from
@@ -67,6 +68,11 @@ type ActionCostProps = {
    * (`~$00.00`); earlier steps are usually one (`~$0.00`).
    */
   amountWidth?: 'single' | 'double';
+  /**
+   * Logged-out placeholder `~$x.xx` is a stand-in, not a price. The front-page
+   * generate button is the sign-in control and must not show it.
+   */
+  hideLoggedOutPrice?: boolean;
 };
 
 /** Label + price, wrapping together inside a generate button. */
@@ -75,12 +81,15 @@ export function InButtonCost({
   estimate,
   onPrimary = true,
   amountWidth = 'single',
+  hideLoggedOutPrice = false,
 }: {
   children: ReactNode;
   estimate: Microdollars | null | undefined;
   onPrimary?: boolean;
   /** Motion totals reserve two digits; earlier steps reserve one. */
   amountWidth?: 'single' | 'double';
+  /** Drop the logged-out `~$x.xx` stand-in. */
+  hideLoggedOutPrice?: boolean;
 }) {
   return (
     <span className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
@@ -90,6 +99,7 @@ export function InButtonCost({
         onPrimary={onPrimary}
         inline
         amountWidth={amountWidth}
+        hideLoggedOutPrice={hideLoggedOutPrice}
       />
     </span>
   );
@@ -107,6 +117,7 @@ export function ActionCost({
   onPrimary = false,
   inline = false,
   amountWidth = 'single',
+  hideLoggedOutPrice = false,
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
   const { data: session } = useAuthSession();
@@ -129,6 +140,14 @@ export function ActionCost({
     );
   }
   if (!session) {
+    if (hideLoggedOutPrice) {
+      if (inline || !prefix) return null;
+      return (
+        <span className={cn(justify, 'text-muted-foreground', className)}>
+          {prefix}
+        </span>
+      );
+    }
     return (
       <span
         className={cn(

@@ -1898,6 +1898,7 @@ export const ScriptView: FC<{
                     <InButtonCost
                       estimate={isAuthenticated ? storyboardCostEstimate : null}
                       onPrimary={isAuthenticated}
+                      hideLoggedOutPrice
                       amountWidth={
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
                       }
