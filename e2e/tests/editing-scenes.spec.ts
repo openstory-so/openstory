@@ -221,12 +221,11 @@ async function expectDialogueOrder(
   await expect(block).toBeVisible({ timeout: 15_000 });
   let at = -1;
   for (const id of order) {
-    const label = (await labelOf(id)).toLowerCase();
-    // The region mounts before its scene headings. Read the text after the
-    // heading is actually there, or the first scene looks missing.
+    const label = await labelOf(id);
+    // The region mounts before its headings. Match the scene list's spelling.
     await expect(block).toContainText(label, { timeout: 15_000 });
     const text = (await block.innerText()).replace(/\s+/g, ' ').toLowerCase();
-    const heading = text.indexOf(label, at + 1);
+    const heading = text.indexOf(label.toLowerCase(), at + 1);
     expect(
       heading,
       `${id} (${label}) heading after offset ${at}`

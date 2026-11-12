@@ -329,8 +329,8 @@ test.describe('Editing dialogue and cast', () => {
     );
     placeIds = Object.fromEntries(locations.map((l) => [l.name, l.id]));
     expect(Object.keys(placeIds).sort()).toEqual([
-      'Corner Diner',
-      'Diner Car Park',
+      'CORNER DINER',
+      'DINER CAR PARK',
     ]);
 
     // The dialogue block under the player lists them scene by scene.
@@ -448,7 +448,7 @@ test.describe('Editing dialogue and cast', () => {
   test('editing a location marks only the scenes there out of date', async () => {
     await call(request, 'update_location', {
       ...seq(firstId),
-      locationId: placeIds['Corner Diner'],
+      locationId: placeIds['CORNER DINER'],
       ambiance: 'Warm amber light and steam from the coffee machine.',
     });
     const rows = await readShots(firstId);
@@ -462,7 +462,7 @@ test.describe('Editing dialogue and cast', () => {
         visual: 'stale',
         motion: 'stale',
       });
-      expect(row.causes.join(' ')).toContain('Location "Corner Diner"');
+      expect(row.causes.join(' ')).toContain('Location "CORNER DINER"');
     }
     for (const row of inScene(rows, sceneIds[1])) {
       expect(row, 'car park scene').toMatchObject({
@@ -472,7 +472,7 @@ test.describe('Editing dialogue and cast', () => {
     }
     await page.goto(`/sequences/${firstId}/scenes`);
     await expect(page.getByTestId('scene-stale-shots')).toContainText(
-      /Changed: .*Location "Corner Diner"/,
+      /Changed: .*Location "CORNER DINER"/,
       { timeout: 30_000 }
     );
   });
