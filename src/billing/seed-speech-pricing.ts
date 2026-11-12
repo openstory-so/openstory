@@ -7,13 +7,15 @@
  * https://docs.byteplus.com/en/docs/byteplusvoice/audiopricing on
  * **2026-09-23**: Seed Audio 1.0 pay-as-you-go is $0.15 per minute
  * ($0.0025 per second), billed on the model's `original_duration`, which
- * includes trailing silence. Confirm against a BytePlus bill and re-date.
+ * includes trailing silence. The 1.5 beta bills `usage.final_duration_ms`
+ * and is free during early access. Calls keep this card until a bill says
+ * otherwise. Confirm and re-date.
  */
 
 import { micros, multiplyMicros, type Microdollars } from './money';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
-/** Billing id for Seed Audio 1.0 on Seed Speech. */
+/** Billing id for Seed Audio on Seed Speech. The 1.5 beta uses this card. */
 export const SEED_AUDIO_ENDPOINT = 'seed-audio';
 
 const SEED_AUDIO_PER_SECOND = micros(2_500);

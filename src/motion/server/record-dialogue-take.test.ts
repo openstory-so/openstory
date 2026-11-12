@@ -58,7 +58,7 @@ describe('splicedTurns (#1802)', () => {
       splicedTurns({
         shotId: 'shot',
         line,
-        ttsModel: 'seed-audio-1.0',
+        ttsModel: 'dola-seed-audio-1-5-260928',
         base: null,
         lineStartSeconds: 0,
         takeSeconds: 1.5,
@@ -69,7 +69,7 @@ describe('splicedTurns (#1802)', () => {
         shotId: 'shot',
         index: 1,
         voiceId: 'voice-b',
-        ttsModel: 'seed-audio-1.0',
+        ttsModel: 'dola-seed-audio-1-5-260928',
         startSeconds: 0,
         endSeconds: 1.5,
       },

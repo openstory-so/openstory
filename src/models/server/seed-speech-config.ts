@@ -1,10 +1,10 @@
 /**
- * BytePlus Seed Speech env — Seed Audio 1.0 character voices and dialogue
- * (#1765).
+ * BytePlus Seed Audio 1.5 early access (#1765). Voice generation and
+ * dialogue both call `POST /api/v3/contents/generations` on ModelArk.
  *
- * Platform key only, like `ARK_API_KEY` / `ELEVENLABS_API_KEY`: no organization row,
- * no BYOK. Workflows spend it through
- * `scopedDb.credentials.resolveKey('seed-speech')`.
+ * The early-access key is `SEED_AUDIO_15_API_KEY`. `SEED_SPEECH_API_KEY` is
+ * the live 1.0 key and is not sent. Platform only, no organization BYOK.
+ * Workflows spend it through `scopedDb.credentials.resolveKey('seed-speech')`.
  *
  * A Seed voice also needs ElevenLabs — voice isolation cleans its reference
  * clips and Scribe transcribes every take to find its lines — so
@@ -16,10 +16,18 @@ import { getEnv } from '#env';
 import { optionalEnv } from '@/platform/server/env/environment';
 import { isElevenLabsConfigured } from './elevenlabs-config';
 
-const DEFAULT_BASE_URL = 'https://voice.ap-southeast-1.bytepluses.com';
+const DEFAULT_BASE_URL = 'https://ark.ap-southeast.bytepluses.com';
+
+/** Early-access endpoint id from the integration guide. Not the model name. */
+const EARLY_ACCESS_ENDPOINT = 'ep-20260921143824-2m8c9';
 
 export function getSeedSpeechApiKey(): string | undefined {
-  return optionalEnv('SEED_SPEECH_API_KEY');
+  return optionalEnv('SEED_AUDIO_15_API_KEY');
+}
+
+/** Request `model`. The endpoint id, overridable when the official one ships. */
+export function getSeedAudioEndpoint(): string {
+  return optionalEnv('SEED_AUDIO_15_ENDPOINT') ?? EARLY_ACCESS_ENDPOINT;
 }
 
 export function getSeedSpeechBaseUrl(): string {
