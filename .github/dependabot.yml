@@ -53,8 +53,10 @@ updates:
         patterns:
           - '@logtape/*'
         update-types: ['minor', 'patch']
-      # `better-auth` (prod) needs `@better-auth/core` (dev) at the same
-      # release (#1956). Keep above `production` / `development`.
+      # Every Better Auth package peers on the same release (#1956). `core` and
+      # `oauth-provider` are direct pins, not `overrides`, because Dependabot
+      # never updates an override (#2393). Keep above `production` /
+      # `development`.
       better-auth:
         patterns:
           - 'better-auth'
