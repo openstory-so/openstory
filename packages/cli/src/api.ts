@@ -18,10 +18,14 @@ function readVersion(): string {
   return version;
 }
 
-/** The key allows 10 requests a second. Two are spare for anything else on that key. */
-const REQUESTS_PER_SECOND = 8;
+/** 10 accepts, then the counter resets only when the gap since the last one is more than a second. */
+const RATE_LIMIT_MAX = 10;
 const WINDOW_MS = 1000;
+/** Strictly past the server's `>` reset, including a missing or zero Retry-After. */
+const GAP_MS = WINDOW_MS + 1;
 const RATE_LIMIT_RETRIES = 5;
+
+type KeyWindow = { count: number; last: number | null };
 
 export type FetchClock = {
   now: () => number;
@@ -33,29 +37,26 @@ const realClock: FetchClock = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
-/**
- * Every request to OpenStory carries the CLI version; a 426 becomes the
- * update message. Requests stay under the key's rate limit, and a
- * RATE_LIMITED 429 waits for Retry-After and tries again.
- */
+/** Version header on each request. A 426 throws. A RATE_LIMITED 429 waits and tries again. */
 export function versionedFetch(
   fetchFn: typeof fetch,
   version: string = CLI_VERSION,
   clock: FetchClock = realClock
 ): typeof fetch {
-  const sent: number[] = [];
+  const keyWindow: KeyWindow = { count: 0, last: null };
   let tail = Promise.resolve();
   return async (input, init) => {
     for (let attempt = 0; ; attempt += 1) {
-      const slot = tail.then(() => takeSlot(sent, clock));
-      tail = slot.then(
-        () => undefined,
-        () => undefined
-      );
+      const slot = tail.then(() => takeSlot(keyWindow, clock));
+      tail = slot.catch(() => undefined);
       await slot;
       const headers = new Headers(init?.headers);
       headers.set(CLI_VERSION_HEADER, version);
       const response = await fetchFn(input, { ...init, headers });
+      // The server stamps the accept when it arrives. The response is later, so the next gap starts here.
+      if (keyWindow.last === null || clock.now() > keyWindow.last) {
+        keyWindow.last = clock.now();
+      }
       if (response.status === 426) {
         throw new Error(
           `OpenStory needs a newer @openstory/cli (you have ${version}). Run npx @openstory/cli@latest. ${await errorText(response)}`.trim()
@@ -76,23 +77,31 @@ export function versionedFetch(
   };
 }
 
-/** One slot in the rolling second, in line, so a burst cannot slip past the count. */
-async function takeSlot(sent: number[], clock: FetchClock): Promise<void> {
+/** 10 accepts, then a gap of more than a second. In line, so a burst cannot slip past. */
+async function takeSlot(
+  keyWindow: KeyWindow,
+  clock: FetchClock
+): Promise<void> {
   for (;;) {
     const now = clock.now();
-    while (sent[0] !== undefined && now - sent[0] >= WINDOW_MS) sent.shift();
-    if (sent.length < REQUESTS_PER_SECOND) {
-      sent.push(now);
+    if (keyWindow.last === null || now - keyWindow.last > WINDOW_MS) {
+      keyWindow.count = 1;
+      keyWindow.last = now;
       return;
     }
-    const oldest = sent[0] ?? now;
-    await clock.sleep(WINDOW_MS - (now - oldest));
+    if (keyWindow.count < RATE_LIMIT_MAX) {
+      keyWindow.count += 1;
+      keyWindow.last = now;
+      return;
+    }
+    await clock.sleep(keyWindow.last + GAP_MS - now);
   }
 }
 
 function retryAfterMs(response: Response): number {
-  const header = Number(response.headers.get('retry-after'));
-  if (!Number.isFinite(header) || header < 0) return WINDOW_MS;
+  const raw = response.headers.get('retry-after');
+  const header = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
+  if (!Number.isFinite(header) || header <= 0) return GAP_MS;
   return Math.min(header * 1000, 10_000);
 }
 

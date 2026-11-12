@@ -44,7 +44,25 @@ describe('versionedFetch', () => {
     );
   });
 
-  it('keeps a burst under 8 requests in any second', async () => {
+  it('sends 10, then waits until the gap since the last response is more than a second', async () => {
+    const clock = fakeClock();
+    const times: number[] = [];
+    const fetchFn = versionedFetch(
+      async () => {
+        times.push(clock.now());
+        await clock.sleep(40);
+        return new Response('ok');
+      },
+      '1',
+      clock
+    );
+    for (let i = 0; i < 11; i += 1) await fetchFn('https://os.test/x');
+    expect(times[9]).toBe(360);
+    expect(times[10]).toBe(1401);
+    expect(keyWouldDeny(times)).toBe(false);
+  });
+
+  it('does not let a parallel burst past the tenth accept', async () => {
     const clock = fakeClock();
     const times: number[] = [];
     const fetchFn = versionedFetch(
@@ -55,12 +73,11 @@ describe('versionedFetch', () => {
       '1',
       clock
     );
-    for (let i = 0; i < 12; i += 1) await fetchFn('https://os.test/x');
-    for (const time of times) {
-      const inWindow = times.filter((t) => time - t < 1000 && t <= time);
-      expect(inWindow.length).toBeLessThanOrEqual(8);
-    }
-    expect(times[8]).toBe(1000);
+    await Promise.all(
+      Array.from({ length: 12 }, () => fetchFn('https://os.test/x'))
+    );
+    expect(keyWouldDeny(times)).toBe(false);
+    expect(times.filter((t) => t === 0)).toHaveLength(10);
   });
 
   it('retries a rate-limited response after Retry-After', async () => {
@@ -91,6 +108,35 @@ describe('versionedFetch', () => {
     expect(clock.slept).toEqual([1000]);
   });
 
+  it('treats a zero or missing Retry-After as a gap of more than a second', async () => {
+    const cases: HeadersInit[] = [
+      { 'Retry-After': '0' },
+      {},
+      { 'Retry-After': 'Wed, 21 Oct 2015 07:28:00 GMT' },
+    ];
+    for (const headers of cases) {
+      const clock = fakeClock();
+      let calls = 0;
+      const fetchFn = versionedFetch(
+        async () => {
+          calls += 1;
+          if (calls === 1) {
+            return Response.json(
+              { error: { code: 'RATE_LIMITED', message: 'slow' } },
+              { status: 429, headers }
+            );
+          }
+          return new Response('ok');
+        },
+        '1',
+        clock
+      );
+      const response = await fetchFn('https://os.test/x');
+      expect(response.status).toBe(200);
+      expect(clock.slept).toEqual([1001]);
+    }
+  });
+
   it('returns a 429 that is not the key limit', async () => {
     let calls = 0;
     const fetchFn = versionedFetch(async () => {
@@ -102,6 +148,23 @@ describe('versionedFetch', () => {
     expect(await response.text()).toBe('pending');
   });
 });
+
+/** The api-key counter: reset only when the gap since the last accept is more than 1000ms. */
+function keyWouldDeny(times: number[]): boolean {
+  let count = 0;
+  let last: number | null = null;
+  for (const time of times) {
+    if (last === null || time - last > 1000) {
+      count = 1;
+      last = time;
+      continue;
+    }
+    if (count >= 10) return true;
+    count += 1;
+    last = time;
+  }
+  return false;
+}
 
 function fakeClock(): FetchClock & { slept: number[] } {
   let now = 0;
