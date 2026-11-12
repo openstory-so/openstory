@@ -10,7 +10,6 @@
  * tier wherever a real model is required.
  */
 
-import { elementKindFromFilename } from '@/cast/element-kind';
 import { ValidationError } from '@/platform/errors';
 import { organizationKeyPrefix } from '@/platform/server/storage/buckets';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
@@ -85,11 +84,23 @@ export function requireUploadExtension(
   return ext;
 }
 
-/** Refuses an image the likeness check cannot read, on a surface that also takes clips and audio. */
-export function requireReadableImage(filename: string): void {
-  if (elementKindFromFilename(filename) === 'image') {
-    requireUploadExtension(filename, 'image');
+/** What a surface that takes stills, clips and audio stores. FLAC is re-encoded by the caller. */
+const MIXED_UPLOAD_EXTENSIONS: readonly string[] = [
+  ...UPLOAD_EXTENSIONS.image,
+  ...UPLOAD_EXTENSIONS.video,
+  ...UPLOAD_EXTENSIONS.audio,
+  'flac',
+];
+
+/** The storage extension for a mixed-media upload; the one parse the path and the type both use. */
+export function requireMixedUploadExtension(filename: string): string {
+  const ext = /\.([a-zA-Z0-9]+)$/.exec(filename)?.[1]?.toLowerCase();
+  if (!ext || !MIXED_UPLOAD_EXTENSIONS.includes(ext)) {
+    throw new ValidationError(
+      `Unsupported file type. Accepted: ${MIXED_UPLOAD_EXTENSIONS.join(', ')}`
+    );
   }
+  return ext;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { getSignedUploadUrl } from '#storage';
-import { requireReadableImage } from '@/shots/server/upload-media';
+import { requireMixedUploadExtension } from '@/shots/server/upload-media';
 import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
@@ -24,10 +24,7 @@ import {
 import { DRAFT_ELEMENT_UPLOAD_PREFIX } from '@/cast/server/sequence-elements/storage-path';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import {
-  getExtensionFromUrl,
-  getMimeTypeFromExtension,
-} from '@/platform/server/storage/file';
+import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -49,8 +46,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
-    requireReadableImage(data.filename);
-    const ext = getExtensionFromUrl(data.filename);
+    const ext = requireMixedUploadExtension(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
     const storagePath = `${context.organizationId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
@@ -73,8 +69,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    requireReadableImage(data.filename);
-    const ext = getExtensionFromUrl(data.filename);
+    const ext = requireMixedUploadExtension(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
     const storagePath = `${context.organizationId}/${data.sequenceId}/${uploadId}.${ext}`;
