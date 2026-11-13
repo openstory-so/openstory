@@ -253,6 +253,7 @@ function makeEvent(
       estimateMicros: ESTIMATE,
       platformFeeBps: 0,
       oauthClientId: 'client-1',
+      appId: 'app-1',
       ...overrides,
     },
     instanceId: 'run-1',
@@ -382,7 +383,11 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
           requestId: 'req-1',
           gatewayJobId: 'job-1',
         },
-        attribution: { gatewayJobId: 'job-1', oauthClientId: 'client-1' },
+        attribution: {
+          gatewayJobId: 'job-1',
+          oauthClientId: 'client-1',
+          appId: 'app-1',
+        },
       }
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith('job-1', {

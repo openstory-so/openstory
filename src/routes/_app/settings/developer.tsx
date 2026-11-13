@@ -6,6 +6,7 @@
 
 import { DeveloperApiKeySettings } from '@/ui/settings/developer-api-key-settings';
 import { DeveloperAuthorizedApps } from '@/ui/settings/developer-authorized-apps';
+import { GatewayAppsSettings } from '@/gateway/ui/gateway-apps-settings';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_app/settings/developer')({
@@ -18,6 +19,7 @@ function DeveloperPage() {
     <div className="flex flex-col gap-6">
       <DeveloperApiKeySettings />
       <DeveloperAuthorizedApps />
+      <GatewayAppsSettings />
     </div>
   );
 }

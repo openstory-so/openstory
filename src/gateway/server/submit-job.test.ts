@@ -22,6 +22,7 @@ import {
   chargeLines,
   creditReservations,
   credits,
+  gatewayGrants,
   gatewayJobs,
   organization,
   organizationApiKeys,
@@ -279,6 +280,13 @@ beforeAll(async () => {
     keyHint: 'x',
     addedBy: userId,
   });
+  // The user-pays submits below spend under this grant.
+  await db.insert(gatewayGrants).values({
+    oauthClientId: 'client-1',
+    userId,
+    organizationId,
+    monthlyCapMicros: 1_000_000_000,
+  });
 });
 
 afterAll(async () => {
@@ -337,6 +345,7 @@ describe('submitGatewayJob', () => {
         estimateMicros: 400_000,
         platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
         oauthClientId: null,
+        appId: null,
       },
       { deduplicationId: `gateway-${job.id}` }
     );

@@ -10,6 +10,8 @@
  */
 
 import { Button } from '@/ui/shadcn/button';
+import { Input } from '@/ui/shadcn/input';
+import { Label } from '@/ui/shadcn/label';
 import {
   Card,
   CardContent,
@@ -32,13 +34,19 @@ import {
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
 import { OrganizationSelect } from '@/platform/ui/organization-select';
 import { errorMessage } from '@/platform/errors';
+import {
+  DEFAULT_MONTHLY_CAP_USD,
+  MAX_MONTHLY_CAP_USD,
+  MIN_MONTHLY_CAP_USD,
+  monthlyCapUsdToMicros,
+} from '@/platform/auth/oauth-spend-cap';
 import { useHydrated } from '@/ui/use-hydrated';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { Check } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { toast } from 'sonner';
 
 const CONSENT_STALE_MESSAGE =
@@ -129,6 +137,66 @@ function ConsentPage() {
   );
 }
 
+/** The cap the input starts at for an organization: its current one, else the default. */
+function startingCapUsd(
+  consent: OAuthConsentContext,
+  organizationId: string
+): string {
+  const current = consent.currentCaps[organizationId];
+  return String(
+    current === undefined ? DEFAULT_MONTHLY_CAP_USD : current / 1_000_000
+  );
+}
+
+/** Whole dollars within the bounds, or null. */
+function parseCapUsd(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const usd = Number(value);
+  return usd >= MIN_MONTHLY_CAP_USD && usd <= MAX_MONTHLY_CAP_USD ? usd : null;
+}
+
+function SpendCapField({
+  value,
+  onChange,
+  invalid,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  invalid: boolean;
+  onSubmit: () => void;
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>Monthly spend cap (USD)</Label>
+      <Input
+        id={id}
+        name="monthlyCapUsd"
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        pattern="[0-9]*"
+        className="text-base"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onSubmit();
+        }}
+        aria-invalid={invalid}
+        aria-describedby={hintId}
+      />
+      <p id={hintId} className="text-sm text-muted-foreground">
+        This app can spend up to this amount per calendar month (UTC) from the
+        selected organization’s credits. Jobs past it are refused. Whole
+        dollars, ${MIN_MONTHLY_CAP_USD} to ${MAX_MONTHLY_CAP_USD}. You can
+        change it under Settings → Developer.
+      </p>
+    </div>
+  );
+}
+
 function ConsentDecision({
   consent,
   oauthQuery,
@@ -141,12 +209,25 @@ function ConsentDecision({
   const [organizationId, setOrganizationId] = useState(
     consent.activeOrganizationId
   );
+  const [capUsd, setCapUsd] = useState(() =>
+    startingCapUsd(consent, consent.activeOrganizationId)
+  );
+  const parsedCapUsd = parseCapUsd(capUsd);
+  const capInvalid = consent.needsSpendCap && parsedCapUsd === null;
 
   const decide = useMutation({
     // Suppress the global MutationCache toast — we render our own below.
     mutationFn: (accept: boolean) =>
       decideOAuthConsentFn({
-        data: { accept, oauthQuery, organizationId },
+        data: {
+          accept,
+          oauthQuery,
+          organizationId,
+          monthlyCapMicros:
+            consent.needsSpendCap && parsedCapUsd !== null
+              ? monthlyCapUsdToMicros(parsedCapUsd)
+              : null,
+        },
       }),
     onSuccess: ({ url }, accept) => {
       if (!url || (!/^https?:\/\//i.test(url) && !url.startsWith('/'))) {
@@ -230,8 +311,24 @@ function ConsentDecision({
       <OrganizationSelect
         organizations={organizations}
         value={organizationId}
-        onValueChange={setOrganizationId}
+        onValueChange={(next) => {
+          setOrganizationId(next);
+          setCapUsd(startingCapUsd(consent, next));
+        }}
       />
+
+      {consent.needsSpendCap ? (
+        <SpendCapField
+          value={capUsd}
+          onChange={setCapUsd}
+          invalid={capInvalid}
+          onSubmit={() => {
+            if (hydrated && !decide.isPending && !capInvalid) {
+              decide.mutate(true);
+            }
+          }}
+        />
+      ) : null}
 
       <p className="text-sm text-muted-foreground">
         Anything it generates spends this organization’s credits. To use another
@@ -248,7 +345,7 @@ function ConsentDecision({
           Deny
         </Button>
         <Button
-          disabled={!hydrated || decide.isPending}
+          disabled={!hydrated || decide.isPending || capInvalid}
           onClick={() => decide.mutate(true)}
         >
           {!hydrated ? 'Loading…' : decide.isPending ? 'Working…' : 'Approve'}

@@ -33,6 +33,7 @@ import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
 import {
   EXAMPLE_GATEWAY_SUBMIT,
+  gatewayGrantResourceSchema,
   gatewayJobResourceSchema,
   gatewayModelsResultSchema,
 } from '@/gateway/server/api-documents';
@@ -887,14 +888,36 @@ export function buildOpenApiDocument(): JsonObject {
             ),
             '401': errorResponse('Missing or invalid API key.'),
             '402': errorResponse(
-              'INSUFFICIENT_CREDITS — the organization cannot cover the estimate.'
+              'INSUFFICIENT_CREDITS — the organization cannot cover the estimate. SPEND_CAP_EXCEEDED — an OAuth caller would pass the monthly cap the user set; `details` has `monthlyCapMicros`, `spentMicros`, `heldMicros`, `remainingMicros` and `requestedMicros`.'
             ),
             '404': errorResponse('Unknown provider or model.'),
             '403': errorResponse(
-              'No organization, a restricted account, or an OAuth token without `models:invoke`.'
+              'No organization, a restricted account, or an OAuth token without `models:invoke`. GRANT_REQUIRED — an OAuth caller with no live grant (never approved with a cap, or revoked). APP_SUSPENDED — the client is a suspended app.'
             ),
             '429': errorResponse(
               'RATE_LIMITED — too many submits for this organization; honour Retry-After.'
+            ),
+          },
+        },
+      },
+      [`${API_V1_BASE}/gateway/grant`]: {
+        get: {
+          tags: ['gateway'],
+          summary: "Get the caller's spend cap",
+          description:
+            "Who pays for the caller's jobs and, for an OAuth token, the monthly cap the user set at consent, what this client spent and holds this UTC month for the organization, and what remains. An `osk_` key reads `payer: 'app'` with the cap fields null: its organization pays with no cap. OAuth tokens need the `models:invoke` scope.",
+          responses: {
+            '200': {
+              description: "The caller's grant.",
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayGrant' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse(
+              'No organization, an OAuth token without `models:invoke`, or GRANT_REQUIRED — no live grant for this client.'
             ),
           },
         },
@@ -966,6 +989,7 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(errorEnvelopeSchema),
         ...componentDefs(gatewayModelsResultSchema),
         ...componentDefs(gatewayJobResourceSchema),
+        ...componentDefs(gatewayGrantResourceSchema),
       },
     },
   };
