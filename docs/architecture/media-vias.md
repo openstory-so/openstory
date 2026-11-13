@@ -113,7 +113,11 @@ when the request ends (`releaseGeminiFiles`), rather than caching a URI that
 expires in 48 hours. The upload runs in the `step.do` that spends it. A
 location refusal at upload re-runs the call on the no-key via, where the
 still goes by URL as any off-Google still does; if only the generate call is
-refused, the re-run resolves its sources again for the new via.
+refused, the re-run resolves its sources again for the new via. Script
+enhancement cannot resolve again inside `callLLMStream`'s re-run, so with an
+uploaded still it refuses the re-run and says "Gemini isn't available from
+this region." A still with no image type in its bytes or its stored
+metadata fails rather than being labelled PNG.
 
 **Google refuses some locations.** Gemini judges the caller's address, and a Worker runs in the colo nearest the user, so Hong Kong and mainland China calls get `400 User location is not supported for the API use.`
 

@@ -244,9 +244,8 @@ async function storedImageMimeType(key: string): Promise<string> {
   const bytes = head
     ? new Uint8Array(await new Response(head.body).arrayBuffer())
     : new Uint8Array();
-  return (
-    sniffImageMimeType(bytes) ??
-    (await storageObjectContentType(key)) ??
-    'image/png'
-  );
+  const type =
+    sniffImageMimeType(bytes) ?? (await storageObjectContentType(key));
+  if (!type) throw new Error(`Stored still has no image type: ${key}`);
+  return type;
 }

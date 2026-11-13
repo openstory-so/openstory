@@ -1,6 +1,7 @@
 /** A large stored still reaches native Gemini through the Files API, never whole in memory; a small one stays inline (#2400). */
 
 import { describe, expect, it, vi } from 'vitest';
+import type { GeminiFile } from './gemini-files';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
 let size = 0;
@@ -31,7 +32,7 @@ const { GEMINI_INLINE_STILL_MAX_BYTES, geminiStillSource } =
 describe('geminiStillSource', () => {
   it('inlines a still at the threshold', async () => {
     size = GEMINI_INLINE_STILL_MAX_BYTES;
-    const uploaded: never[] = [];
+    const uploaded: GeminiFile[] = [];
     await expect(
       geminiStillSource('/r2/stills/a.png', 'k', uploaded)
     ).resolves.toMatchObject({ type: 'data' });
@@ -45,9 +46,10 @@ describe('geminiStillSource', () => {
       'fetch',
       vi.fn(async (url: string, init: RequestInit) => {
         if (url.endsWith('/upload/v1beta/files')) {
-          declaredType = new Headers(init.headers).get(
-            'x-goog-upload-header-content-type'
-          )!;
+          declaredType =
+            new Headers(init.headers).get(
+              'x-goog-upload-header-content-type'
+            ) ?? '';
           return new Response('{}', {
             headers: { 'x-goog-upload-url': 'https://upload.example/1' },
           });
@@ -62,10 +64,10 @@ describe('geminiStillSource', () => {
         });
       })
     );
-    const uploaded: Array<{ name: string }> = [];
+    const uploaded: GeminiFile[] = [];
     inline.mockClear();
     await expect(
-      geminiStillSource('/r2/stills/big.png', 'k', uploaded as never)
+      geminiStillSource('/r2/stills/big.png', 'k', uploaded)
     ).resolves.toEqual({
       type: 'url',
       value: 'https://files.example/s',
