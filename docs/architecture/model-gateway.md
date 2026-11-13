@@ -155,6 +155,14 @@ POST /api/v1/gateway/grok/grok-imagine-video-1.5
   refused.
 - Nothing is defaulted, snapped or renamed: what the provider's schema
   refuses is a `400`, and what it accepts is sent.
+- Three refusals keep the price honest (`validatedBody`): on Grok and
+  BytePlus, which read the model from the body, the path's model is always
+  written there, whatever the schema says; a top-level field the schema does
+  not name is refused, not dropped; and a count field (`n`, `num_images`, …)
+  above 1 that the card does not price is refused.
+- A media string must be a plain `http(s)` URL exactly as sent, or one of our
+  own `/r2/` paths. `data:` and `blob:` in any spelling, a protocol-relative
+  URL, and any other scheme are refused (`gatedUrls`).
 
 ### Models
 

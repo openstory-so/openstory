@@ -26,7 +26,7 @@ import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
-import { RateCardError } from '@modelschemas/rate-card/evaluator';
+import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
 import { z } from 'zod';
 
 const logger = getLogger(['openstory', 'gateway', 'submit']);
@@ -52,21 +52,56 @@ export function readIdempotencyKey(headers: Headers): string | null {
   return key;
 }
 
-/** The body checked against the provider's schema, with the path's model on it where the schema has one. */
+/** Providers that read the model from the body; the path's model is always written there. */
+const MODEL_IN_BODY: ReadonlySet<GatewayProvider> = new Set([
+  'grok',
+  'byteplus',
+]);
+
+// ponytail: a name list, not the card. Drop it when every card prices its own count lever.
+const COUNT_FIELDS = [
+  'n',
+  'num_images',
+  'num_outputs',
+  'num_videos',
+  'number_of_images',
+  'sample_count',
+  'max_images',
+];
+
+function isObject(
+  value: JsonValue | undefined
+): value is { [key: string]: JsonValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The body checked against the provider's schema. Three refusals keep the
+ * price honest: a `model` that differs from the path, a field the schema
+ * does not name, and more than one output the card does not price.
+ */
 function validatedBody(
   model: GatewayModel,
   raw: GatewayJobInput
 ): GatewayJobInput {
-  const properties = model.inputSchema.properties;
-  const takesModel =
-    typeof properties === 'object' &&
-    properties !== null &&
-    !Array.isArray(properties) &&
-    'model' in properties;
-  if (takesModel && raw.model !== undefined && raw.model !== model.id) {
+  const modelInBody = MODEL_IN_BODY.has(model.provider);
+  if (modelInBody && raw.model !== undefined && raw.model !== model.id) {
     throw new ValidationError('`model` in the body differs from the path');
   }
-  const body = takesModel ? { ...raw, model: model.id } : raw;
+  const body = modelInBody ? { ...raw, model: model.id } : raw;
+
+  const { properties, additionalProperties } = model.inputSchema;
+  if (isObject(properties) && !additionalProperties) {
+    const unknown = Object.keys(body).filter(
+      (key) =>
+        !Object.hasOwn(properties, key) && !(modelInBody && key === 'model')
+    );
+    if (unknown.length > 0) {
+      throw new ValidationError(
+        `The model schema has no field named ${unknown.join(', ')}`
+      );
+    }
+  }
   const parsed = z.fromJSONSchema(model.inputSchema).safeParse(body);
   if (!parsed.success) {
     throw new ValidationError('The body does not match the model schema', {
@@ -76,26 +111,53 @@ function validatedBody(
       })),
     });
   }
+
+  const priced = new Set(cardParams(model.card).request);
+  const unpriced = COUNT_FIELDS.find((field) => {
+    const count = body[field];
+    return typeof count === 'number' && count > 1 && !priced.has(field);
+  });
+  if (unpriced) {
+    throw new ValidationError(
+      `The rate card does not price \`${unpriced}\` above 1 for this model`
+    );
+  }
   return body;
 }
 
+const INLINE = 'Send media as a URL, not inline data';
+
 /**
- * Every URL in the body, for the likeness check. Inline media is refused:
- * the check is keyed on a URL, and bytes it cannot see must not reach a model.
+ * Every URL in the body, for the likeness check. Anything else that could
+ * carry media is refused: the check is keyed on a URL, and bytes it cannot
+ * see must not reach a model.
  */
 export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   if (typeof body === 'string') {
-    if (body.startsWith('data:')) {
-      throw new ValidationError('Send media as a URL, not inline data');
+    const trimmed = body.trim();
+    // `data:<type>,<bytes>` and `blob:<url>`; a prompt that starts "Data: ..." is neither.
+    if (/^data:[^\s,]*,/i.test(trimmed) || /^blob:\S/i.test(trimmed)) {
+      throw new ValidationError(INLINE);
     }
-    // Our own stored uploads are origin-relative; they are checked too.
-    if (/^https?:\/\//i.test(body) || body.startsWith('/r2/')) found.push(body);
+    const scheme = /^([a-z][a-z0-9+.-]*):\/\//i
+      .exec(trimmed)?.[1]
+      ?.toLowerCase();
+    if (scheme !== undefined || trimmed.startsWith('//')) {
+      // Only http(s), exactly as sent: a provider may fetch what we did not check.
+      if ((scheme !== 'http' && scheme !== 'https') || trimmed !== body) {
+        throw new ValidationError('Media URLs must be plain http(s) URLs');
+      }
+      found.push(body);
+    } else if (trimmed.startsWith('/r2/')) {
+      // Our own stored uploads are origin-relative; they are checked too.
+      found.push(trimmed);
+    }
   } else if (Array.isArray(body)) {
     for (const item of body) gatedUrls(item, found);
   } else if (body !== null && typeof body === 'object') {
     for (const [key, value] of Object.entries(body)) {
       if (key === 'inlineData' || key === 'inline_data') {
-        throw new ValidationError('Send media as a URL, not inline data');
+        throw new ValidationError(INLINE);
       }
       gatedUrls(value, found);
     }
