@@ -46,6 +46,11 @@ export type GatewayAppSkuStatus = (typeof APP_SKU_STATUSES)[number];
 /** A SKU's price per key, in microdollars. */
 export type SkuPrices = Record<string, number>;
 
+/** A key's price, own keys only: `constructor` must not read `Object`'s. */
+export function skuPriceOf(prices: SkuPrices, key: string): number | undefined {
+  return Object.hasOwn(prices, key) ? prices[key] : undefined;
+}
+
 /** What an app charges a user: its margin and its active SKUs' prices. */
 export type AppTerms = { marginBps: number; skuPrices: SkuPrices };
 
@@ -85,7 +90,7 @@ export function appliedMarginBps(
 export function boundedTerms(shown: AppTerms, current: AppTerms): AppTerms {
   const skuPrices: SkuPrices = {};
   for (const [key, price] of Object.entries(current.skuPrices)) {
-    const seen = shown.skuPrices[key];
+    const seen = skuPriceOf(shown.skuPrices, key);
     if (seen !== undefined) skuPrices[key] = Math.min(seen, price);
   }
   return {
@@ -101,7 +106,7 @@ export function termsNeedApproval(
 ): boolean {
   if (current.marginBps > accepted.marginBps) return true;
   return Object.entries(current.skuPrices).some(([key, price]) => {
-    const ok = accepted.skuPrices[key];
+    const ok = skuPriceOf(accepted.skuPrices, key);
     return ok === undefined || price > ok;
   });
 }

@@ -257,6 +257,22 @@ describe('createAppCharge', () => {
     await nothingCharged();
   });
 
+  it("is refused for a SKU keyed like one of Object's own properties", async () => {
+    // `{}.constructor` is a function, and no price is ever above a function.
+    await db.insert(gatewayAppSkus).values({
+      appId,
+      key: 'constructor',
+      name: 'Never approved',
+      priceMicros: PRICE,
+    });
+    expect(await refusal(charge({ sku: 'constructor' }))).toMatchObject({
+      status: 403,
+      code: 'SKU_NOT_APPROVED',
+      details: { sku: 'constructor', acceptedPriceMicros: null },
+    });
+    await nothingCharged();
+  });
+
   it('is refused when the SKU changes between the check and the hold', async () => {
     const owner = createScopedDb(appOrganizationId, userId).gatewayApps;
     const racing = (change: () => Promise<unknown>) => {

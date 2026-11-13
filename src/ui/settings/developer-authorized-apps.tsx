@@ -35,6 +35,7 @@ import {
 } from '@/platform/oauth-consent.fn';
 import {
   formatMarginBps,
+  skuPriceOf,
   termsNeedApproval,
   termsOfView,
 } from '@/gateway/apps';
@@ -347,7 +348,7 @@ function AppTerms({ app }: { app: AuthorizedApp }) {
           </dd>
         </div>
         {appTerms.skus.map((sku) => {
-          const ok = accepted.skuPrices[sku.key];
+          const ok = skuPriceOf(accepted.skuPrices, sku.key);
           const price = usd(sku.priceMicros);
           return (
             <div key={sku.key} className="flex justify-between gap-2">

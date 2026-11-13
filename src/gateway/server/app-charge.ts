@@ -11,6 +11,7 @@ import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { SettledChargeLine } from '@/billing/server/db/billing';
 import { InsufficientCreditsError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { skuPriceOf } from '@/gateway/apps';
 import {
   AppNotRegisteredError,
   IdempotencyKeyError,
@@ -71,7 +72,9 @@ async function assertStillApproved(
     oauthClientId,
     scopedDb.organizationId
   );
-  const accepted = standing?.accepted.skuPrices[sku.key];
+  const accepted = standing
+    ? skuPriceOf(standing.accepted.skuPrices, sku.key)
+    : undefined;
   if (
     sku.priceMicros !== charged.priceMicros ||
     accepted === undefined ||
@@ -110,7 +113,7 @@ export async function createAppCharge(input: {
   }
   const sku = await scopedDb.gatewayApps.getActiveSku(app.id, input.sku);
   if (!sku) throw new UnknownSkuError(input.sku);
-  const accepted = standing.accepted.skuPrices[sku.key];
+  const accepted = skuPriceOf(standing.accepted.skuPrices, sku.key);
   if (accepted === undefined || sku.priceMicros > accepted) {
     throw new SkuNotApprovedError({
       sku: sku.key,
