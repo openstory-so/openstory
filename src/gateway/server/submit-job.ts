@@ -18,6 +18,10 @@ import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
+  GATEWAY_PLATFORM_FEE_BPS,
+  gatewayCharge,
+} from '@/gateway/charge-lines';
+import {
   BYTEPLUS_ENDPOINTS,
   GATEWAY_VIA,
   type GatewayJobInput,
@@ -226,6 +230,13 @@ export async function submitGatewayJob(
     );
   }
 
+  // The hold covers every line of the charge the estimate would settle to.
+  const platformFeeBps = GATEWAY_PLATFORM_FEE_BPS;
+  const hold = gatewayCharge({
+    providerCostMicros: estimate,
+    platformFeeBps,
+  }).totalMicros;
+
   const { job, created } = await scopedDb.gatewayJobs.create({
     kind: model.kind,
     modelKey: model.id,
@@ -239,7 +250,7 @@ export async function submitGatewayJob(
   // Platform keys only, so no BYOK skip: `providers: []` always holds.
   let reservationId: string | undefined;
   try {
-    reservationId = await reserveRunCredits(scopedDb, estimate, {
+    reservationId = await reserveRunCredits(scopedDb, hold, {
       providers: [],
       idempotencyKey: `gateway:${job.id}`,
       errorMessage: 'Insufficient credits for this model',
@@ -260,7 +271,9 @@ export async function submitGatewayJob(
     target: { modelId: model.id, endpointId: model.endpointId },
     card: model.card,
     input,
-    holdMicros: estimate,
+    estimateMicros: estimate,
+    platformFeeBps,
+    oauthClientId: ctx.oauthClientId,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
