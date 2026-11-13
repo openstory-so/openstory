@@ -9,16 +9,14 @@
  */
 
 import { getSignedUploadUrl } from '#storage';
+import { requireMixedUploadExtension } from '@/shots/server/upload-media';
 import {
   ORGANIZATION_USER_UPLOAD_PREFIX,
   organizationUserUploadStoragePath,
 } from '@/cast/server/organization-user-upload';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import {
-  getExtensionFromUrl,
-  getMimeTypeFromExtension,
-} from '@/platform/server/storage/file';
+import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { listFiles } from '@/platform/server/storage/storage-cloudflare';
 import {
   createStudioAssets,
@@ -92,7 +90,7 @@ export const presignStudioUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
-    const ext = getExtensionFromUrl(data.filename);
+    const ext = requireMixedUploadExtension(data.filename);
     return getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,
       organizationUserUploadStoragePath(

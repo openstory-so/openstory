@@ -5,7 +5,7 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'google-region']);
 
-const GEMINI_REGION_REFUSED_MESSAGE =
+export const GEMINI_REGION_REFUSED_MESSAGE =
   "Gemini isn't available from this region.";
 
 export const GOOGLE_REGION_BLOCK_TTL_MS = 60 * 60 * 1000;

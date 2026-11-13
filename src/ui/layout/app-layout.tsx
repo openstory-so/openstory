@@ -21,12 +21,6 @@ import { AssistantPanel } from '@/assistant/ui/assistant-panel';
 import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
 import { usePageContext } from '@/assistant/ui/use-page-context';
 import { useAssistantState } from '@/assistant/ui/assistant-store';
-import { useUser } from '@/platform/ui/use-user';
-import { rememberLastPage } from '@/platform/ui/auth/last-page';
-import { Button } from '@/ui/shadcn/button';
-import { SITE_CONFIG } from '@/ui/marketing/constants';
-import { GitHubIcon } from '@/ui/icons/github-icon';
-import { Link, useRouterState } from '@tanstack/react-router';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 
@@ -108,12 +102,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   ...props
 }) => {
   const pageContext = usePageContext();
-  const { data: user } = useUser();
-  const { pathname, searchStr } = useRouterState({
-    select: (s) => s.location,
-  });
-  // Signed-out front page: no sidebar, links and Sign in top right (#2372).
-  const bare = !user && pathname === '/';
   // Starters follow everything the composer shows: the route, what a page
   // registered (the Studio viewer), and what a button handed over.
   const { extraContext, draft } = useAssistantState();
@@ -136,76 +124,30 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <UploadRightsGateProvider>
         <TooltipProvider>
           <SidebarProvider className="h-svh">
-            {!bare && <AppSidebar />}
+            <AppSidebar />
             <AddCreditsDialog />
             <GlobalBillingGateDialog />
             <SidebarInset className="min-w-0 min-h-0">
-              {bare ? (
-                <header className="flex h-16 shrink-0 items-center justify-end px-6">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      asChild
-                      size="lg"
-                      variant="ghost"
-                      className="hidden sm:inline-flex"
-                    >
-                      <Link to="/docs">Docs</Link>
-                    </Button>
-                    <Button
-                      asChild
-                      size="lg"
-                      variant="ghost"
-                      className="hidden sm:inline-flex"
-                    >
-                      <Link to="/pricing">Pricing</Link>
-                    </Button>
-                    <Button
-                      asChild
-                      size="lg"
-                      variant="outline"
-                      className="px-5"
-                    >
-                      <a
-                        href={SITE_CONFIG.githubHref}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <GitHubIcon className="size-4" />
-                        GitHub
-                      </a>
-                    </Button>
-                    <Button asChild size="lg" className="px-5">
-                      <Link
-                        to="/login"
-                        onClick={() => rememberLastPage(`/${searchStr}`)}
-                      >
-                        Sign in
-                      </Link>
-                    </Button>
-                  </div>
-                </header>
-              ) : (
-                <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-                  <SidebarTrigger className="-ml-1" />
-                  <Separator
-                    orientation="vertical"
-                    className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <Breadcrumbs />
-                  </div>
-                  {/* Sequence generation progress portals in here (#1427,
-                    #2102). `@container` so the chip sizes its label against
-                    the room it has, which needs the slot to be `flex-1`;
-                    `empty:hidden` so an idle slot takes nothing from the
-                    breadcrumb. */}
-                  <div
-                    id={SEQUENCE_HEADER_SLOT_ID}
-                    className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
-                  />
-                  <AssistantToggle />
-                </header>
-              )}
+              <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator
+                  orientation="vertical"
+                  className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+                />
+                <div className="min-w-0 flex-1">
+                  <Breadcrumbs />
+                </div>
+                {/* Sequence generation progress portals in here (#1427,
+                  #2102). `@container` so the chip sizes its label against
+                  the room it has, which needs the slot to be `flex-1`;
+                  `empty:hidden` so an idle slot takes nothing from the
+                  breadcrumb. */}
+                <div
+                  id={SEQUENCE_HEADER_SLOT_ID}
+                  className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
+                />
+                <AssistantToggle />
+              </header>
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />
               <AutoTopUpFailedBanner />

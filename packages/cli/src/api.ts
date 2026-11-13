@@ -18,22 +18,100 @@ function readVersion(): string {
   return version;
 }
 
-/** Every request to OpenStory carries the CLI version; a 426 becomes the update message. */
+/** 10 accepts, then the counter resets only when the gap since the last one is more than a second. */
+const RATE_LIMIT_MAX = 10;
+const WINDOW_MS = 1000;
+/** Strictly past the server's `>` reset, including a missing or zero Retry-After. */
+const GAP_MS = WINDOW_MS + 1;
+const RATE_LIMIT_RETRIES = 5;
+
+type KeyWindow = { count: number; last: number | null };
+
+export type FetchClock = {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+};
+
+const realClock: FetchClock = {
+  now: Date.now,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/** Version header on each request. A 426 throws. A RATE_LIMITED 429 waits and tries again. */
 export function versionedFetch(
   fetchFn: typeof fetch,
-  version: string = CLI_VERSION
+  version: string = CLI_VERSION,
+  clock: FetchClock = realClock
 ): typeof fetch {
+  const keyWindow: KeyWindow = { count: 0, last: null };
+  let tail = Promise.resolve();
   return async (input, init) => {
-    const headers = new Headers(init?.headers);
-    headers.set(CLI_VERSION_HEADER, version);
-    const response = await fetchFn(input, { ...init, headers });
-    if (response.status === 426) {
-      throw new Error(
-        `OpenStory needs a newer @openstory/cli (you have ${version}). Run npx @openstory/cli@latest. ${await errorText(response)}`.trim()
-      );
+    for (let attempt = 0; ; attempt += 1) {
+      const slot = tail.then(() => takeSlot(keyWindow, clock));
+      tail = slot.catch(() => undefined);
+      await slot;
+      const headers = new Headers(init?.headers);
+      headers.set(CLI_VERSION_HEADER, version);
+      const response = await fetchFn(input, { ...init, headers });
+      // The server stamps the accept when it arrives. The response is later, so the next gap starts here.
+      if (keyWindow.last === null || clock.now() > keyWindow.last) {
+        keyWindow.last = clock.now();
+      }
+      if (response.status === 426) {
+        throw new Error(
+          `OpenStory needs a newer @openstory/cli (you have ${version}). Run npx @openstory/cli@latest. ${await errorText(response)}`.trim()
+        );
+      }
+      if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) {
+        return response;
+      }
+      const text = await response.text();
+      if (rateLimitCode(text) !== 'RATE_LIMITED') {
+        return new Response(text, {
+          status: response.status,
+          headers: response.headers,
+        });
+      }
+      await clock.sleep(retryAfterMs(response));
     }
-    return response;
   };
+}
+
+/** 10 accepts, then a gap of more than a second. In line, so a burst cannot slip past. */
+async function takeSlot(
+  keyWindow: KeyWindow,
+  clock: FetchClock
+): Promise<void> {
+  for (;;) {
+    const now = clock.now();
+    if (keyWindow.last === null || now - keyWindow.last > WINDOW_MS) {
+      keyWindow.count = 1;
+      keyWindow.last = now;
+      return;
+    }
+    if (keyWindow.count < RATE_LIMIT_MAX) {
+      keyWindow.count += 1;
+      keyWindow.last = now;
+      return;
+    }
+    await clock.sleep(keyWindow.last + GAP_MS - now);
+  }
+}
+
+function retryAfterMs(response: Response): number {
+  const raw = response.headers.get('retry-after');
+  const header = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
+  if (!Number.isFinite(header) || header <= 0) return GAP_MS;
+  return Math.min(header * 1000, 10_000);
+}
+
+function rateLimitCode(text: string): string | null {
+  try {
+    const error = recordOf(recordOf(JSON.parse(text)).error);
+    return typeof error.code === 'string' ? error.code : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A JSON object's fields, or none: a wrong shape reads as missing fields. */

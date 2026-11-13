@@ -19,12 +19,10 @@
  */
 
 import { getSignedUploadUrl } from '#storage';
-import { ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import {
-  resolveUploadExtension,
-  uploadExtensionList,
+  requireUploadExtension,
   type UploadMediaSurface,
 } from '@/shots/server/upload-media';
 import {
@@ -54,25 +52,6 @@ import {
 } from '@/shots/server/media-upload';
 import { generateId } from '@/platform/id';
 import { uploadSceneDialogue } from '@/shots/server/scene-dialogue-upload';
-
-/**
- * Extension for an upload, rejecting anything outside the surface's allow-list.
- * The PUT route trusts its `contentType` query param, so this is the only
- * server-side control over what lands in a bucket the worker serves
- * same-origin — an `.svg` still would be a stored-XSS vector on `/r2/`.
- */
-function requireUploadExtension(
-  filename: string,
-  surface: UploadMediaSurface
-): string {
-  const ext = resolveUploadExtension(filename, surface);
-  if (!ext) {
-    throw new ValidationError(
-      `Unsupported ${surface} file type. Accepted: ${uploadExtensionList(surface)}`
-    );
-  }
-  return ext;
-}
 
 function signedUpload(
   bucket: StorageBucket,

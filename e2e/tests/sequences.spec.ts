@@ -75,10 +75,10 @@ test.describe('Sequences', () => {
     await expect(page.getByText('Failed to load sequences')).toHaveCount(0);
   });
 
-  test('home page has script input', async ({ page }) => {
+  test('home page sends a signed-in user to the composer', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/sequences/new');
     // The script field is a TipTap-backed contenteditable wrapped in the
     // MarkdownEditor component. Target it by data-slot so the assertion is
     // resilient to internal ProseMirror DOM shape.

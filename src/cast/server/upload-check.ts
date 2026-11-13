@@ -172,9 +172,10 @@ async function latestCheckRun(
  * the check cannot read) ends the run under its error code, so the client
  * can still offer what fixes it.
  */
-function checkFailure(run: CheckRun): OpenStoryError {
+export function checkFailure(run: CheckRun): OpenStoryError {
+  // The engine prefixes the error's class: `Error: CODE: message`.
   const [, code, message] =
-    /^([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '') ?? [];
+    /^(?:\w*Error: )?([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '') ?? [];
   return code && message
     ? new OpenStoryError(message, code, 400)
     : new OpenStoryError(

@@ -26,6 +26,11 @@ import {
   withLlmRateLimitRetry,
 } from '@/models/server/quota-retry';
 import { resolveGoogleKeyForNewCall } from '@/models/server/google-key';
+import {
+  geminiStillSource,
+  releaseGeminiFiles,
+  type GeminiFile,
+} from '@/models/server/gemini-files';
 import { withGoogleRegionFallback } from '@/models/google-region';
 import { isNativeBytePlusImageModel } from '@/models/models';
 import type { MediaVia } from '@/models/via';
@@ -48,7 +53,6 @@ import {
 import {
   ensureExternallyFetchableUrls,
   toDataOrCdnUrl,
-  toVisionImageSource,
 } from '@/platform/server/storage/external-url';
 import {
   generateImage,
@@ -243,12 +247,16 @@ async function generateImageInternal(
         throw new Error('Google image via selected with no Google key');
       }
       const gemini = buildGeminiImageRequest(rawParams);
+      const uploadedStills: GeminiFile[] = [];
       const referenceParts = await Promise.all(
         gemini.referenceImageUrls.map(async (url) => ({
           type: 'image' as const,
-          source: await toVisionImageSource(url, undefined, { inline: true }),
+          source: await geminiStillSource(url, googleKey.key, uploadedStills),
         }))
-      );
+      ).catch(async (error: unknown) => {
+        await releaseGeminiFiles(uploadedStills, googleKey.key);
+        throw error;
+      });
       const env = getEnv();
       const geminiAdapter = {
         ...(env.GEMINI_BASE_URL && {
@@ -258,27 +266,31 @@ async function generateImageInternal(
       const prompt = referenceParts.length
         ? [{ type: 'text' as const, content: gemini.prompt }, ...referenceParts]
         : gemini.prompt;
-      result = await withLlmRateLimitRetry('gemini-image', () =>
-        generateImage({
-          adapter: createGeminiImage(
-            gemini.nativeModel,
-            googleKey.key,
-            geminiAdapter
-          ),
-          prompt,
-          threadId,
-          size: gemini.size,
-          numberOfImages: gemini.numImages,
-          ...(gemini.minimalThinking && {
-            modelOptions: {
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-            },
-          }),
-          timeout: FAL_GENERATION_TIMEOUT_MS,
-          stream: false,
-          debug: false,
-        })
-      );
+      try {
+        result = await withLlmRateLimitRetry('gemini-image', () =>
+          generateImage({
+            adapter: createGeminiImage(
+              gemini.nativeModel,
+              googleKey.key,
+              geminiAdapter
+            ),
+            prompt,
+            threadId,
+            size: gemini.size,
+            numberOfImages: gemini.numImages,
+            ...(gemini.minimalThinking && {
+              modelOptions: {
+                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              },
+            }),
+            timeout: FAL_GENERATION_TIMEOUT_MS,
+            stream: false,
+            debug: false,
+          })
+        );
+      } finally {
+        await releaseGeminiFiles(uploadedStills, googleKey.key);
+      }
       endpoint = gemini.nativeModel;
       usedOwnKey = googleKey.source === 'organization';
       break;
