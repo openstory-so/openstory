@@ -1,32 +1,33 @@
 /**
- * `POST /api/v1/gateway/jobs` (docs/architecture/model-gateway.md). Order:
- * replay → validate → compliance → upload rights → estimate → row → hold →
- * trigger. A refused request leaves no row and no hold; a replayed
- * `Idempotency-Key` returns the job it first made.
+ * `POST /api/v1/gateway/{provider}/{model}` (docs/architecture/model-gateway.md).
+ * Order: replay, model, schema, compliance, upload rights, price, row, hold,
+ * trigger. A refused request leaves no row and no hold.
  */
 
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import type { Microdollars } from '@/billing/money';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/billing/server/preflight';
-import {
-  likenessFromLedger,
-  type LikenessRequestContext,
-} from '@/cast/server/upload-rights';
+import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { isOfferedVideoModel } from '@/models/models';
 import { ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { GatewayJob } from '@/platform/server/db/schema';
+import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { studioBillableSeconds } from '@/studio/text-to-video';
-import type { GatewayJobInput, GatewayJobRequest } from '@/gateway/schema';
-import { estimateGatewayJobCost, gatewayVias } from '@/gateway/server/models';
+import {
+  GATEWAY_VIA,
+  type GatewayJobInput,
+  type GatewayProvider,
+} from '@/gateway/schema';
+import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
+import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
+import { RateCardError } from '@modelschemas/rate-card/evaluator';
+import { z } from 'zod';
 
 const logger = getLogger(['openstory', 'gateway', 'submit']);
 
@@ -51,39 +52,63 @@ export function readIdempotencyKey(headers: Headers): string | null {
   return key;
 }
 
-/** The request as the run will see it: durations snapped, defaults applied. */
-function normalizeGatewayRequest(request: GatewayJobRequest): GatewayJobInput {
-  if (request.kind === 'image') {
-    return {
-      kind: 'image',
-      model: request.model,
-      prompt: request.prompt,
-      aspectRatio: request.aspectRatio,
-      referenceImageUrls: request.referenceImageUrls,
-    };
+/** The body checked against the provider's schema, with the path's model on it where the schema has one. */
+function validatedBody(
+  model: GatewayModel,
+  raw: GatewayJobInput
+): GatewayJobInput {
+  const properties = model.inputSchema.properties;
+  const takesModel =
+    typeof properties === 'object' &&
+    properties !== null &&
+    !Array.isArray(properties) &&
+    'model' in properties;
+  if (takesModel && raw.model !== undefined && raw.model !== model.id) {
+    throw new ValidationError('`model` in the body differs from the path');
   }
-  return {
-    kind: 'video',
-    model: request.model,
-    prompt: request.prompt,
-    aspectRatio: request.aspectRatio,
-    duration: studioBillableSeconds(request.duration, request.model),
-    ...(request.startImageUrl && { startImageUrl: request.startImageUrl }),
-    referenceImageUrls: request.referenceImageUrls,
-  };
+  const body = takesModel ? { ...raw, model: model.id } : raw;
+  const parsed = z.fromJSONSchema(model.inputSchema).safeParse(body);
+  if (!parsed.success) {
+    throw new ValidationError('The body does not match the model schema', {
+      issues: parsed.error.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
+    });
+  }
+  return body;
 }
 
-function gatedMedia(input: GatewayJobInput): string[] {
-  return [
-    ...input.referenceImageUrls,
-    ...(input.kind === 'video' && input.startImageUrl
-      ? [input.startImageUrl]
-      : []),
-  ];
+/**
+ * Every URL in the body, for the likeness check. Inline media is refused:
+ * the check is keyed on a URL, and bytes it cannot see must not reach a model.
+ */
+export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
+  if (typeof body === 'string') {
+    if (body.startsWith('data:')) {
+      throw new ValidationError('Send media as a URL, not inline data');
+    }
+    // Our own stored uploads are origin-relative; they are checked too.
+    if (/^https?:\/\//i.test(body) || body.startsWith('/r2/')) found.push(body);
+  } else if (Array.isArray(body)) {
+    for (const item of body) gatedUrls(item, found);
+  } else if (body !== null && typeof body === 'object') {
+    for (const [key, value] of Object.entries(body)) {
+      if (key === 'inlineData' || key === 'inline_data') {
+        throw new ValidationError('Send media as a URL, not inline data');
+      }
+      gatedUrls(value, found);
+    }
+  }
+  return found;
 }
 
 export async function submitGatewayJob(
-  request: GatewayJobRequest,
+  request: {
+    provider: GatewayProvider;
+    modelId: string;
+    body: GatewayJobInput;
+  },
   ctx: GatewaySubmitContext
 ): Promise<GatewaySubmitResult> {
   const { scopedDb } = ctx;
@@ -94,39 +119,35 @@ export async function submitGatewayJob(
     if (existing) return { job: existing, replay: true };
   }
 
-  const input = normalizeGatewayRequest(request);
-  if (
-    input.kind === 'video' &&
-    !isOfferedVideoModel(input.model, gatewayVias())
-  ) {
-    throw new ValidationError('Unknown video model');
-  }
+  const model = await getGatewayModel(request.provider, request.modelId);
+  const input = validatedBody(model, request.body);
+  const media = gatedUrls(input);
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
   });
-  const media = gatedMedia(input);
   await requireCheckedUploadRights(
     withPlatformLlmKey(scopedDb),
     media,
     ctx.request
   );
-  const noPersonImages: string[] = [];
-  if (input.kind === 'video') {
-    for (const url of media) {
-      if ((await likenessFromLedger(scopedDb, url)) === 'none') {
-        noPersonImages.push(url);
-      }
-    }
+
+  let estimate: Microdollars;
+  try {
+    estimate = priceGatewayJob(model.card, input);
+  } catch (error) {
+    if (!(error instanceof RateCardError)) throw error;
+    // No floor and no guess: a request the card cannot price is not run.
+    throw new ValidationError(
+      `This request cannot be priced before it runs (${error.message})`
+    );
   }
 
-  const estimate = estimateGatewayJobCost(
-    input,
-    await getEffectiveFalPricing()
-  );
-
   const { job, created } = await scopedDb.gatewayJobs.create({
+    kind: model.kind,
+    modelKey: model.id,
+    via: GATEWAY_VIA[model.provider],
     input,
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
@@ -152,8 +173,11 @@ export async function submitGatewayJob(
     reservationId,
     ownsReservation: true,
     jobId: job.id,
+    provider: model.provider,
+    kind: model.kind,
+    target: { modelId: model.id, endpointId: model.endpointId },
+    card: model.card,
     input,
-    noPersonImages,
     holdMicros: estimate,
   };
   const workflowRunId = await releaseReservationOnThrow(
@@ -167,7 +191,8 @@ export async function submitGatewayJob(
       } catch (error) {
         await scopedDb.gatewayJobs.markFailed(job.id, {
           code: 'NOT_STARTED',
-          message: 'The job could not be started. Try again.',
+          message:
+            'The job could not be started. Send it again with a new Idempotency-Key.',
         });
         throw error;
       }

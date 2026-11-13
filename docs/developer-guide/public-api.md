@@ -80,7 +80,7 @@ Tokens are **scoped**, unlike keys:
 
 | Scope             | Grants                                                     |
 | ----------------- | ---------------------------------------------------------- |
-| `sequences:read`  | Every `GET`                                                |
+| `sequences:read`  | Every `GET` outside `/gateway`                             |
 | `sequences:write` | Edits and exports (`POST …/exports`, style mutations)      |
 | `generate`        | Anything that spends credits (`POST /sequences`, enhance)  |
 | `credits:read`    | Credit balance (reserved for the MCP endpoint)             |
@@ -209,31 +209,34 @@ means you've reached the end. Archived sequences are excluded.
 
 ## Run one model (gateway)
 
-The gateway runs a single image or video model on OpenStory's own provider
-keys and charges your organization what the provider billed. List the models
-and what each accepts, then submit a job and poll it:
+The gateway runs one model on OpenStory's own provider keys. The body is the
+provider's own request body; the price is the model's rate card. List the
+models, submit to a model's `submit` path, then poll the job:
 
 ```bash
 curl "https://openstory.so/api/v1/gateway/models" -H "x-api-key: $OPENSTORY_API_KEY"
 
-curl -X POST "https://openstory.so/api/v1/gateway/jobs" \
+curl -X POST "https://openstory.so/api/v1/gateway/fal/fal-ai/flux/schnell" \
   -H "x-api-key: $OPENSTORY_API_KEY" \
   -H "Idempotency-Key: my-retry-safe-id" \
   -H "Content-Type: application/json" \
-  -d '{"kind":"image","model":"gpt_image_2","prompt":"A lighthouse at dusk"}'
+  -d '{"prompt":"Mara, a ferry mechanic, wipes her hands on a rag in the engine room"}'
 
 curl "https://openstory.so/api/v1/gateway/jobs/<id>?wait=60s" \
   -H "x-api-key: $OPENSTORY_API_KEY"
 ```
 
-A video job takes `duration` (seconds, snapped to what the model accepts) and
-either a `startImageUrl` or `referenceImageUrls`. The submit answers `202` with
-the job; it ends `succeeded` with absolute URLs in `outputs` and the charge in
-`charge.totalMicros`, or `failed` with an `error`. The estimate is held at
-submit (`402 INSUFFICIENT_CREDITS` when it cannot be) and released if the job
-fails. Reference images are checked for a real person first, as uploads are.
-Repeating an `Idempotency-Key` returns the first job. OAuth tokens need the
-`models:invoke` scope.
+`{provider}` is `fal`, `byteplus`, `gemini` or `grok`, and `{model}` is that
+provider's own model id. The body is checked against the model's input schema
+on [modelschemas.com](https://modelschemas.com); a body the schema refuses is
+a `400`. The submit answers `202` with the job; it ends `succeeded` with
+absolute URLs in `outputs` and the charge in `charge.totalMicros`, or `failed`
+with an `error`. The price is held at submit (`402 INSUFFICIENT_CREDITS` when
+it cannot be) and released if the job fails. A request the rate card cannot
+price is refused. Every URL in the body is checked for a real person first, as
+uploads are; send media as URLs, not inline data. Repeating an
+`Idempotency-Key` returns the first job. OAuth tokens need the `models:invoke`
+scope.
 
 ## Long-polling with `?wait`
 

@@ -31,12 +31,12 @@ import { sequenceAssetsResultSchema } from './sequence-assets';
 import { organizationResultSchema } from './organization';
 import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
-import { gatewayJobRequestSchema } from '@/gateway/schema';
 import {
-  EXAMPLE_GATEWAY_JOB_BODY,
+  EXAMPLE_GATEWAY_SUBMIT,
   gatewayJobResourceSchema,
   gatewayModelsResultSchema,
 } from '@/gateway/server/api-documents';
+import { GATEWAY_PROVIDERS } from '@/gateway/schema';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -143,7 +143,6 @@ export function buildOpenApiDocument(): JsonObject {
   );
   const { root: publishStitchRequest, defs: publishStitchDefs } =
     componentSchemas(publishStitchBodySchema);
-  const gatewayRequestDefs = componentDefs(gatewayJobRequestSchema);
   const gatewayJobIdParam: JsonObject = {
     name: 'id',
     in: 'path',
@@ -818,7 +817,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['gateway'],
           summary: 'List gateway models',
           description:
-            'The image and video models the gateway serves, keyed by model key, with what each accepts. OAuth tokens need the `models:invoke` scope.',
+            'Every priced image, video and audio model the gateway can run, on fal, BytePlus, Gemini and Grok, each with its submit path. OAuth tokens need the `models:invoke` scope.',
           responses: {
             '200': {
               description: 'The model catalog.',
@@ -835,13 +834,27 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
-      [`${API_V1_BASE}/gateway/jobs`]: {
+      [`${API_V1_BASE}/gateway/{provider}/{model}`]: {
         post: {
           tags: ['gateway'],
           summary: 'Submit a gateway job',
           description:
-            "Run one image or video model on OpenStory's platform keys. The estimate is held at submit and the provider's actual cost is charged to the key's (or token's) organization when the job finishes; a failed job releases the hold. Every reference URL is checked for a real person first. Responds 202 with the job; poll its `self` link (with `?wait`). Send an `Idempotency-Key` header to make a retry return the same job instead of starting another.",
+            "Run one model on OpenStory's platform keys. The body is the provider's own request body, checked against the model's schema on modelschemas.com. The price is the model's rate card: it is held at submit and charged to the key's (or token's) organization when the job finishes; a failed job releases the hold. A request the card cannot price is refused. Every URL in the body is checked for a real person first, and inline media is refused. Responds 202 with the job; poll its `self` link (with `?wait`). Send an `Idempotency-Key` header to make a retry return the same job instead of starting another.",
           parameters: [
+            {
+              name: 'provider',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: [...GATEWAY_PROVIDERS] },
+            },
+            {
+              name: 'model',
+              in: 'path',
+              required: true,
+              description:
+                "The provider's own model id. A fal id keeps its slashes.",
+              schema: { type: 'string' },
+            },
             {
               name: 'Idempotency-Key',
               in: 'header',
@@ -855,8 +868,8 @@ export function buildOpenApiDocument(): JsonObject {
             required: true,
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/GatewayJobRequest' },
-                example: EXAMPLE_GATEWAY_JOB_BODY,
+                schema: { type: 'object', additionalProperties: true },
+                example: EXAMPLE_GATEWAY_SUBMIT.body,
               },
             },
           },
@@ -870,12 +883,13 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '400': errorResponse(
-              'Invalid JSON or body, an unknown model, or a reference image that needs a portrait attestation.'
+              'Invalid JSON, a body the model schema refuses, a request the rate card cannot price, inline media, or an image that needs a portrait attestation.'
             ),
             '401': errorResponse('Missing or invalid API key.'),
             '402': errorResponse(
               'INSUFFICIENT_CREDITS — the organization cannot cover the estimate.'
             ),
+            '404': errorResponse('Unknown provider or model.'),
             '403': errorResponse(
               'No organization, a restricted account, or an OAuth token without `models:invoke`.'
             ),
@@ -950,7 +964,6 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(styleListResultSchema),
         ...componentDefs(rootDocumentSchema),
         ...componentDefs(errorEnvelopeSchema),
-        ...gatewayRequestDefs,
         ...componentDefs(gatewayModelsResultSchema),
         ...componentDefs(gatewayJobResourceSchema),
       },

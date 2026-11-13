@@ -9,6 +9,7 @@ import type { MediaVia } from '@/models/via';
 import type {
   GatewayJobError,
   GatewayJobInput,
+  GatewayJobKind,
   GatewayJobOutput,
 } from '@/gateway/schema';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -47,27 +48,23 @@ export function createGatewayJobsMethods(
     getByIdempotencyKey,
 
     /** Insert a queued job; a taken idempotency key returns its job with `created: false`. */
-    create: async (input: {
+    create: async (job: {
+      kind: GatewayJobKind;
+      /** The provider's own model id. */
+      modelKey: string;
+      via: MediaVia;
       input: GatewayJobInput;
       idempotencyKey: string | null;
       oauthClientId: string | null;
     }): Promise<{ job: GatewayJob; created: boolean }> => {
       const [row] = await db
         .insert(gatewayJobs)
-        .values({
-          organizationId,
-          userId,
-          kind: input.input.kind,
-          modelKey: input.input.model,
-          input: input.input,
-          idempotencyKey: input.idempotencyKey,
-          oauthClientId: input.oauthClientId,
-        })
+        .values({ organizationId, userId, ...job })
         .onConflictDoNothing()
         .returning();
       if (row) return { job: row, created: true };
-      const existing = input.idempotencyKey
-        ? await getByIdempotencyKey(input.idempotencyKey)
+      const existing = job.idempotencyKey
+        ? await getByIdempotencyKey(job.idempotencyKey)
         : null;
       if (!existing) throw new Error('gateway job insert returned no row');
       return { job: existing, created: false };
@@ -103,7 +100,7 @@ export function createGatewayJobsMethods(
         .where(and(own(id), eq(gatewayJobs.status, 'queued')));
     },
 
-    /** The via and provider id a video job was sent to; poll follows this stamp. */
+    /** The provider's id for a queued job: a record, the run polls its own submission. */
     stampProviderJob: async (
       id: string,
       stamp: { via: MediaVia; providerJobId: string }
@@ -131,18 +128,13 @@ export function createGatewayJobsMethods(
         .where(and(own(id), inArray(gatewayJobs.status, LIVE)));
     },
 
-    markFailed: async (
-      id: string,
-      error: GatewayJobError,
-      via?: MediaVia
-    ): Promise<void> => {
+    markFailed: async (id: string, error: GatewayJobError): Promise<void> => {
       const now = new Date();
       await db
         .update(gatewayJobs)
         .set({
           status: 'failed',
           error,
-          ...(via && { via }),
           updatedAt: now,
           completedAt: now,
         })

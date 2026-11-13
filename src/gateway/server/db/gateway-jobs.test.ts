@@ -15,12 +15,16 @@ const otherOrganizationId = generateId();
 const userId = generateId();
 
 const input: GatewayJobInput = {
-  kind: 'image',
-  model: 'gpt_image_2',
-  prompt: 'a fox',
-  aspectRatio: '16:9',
-  referenceImageUrls: [],
+  model: 'grok-imagine-image',
+  prompt: 'Mara, a ferry mechanic, wipes her hands on a rag in the engine room',
 };
+// What submit writes beside the body: the model's kind, id and provider via.
+const model = {
+  kind: 'image',
+  modelKey: 'grok-imagine-image',
+  via: 'xai',
+  input,
+} as const;
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -36,11 +40,11 @@ afterAll(async () => {
 });
 
 describe('gateway jobs rows', () => {
-  it('reads only its own organization’s jobs', async () => {
+  it("reads only its own organization's jobs", async () => {
     const own = createGatewayJobsMethods(db, organizationId, userId);
     const other = createGatewayJobsMethods(db, otherOrganizationId, userId);
     const { job, created } = await own.create({
-      input,
+      ...model,
       idempotencyKey: null,
       oauthClientId: 'client-1',
     });
@@ -49,7 +53,8 @@ describe('gateway jobs rows', () => {
       organizationId,
       userId,
       kind: 'image',
-      modelKey: 'gpt_image_2',
+      modelKey: 'grok-imagine-image',
+      via: 'xai',
       status: 'queued',
       oauthClientId: 'client-1',
       input,
@@ -58,7 +63,10 @@ describe('gateway jobs rows', () => {
     expect(await other.getById(job.id)).toBeNull();
 
     // Another organization's writes land on nothing.
-    await other.markFailed(job.id, { code: 'X', message: 'x' });
+    await other.markFailed(job.id, {
+      code: 'GENERATION_FAILED',
+      message: 'x',
+    });
     expect((await own.getById(job.id))?.status).toBe('queued');
   });
 
@@ -66,12 +74,12 @@ describe('gateway jobs rows', () => {
     const own = createGatewayJobsMethods(db, organizationId, userId);
     const other = createGatewayJobsMethods(db, otherOrganizationId, userId);
     const first = await own.create({
-      input,
+      ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
     });
     const again = await own.create({
-      input,
+      ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
     });
@@ -80,7 +88,7 @@ describe('gateway jobs rows', () => {
 
     // The same key in another organization is its own job.
     const theirs = await other.create({
-      input,
+      ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
     });
@@ -89,12 +97,12 @@ describe('gateway jobs rows', () => {
 
     // Unkeyed submits never collide.
     const a = await own.create({
-      input,
+      ...model,
       idempotencyKey: null,
       oauthClientId: null,
     });
     const b = await own.create({
-      input,
+      ...model,
       idempotencyKey: null,
       oauthClientId: null,
     });
@@ -104,7 +112,7 @@ describe('gateway jobs rows', () => {
   it('runs, stamps and settles a job once', async () => {
     const own = createGatewayJobsMethods(db, organizationId, userId);
     const { job } = await own.create({
-      input,
+      ...model,
       idempotencyKey: null,
       oauthClientId: null,
     });
@@ -113,18 +121,18 @@ describe('gateway jobs rows', () => {
       workflowRunId: 'run-1',
     });
     await own.markRunning(job.id);
-    await own.stampProviderJob(job.id, { via: 'fal', providerJobId: 'p-1' });
+    await own.stampProviderJob(job.id, { via: 'xai', providerJobId: 'p-1' });
     const outputs = [
       { url: '/r2/a.png', path: 'a.png', contentType: 'image/png' },
     ];
-    await own.markSucceeded(job.id, { outputs, costMicros: 1200, via: 'fal' });
+    await own.markSucceeded(job.id, { outputs, costMicros: 1200, via: 'xai' });
     const done = await own.getById(job.id);
     expect(done).toMatchObject({
       status: 'succeeded',
       reservationId: 'res-1',
       workflowRunId: 'run-1',
       providerJobId: 'p-1',
-      via: 'fal',
+      via: 'xai',
       outputs,
       costMicros: 1200,
       error: null,
@@ -139,7 +147,7 @@ describe('gateway jobs rows', () => {
   it('deletes only a job that never started', async () => {
     const own = createGatewayJobsMethods(db, organizationId, userId);
     const unstarted = await own.create({
-      input,
+      ...model,
       idempotencyKey: 'drop-me',
       oauthClientId: null,
     });
@@ -148,7 +156,7 @@ describe('gateway jobs rows', () => {
     expect(await own.getByIdempotencyKey('drop-me')).toBeNull();
 
     const started = await own.create({
-      input,
+      ...model,
       idempotencyKey: null,
       oauthClientId: null,
     });
