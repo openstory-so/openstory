@@ -254,6 +254,7 @@ function makeEvent(
       platformFeeBps: 0,
       oauthClientId: 'client-1',
       appId: 'app-1',
+      appMargin: null,
       ...overrides,
     },
     instanceId: 'run-1',
@@ -447,6 +448,23 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
       'job-1',
       expect.objectContaining({ costMicros: micros(440_000) })
     );
+  });
+
+  it("adds the margin snapshotted on the payload, paid to the app's organization", async () => {
+    const { scopedDb, billing } = makeScopedDb();
+    await makeWorkflow().runBody(
+      makeEvent({ appMargin: { bps: 2_000, payeeOrganizationId: 'org-app' } }),
+      makeStep(),
+      scopedDb
+    );
+    expect(billing.settleReservation.mock.calls[0]?.[1]).toEqual([
+      providerCost(400_000),
+      {
+        kind: 'app_margin',
+        amountMicros: 80_000,
+        payeeOrganizationId: 'org-app',
+      },
+    ]);
   });
 
   it('charges the lines of the estimate when the card refuses the usage', async () => {

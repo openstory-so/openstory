@@ -168,7 +168,7 @@
     {
       // Raw `#db-client` readers: platform-wide (not organization-scoped) tables or
       // the scoped-db factory itself. Pinned by db-access-allowlist.test.ts.
-      // The four pricing/reconcile jobs + the cron dispatcher are one
+      // The pricing/reconcile jobs, the earnings sweep and the cron dispatcher are one
       // capability without a db-layer module yet (#1535); they collapse to
       // one entry when it lands.
       "files": [
@@ -177,6 +177,7 @@
         "src/platform/server/auth/config.ts",
         "src/platform/server/cron/reconcile-all.ts",
         "src/billing/server/reconcile-fal-billing.ts",
+        "src/billing/server/mature-earnings.ts",
         "src/models/server/reconcile-byteplus-assets.ts",
         "src/billing/server/refresh-fal-pricing.ts",
         "src/billing/server/fal-pricing-live.ts",

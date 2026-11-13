@@ -41,6 +41,12 @@ import {
   monthlyCapUsdToMicros,
 } from '@/platform/auth/oauth-spend-cap';
 import { useHydrated } from '@/ui/use-hydrated';
+import {
+  formatMarginBps,
+  termsOfView,
+  type AppTermsView,
+} from '@/gateway/apps';
+import { micros, microsToDisplayUsd } from '@/billing/money';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
@@ -197,6 +203,51 @@ function SpendCapField({
   );
 }
 
+/** What a registered app charges on top of model costs, in plain words. */
+function AppTermsNotice({
+  terms,
+  payerOrganizationId,
+}: {
+  terms: AppTermsView;
+  payerOrganizationId: string;
+}) {
+  if (terms.marginBps === 0 && terms.skus.length === 0) return null;
+  if (terms.ownerOrganizationId === payerOrganizationId) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This organization owns {terms.appName}, so it adds nothing on top of
+        model costs here.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1 text-sm" aria-live="polite">
+      {terms.marginBps > 0 ? (
+        <p>
+          This app adds {formatMarginBps(terms.marginBps)} on top of model
+          costs, paid to {terms.ownerOrganizationName}.
+        </p>
+      ) : null}
+      {terms.skus.length > 0 ? (
+        <>
+          <p>It can also charge for:</p>
+          <ul className="list-disc pl-5 tabular-nums">
+            {terms.skus.map((sku) => (
+              <li key={sku.key}>
+                {sku.name}: {microsToDisplayUsd(micros(sku.priceMicros))} each
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <p className="text-muted-foreground">
+        Approving accepts these prices. If the app raises them, it has to ask
+        you again. Everything counts against the monthly cap.
+      </p>
+    </div>
+  );
+}
+
 function ConsentDecision({
   consent,
   oauthQuery,
@@ -227,6 +278,9 @@ function ConsentDecision({
             consent.needsSpendCap && parsedCapUsd !== null
               ? monthlyCapUsdToMicros(parsedCapUsd)
               : null,
+          shownTerms: consent.needsSpendCap
+            ? termsOfView(consent.appTerms)
+            : null,
         },
       }),
     onSuccess: ({ url }, accept) => {
@@ -316,6 +370,13 @@ function ConsentDecision({
           setCapUsd(startingCapUsd(consent, next));
         }}
       />
+
+      {consent.needsSpendCap && consent.appTerms ? (
+        <AppTermsNotice
+          terms={consent.appTerms}
+          payerOrganizationId={organizationId}
+        />
+      ) : null}
 
       {consent.needsSpendCap ? (
         <SpendCapField

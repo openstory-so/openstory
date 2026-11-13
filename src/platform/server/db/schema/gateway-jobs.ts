@@ -5,7 +5,7 @@
  * No cascade (AGENTS.md, D1 table-rebuild trap): cleanup is app code.
  */
 
-import type { InferSelectModel } from 'drizzle-orm';
+import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -66,9 +66,11 @@ export const gatewayJobs = snakeCase.table(
   },
   (table) => [
     index('idx_gateway_jobs_organization').on(table.organizationId, table.id),
+    // Per caller: each OAuth client, and the organization's own keys (''), has its own key space.
     // SQLite treats NULLs as distinct, so this binds only keyed submits.
-    uniqueIndex('uq_gateway_jobs_organization_idempotency').on(
+    uniqueIndex('uq_gateway_jobs_organization_client_idempotency').on(
       table.organizationId,
+      sql`coalesce(${table.oauthClientId}, '')`,
       table.idempotencyKey
     ),
   ]

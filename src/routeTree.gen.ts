@@ -100,6 +100,7 @@ import { Route as AppSequencesNewIndexRouteImport } from './routes/_app/sequence
 import { Route as AppSequencesNewScenesRouteImport } from './routes/_app/sequences/new/scenes'
 import { Route as ApiV1DeviceCodeRouteImport } from './routes/api/v1/device.code'
 import { Route as ApiV1DeviceTokenRouteImport } from './routes/api/v1/device.token'
+import { Route as ApiV1GatewayChargesRouteImport } from './routes/api/v1/gateway.charges'
 import { Route as ApiV1GatewayGrantRouteImport } from './routes/api/v1/gateway.grant'
 import { Route as ApiV1GatewayModelsRouteImport } from './routes/api/v1/gateway.models'
 import { Route as ApiV1ScriptsEnhanceRouteImport } from './routes/api/v1/scripts.enhance'
@@ -118,6 +119,7 @@ import { Route as AppSequencesIdWorkspaceCastCharacterIdRouteImport } from './ro
 import { Route as AppSequencesIdWorkspaceElementsElementIdRouteImport } from './routes/_app/sequences/$id/_workspace/elements/$elementId'
 import { Route as AppSequencesIdWorkspaceLocationsLocationIdRouteImport } from './routes/_app/sequences/$id/_workspace/locations/$locationId'
 import { Route as ApiSequencesSequenceIdShotsShotIdSubtitlesRouteImport } from './routes/api/sequences/$sequenceId/shots/$shotId/subtitles'
+import { Route as ApiV1GatewayEstimateProviderSplatRouteImport } from './routes/api/v1/gateway.estimate.$provider.$'
 
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
@@ -572,6 +574,11 @@ const ApiV1DeviceTokenRoute = ApiV1DeviceTokenRouteImport.update({
   path: '/api/v1/device/token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1GatewayChargesRoute = ApiV1GatewayChargesRouteImport.update({
+  id: '/api/v1/gateway/charges',
+  path: '/api/v1/gateway/charges',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1GatewayGrantRoute = ApiV1GatewayGrantRouteImport.update({
   id: '/api/v1/gateway/grant',
   path: '/api/v1/gateway/grant',
@@ -670,6 +677,12 @@ const ApiSequencesSequenceIdShotsShotIdSubtitlesRoute =
     path: '/api/sequences/$sequenceId/shots/$shotId/subtitles',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1GatewayEstimateProviderSplatRoute =
+  ApiV1GatewayEstimateProviderSplatRouteImport.update({
+    id: '/api/v1/gateway/estimate/$provider/$',
+    path: '/api/v1/gateway/estimate/$provider/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof PublicIndexRoute
@@ -758,6 +771,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -777,6 +791,7 @@ export interface FileRoutesByFullPath {
   '/sequences/$id/elements/$elementId': typeof AppSequencesIdWorkspaceElementsElementIdRoute
   '/sequences/$id/locations/$locationId': typeof AppSequencesIdWorkspaceLocationsLocationIdRoute
   '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
+  '/api/v1/gateway/estimate/$provider/$': typeof ApiV1GatewayEstimateProviderSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof PublicIndexRoute
@@ -863,6 +878,7 @@ export interface FileRoutesByTo {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -882,6 +898,7 @@ export interface FileRoutesByTo {
   '/sequences/$id/elements/$elementId': typeof AppSequencesIdWorkspaceElementsElementIdRoute
   '/sequences/$id/locations/$locationId': typeof AppSequencesIdWorkspaceLocationsLocationIdRoute
   '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
+  '/api/v1/gateway/estimate/$provider/$': typeof ApiV1GatewayEstimateProviderSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -975,6 +992,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/charges': typeof ApiV1GatewayChargesRoute
   '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -994,6 +1012,7 @@ export interface FileRoutesById {
   '/_app/sequences/$id/_workspace/elements/$elementId': typeof AppSequencesIdWorkspaceElementsElementIdRoute
   '/_app/sequences/$id/_workspace/locations/$locationId': typeof AppSequencesIdWorkspaceLocationsLocationIdRoute
   '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
+  '/api/v1/gateway/estimate/$provider/$': typeof ApiV1GatewayEstimateProviderSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1084,6 +1103,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1103,6 +1123,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/elements/$elementId'
     | '/sequences/$id/locations/$locationId'
     | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+    | '/api/v1/gateway/estimate/$provider/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1189,6 +1210,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1208,6 +1230,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/elements/$elementId'
     | '/sequences/$id/locations/$locationId'
     | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+    | '/api/v1/gateway/estimate/$provider/$'
   id:
     | '__root__'
     | '/_app'
@@ -1300,6 +1323,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/charges'
     | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
@@ -1319,6 +1343,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/$id/_workspace/elements/$elementId'
     | '/_app/sequences/$id/_workspace/locations/$locationId'
     | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+    | '/api/v1/gateway/estimate/$provider/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1355,12 +1380,14 @@ export interface RootRouteChildren {
   ApiV1IndexRoute: typeof ApiV1IndexRoute
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
+  ApiV1GatewayChargesRoute: typeof ApiV1GatewayChargesRoute
   ApiV1GatewayGrantRoute: typeof ApiV1GatewayGrantRoute
   ApiV1GatewayModelsRoute: typeof ApiV1GatewayModelsRoute
   ApiV1ScriptsEnhanceRoute: typeof ApiV1ScriptsEnhanceRoute
   ApiV1GatewayProviderSplatRoute: typeof ApiV1GatewayProviderSplatRoute
   ApiV1GatewayJobsIdRoute: typeof ApiV1GatewayJobsIdRoute
   ApiSequencesSequenceIdShotsShotIdSubtitlesRoute: typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
+  ApiV1GatewayEstimateProviderSplatRoute: typeof ApiV1GatewayEstimateProviderSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2002,6 +2029,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1DeviceTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/gateway/charges': {
+      id: '/api/v1/gateway/charges'
+      path: '/api/v1/gateway/charges'
+      fullPath: '/api/v1/gateway/charges'
+      preLoaderRoute: typeof ApiV1GatewayChargesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/gateway/grant': {
       id: '/api/v1/gateway/grant'
       path: '/api/v1/gateway/grant'
@@ -2126,6 +2160,13 @@ declare module '@tanstack/react-router' {
       path: '/api/sequences/$sequenceId/shots/$shotId/subtitles'
       fullPath: '/api/sequences/$sequenceId/shots/$shotId/subtitles'
       preLoaderRoute: typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/gateway/estimate/$provider/$': {
+      id: '/api/v1/gateway/estimate/$provider/$'
+      path: '/api/v1/gateway/estimate/$provider/$'
+      fullPath: '/api/v1/gateway/estimate/$provider/$'
+      preLoaderRoute: typeof ApiV1GatewayEstimateProviderSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -2436,6 +2477,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1IndexRoute: ApiV1IndexRoute,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
+  ApiV1GatewayChargesRoute: ApiV1GatewayChargesRoute,
   ApiV1GatewayGrantRoute: ApiV1GatewayGrantRoute,
   ApiV1GatewayModelsRoute: ApiV1GatewayModelsRoute,
   ApiV1ScriptsEnhanceRoute: ApiV1ScriptsEnhanceRoute,
@@ -2443,6 +2485,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1GatewayJobsIdRoute: ApiV1GatewayJobsIdRoute,
   ApiSequencesSequenceIdShotsShotIdSubtitlesRoute:
     ApiSequencesSequenceIdShotsShotIdSubtitlesRoute,
+  ApiV1GatewayEstimateProviderSplatRoute:
+    ApiV1GatewayEstimateProviderSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

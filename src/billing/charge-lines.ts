@@ -33,3 +33,9 @@ export function inFillOrder<T extends { kind: ChargeLineKind }>(
     )
     .map(({ line }) => line);
 }
+
+/** A payee line's earning matures into wallet credit this many days after the charge. */
+export const EARNING_HOLD_DAYS = 14;
+
+const EARNING_STATUSES = ['pending', 'matured', 'cancelled'] as const;
+export type EarningStatus = (typeof EARNING_STATUSES)[number];

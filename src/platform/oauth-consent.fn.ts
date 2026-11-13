@@ -6,6 +6,7 @@
  */
 
 import {
+  acceptAuthorizedAppTerms,
   decideOAuthConsent,
   listAuthorizedApps,
   loadOAuthConsentContext,
@@ -50,8 +51,18 @@ export const getOAuthConsentContextFn = createServerFn({ method: 'GET' })
       redirectUri: data.redirectUri,
       headers: getRequestHeaders(),
       grants: context.scopedDb.gatewayGrants,
+      apps: context.scopedDb.gatewayApps,
     })
   );
+
+/** An app's margin and SKU prices as a page showed them to the user. */
+const shownTermsSchema = z.object({
+  marginBps: z.number().int().min(0).max(10_000),
+  skuPrices: z.record(
+    z.string().max(64),
+    z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
+  ),
+});
 
 const decideSchema = z.object({
   accept: z.boolean(),
@@ -60,6 +71,8 @@ const decideSchema = z.object({
   oauthQuery: z.string().min(1).max(8192),
   /** The monthly spend cap, in microdollars; required to approve `models:invoke`. */
   monthlyCapMicros: z.number().int().nullable().optional(),
+  /** The app's margin and SKU prices the page showed; approving records no more. */
+  shownTerms: shownTermsSchema.nullable().optional(),
 });
 
 /**
@@ -76,6 +89,7 @@ export const decideOAuthConsentFn = createServerFn({ method: 'POST' })
       accept: data.accept,
       oauthQuery: data.oauthQuery,
       monthlyCapMicros: data.monthlyCapMicros,
+      shownTerms: data.shownTerms,
       headers: getRequestHeaders(),
       grants: context.scopedDb.gatewayGrants,
     })
@@ -89,6 +103,7 @@ export const listAuthorizedAppsFn = createServerFn({ method: 'GET' })
       userId: context.user.id,
       headers: getRequestHeaders(),
       grants: context.scopedDb.gatewayGrants,
+      apps: context.scopedDb.gatewayApps,
     })
   );
 
@@ -125,6 +140,25 @@ export const setAuthorizedAppCapFn = createServerFn({ method: 'POST' })
     await setAuthorizedAppCap({
       consentId: data.consentId,
       monthlyCapMicros: data.monthlyCapMicros,
+      headers: getRequestHeaders(),
+      grants: context.scopedDb.gatewayGrants,
+    });
+    return { success: true };
+  });
+
+const acceptTermsSchema = z.object({
+  consentId: z.string().min(1),
+  shownTerms: shownTermsSchema,
+});
+
+/** Approve an authorized app's raised margin or SKU prices, as Settings showed them. */
+export const acceptAuthorizedAppTermsFn = createServerFn({ method: 'POST' })
+  .middleware([authWithOrganizationMiddleware])
+  .validator(zodValidator(acceptTermsSchema))
+  .handler(async ({ data, context }): Promise<{ success: true }> => {
+    await acceptAuthorizedAppTerms({
+      consentId: data.consentId,
+      shownTerms: data.shownTerms,
       headers: getRequestHeaders(),
       grants: context.scopedDb.gatewayGrants,
     });

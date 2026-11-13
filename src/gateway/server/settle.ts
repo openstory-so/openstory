@@ -12,6 +12,7 @@ import { type Microdollars, ZERO_MICROS } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MediaVia } from '@/models/via';
 import { gatewayCharge } from '@/gateway/charge-lines';
+import type { AppMargin } from '@/gateway/server/user-pays';
 import type { GatewayJobOutput } from '@/gateway/schema';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -32,6 +33,8 @@ export async function settleGatewayJob(params: {
   oauthClientId: string | null;
   /** The registered app the client was at submit. */
   appId?: string | null;
+  /** The margin snapshotted at submit, so the charge matches the hold. */
+  appMargin?: AppMargin | null;
   /** Must be false: a gateway job spends platform keys only. */
   usedOwnKey: boolean;
   /** Replay-stable, e.g. `${instanceId}:gateway-settle`. */
@@ -58,6 +61,7 @@ export async function settleGatewayJob(params: {
   const charge = gatewayCharge({
     providerCostMicros: unpriced ? params.estimateMicros : params.costMicros,
     platformFeeBps: params.platformFeeBps,
+    ...(params.appMargin && { appMargin: params.appMargin }),
   });
   const description = `Gateway (${params.model})`;
   const metadata = {

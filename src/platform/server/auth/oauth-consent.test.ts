@@ -2,6 +2,7 @@ import { ValidationError } from '@/platform/errors';
 import { APIError } from 'better-auth/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GatewayGrantStanding } from '@/gateway/server/db/gateway-grants';
+import type { AppTermsView } from '@/gateway/apps';
 
 const getOAuthClientPublic = vi.fn();
 const getOAuthConsents = vi.fn();
@@ -14,6 +15,20 @@ const grants = {
   listStandings: vi.fn(async () => [] as GatewayGrantStanding[]),
   setCap: vi.fn(async (_input: unknown) => true),
   revoke: vi.fn(async (_input: unknown) => undefined),
+  acceptTerms: vi.fn(async (_input: unknown) => true),
+};
+const appTerms: AppTermsView = {
+  appId: 'app_1',
+  appName: 'Acme',
+  ownerOrganizationId: 'organization_app',
+  ownerOrganizationName: 'Acme Inc',
+  marginBps: 2000,
+  skus: [{ key: 'export-hd', name: 'HD export', priceMicros: 500_000 }],
+};
+const apps = {
+  getTermsByOAuthClient: vi.fn(
+    async (_clientId: string): Promise<AppTermsView | null> => null
+  ),
 };
 
 vi.doMock('./config', () => ({
@@ -34,6 +49,7 @@ vi.doMock('@/platform/server/db/scoped', () => ({
 }));
 
 const {
+  acceptAuthorizedAppTerms,
   consentRedirectUrl,
   decideOAuthConsent,
   loadOAuthConsentContext,
@@ -62,6 +78,10 @@ beforeEach(() => {
   grants.setCap.mockClear();
   grants.setCap.mockResolvedValue(true);
   grants.revoke.mockClear();
+  grants.acceptTerms.mockClear();
+  grants.acceptTerms.mockResolvedValue(true);
+  apps.getTermsByOAuthClient.mockReset();
+  apps.getTermsByOAuthClient.mockResolvedValue(null);
   getUserOrganizationMembership.mockResolvedValue({
     organizationId: 'organization_1',
     organizationName: 'T',
@@ -88,6 +108,7 @@ describe('loadOAuthConsentContext', () => {
       scope: '',
       headers: new Headers(),
       grants,
+      apps,
     });
     expect(result.client).toBeNull();
     expect(result.organizations).toEqual([{ id: 'organization_1', name: 'T' }]);
@@ -106,6 +127,7 @@ describe('loadOAuthConsentContext', () => {
         scope: '',
         headers: new Headers(),
         grants,
+        apps,
       })
     ).rejects.toBeInstanceOf(APIError);
   });
@@ -122,6 +144,7 @@ describe('loadOAuthConsentContext spend cap', () => {
         spentMicros: 0,
         heldMicros: 0,
         remainingMicros: 7_000_000,
+        accepted: { marginBps: 0, skuPrices: {} },
       },
       {
         oauthClientId: 'other',
@@ -130,6 +153,7 @@ describe('loadOAuthConsentContext spend cap', () => {
         spentMicros: 0,
         heldMicros: 0,
         remainingMicros: 9_000_000,
+        accepted: { marginBps: 0, skuPrices: {} },
       },
     ]);
     const invoking = await loadOAuthConsentContext({
@@ -139,6 +163,7 @@ describe('loadOAuthConsentContext spend cap', () => {
       scope: 'openid models:invoke',
       headers: new Headers(),
       grants,
+      apps,
     });
     expect(invoking.needsSpendCap).toBe(true);
     expect(invoking.currentCaps).toEqual({ organization_1: 7_000_000 });
@@ -150,9 +175,37 @@ describe('loadOAuthConsentContext spend cap', () => {
       scope: 'openid sequences:read',
       headers: new Headers(),
       grants,
+      apps,
     });
     expect(reading.needsSpendCap).toBe(false);
     expect(reading.currentCaps).toEqual({});
+  });
+
+  it("shows a registered app's margin and SKUs only when models:invoke is asked for", async () => {
+    getOAuthClientPublic.mockResolvedValue(client);
+    apps.getTermsByOAuthClient.mockResolvedValue(appTerms);
+    const invoking = await loadOAuthConsentContext({
+      userId: 'user_1',
+      organizationId: 'organization_1',
+      clientId: 'c1',
+      scope: 'openid models:invoke',
+      headers: new Headers(),
+      grants,
+      apps,
+    });
+    expect(invoking.appTerms).toEqual(appTerms);
+    expect(apps.getTermsByOAuthClient).toHaveBeenCalledWith('c1');
+
+    const reading = await loadOAuthConsentContext({
+      userId: 'user_1',
+      organizationId: 'organization_1',
+      clientId: 'c1',
+      scope: 'openid',
+      headers: new Headers(),
+      grants,
+      apps,
+    });
+    expect(reading.appTerms).toBeNull();
   });
 });
 
@@ -491,7 +544,31 @@ describe('decideOAuthConsent', () => {
         oauthClientId: 'c1',
         organizationId: 'organization_1',
         monthlyCapMicros: 25_000_000,
+        shownTerms: { marginBps: 0, skuPrices: {} },
       });
+    });
+
+    it('records the terms the page showed with the grant', async () => {
+      authHandler.mockResolvedValueOnce(
+        jsonRes({ url: 'http://127.0.0.1:8765/cb?code=9' })
+      );
+      const shownTerms = {
+        marginBps: 2000,
+        skuPrices: { 'export-hd': 500_000 },
+      };
+      await decideOAuthConsent({
+        userId: 'user_1',
+        organizationId: 'organization_1',
+        accept: true,
+        oauthQuery: invokeQuery,
+        monthlyCapMicros: 25_000_000,
+        shownTerms,
+        headers: new Headers({ origin }),
+        grants,
+      });
+      expect(grants.setCap).toHaveBeenCalledWith(
+        expect.objectContaining({ shownTerms })
+      );
     });
 
     it('writes no grant on a denial, and needs no cap to deny', async () => {
@@ -586,5 +663,65 @@ describe('setAuthorizedAppCap', () => {
       ).rejects.toBeInstanceOf(ValidationError);
     }
     expect(grants.setCap).not.toHaveBeenCalled();
+  });
+});
+
+describe('acceptAuthorizedAppTerms', () => {
+  const shownTerms = { marginBps: 2000, skuPrices: { 'export-hd': 500_000 } };
+
+  it("accepts the shown terms on the consent's client and organization", async () => {
+    getOAuthConsents.mockResolvedValueOnce([
+      {
+        id: 'consent_1',
+        clientId: 'c1',
+        referenceId: 'organization_1',
+        scopes: ['openid', 'models:invoke'],
+      },
+    ]);
+    await acceptAuthorizedAppTerms({
+      consentId: 'consent_1',
+      shownTerms,
+      headers: new Headers(),
+      grants,
+    });
+    expect(grants.acceptTerms).toHaveBeenCalledWith({
+      oauthClientId: 'c1',
+      organizationId: 'organization_1',
+      shownTerms,
+    });
+  });
+
+  it('refuses a consent without models:invoke or without a live grant', async () => {
+    getOAuthConsents.mockResolvedValue([
+      {
+        id: 'consent_1',
+        clientId: 'c1',
+        referenceId: 'organization_1',
+        scopes: ['openid'],
+      },
+      {
+        id: 'consent_2',
+        clientId: 'c2',
+        referenceId: 'organization_1',
+        scopes: ['models:invoke'],
+      },
+    ]);
+    await expect(
+      acceptAuthorizedAppTerms({
+        consentId: 'consent_1',
+        shownTerms,
+        headers: new Headers(),
+        grants,
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
+    grants.acceptTerms.mockResolvedValueOnce(false);
+    await expect(
+      acceptAuthorizedAppTerms({
+        consentId: 'consent_2',
+        shownTerms,
+        headers: new Headers(),
+        grants,
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });

@@ -26,6 +26,7 @@ import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
 import { createBillingMethods } from '@/billing/server/db/billing';
+import { createEarningsMethods } from '@/billing/server/db/earnings';
 import { createCharacterLooksMethods } from '@/cast/server/db/character-looks';
 import { createCharacterSheetVariantsMethods } from '@/cast/server/db/character-sheet-variants';
 import {
@@ -437,6 +438,8 @@ export function createScopedDb(organizationId: string, userId: string) {
     gatewayApps: createGatewayAppsMethods(db, organizationId, userId),
     // The user's spend caps per (client, organization); bound to the user.
     gatewayGrants: createGatewayGrantsMethods(db, userId),
+    // Earnings this organization is paid by its apps' payee lines, held then matured.
+    earnings: createEarningsMethods(db, organizationId),
     // In-app assistant threads and their persistence stores (#2155).
     assistant: createAssistantMethods(db, organizationId, userId),
 

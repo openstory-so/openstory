@@ -27,6 +27,10 @@ import {
   FAL_BILLING_RECONCILE_CRON,
   reconcileFalBilling,
 } from '@/billing/server/reconcile-fal-billing';
+import {
+  MATURE_EARNINGS_CRON,
+  matureEarnings,
+} from '@/billing/server/mature-earnings';
 import { sweepOrphanedPreviewBytePlusGroups } from '@/models/server/byteplus-preview-groups';
 import {
   BYTEPLUS_ASSETS_RECONCILE_CRON,
@@ -253,6 +257,15 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
             });
           }
         })()
+      );
+      return;
+    }
+    // Hourly: gateway earnings past their hold become wallet credit.
+    if (controller.cron === MATURE_EARNINGS_CRON) {
+      ctx.waitUntil(
+        matureEarnings().catch((error) => {
+          logger.error('matureEarnings failed:', { err: error });
+        })
       );
       return;
     }
