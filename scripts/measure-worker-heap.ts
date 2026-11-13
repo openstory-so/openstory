@@ -10,6 +10,11 @@
  *   bun scripts/measure-worker-heap.ts --cookie <file> --studio-cookie <file> \
  *     --scenes /sequences/<id>/scenes?shot=<shotId> --out heap.json
  *
+ * Or measure one Studio generation instead of the page steps (#2400):
+ *
+ *   bun scripts/measure-worker-heap.ts --api-key <file> \
+ *     --generate <create_studio_assets arguments JSON file> --out heap.json
+ *
  * Cookie files hold one `better-auth.session_token=…` pair. Restart the
  * worker before each run: "boot" must be a fresh isolate, and wrangler's
  * inspector proxy takes one client, which a killed run keeps holding.
@@ -32,17 +37,26 @@ const { values: args } = parseArgs({
     cookie: { type: 'string' },
     'studio-cookie': { type: 'string' },
     scenes: { type: 'string' },
+    'api-key': { type: 'string' },
+    generate: { type: 'string' },
     out: { type: 'string', default: 'heap.json' },
   },
 });
-if (!args.cookie || !args['studio-cookie'] || !args.scenes) {
-  throw new Error('--cookie, --studio-cookie and --scenes are required');
+const generating = args.generate !== undefined;
+if (
+  generating
+    ? !args['api-key']
+    : !args.cookie || !args['studio-cookie'] || !args.scenes
+) {
+  throw new Error(
+    'pass --api-key and --generate, or --cookie, --studio-cookie and --scenes'
+  );
 }
 const base = args.base;
-const scenesPath = args.scenes;
+const scenesPath = args.scenes ?? '';
 const readCookie = (file: string) => readFileSync(file, 'utf8').trim();
-const cookie = readCookie(args.cookie);
-const studioCookie = readCookie(args['studio-cookie']);
+const cookie = generating ? '' : readCookie(args.cookie ?? '');
+const studioCookie = generating ? '' : readCookie(args['studio-cookie'] ?? '');
 
 // --- CDP over the wrangler inspector proxy ---------------------------------
 // The proxy rejects a connection with no Origin. `ws` is the client that
@@ -189,7 +203,6 @@ async function openPage(
     : `${serverFns} server fns`;
 }
 
-const browser = await chromium.launch();
 async function contextWith(cookieHeader: string) {
   const [name = '', value = ''] = cookieHeader.split(/=(.*)/s);
   const context = await browser.newContext();
@@ -198,6 +211,58 @@ async function contextWith(cookieHeader: string) {
 }
 
 await measure('boot', async () => {});
+
+async function mcp(name: string, input: unknown): Promise<unknown> {
+  const res = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${readFileSync(args['api-key'] ?? '', 'utf8').trim()}`,
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: input },
+    }),
+  });
+  const data = (await res.text()).replace(/^event: message\ndata: /, '');
+  const { result } = z
+    .object({ result: z.object({ structuredContent: z.unknown() }) })
+    .parse(JSON.parse(data));
+  return result.structuredContent;
+}
+
+if (generating) {
+  await measure('studio generation', async () => {
+    const started = z
+      .object({ assets: z.array(z.object({ id: z.string() })).length(1) })
+      .parse(
+        await mcp(
+          'openstory.create_studio_assets',
+          JSON.parse(readFileSync(args.generate ?? '', 'utf8'))
+        )
+      );
+    const id = started.assets[0]?.id;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 2_000));
+      const read = z
+        .object({ document: z.object({ text: z.string() }) })
+        .parse(await mcp('openstory.get_generated_asset', { id }));
+      const { status } = z
+        .object({ status: z.string() })
+        .parse(JSON.parse(read.document.text));
+      if (status === 'completed' || status === 'failed') {
+        return `asset ${id} ${status}`;
+      }
+    }
+  });
+  writeFileSync(args.out, JSON.stringify(steps, null, 2));
+  process.exit(0);
+}
+
+const browser = await chromium.launch();
 
 await measure('first request (GET /)', async () => {
   const res = await fetch(`${base}/`);

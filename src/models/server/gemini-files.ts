@@ -1,14 +1,25 @@
 /**
- * Gemini Files API for a stored clip (#1930). The clip streams out of R2
+ * Gemini Files API for a stored clip (#1930) or a large still (#2400). The clip streams out of R2
  * into one resumable upload, so it never sits in Worker memory: the
  * `@tanstack/ai-gemini` files adapter takes a `Blob`, which would hold it.
  * Works the same with no public CDN (local dev, deploy-button installs).
  */
 
-import { readStorageStream, storageObjectSize } from '#storage';
+import {
+  readStorageStream,
+  storageObjectContentType,
+  storageObjectSize,
+} from '#storage';
 import { getEnv } from '#env';
 import { z } from 'zod';
 import { getLogger } from '@/platform/logger';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  isReplayMode,
+  toVisionImageSource,
+  type VisionImageSource,
+} from '@/platform/server/storage/external-url';
+import { sniffImageMimeType } from '@/platform/server/storage/file';
 
 const logger = getLogger(['openstory', 'models', 'gemini-files']);
 
@@ -180,4 +191,61 @@ export async function deleteGeminiFile(
   await geminiFetch(`${apiBase()}/v1beta/${name}`, apiKey, {
     method: 'DELETE',
   });
+}
+
+/** Over this a stored still goes to native Gemini as a Files API reference, not inline base64 (#2400). */
+export const GEMINI_INLINE_STILL_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * A still for native Gemini. Small or non-stored stills inline as before; a
+ * large stored one streams to the Files API and is pushed onto `uploaded`,
+ * which the caller hands to {@link releaseGeminiFiles} after the request.
+ */
+export async function geminiStillSource(
+  url: string,
+  apiKey: string,
+  uploaded: GeminiFile[]
+): Promise<VisionImageSource> {
+  const key = r2KeyFromUrl(url);
+  const size =
+    key === null || isReplayMode() ? null : await storageObjectSize(key);
+  if (key === null || size === null || size <= GEMINI_INLINE_STILL_MAX_BYTES) {
+    return toVisionImageSource(url, undefined, { inline: true });
+  }
+  const file = await uploadClipToGemini(
+    key,
+    await storedImageMimeType(key),
+    apiKey
+  );
+  uploaded.push(file);
+  return { type: 'url', value: file.uri, mimeType: file.mimeType };
+}
+
+/** Delete uploaded stills; never throws, they expire in 48h anyway. */
+export async function releaseGeminiFiles(
+  uploaded: readonly GeminiFile[],
+  apiKey: string
+): Promise<void> {
+  await Promise.all(
+    uploaded.map((file) =>
+      deleteGeminiFile(file.name, apiKey).catch((error: unknown) => {
+        logger.warn('Could not delete a still from Gemini Files', {
+          name: file.name,
+          error,
+        });
+      })
+    )
+  );
+}
+
+// The stored type can be wrong (see readStoredBytes); trust the first bytes.
+async function storedImageMimeType(key: string): Promise<string> {
+  const head = await readStorageStream(key, { offset: 0, length: 16 });
+  const bytes = head
+    ? new Uint8Array(await new Response(head.body).arrayBuffer())
+    : new Uint8Array();
+  const type =
+    sniffImageMimeType(bytes) ?? (await storageObjectContentType(key));
+  if (!type) throw new Error(`Stored still has no image type: ${key}`);
+  return type;
 }

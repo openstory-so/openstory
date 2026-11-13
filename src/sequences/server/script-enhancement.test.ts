@@ -6,16 +6,32 @@ import { asStub } from '@/test/as-stub';
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
 vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
 
-const callLLMStream = vi.fn((_params: { messages: ChatMessage[] }) => ({
-  async *[Symbol.asyncIterator]() {
-    yield { delta: 'Scene 1 — 30s\nA cyclist races home.\nTOTAL: 30s' };
-  },
-}));
+const callLLMStream = vi.fn(
+  (_params: {
+    messages: ChatMessage[];
+    resolveApiKey?: () => Promise<unknown>;
+  }) => ({
+    async *[Symbol.asyncIterator]() {
+      yield { delta: 'Scene 1 — 30s\nA cyclist races home.\nTOTAL: 30s' };
+    },
+  })
+);
 vi.doMock('@/models/server/llm-client', () => ({
   callLLMStream,
   ENHANCE_REASONING: 'low',
   RECOMMENDED_MODELS: { creative: 'x-ai/grok-4.7' },
   llmCostFromUsage: vi.fn(() => 0),
+}));
+
+const releaseGeminiFiles = vi.fn(async () => {});
+vi.doMock('@/models/server/gemini-files', () => ({
+  geminiStillSource: vi.fn(
+    async (_url: string, _key: string, uploaded: Array<{ name: string }>) => {
+      uploaded.push({ name: 'files/big' });
+      return { type: 'url', value: 'https://files.example/big' };
+    }
+  ),
+  releaseGeminiFiles,
 }));
 
 const { streamScriptEnhancement, enhanceScriptToString } =
@@ -80,5 +96,35 @@ describe('Enhance user location', () => {
       'User country (ISO country code; unavailable when empty): NZ\n'
     );
     expect(messages?.[1]?.content).toContain('Invent an original short video');
+  });
+});
+
+describe('Enhance with a still on the Gemini Files API (#2400)', () => {
+  it('never re-runs off Google, and deletes the still afterwards', async () => {
+    const scopedDb = asStub<ScopedDb>({
+      apiKeys: {
+        resolveLlmKey: vi.fn(async () => ({
+          source: 'organization',
+          via: 'google',
+          key: 'g',
+        })),
+      },
+    });
+    await enhanceScriptToString(
+      {
+        script: 'A cyclist races home.',
+        elements: [{ token: 'BIKE', imageUrl: '/r2/stills/bike.png' }],
+      },
+      { scopedDb, userId: 'u1', organizationId: 't1' }
+    );
+
+    const params = callLLMStream.mock.calls[0]?.[0];
+    await expect(params?.resolveApiKey?.()).rejects.toThrow(
+      "Gemini isn't available from this region."
+    );
+    expect(releaseGeminiFiles).toHaveBeenCalledWith(
+      [{ name: 'files/big' }],
+      'g'
+    );
   });
 });
