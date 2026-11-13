@@ -1,6 +1,6 @@
 {
   "name": "@openstory/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The OpenStory command line: sign in, download a sequence's files, and share a cut.",
   "keywords": [
     "cli",
