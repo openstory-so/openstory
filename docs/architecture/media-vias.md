@@ -100,6 +100,21 @@ Google won't fetch`data:`as a URI. Chat vision (motion prompts) and
 native image refs must also inline stored stills: Google's`fileData.fileUri`HTTP fetch (CDN / fal URLs) sits on a separate quota
 that 429s while the same bytes as`inlineData`succeed.`toVisionImageSource(..., { inline: true })` is that path.
 
+**Large stills go through the Files API (#2400).** A stored still over
+`GEMINI_INLINE_STILL_MAX_BYTES` (4 MiB) streams out of R2 into one Files API
+upload, the same path as a watched clip, and the request carries Google's
+file URI. A whole 20 MB still inline costs about 47 MB of isolate heap (bytes
+plus base64). The URI fetch quota above does not apply: the file is already
+Google's. `geminiStillSource` (`src/models/server/gemini-files.ts`) makes the
+choice for image refs, workflow chat vision and script enhancement; small
+stills, `data:` URIs and non-stored URLs inline as before, and e2e replay
+passes the `/r2/` URL through. Each call uploads again and deletes its files
+when the request ends (`releaseGeminiFiles`), rather than caching a URI that
+expires in 48 hours. The upload runs in the `step.do` that spends it. A
+location refusal at upload re-runs the call on the no-key via, where the
+still goes by URL as any off-Google still does; if only the generate call is
+refused, the re-run resolves its sources again for the new via.
+
 **Google refuses some locations.** Gemini judges the caller's address, and a Worker runs in the colo nearest the user, so Hong Kong and mainland China calls get `400 User location is not supported for the API use.`
 
 - `src/models/google-region.ts` marks the isolate for an hour on that refusal and re-runs the call once on the no-key via (OpenRouter for text, fal for Nano Banana and Omni Flash).

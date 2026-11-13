@@ -16,7 +16,8 @@
  *   - OpenRouter vision messages → prefer a fetchable URL (payload size);
  *     native Gemini chat/image MUST inline — Google's `fileData.fileUri`
  *     HTTP fetch sits on a separate quota that 429s while inline
- *     `generateContent` still succeeds.
+ *     `generateContent` still succeeds. Large stills go through the Files
+ *     API instead (`geminiStillSource`, #2400).
  *
  * Pass-through cases:
  * - the URL isn't ours (fal CDN outputs, user-supplied externals, legacy
@@ -38,7 +39,7 @@ import { readStorageObject } from '#storage';
 import { sniffImageMimeType } from './file';
 import { r2KeyFromUrl, toCdnUrl } from './buckets';
 
-function isReplayMode(): boolean {
+export function isReplayMode(): boolean {
   const env = getEnv();
   return env.E2E_TEST === 'true' && env.E2E_RECORD !== '1';
 }
@@ -117,7 +118,7 @@ export async function toDataOrCdnUrl(url: string): Promise<string> {
 }
 
 export type VisionImageSource =
-  | { type: 'url'; value: string }
+  | { type: 'url'; value: string; mimeType?: string }
   | { type: 'data'; value: string; mimeType: string };
 
 export type VisionImageSourceOptions = {
