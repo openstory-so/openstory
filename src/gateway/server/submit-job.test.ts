@@ -102,6 +102,24 @@ const MODELS: Record<string, GatewayModel> = {
       required: ['prompt'],
     },
   },
+  // A grok schema that forgot `model` and names a count the card does not price.
+  'grok/grok-imagine-loose': {
+    provider: 'grok',
+    id: 'grok-imagine-loose',
+    name: 'Grok Imagine Loose',
+    kind: 'video',
+    endpointId: 'v1/videos/generations',
+    card: PER_SECOND,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string' },
+        duration: { type: 'number' },
+        n: { type: 'number' },
+      },
+      required: ['prompt', 'duration'],
+    },
+  },
   'grok/grok-imagine-tokens': {
     provider: 'grok',
     id: 'grok-imagine-tokens',
@@ -311,6 +329,50 @@ describe('submitGatewayJob', () => {
     expect(job.input).not.toHaveProperty('model');
   });
 
+  it('runs the path model even when the schema has no model field', async () => {
+    const loose = { provider: 'grok', modelId: 'grok-imagine-loose' } as const;
+    const error = await refused({
+      ...loose,
+      body: { ...BODY, model: 'grok-imagine-video-pro' },
+    });
+    expect(error).toMatchObject({
+      message: '`model` in the body differs from the path',
+    });
+
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(
+      { ...loose, body: BODY },
+      ctx(scopedDb)
+    );
+    // xAI reads the model off the body, so the priced one is written there.
+    expect(job.input).toMatchObject({ model: 'grok-imagine-loose' });
+  });
+
+  it('refuses a field the schema does not name', async () => {
+    const error = await refused({
+      ...VIDEO,
+      body: { ...BODY, resolution: '4k' },
+    });
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toMatchObject({
+      message: 'The model schema has no field named resolution',
+    });
+  });
+
+  it('refuses more than one output when the card does not price the count', async () => {
+    const loose = { provider: 'grok', modelId: 'grok-imagine-loose' } as const;
+    const error = await refused({ ...loose, body: { ...BODY, n: 4 } });
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toMatchObject({
+      message: 'The rate card does not price `n` above 1 for this model',
+    });
+
+    const scopedDb = createScopedDb(organizationId, userId);
+    await expect(
+      submitGatewayJob({ ...loose, body: { ...BODY, n: 1 } }, ctx(scopedDb))
+    ).resolves.toMatchObject({ replay: false });
+  });
+
   it('refuses a body the schema refuses, with no row and no hold', async () => {
     const error = await refused({
       ...VIDEO,
@@ -513,6 +575,43 @@ describe('gatedUrls', () => {
     expect(() => gatedUrls({ parts: [{ inline_data: {} }] })).toThrow(
       ValidationError
     );
+  });
+
+  it('refuses inline data however it is spelled', () => {
+    for (const value of [
+      'DATA:image/png;base64,AAAA',
+      ' data:image/png;base64,AAAA',
+      'data:,AAAA',
+      'blob:https://a.example/123',
+    ]) {
+      expect(() => gatedUrls({ image: value })).toThrow(
+        'Send media as a URL, not inline data'
+      );
+    }
+  });
+
+  it('refuses a URL a provider could fetch but the check would not see', () => {
+    for (const value of [
+      ' https://a.example/1.png',
+      '//a.example/1.png',
+      'gs://bucket/1.png',
+      's3://bucket/1.png',
+      'ftp://a.example/1.png',
+      'file:///etc/passwd',
+    ]) {
+      expect(() => gatedUrls({ image: value })).toThrow(
+        'Media URLs must be plain http(s) URLs'
+      );
+    }
+  });
+
+  it('leaves a prompt alone that only looks like a scheme', () => {
+    expect(
+      gatedUrls({
+        prompt: 'Data: the ferry log, read aloud. Mara: "Scene one."',
+        note: 'blob: a shapeless thing',
+      })
+    ).toEqual([]);
   });
 });
 
