@@ -108,7 +108,7 @@ export function NewSequencePage({
   // correct there (the canonical text lives in scene versions), wrong here
   // (this text is only the seed for a new analysis, nothing writes back).
   const { data: sourceSequence } = useSequence(from ?? '');
-  // Session is prefetched in _app/route.tsx beforeLoad, so this is settled on
+  // Session is prefetched in the _app and _public beforeLoads, so this is settled on
   // first render — no flash for signed-in users.
   const { data: user } = useUser();
 
