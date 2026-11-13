@@ -450,6 +450,30 @@ describe('recordMediaGenerationSpan', () => {
     expect(mockSpan.end).toHaveBeenCalledTimes(1);
   });
 
+  it('records an inline data: output as a placeholder, never its bytes', async () => {
+    const { recordMediaGenerationSpan } = await importAiOtel({
+      token: 'phc_test',
+    });
+    const bytes = 'A'.repeat(5 * 1024 * 1024);
+
+    recordMediaGenerationSpan({
+      ...record,
+      activity: 'image',
+      outputUrl: [`data:image/png;base64,${bytes}`, 'https://cdn.test/a.png'],
+    });
+
+    const [, options] = mockStartSpan.mock.calls[0] ?? [];
+    expect(options?.attributes?.['gen_ai.output.messages']).toBe(
+      JSON.stringify([
+        { role: 'assistant', content: [{ type: 'text', text: '[image]' }] },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'https://cdn.test/a.png' }],
+        },
+      ])
+    );
+  });
+
   it('backdates the span so its duration is the generation, not the bookkeeping call', async () => {
     const { recordMediaGenerationSpan } = await importAiOtel({
       token: 'phc_test',
