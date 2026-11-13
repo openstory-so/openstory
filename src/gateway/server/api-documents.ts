@@ -11,6 +11,7 @@ import {
   withLinks,
   type HalLink,
 } from '@/platform/server/api-v1/hal';
+import { CHARGE_LINE_KINDS } from '@/billing/charge-lines';
 import type { GatewayJob } from '@/platform/server/db/schema';
 import { toShareableUrl } from '@/platform/server/storage/buckets';
 import {
@@ -21,6 +22,7 @@ import {
   gatewayProviderOfVia,
 } from '@/gateway/schema';
 import type { GatewayModelSummary } from '@/gateway/server/catalog';
+import type { GatewayJobChargeLine } from '@/gateway/server/db/gateway-jobs';
 import { z } from 'zod';
 
 const GATEWAY_PATH = `${API_V1_BASE}/gateway`;
@@ -60,9 +62,24 @@ export const gatewayJobResourceSchema = z
       .object({ code: z.enum(GATEWAY_ERROR_CODES), message: z.string() })
       .nullable(),
     charge: z
-      .object({ totalMicros: z.number().int() })
+      .object({
+        totalMicros: z
+          .number()
+          .int()
+          .describe('The wallet debit, in microdollars.'),
+        lines: z
+          .array(
+            z.object({
+              kind: z.enum(CHARGE_LINE_KINDS),
+              amountMicros: z.number().int(),
+            })
+          )
+          .describe(
+            'What the debit is made of; the lines sum to `totalMicros`.'
+          ),
+      })
       .nullable()
-      .describe('What the job cost, in microdollars, once it has succeeded.'),
+      .describe('What the job cost, once it succeeded.'),
     createdAt: z.string().meta({ format: 'date-time' }),
     completedAt: z.string().meta({ format: 'date-time' }).nullable(),
     _links: halLinksSchema,
@@ -117,6 +134,7 @@ export function gatewayModelsDocument(
 /** A job as the API returns it; stored URLs become absolute against `origin`. */
 export function gatewayJobDocument(
   job: GatewayJob,
+  chargeLines: GatewayJobChargeLine[],
   origin: string
 ): GatewayJobResource {
   const self = `${GATEWAY_JOBS_PATH}/${job.id}`;
@@ -129,12 +147,24 @@ export function gatewayJobDocument(
       model: job.modelKey,
       kind: job.kind,
       status: job.status,
-      outputs: (job.outputs ?? []).map((output) => ({
-        url: toShareableUrl(output.url, origin),
-        contentType: output.contentType,
-      })),
+      // Recorded before the charge, so shown only once the job succeeded.
+      outputs: (job.status === 'succeeded' ? (job.outputs ?? []) : []).map(
+        (output) => ({
+          url: toShareableUrl(output.url, origin),
+          contentType: output.contentType,
+        })
+      ),
       error: job.error ?? null,
-      charge: job.costMicros === null ? null : { totalMicros: job.costMicros },
+      charge:
+        job.status === 'succeeded' && job.costMicros !== null
+          ? {
+              totalMicros: job.costMicros,
+              lines: chargeLines.map(({ kind, amountMicros }) => ({
+                kind,
+                amountMicros,
+              })),
+            }
+          : null,
       createdAt: job.createdAt.toISOString(),
       completedAt: job.completedAt?.toISOString() ?? null,
     },
