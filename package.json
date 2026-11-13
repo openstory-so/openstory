@@ -136,7 +136,7 @@
     "@tanstack/ai-durable-stream": "1.0.0",
     "@tanstack/ai-elevenlabs": "^1.1.1",
     "@tanstack/ai-fal": "^1.1.1",
-    "@tanstack/ai-gemini": "^1.2.1",
+    "@tanstack/ai-gemini": "^1.2.2",
     "@tanstack/ai-grok": "^1.1.1",
     "@tanstack/ai-mcp": "^1.2.0",
     "@tanstack/ai-openai": "^1.1.1",
