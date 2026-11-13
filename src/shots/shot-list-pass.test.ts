@@ -67,6 +67,7 @@ const twoShotSpec = (n: number): ShotSpec => ({
       n === 1 ? 'Sarah at the door' : "Sarah's hand on the handle",
   },
   action: n === 1 ? 'She opens the door' : 'Cut to the hallway beyond',
+  keyframes: [],
   cameraMovement: {
     move: n === 1 ? 'static' : 'push-in',
     pacing: 'slow',

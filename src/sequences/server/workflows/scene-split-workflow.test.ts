@@ -740,6 +740,7 @@ function shotSpec(shotNumber: number, action: string) {
       subjectStartState: 'standing',
     },
     action,
+    keyframes: [],
     cameraMovement: { move: 'static', pacing: 'slow' as const },
     direction: '',
     soundCue: '',

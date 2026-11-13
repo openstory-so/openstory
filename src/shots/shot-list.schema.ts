@@ -144,8 +144,22 @@ const shotDialogueLineSchema = z.object({
 });
 
 /**
+ * A keyframe (#2386): one timed action inside a long continuous take. Text
+ * only — it is not a `frames` row and has no still.
+ */
+const shotKeyframeSchema = z.object({
+  atSeconds: z.number().meta({ description: 'Seconds from the shot start' }),
+  action: z.string().meta({
+    description: `What happens from this moment.${CAST_CAPS}`,
+  }),
+});
+
+export type ShotKeyframe = z.infer<typeof shotKeyframeSchema>;
+
+/**
  * One structured shot. Carries exactly what a real shot-list entry has:
- * framing/start-state, one primary action, a camera move, a direction note, a
+ * framing/start-state, one primary action (and, on a long take, its timed
+ * keyframes), a camera move, a direction note, a
  * sound cue, the lines spoken in it and a duration. Visual + motion prompts
  * are DERIVED from these fields plus the parent scene's shared context (see
  * `shot-list.derive.ts`).
@@ -156,6 +170,9 @@ export const shotSpecSchema = z.object({
   action: z
     .string()
     .meta({ description: `The ONE primary action.${CAST_CAPS}` }),
+  keyframes: z.array(shotKeyframeSchema).meta({
+    description: 'Timed actions of a long continuous take, else empty',
+  }),
   cameraMovement: shotCameraMovementSchema,
   direction: z.string().meta({
     description: `Direction note, empty if none.${CAST_CAPS}`,
@@ -181,8 +198,11 @@ export type ShotSpec = z.infer<typeof shotSpecSchema>;
  */
 export type StoredShotSpec = Omit<
   ShotSpec,
-  'shotNumber' | 'durationSeconds' | 'dialogue'
->;
+  'shotNumber' | 'durationSeconds' | 'dialogue' | 'keyframes'
+> & {
+  /** Absent on a row with none (and on every row from before #2386). */
+  readonly keyframes?: readonly ShotKeyframe[];
+};
 
 /**
  * What Rewrite shot returns (#1923). Same fields as {@link storedShotSpec},
@@ -193,6 +213,9 @@ export const storedShotSpecSchema = z.object({
   action: z
     .string()
     .meta({ description: `The ONE primary action.${CAST_CAPS}` }),
+  keyframes: z.array(shotKeyframeSchema).meta({
+    description: 'Timed actions of a long continuous take, else empty',
+  }),
   cameraMovement: shotCameraMovementSchema,
   direction: z.string().meta({
     description: `Direction note, empty if none.${CAST_CAPS}`,
@@ -204,6 +227,10 @@ export const storedShotSpecSchema = z.object({
 
 const specEditField = z.string().trim().max(2000);
 
+/** Far past any clip a model renders; a bound, not a rule. */
+const MAX_KEYFRAME_SECONDS = 600;
+const MAX_KEYFRAMES = 20;
+
 /** A spec the user edited in the shot inspector (#1929). Every field bounded. */
 export const shotSpecEditSchema = z.object({
   framing: z.object({
@@ -213,10 +240,20 @@ export const shotSpecEditSchema = z.object({
     subjectStartState: specEditField,
   }),
   action: specEditField,
+  keyframes: z
+    .array(
+      z.object({
+        atSeconds: z.number().min(0).max(MAX_KEYFRAME_SECONDS),
+        action: specEditField.min(1),
+      })
+    )
+    .max(MAX_KEYFRAMES),
   cameraMovement: z.object({ move: specEditField, pacing: specEditField }),
   direction: specEditField,
   soundCue: specEditField,
 });
+
+export type ShotSpecEdit = z.infer<typeof shotSpecEditSchema>;
 
 /** Drop the fields that live elsewhere; the rest is what a version stores. */
 export function storedShotSpec(spec: ShotSpec): StoredShotSpec {
@@ -225,6 +262,7 @@ export function storedShotSpec(spec: ShotSpec): StoredShotSpec {
 
 /** Stable key order for hashing and equality. A chained move stays one string. */
 export function canonicalStoredShotSpec(spec: StoredShotSpec): StoredShotSpec {
+  const keyframes = specKeyframes(spec);
   return {
     framing: {
       shotSize: spec.framing.shotSize,
@@ -233,6 +271,8 @@ export function canonicalStoredShotSpec(spec: StoredShotSpec): StoredShotSpec {
       subjectStartState: spec.framing.subjectStartState,
     },
     action: spec.action,
+    // Only when present, so no digest stamped before #2386 moves.
+    ...(keyframes.length > 0 ? { keyframes } : {}),
     cameraMovement: {
       move: spec.cameraMovement.move,
       pacing: spec.cameraMovement.pacing,
@@ -240,6 +280,39 @@ export function canonicalStoredShotSpec(spec: StoredShotSpec): StoredShotSpec {
     direction: spec.direction,
     soundCue: spec.soundCue,
   };
+}
+
+/** A spec's keyframes in time order, blanks dropped. Empty when it has none. */
+export function specKeyframes(
+  spec: Pick<StoredShotSpec, 'keyframes'>
+): ShotKeyframe[] {
+  return (spec.keyframes ?? [])
+    .map((keyframe) => ({
+      atSeconds: Math.max(0, Math.round(keyframe.atSeconds * 10) / 10 || 0),
+      action: keyframe.action.trim(),
+    }))
+    .filter((keyframe) => keyframe.action.length > 0)
+    .sort((a, b) => a.atSeconds - b.atSeconds);
+}
+
+/**
+ * Keyframes moved onto a shot whose length changed from `fromSeconds` to
+ * `toSeconds`: the analysis times them against its own pacing hint, and the
+ * system then divides the scene.
+ */
+export function rescaleKeyframes(
+  keyframes: readonly ShotKeyframe[],
+  fromSeconds: number,
+  toSeconds: number
+): ShotKeyframe[] {
+  if (!(fromSeconds > 0) || !(toSeconds > 0) || fromSeconds === toSeconds) {
+    return [...keyframes];
+  }
+  const ratio = toSeconds / fromSeconds;
+  return keyframes.map((keyframe) => ({
+    ...keyframe,
+    atSeconds: Math.round(keyframe.atSeconds * ratio),
+  }));
 }
 
 // ============================================================================

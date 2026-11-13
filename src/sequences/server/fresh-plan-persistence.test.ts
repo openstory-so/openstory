@@ -100,6 +100,7 @@ const scene: Scene = {
       subjectStartState: 'standing',
     },
     action: 'Maya walks',
+    keyframes: [],
     cameraMovement: { move: 'static', pacing: 'slow' },
     direction: '',
     soundCue: '',

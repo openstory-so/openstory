@@ -11,6 +11,7 @@ import {
 } from '@/platform/errors';
 import {
   canonicalStoredShotSpec,
+  specKeyframes,
   type shotSpecEditSchema,
 } from '@/shots/shot-list.schema';
 import {
@@ -18,6 +19,7 @@ import {
   regenerateShotPrompt,
 } from './regenerate-shot-prompt';
 import type { ShotEditContext } from './shot-context';
+import { durationSecondsOf } from '@/shots/packed-clip-window';
 import { drawSpecSketch } from './shot-preview';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
@@ -126,8 +128,10 @@ export async function readShotSpec(
     scopedDb.framePromptVersions.getSelected(frame.id),
     scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
   ]);
+  const selected = state?.selected?.spec;
   return {
-    spec: state?.selected?.spec ?? null,
+    // Always with `keyframes`, so what is read can be sent straight back.
+    spec: selected ? { ...selected, keyframes: specKeyframes(selected) } : null,
     verdict: state?.verdict ?? ('missing' as const),
     visualWritten: visual?.source === 'user-edit',
     motionWritten: motion?.source === 'user-edit',
@@ -161,6 +165,15 @@ export async function saveShotSpec(
   if (state.verdict === 'updating') {
     throw new ConflictError(
       'This shot is being rewritten. Try again when it lands.'
+    );
+  }
+  const shotSeconds = durationSecondsOf(shot.durationMs);
+  const late = edit.keyframes.find(
+    (keyframe) => keyframe.atSeconds >= shotSeconds
+  );
+  if (late) {
+    throw new ValidationError(
+      `Keyframe at ${late.atSeconds}s is past the end of this ${shotSeconds}s shot`
     );
   }
   const spec = canonicalStoredShotSpec(edit);

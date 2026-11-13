@@ -87,7 +87,7 @@ const specVerdict = z
 
 const getShotSpec = productionRead(
   'get_shot_spec',
-  'Read a shot’s spec (framing, action, camera movement, direction, sound cue) that its prompts are built from, whether it still matches the script, and which of its prompts the user wrote by hand. Edit it with update_shot_spec.',
+  'Read a shot’s spec (framing, action, keyframes, camera movement, direction, sound cue) that its prompts are built from, whether it still matches the script, and which of its prompts the user wrote by hand. Edit it with update_shot_spec.',
   shotInput,
   z.object({
     shotId: z.string(),
@@ -302,7 +302,7 @@ const rebuildShotPrompts = openstoryTool({
 const updateShotSpec = openstoryTool({
   name: 'update_shot_spec',
   description:
-    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
+    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. keyframes are the timed actions of a long continuous take (atSeconds from the shot start, inside its length); send [] for none. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: shotInput.extend({

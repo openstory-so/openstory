@@ -39,6 +39,7 @@ import { MentionEditPopover } from '@/ui/text-editor/mention/mention-edit-popove
 import { createMentionSuggestion } from '@/ui/text-editor/mention/mention-suggestion';
 import { tagifyMarkdown } from '@/ui/text-editor/mention/tagify';
 import { splitMentions } from '@/ui/text-editor/mention/mention-match';
+import { KeyframeHighlight } from '@/ui/text-editor/keyframe-highlight';
 
 /** The mention pill the edit popover is anchored to. */
 type MentionTarget = {
@@ -383,6 +384,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       // model verbatim (#1748).
       StarterKit.configure({ hardBreak: false, link: false }),
       HardBreakAsNewline,
+      KeyframeHighlight,
       Markdown.configure({
         // `html: true` is required for inline mention spans (produced by
         // `tagifyMarkdown`) to survive the markdown-it parse on `setContent`.

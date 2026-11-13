@@ -4,11 +4,15 @@
  * prompt is replaced only when the user says so.
  */
 
+import { X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/platform/errors';
 import {
   shotSpecEditSchema,
+  specKeyframes,
+  type ShotKeyframe,
+  type ShotSpecEdit,
   type StoredShotSpec,
 } from '@/shots/shot-list.schema';
 import {
@@ -28,6 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
+import { Input } from '@/ui/shadcn/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,8 +118,8 @@ const GROUPS: { label: string; fields: Field[] }[] = [
   },
 ];
 
-/** The spec read off the form. */
-function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
+/** The spec read off the form. A keyframe row with no action is dropped. */
+function specFromForm(form: FormData, spec: StoredShotSpec): ShotSpecEdit {
   const value = (name: string, fallback: string) => {
     const entry = form.get(name);
     return typeof entry === 'string' ? entry : fallback;
@@ -130,6 +135,13 @@ function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
       ),
     },
     action: value('action', spec.action),
+    keyframes: form
+      .getAll('keyframeAction')
+      .flatMap((action, index) =>
+        typeof action === 'string' && action.trim().length > 0
+          ? [{ atSeconds: Number(form.getAll('keyframeAt')[index]), action }]
+          : []
+      ),
     cameraMovement: {
       move: value('move', spec.cameraMovement.move),
       pacing: value('pacing', spec.cameraMovement.pacing),
@@ -202,7 +214,7 @@ function SpecFields({
   // Remounts the fields on Cancel, back to the saved spec.
   const [resetCount, setResetCount] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const [pending, setPending] = useState<StoredShotSpec | null>(null);
+  const [pending, setPending] = useState<ShotSpecEdit | null>(null);
   const updating = verdict === 'updating';
   const status = updating
     ? 'Rewriting…'
@@ -212,7 +224,7 @@ function SpecFields({
         ? 'Script changed since it was written'
         : '';
 
-  const submit = (next: StoredShotSpec, replace: boolean) => {
+  const submit = (next: ShotSpecEdit, replace: boolean) => {
     setPending(null);
     save.mutate(
       {
@@ -289,6 +301,14 @@ function SpecFields({
                   onEdit={() => setDirty(true)}
                 />
               ))}
+              {group.label === 'Motion' && (
+                <KeyframeFields
+                  key={`keyframes-${resetCount}`}
+                  initial={specKeyframes(spec)}
+                  disabled={updating || save.isPending}
+                  onEdit={() => setDirty(true)}
+                />
+              )}
             </div>
           ))}
         </fieldset>
@@ -422,6 +442,98 @@ function SpecField({
         onMentionRename={onMentionRename}
       />
       <input type="hidden" name={field.name} value={value} />
+    </div>
+  );
+}
+
+type KeyframeRow = { key: number; at: string; action: string };
+
+/** Keyframes (#2386): the timed actions of a long take, one row each. */
+function KeyframeFields({
+  initial,
+  disabled,
+  onEdit,
+}: {
+  initial: readonly ShotKeyframe[];
+  disabled: boolean;
+  onEdit: () => void;
+}) {
+  const [rows, setRows] = useState<KeyframeRow[]>(() =>
+    initial.map((keyframe, key) => ({
+      key,
+      at: String(keyframe.atSeconds),
+      action: keyframe.action,
+    }))
+  );
+  const nextKey = useRef(initial.length);
+  const change = (next: KeyframeRow[]) => {
+    setRows(next);
+    onEdit();
+  };
+  const patch = (key: number, fields: Partial<KeyframeRow>) =>
+    change(rows.map((row) => (row.key === key ? { ...row, ...fields } : row)));
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <span className="text-xs">Keyframes</span>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={disabled}
+          onClick={() => {
+            const last = rows.at(-1);
+            change([
+              ...rows,
+              {
+                key: nextKey.current++,
+                at: last ? String((Number(last.at) || 0) + 3) : '0',
+                action: '',
+              },
+            ]);
+          }}
+        >
+          Add keyframe
+        </Button>
+      </div>
+      {rows.map((row, index) => (
+        <div key={row.key} className="flex items-center gap-2">
+          <Input
+            name="keyframeAt"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            required
+            value={row.at}
+            onChange={(event) => patch(row.key, { at: event.target.value })}
+            disabled={disabled}
+            aria-label={`Keyframe ${index + 1} start, seconds`}
+            className="w-20 shrink-0 tabular-nums"
+          />
+          <Input
+            name="keyframeAction"
+            value={row.action}
+            onChange={(event) => patch(row.key, { action: event.target.value })}
+            disabled={disabled}
+            aria-label={`Keyframe ${index + 1} action`}
+            placeholder="What happens from this second"
+            className="min-w-0 flex-1"
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            disabled={disabled}
+            onClick={() =>
+              change(rows.filter((other) => other.key !== row.key))
+            }
+            aria-label={`Remove keyframe ${index + 1}`}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
