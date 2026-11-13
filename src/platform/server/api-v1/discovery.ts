@@ -72,11 +72,13 @@ Styles (create your own look):
   the 201. The response 'url' is a public player page.
 
 Model gateway (run one model, pay per job):
-  GET /api/v1/gateway/models lists the image and video models the gateway
-  serves, each with the aspect ratios, lengths and references it accepts.
-  POST /api/v1/gateway/jobs with { kind, model, prompt, ... } runs one on
-  OpenStory's own provider keys: the estimate is held, the provider's actual
-  cost is charged to your organization when the job finishes, and a failed
+  GET /api/v1/gateway/models lists every priced model on fal, BytePlus,
+  Gemini and Grok, each with its submit path.
+  POST /api/v1/gateway/{provider}/{model} with the provider's own request
+  body runs it on OpenStory's own provider keys. The body is checked against
+  the model's schema on modelschemas.com and priced by its rate card: the
+  price is held, charged to your organization when the job finishes, and a
+  failed
   job releases the hold. 202 returns the job; GET /api/v1/gateway/jobs/{id}
   (with ?wait) until status is 'succeeded' (absolute result URLs in
   'outputs') or 'failed'. Send an Idempotency-Key header so a retry returns
@@ -310,7 +312,7 @@ export function buildRootDocument(): RootDocument {
       },
       'gateway-models': getLink(
         GATEWAY_MODELS_PATH,
-        'Models the gateway serves, with what each accepts'
+        'Models the gateway can run, each with its submit path'
       ),
       'submit-gateway-job': submitGatewayJobLink(),
       'gateway-job': {

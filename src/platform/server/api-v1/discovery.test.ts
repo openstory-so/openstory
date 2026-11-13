@@ -7,7 +7,6 @@ import {
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
 import { apiCreateStyleSchema } from './style-input-schema';
-import { gatewayJobRequestSchema } from '@/gateway/schema';
 
 describe('buildRootDocument', () => {
   it('reads like MCP-style instructions and self-describes the API', () => {
@@ -105,17 +104,18 @@ describe('create-stitch (#2127)', () => {
 describe('model gateway', () => {
   it('is advertised in the root document with a parseable submit example', () => {
     const { _links, instructions } = buildRootDocument();
-    expect(instructions).toMatch(/POST \/api\/v1\/gateway\/jobs/);
+    expect(instructions).toMatch(
+      /POST \/api\/v1\/gateway\/\{provider\}\/\{model\}/
+    );
     expect(instructions).toMatch(/models:invoke/);
     expect(_links['gateway-models']?.href).toBe('/api/v1/gateway/models');
     expect(_links['gateway-job']?.templated).toBe(true);
     const submit = _links['submit-gateway-job'];
     expect(submit).toMatchObject({
-      href: '/api/v1/gateway/jobs',
+      href: '/api/v1/gateway/{provider}/{model}',
       method: 'POST',
+      templated: true,
     });
-    expect(() =>
-      gatewayJobRequestSchema.parse(submit?.examples?.[0])
-    ).not.toThrow();
+    expect(submit?.examples?.[0]).toHaveProperty('prompt');
   });
 });

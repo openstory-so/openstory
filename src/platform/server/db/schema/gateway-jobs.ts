@@ -1,7 +1,7 @@
 /**
  * Model gateway jobs (docs/architecture/model-gateway.md): one row per
- * `POST /api/v1/gateway/jobs`. `input` is the normalized request the run was
- * snapshotted from; `outputs` are R2 uploads with origin-relative URLs.
+ * `POST /api/v1/gateway/{provider}/{model}`. `input` is the provider body as
+ * sent; `outputs` are R2 uploads with origin-relative URLs.
  * No cascade (AGENTS.md, D1 table-rebuild trap): cleanup is app code.
  */
 
@@ -45,7 +45,7 @@ export const gatewayJobs = snakeCase.table(
       .$type<GatewayJobStatus>()
       .default('queued')
       .notNull(),
-    // The via the job was sent to; poll follows it.
+    // The provider the job runs on, set at submit.
     via: text({ length: 50 }).$type<MediaVia>(),
     providerJobId: text(),
     outputs: text({ mode: 'json' }).$type<GatewayJobOutput[]>(),

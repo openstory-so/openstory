@@ -4,10 +4,11 @@ Status: PR 1 (gateway core and app-pays) shipped; PRs 2–4 are the plan. This
 file is the plan and the contract; each PR in the stack updates it to match
 what it shipped. § Shipped describes the code as it is.
 
-The gateway is OpenStory's own model API: one fal-shaped surface (submit a
-job, poll it, read a result URL) under `/api/v1/gateway`, in front of every
-via. It runs inside the main Worker. It is extracted into its own service only
-after the contract has held for the main app and for third parties.
+The gateway is OpenStory's own model API: a proxy under `/api/v1/gateway` in
+front of fal, BytePlus, Gemini and Grok. The request body is the provider's
+own, unchanged. The job, the price and the result URLs are ours. It runs
+inside the main Worker. It is extracted into its own service only after the
+contract has held for the main app and for third parties.
 
 ## Decisions
 
@@ -30,23 +31,33 @@ after the contract has held for the main app and for third parties.
 
 ## Surface
 
-| Method and path                      | Purpose                                     |
-| ------------------------------------ | ------------------------------------------- |
-| `GET /api/v1/gateway/models`         | Models the gateway serves, with input shape |
-| `POST /api/v1/gateway/jobs`          | Submit. Returns `202` and the job           |
-| `GET /api/v1/gateway/jobs/$id`       | Status, result URLs, the charge (`?wait`)   |
-| `POST /api/v1/gateway/jobs/estimate` | Price before submitting (PR 4)              |
-| `POST /api/v1/gateway/charges`       | An app's own billing line (PR 4)            |
+| Method and path                           | Purpose                                   |
+| ----------------------------------------- | ----------------------------------------- |
+| `GET /api/v1/gateway/models`              | Every priced model, with its submit path  |
+| `POST /api/v1/gateway/{provider}/{model}` | Submit. Returns `202` and the job         |
+| `GET /api/v1/gateway/jobs/$id`            | Status, result URLs, the charge (`?wait`) |
+| `POST /api/v1/gateway/jobs/estimate`      | Price before submitting (PR 4)            |
+| `POST /api/v1/gateway/charges`            | An app's own billing line (PR 4)          |
 
-- A request names a model **key**, never an endpoint. The job is stamped with
-  its `via`; poll follows the stamp; a job never hops between providers.
+- **Body in is exact, job out is ours.** The body is the provider's own
+  request, checked against the model's input schema on modelschemas.com and
+  sent as it is. Each provider queues and polls differently, so the answer is
+  one job shape for all of them, and result URLs are our R2 copies.
+- `{provider}` is a modelschemas provider id (`fal`, `byteplus`, `gemini`,
+  `grok`); `{model}` is that provider's own model id (a fal id keeps its
+  slashes). The job is stamped with the provider's `via` at submit and never
+  hops between providers.
+- **The price is the model's rate card** (modelschemas `pricing`), never the
+  provider's billed units. A model with no card, or a request the card cannot
+  price, is refused.
 - `Idempotency-Key` on submit makes the trigger and the reservation idempotent.
 - Results are stored in R2 in the step that generated them (#1645) and
   returned as absolute URLs.
-- Every reference URL in a request goes through the upload rights check
-  (`requireCheckedUploadRights`) before any provider sees it.
+- Every URL anywhere in the body goes through the upload rights check
+  (`requireCheckedUploadRights`) before any provider sees it. Inline media
+  (`data:` URIs, Gemini `inlineData`) is refused: the check is keyed on a URL.
 - OAuth callers need the `models:invoke` scope. `osk_` keys are unscoped.
-- Kinds in this stack: `image`, `video`. Audio and LLM calls are follow-ups.
+- Kinds: `image`, `video`, `audio`. LLM calls are a follow-up.
 
 ## Money
 
@@ -103,12 +114,16 @@ Each PR is based on the one before it.
 
 ### Code
 
-- `src/gateway/schema.ts`: the request schema (`gatewayJobRequestSchema`,
-  OpenAPI `GatewayJobRequest`), the stored input, output and error types, and
-  the model keys the gateway can serve. Client-safe.
-- `src/gateway/server/models.ts`: the catalog `GET /gateway/models` lists,
-  the platform vias (`gatewayVias`), and the hold estimate
-  (`estimateGatewayJobCost`, the Studio estimators).
+- `src/gateway/schema.ts`: the providers and their vias, and the stored
+  input, output and error types. Client-safe.
+- `src/gateway/server/catalog.ts`: `getGatewayModel` (the model, its input
+  schema and its rate card, from modelschemas) and `listGatewayModels`.
+- `src/gateway/server/price.ts`: `priceGatewayJob`, the card worked out
+  against the request and, at settle, the usage.
+- `src/gateway/server/providers.ts`: `GATEWAY_DRIVERS`, one `start`/`poll`
+  pair per provider.
+- `src/gateway/server/storage.ts`: `storeGatewayOutput`.
+- `src/gateway/server/rate-limit.ts`: the per-organization submit limit.
 - `src/gateway/server/submit-job.ts`: `submitGatewayJob`, the whole submit.
 - `src/gateway/server/read-job.ts`: the organization-scoped read behind GET.
 - `src/gateway/server/api-documents.ts`: the response documents
@@ -121,44 +136,46 @@ Each PR is based on the one before it.
   `GatewayGenerationWorkflow` (binding `GATEWAY_WORKFLOW`, trigger `/gateway`).
 - `src/gateway/server/db/gateway-jobs.ts`: `scopedDb.gatewayJobs`; table
   `gateway_jobs` (`src/platform/server/db/schema/gateway-jobs.ts`).
-- Routes: `src/routes/api/v1/gateway.models.ts`, `gateway.jobs.ts`,
+- Routes: `src/routes/api/v1/gateway.models.ts`, `gateway.$provider.$.ts`,
   `gateway.jobs.$id.ts`. Thin; the logic is in `src/gateway/server/`.
 
 ### Request
 
-```json
-{ "kind": "image", "model": "gpt_image_2", "prompt": "…", "aspectRatio": "16:9",
-  "referenceImageUrls": ["https://…"] }
-{ "kind": "video", "model": "seedance_v2", "prompt": "…", "aspectRatio": "9:16",
-  "duration": 8, "startImageUrl": "https://…" }
+```bash
+POST /api/v1/gateway/fal/fal-ai/flux/schnell
+{ "prompt": "Mara, a ferry mechanic, wipes her hands on a rag in the engine room" }
+
+POST /api/v1/gateway/grok/grok-imagine-video-1.5
+{ "prompt": "…", "duration": 6 }
 ```
 
-- `aspectRatio` is `16:9`, `9:16` or `1:1` (default `16:9`). Resolution is
-  the app default (720p); it is not a request field yet.
-- Video `duration` is snapped to the nearest length the model accepts and
-  stored snapped; omitted, the shortest. A video takes a start frame **or**
-  reference images, never both. The video mode follows: start frame →
-  `frames`, references → `reference`, neither → `text` (the Studio
-  endpoints, `studio-video-generation.ts`).
+- The body is validated with `z.fromJSONSchema` against the model's input
+  schema. Where that schema has a `model` property (Grok, BytePlus) the
+  path's model is written onto the body; a body naming a different model is
+  refused.
+- Nothing is defaulted, snapped or renamed: what the provider's schema
+  refuses is a `400`, and what it accepts is sent.
 
 ### Models
 
-Image: every visible sequence still model (`IMAGE_MODELS` without `hidden`),
-through `generateImageWithProvider`. Video: every visible sequence video
-model (`IMAGE_TO_VIDEO_MODELS` without `hidden`) through the Studio
-submit/poll, and a `requiresVia: 'byteplus'` model (Seedance 2.5, Seedance
-2.0 Mini) only where the platform claims BytePlus Ark.
+Every model modelschemas lists for the four providers that has an activity
+(`image`, `video`, `audio`), a request schema and a rate card.
 
 Not served, and why:
 
-- Hidden models (Kling 3.0 Pro, Nano Banana 2, Krea 2 Turbo): no picker
-  offers them either.
-- The `/models` catalog's arbitrary fal endpoints: the gateway names model
-  keys, never endpoints.
-- Video edit mode, reference clips and audio, end frames, Ark drafts and a
-  `count` above one: Studio-only today; each needs its own input checks
-  (clip chains, lengths) before it can face a third party.
-- Audio and LLM kinds: later in the stack (§ Not in this stack).
+- **A model whose card needs a number the request does not carry and gives
+  no estimate for it.** Flux dev is priced per megapixel of the result,
+  Gemini images per token, Seedream per input and generated image. There is
+  no honest hold for those, so they are refused at submit until their cards
+  carry an estimate.
+- **Most BytePlus models are found by a fallback.** Their records name no
+  activity and no endpoint (TanStack/schemas#649), so `catalog.ts` reads the
+  kind off the output modality and maps it to Ark's two endpoints. A record
+  with an empty output modality is not runnable.
+- **Gemini video.** modelschemas lists no Gemini video model.
+- **Real people on BytePlus.** The proxy does not register Ark portrait
+  assets; an image Ark refuses fails as an Ark error.
+- LLM calls: later (§ Not in this stack).
 
 ### Job lifecycle
 
@@ -167,27 +184,29 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
 `claim-discipline` exception like `generated_assets`.
 
 1. **Submit** (`submitGatewayJob`): a known `Idempotency-Key` returns its
-   job; else the model is checked against the platform vias, the account
-   against the generation gate, every reference URL through
-   `requireCheckedUploadRights`, the estimate is priced, the row is
-   inserted, the hold is reserved, and the run is triggered. The run's
-   payload is the normalized input plus the no-person verdicts
-   (`likenessFromLedger`) for Ark; the run reads no job row.
-2. **Image run:** generate and store to R2 in one `step.do` (#1645), record
-   fal usage, `settle`, provenance (`gateway_job`), `persist-result`.
-3. **Video run:** resolve the via, register Ark stills when the via is
-   BytePlus (lease owner `gateway:<instanceId>`), submit, **stamp `via` and
-   `providerJobId` on the row**, poll the submitted job (the poll follows the
-   via on the submission, never a fresh resolution), release the Ark leases,
-   price from the provider's usage (`studioVideoCostFromUsage`), store,
-   `settle`, provenance, `persist-result`.
-4. **Failure:** `onFailure` marks the row `failed` with
+   job; else the model is fetched, the body checked against its schema, the
+   account against the generation gate, every URL through
+   `requireCheckedUploadRights`, the card priced, the row inserted, the hold
+   reserved, and the run triggered. The run's payload carries the body, the
+   provider endpoint and **the rate card as it read at submit**; the run
+   reads no job row and does not fetch modelschemas.
+2. **Run:** `start` sends the body. A provider that answers at once (images
+   on Grok, BytePlus and Gemini) has its media stored to R2 inside that step
+   (#1645). A queued job (fal, Grok and BytePlus video) has its provider id
+   stamped on the row, then is polled in batches; the batch that sees it
+   finish stores the media. Bytes never cross a `step.do`.
+3. **Settle:** one step prices the card with the usage, captures against the
+   hold and writes `succeeded` with the outputs and the charge. Provenance
+   (`gateway_job`) follows; a failure there leaves the job succeeded.
+4. **Failure:** `onFailure` marks a live row `failed` with
    `{ code, message }` (`CONTENT_REJECTED` for a content refusal, else
-   `GENERATION_FAILED`; `NOT_STARTED` when the trigger itself failed) and
-   releases Ark leases. The base class zeroes the hold (`ownsReservation`).
+   `GENERATION_FAILED`; `NOT_STARTED` is written by the submit when the
+   trigger itself failed). The base class zeroes the hold
+   (`ownsReservation`). A settled job is never marked failed.
 
-Unlike Studio, a video run does not resubmit after a content flag or after
-Ark's InternalServiceError: one submit, and a failure is the answer.
+A provider `4xx` is the answer to that body and is not retried; `408`, `429`
+and `5xx` retry the step. Unlike Studio, a run does not resubmit after a
+content flag or after Ark's InternalServiceError.
 
 ### Keys and money
 
@@ -199,12 +218,16 @@ Ark's InternalServiceError: one submit, and a failure is the answer.
   on the platform LLM key too (`withPlatformLlmKey`).
 - The hold is `reserveRunCredits(…, { providers: [] })`: no BYOK skip, so an
   organization with its own fal key is still held and charged.
+- The hold is the card's price for the request. The charge is the card's
+  price for the request plus the usage the provider reported (BytePlus
+  `completion_tokens`, Gemini `usageMetadata`); a card that reads no usage
+  charges exactly the hold.
 - The settle is `deductWorkflowCredits` with the job's `reservationId`
-  (capture), idempotency key `${instanceId}:gateway-settle`. A result the
-  provider reports no cost for is charged the hold (`holdMicros`, the
-  estimate on the payload) and reported as a missing cost, never settled
-  free. `costMicros` on the row is what was charged; the response shows it
-  as `charge.totalMicros` once the job succeeded.
+  (capture), idempotency key `${instanceId}:gateway-settle`. When the card
+  refuses the reported usage the hold (`holdMicros`) is charged and reported
+  as a missing cost, never settled free. `costMicros` is written with
+  `succeeded`, in the settle step; the response shows it as
+  `charge.totalMicros`.
 - Insufficient credits at submit is `402 INSUFFICIENT_CREDITS` in the
   `/api/v1` error envelope, and leaves no row, so the same key can be sent
   again after a top-up.
@@ -214,9 +237,10 @@ Ark's InternalServiceError: one submit, and a failure is the answer.
 The `Idempotency-Key` header (≤ 255 characters) is unique per organization
 on `gateway_jobs`. The key binds the job; the job binds the rest: the
 reservation key is `gateway:<jobId>` and the trigger's `deduplicationId` is
-`gateway-<jobId>`. A replay returns the first job whatever the body says. A
-key whose first submit was refused before the hold (credits, a bad upload)
-is free again.
+`gateway-<jobId>`. A replay returns the first job whatever the path or body
+says, and still counts against the rate limit. A key whose first submit was
+refused before the hold (credits, a bad upload) is free again. A key whose
+trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 
 ### Auth and limits
 
@@ -234,7 +258,10 @@ is free again.
 - No reconcile sweep for a job left `running` when both the run and its
   `onFailure` die; the hold expires on its own TTL.
 - No estimate endpoint; the hold is not shown before submit.
-- A reference image the check finds a real person in is refused
+- The provider's own result object is not returned, only the stored media.
+- `MODELSCHEMAS_API_KEY` must be set in production: the anonymous limit is
+  60 requests an hour.
+- An image the check finds a real person in is refused
   (`400 ATTESTATION_REQUIRED`): the gateway has no portrait-attestation field
   yet. A raw URL is classified on first use, an organization's own upload by
   its existing verdict, and another organization's file is refused.
@@ -244,8 +271,8 @@ is free again.
 - Moving the main app's own workflows onto the gateway. Roughly twenty
   workflows call the provider modules directly today; they move one domain at
   a time once the contract is stable.
-- Audio and LLM kinds, result webhooks, streaming.
+- LLM calls, result webhooks, streaming.
 - Extraction to a separate Worker.
 - Cash payouts. They need Stripe Connect and legal review first.
-- Reconciled pricing for the native vias. Margin on xAI, Google, Ark and
-  ElevenLabs spend rests on the static price cards until that exists.
+- Reconciling the rate cards against provider bills. The charge is the card;
+  a wrong card is our loss or the caller's until that exists.

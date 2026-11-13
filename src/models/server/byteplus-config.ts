@@ -37,7 +37,7 @@ function getBytePlusAssetGroupId(): string | undefined {
   return optionalEnv('BYTEPLUS_ASSET_GROUP_ID');
 }
 
-function getArkBaseUrl(): string | undefined {
+export function getArkBaseUrl(): string | undefined {
   return optionalEnv('ARK_BASE_URL');
 }
 

@@ -57,6 +57,7 @@ describe('gateway sources', () => {
     for (const path of [
       'src/gateway/server/workflows/gateway-generation-workflow.ts',
       'src/gateway/server/submit-job.ts',
+      'src/gateway/server/providers.ts',
     ]) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toMatch(/scopedDb\s*\.\s*credentials/);
