@@ -77,7 +77,7 @@ async function loadPngBlob(url: string): Promise<Blob> {
   return rasterizeToPng(blob);
 }
 
-async function rasterizeToPng(blob: Blob): Promise<Blob> {
+export async function rasterizeToPng(blob: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;

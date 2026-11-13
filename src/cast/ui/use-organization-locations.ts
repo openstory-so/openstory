@@ -28,6 +28,7 @@ import {
 } from '@/cast/ui/location-keys';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import type { LocationBibleInput } from '@/cast/ui/use-sequence-locations';
+import { normalizeImageFile } from '@/ui/normalize-image-file';
 import { putToR2, snapshotFile } from '@/ui/upload';
 
 export { organizationLocationKeys };
@@ -162,16 +163,22 @@ function useUploadPhotos() {
     files: readonly File[],
     onProgress?: (file: File, percent: number) => void
   ): Promise<string[]> => {
+    // Every file converts before any is stored.
+    const converted = await Promise.all(
+      files.map(async (original) => ({
+        original,
+        file: await normalizeImageFile(await snapshotFile(original)),
+      }))
+    );
     const uploaded = await Promise.all(
-      files.map(async (original) => {
-        const file = await snapshotFile(original);
+      converted.map(async ({ original, file }) => {
         const presign = await presignLocationUploadFn({
           data: { filename: file.name },
         });
         await putToR2(presign.uploadUrl, file, presign.contentType, (percent) =>
           onProgress?.(original, percent)
         );
-        return { url: presign.publicUrl, filename: original.name };
+        return { url: presign.publicUrl, filename: file.name };
       })
     );
     await ensureUploadRights(uploaded);

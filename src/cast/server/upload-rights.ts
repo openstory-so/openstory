@@ -185,7 +185,8 @@ function analyzeUpload(opts: {
   const idempotencyKey = `likeness:${opts.url}`;
   // Routed on the stored file's type: a clip that reached the still
   // classifier could be cleared on bytes it cannot read.
-  const mimeType = getMimeTypeFromExtension(getExtensionFromUrl(opts.url));
+  const extension = getExtensionFromUrl(opts.url);
+  const mimeType = getMimeTypeFromExtension(extension);
   if (mimeType.startsWith('image/')) {
     return analyzeTalentMediaForOrganization({
       scopedDb: opts.scopedDb,
@@ -197,7 +198,7 @@ function analyzeUpload(opts: {
   }
   if (!mimeType.startsWith('video/')) {
     throw new ValidationError(
-      'Only an image or a video clip can be checked for a real person.'
+      `A .${extension} file can’t be checked for a real person. Upload a JPEG, PNG, WebP or GIF, or an MP4, WebM or MOV clip.`
     );
   }
   const key = r2KeyFromUrl(opts.url);

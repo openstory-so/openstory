@@ -78,17 +78,12 @@ const AddElementButton: React.FC<{
         return;
       }
       for (const file of accepted) {
-        upload.mutate(
-          { file, sequenceId },
-          {
-            onError: (err) => {
-              toast.error(`Couldn't upload ${file.name}`, {
-                description:
-                  err instanceof Error ? err.message : 'Upload failed',
-              });
-            },
-          }
-        );
+        // mutate() only calls back for its latest call.
+        upload.mutateAsync({ file, sequenceId }).catch((err: unknown) => {
+          toast.error(`Couldn't upload ${file.name}`, {
+            description: err instanceof Error ? err.message : 'Upload failed',
+          });
+        });
       }
       setOpen(false);
     },

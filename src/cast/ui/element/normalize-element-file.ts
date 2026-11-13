@@ -1,6 +1,7 @@
 /**
- * Get an element file into a format every reference model accepts, before it
- * is uploaded (#1559).
+ * Get an element file into a format the likeness check and every reference
+ * model accept, before it is uploaded (#1559): an image through
+ * `normalizeImageFile`, audio as below.
  *
  * The models that state their formats — the whole Seedance family, on fal and
  * on Ark — take MP3 or WAV audio. An M4A voice memo was accepted, stored, and
@@ -15,12 +16,15 @@
  */
 
 import { elementKindFromFile } from '@/cast/element-kind';
+import { normalizeImageFile } from '@/ui/normalize-image-file';
 
 /** Audio formats every model that documents its formats accepts. */
 const ACCEPTED_AUDIO_EXTENSIONS = new Set(['mp3', 'wav']);
 
 export async function normalizeElementFile(file: File): Promise<File> {
-  if (elementKindFromFile(file) !== 'audio') return file;
+  const kind = elementKindFromFile(file);
+  if (kind === 'image') return normalizeImageFile(file);
+  if (kind !== 'audio') return file;
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (ACCEPTED_AUDIO_EXTENSIONS.has(ext)) return file;
 

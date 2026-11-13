@@ -4,6 +4,7 @@
  * with no sequence: create, bible and photos.
  */
 import { getSignedUploadUrl } from '#storage';
+import { requireUploadExtension } from '@/shots/server/upload-media';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -24,10 +25,7 @@ import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import {
-  getExtensionFromUrl,
-  getMimeTypeFromExtension,
-} from '@/platform/server/storage/file';
+import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 
 const locationIdSchema = z.object({ locationId: ulidSchema });
 const nameSchema = z.string().trim().min(1).max(255);
@@ -148,7 +146,7 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
-    const ext = getExtensionFromUrl(data.filename);
+    const ext = requireUploadExtension(data.filename, 'image');
 
     // Lands in `uploads/` and stays there (#1634). Attaching it gates on the
     // likeness ledger, then points a photo row at this key.
