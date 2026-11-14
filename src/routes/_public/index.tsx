@@ -1,6 +1,7 @@
 import { NewSequencePage } from '@/sequences/ui/script/new-sequence-page';
 import { publicStylesQueryOptions } from '@/look/ui/public-styles-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { z } from 'zod';
 
 // `style` carries a sample style's slug from the showcase/gallery "Try this
@@ -15,13 +16,13 @@ const searchSchema = z.object({
   prefill: z.enum(['style']).optional(),
 });
 
-/**
- * App home at `/`. Same composer as `/sequences/new`, open to anonymous
- * visitors (actions still gate behind login). Lives under `_app` so it shares
- * AppLayout, session prefetch, and the app error boundary (#1104).
- */
-export const Route = createFileRoute('/_app/')({
+/** Signed-out front page; a signed-in visitor goes to the app composer. */
+export const Route = createFileRoute('/_public/')({
   validateSearch: searchSchema,
+  beforeLoad: async ({ context: { queryClient }, search }) => {
+    const session = await queryClient.ensureQueryData(sessionQueryOptions);
+    if (session) throw redirect({ to: '/sequences/new', search });
+  },
   loader: ({ context: { queryClient } }) =>
     queryClient.ensureQueryData(publicStylesQueryOptions),
   component: HomePage,
