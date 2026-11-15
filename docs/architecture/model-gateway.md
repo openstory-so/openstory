@@ -176,10 +176,8 @@ Not served, and why:
   Gemini images per token, Seedream per input and generated image. There is
   no honest hold for those, so they are refused at submit until their cards
   carry an estimate.
-- **Most BytePlus models are found by a fallback.** Their records name no
-  activity and no endpoint (TanStack/schemas#649), so `catalog.ts` reads the
-  kind off the output modality and maps it to Ark's two endpoints. A record
-  with an empty output modality is not runnable.
+- **BytePlus audio.** Seed Speech is another host and key, not Ark, so
+  `catalog.ts` drops BytePlus audio records.
 - **Gemini video.** modelschemas lists no Gemini video model.
 - **Real people on BytePlus.** The proxy does not register Ark portrait
   assets; an image Ark refuses fails as an Ark error.
