@@ -269,7 +269,10 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     expect(step.results.start).toEqual({
       stored: {
         outputs: OUTPUTS,
-        usage: { output_tokens: 12_000, total_tokens: 15_000 },
+        usageJson: JSON.stringify({
+          output_tokens: 12_000,
+          total_tokens: 15_000,
+        }),
         requestId: 'req-1',
       },
     });
@@ -433,7 +436,7 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
       kind: 'stored',
       stored: {
         outputs: [OUTPUTS[0]],
-        usage: null,
+        usageJson: null,
         requestId: 'provider-1',
       },
     });
