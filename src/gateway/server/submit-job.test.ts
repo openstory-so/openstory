@@ -445,20 +445,18 @@ describe('submitGatewayJob', () => {
 
   it('checks every URL in the body before anything spends', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
-    const submit = {
-      ...VIDEO,
-      body: {
-        ...BODY,
-        image: { url: 'https://media.example.com/mara.png' },
-        content: [
-          {
-            type: 'image_url',
-            image_url: { url: 'HTTP://media.example.com/engine-room.png' },
-          },
-          { type: 'text', text: 'not a url: /r2/x.png' },
-        ],
-      },
+    const body: GatewayJobInput = {
+      ...BODY,
+      image: { url: 'https://media.example.com/mara.png' },
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: 'HTTP://media.example.com/engine-room.png' },
+        },
+        { type: 'text', text: 'not a url: /r2/x.png' },
+      ],
     };
+    const submit = { ...VIDEO, body };
     requireCheckedUploadRights.mockRejectedValueOnce(
       new AttestationRequiredError('needs a portrait attestation')
     );

@@ -45,9 +45,9 @@ export type GatewayRunResult = {
   requestId: string | null;
 };
 
-type GatewayStart = { jobId: string } | { result: GatewayRunResult };
+export type GatewayStart = { jobId: string } | { result: GatewayRunResult };
 
-type GatewayPoll =
+export type GatewayPoll =
   | { status: 'pending' }
   | { status: 'failed'; error: string }
   | { status: 'done'; result: GatewayRunResult };

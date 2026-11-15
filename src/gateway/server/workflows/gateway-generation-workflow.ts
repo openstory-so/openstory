@@ -6,7 +6,7 @@ import {
   extractPromptForProvenance,
   recordProvenance,
 } from '@/platform/server/compliance/provenance';
-import type { JsonValue } from '@/platform/server/db/schema';
+import { z } from 'zod';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getLogger } from '@/platform/logger';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -58,9 +58,14 @@ type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
 /** A finished run with its media already in R2: small enough for a checkpoint. */
 type Stored = {
   outputs: GatewayJobOutput[];
-  usage: Record<string, JsonValue> | null;
+  /** JSON text: a recursive JSON type fails the step's Serializable check. */
+  usageJson: string | null;
   requestId: string | null;
 };
+
+const usageSchema = z.record(z.string(), z.unknown());
+
+type Started = { providerJobId: string } | { stored: Stored };
 
 type PollOutcome =
   | { kind: 'pending' }
@@ -105,14 +110,18 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
           })
         );
       }
-      return { outputs, usage: result.usage, requestId: result.requestId };
+      return {
+        outputs,
+        usageJson: result.usage ? JSON.stringify(result.usage) : null,
+        requestId: result.requestId,
+      };
     };
 
     await step.do('set-running', async () => {
       await scopedDb.gatewayJobs.markRunning(jobId);
     });
 
-    const started = await step.do('start', async () => {
+    const started = await step.do('start', async (): Promise<Started> => {
       const start = await driver.start(target, input, credentials);
       return 'jobId' in start
         ? { providerJobId: start.jobId }
@@ -164,7 +173,8 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         `Generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`
       );
     }
-    const { outputs, usage, requestId } = stored;
+    const { outputs, usageJson, requestId } = stored;
+    const usage = usageJson ? usageSchema.parse(JSON.parse(usageJson)) : null;
 
     // Charged only for media that was stored; the row is written with the charge.
     await step.do('settle', async () => {
