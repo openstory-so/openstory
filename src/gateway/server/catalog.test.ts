@@ -41,7 +41,6 @@ function record(overrides: Record<string, unknown>) {
     displayName: 'Grok Imagine Video',
     activity: 'video',
     schemaEndpointId: 'v1/videos/generations',
-    modalities: null,
     pricing: CARD,
     ...overrides,
   };
@@ -71,14 +70,12 @@ describe('getGatewayModel', () => {
     });
   });
 
-  it('reads a BytePlus record that names no activity and no endpoint', async () => {
+  it('reads a BytePlus record off its own activity and endpoint', async () => {
     pages = {
       '/v1/models/byteplus/seedance-2-0-pro': record({
         rawId: 'seedance-2-0-pro',
         displayName: 'Seedance 2.0 Pro',
-        activity: null,
-        schemaEndpointId: null,
-        modalities: { output: ['video'] },
+        schemaEndpointId: 'contents/generations/tasks',
       }),
       '/v1/schemas/byteplus/video/contents/generations/tasks?kind=input': {
         schema: SCHEMA,
@@ -122,8 +119,7 @@ describe('getGatewayModel', () => {
   it('refuses a model that makes no media or names no endpoint', async () => {
     const records = [
       record({ activity: 'chat' }),
-      record({ activity: null, modalities: { output: ['text'] } }),
-      // Only BytePlus has endpoints the catalog fills in.
+      record({ activity: null }),
       record({ schemaEndpointId: null }),
     ];
     for (const model of records) {
@@ -168,21 +164,18 @@ describe('listGatewayModels', () => {
           record({
             rawId: 'seedream-5',
             displayName: 'Seedream 5',
-            activity: null,
-            schemaEndpointId: null,
-            modalities: { output: ['image'] },
+            activity: 'image',
+            schemaEndpointId: 'images/generations',
           }),
+          record({ rawId: 'seed-audio-1.0', activity: 'audio' }),
+          record({ rawId: 'hitem3d', activity: null, schemaEndpointId: null }),
         ],
       },
       '/v1/models?provider=gemini': {
         models: [
           record({ rawId: 'gemini-chat', activity: 'chat' }),
-          record({
-            rawId: 'gemini-text',
-            activity: null,
-            modalities: { output: ['text'] },
-          }),
           record({ rawId: 'gemini-nothing', activity: null }),
+          record({ rawId: 'gemini-no-endpoint', schemaEndpointId: null }),
         ],
       },
       '/v1/models?provider=grok': {

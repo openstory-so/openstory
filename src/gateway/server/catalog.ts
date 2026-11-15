@@ -16,18 +16,11 @@ import { z } from 'zod';
 const MODEL_TTL_MS = 5 * 60 * 1000;
 const SCHEMA_TTL_MS = 30 * 60 * 1000;
 
-// ponytail: BytePlus records name no endpoint (TanStack/schemas#649); delete when they do.
-const ARK_ENDPOINTS: Partial<Record<GatewayJobKind, string>> = {
-  video: 'contents/generations/tasks',
-  image: 'images/generations',
-};
-
 const modelRecordSchema = z.object({
   rawId: z.string(),
   displayName: z.string(),
   activity: z.string().nullable(),
   schemaEndpointId: z.string().nullable(),
-  modalities: z.object({ output: z.array(z.string()) }).nullable(),
   // A summary in the list, the full card on the model: parsed where it is used.
   pricing: z.unknown(),
 });
@@ -51,9 +44,15 @@ function isKind(value: string): value is GatewayJobKind {
   return GATEWAY_JOB_KINDS.some((kind) => kind === value);
 }
 
-function kindOf(record: ModelRecord): GatewayJobKind | null {
-  if (record.activity) return isKind(record.activity) ? record.activity : null;
-  return record.modalities?.output.find(isKind) ?? null;
+function kindOf(
+  provider: GatewayProvider,
+  record: ModelRecord
+): GatewayJobKind | null {
+  const { activity } = record;
+  if (!activity || !isKind(activity)) return null;
+  // BytePlus audio is Seed Speech: another host and key, not Ark.
+  if (provider === 'byteplus' && activity === 'audio') return null;
+  return activity;
 }
 
 async function getJson(path: string, ttlMs: number): Promise<unknown> {
@@ -78,10 +77,8 @@ export async function getGatewayModel(
       MODEL_TTL_MS
     )
   );
-  const kind = kindOf(record);
-  const endpointId =
-    record.schemaEndpointId ??
-    (provider === 'byteplus' && kind ? ARK_ENDPOINTS[kind] : undefined);
+  const kind = kindOf(provider, record);
+  const endpointId = record.schemaEndpointId;
   if (!kind || !endpointId) {
     throw new ValidationError('This model has no request schema');
   }
@@ -117,8 +114,8 @@ export async function listGatewayModels(): Promise<GatewayModelSummary[]> {
         .object({ models: z.array(modelRecordSchema) })
         .parse(await getJson(`/v1/models?provider=${provider}`, MODEL_TTL_MS));
       return body.models.flatMap((record): GatewayModelSummary[] => {
-        const kind = kindOf(record);
-        if (!kind || !record.pricing) return [];
+        const kind = kindOf(provider, record);
+        if (!kind || !record.schemaEndpointId || !record.pricing) return [];
         return [{ provider, id: record.rawId, name: record.displayName, kind }];
       });
     })
