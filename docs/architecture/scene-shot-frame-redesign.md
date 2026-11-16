@@ -193,6 +193,14 @@ role is still unused.
   any that land past the end. A shot split for speech loses its keyframes. A
   save refuses a keyframe at or past the shot's length. Shortening a shot
   afterwards does not re-time them.
+- **Spaced by the move, not on a grid.** Both prompts (enhance and the
+  shot-list pass in `workflow-prompts.ts`) size a stage at about 2 to 3
+  seconds and give each keyframe one subject. Measured 2026-11-16 on one
+  five-stage run, one clip per case: 5-second windows left about 8 of 25
+  seconds on an empty frame; 2 to 3 second windows hit the stages on
+  Seedance 2.5, Kling v3 Pro and Omni Flash; the same stages with no times
+  lost two of five on Seedance and Kling. Seedance 2.5 cuts at every timed
+  line whatever the prompt says about one take; Kling and Omni hold the take.
 - **One line format.** `src/shots/keyframe-lines.ts` writes the lines
   (`0-4 seconds: ...`, the last `9 seconds to the end: ...`), finds them for
   the highlight, and re-times them for a packed clip. `deriveMotionPrompt`
