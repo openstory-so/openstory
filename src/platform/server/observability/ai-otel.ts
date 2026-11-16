@@ -580,10 +580,10 @@ function emitMediaGenerationSpan(record: MediaGenerationRecord): void {
     record.durationMs === undefined
       ? undefined
       : Math.max(0, record.durationMs);
-  const outputUrls =
-    typeof record.outputUrl === 'string'
-      ? [record.outputUrl]
-      : record.outputUrl;
+  // Inline `data:` bytes become a placeholder, as otelMiddleware does: PostHog 413s an export over 4 MB.
+  const outputUrls = (
+    typeof record.outputUrl === 'string' ? [record.outputUrl] : record.outputUrl
+  )?.map((url) => (url.startsWith('data:') ? `[${record.activity}]` : url));
   const costUsd =
     record.costMicros !== undefined
       ? record.costMicros / 1_000_000 // micros → USD; a division, not a billing import
