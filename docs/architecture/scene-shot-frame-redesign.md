@@ -201,6 +201,14 @@ role is still unused.
   Seedance 2.5, Kling v3 Pro and Omni Flash; the same stages with no times
   lost two of five on Seedance and Kling. Seedance 2.5 cuts at every timed
   line whatever the prompt says about one take; Kling and Omni hold the take.
+- **Written as one take.** A keyframed shot's motion prompt opens with
+  `One continuous shot, no cuts` and its camera move, then the action
+  (`deriveMotionPrompt`), and every line after the first starts
+  `continuing in the same shot,` (`keyframeLines`). The shot-list pass writes
+  the camera move as one path through the stages and ends each keyframe where
+  the next picks up. Without these Seedance 2.5 cut at every timed line: 5
+  setups before, none after, on the same stages (one clip each, 2026-11-16).
+  A shot with no keyframes derives the same text as before.
 - **One line format.** `src/shots/keyframe-lines.ts` writes the lines
   (`0-4 seconds: ...`, the last `9 seconds to the end: ...`), finds them for
   the highlight, and re-times them for a packed clip. `deriveMotionPrompt`

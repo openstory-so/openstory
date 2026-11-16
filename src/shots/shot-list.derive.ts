@@ -23,7 +23,7 @@ import { sceneDirection } from './scene-direction';
 
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import type { MotionAudio } from './scene-analysis.schema';
-import { keyframeLines } from './keyframe-lines';
+import { keyframeLines, ONE_TAKE_LEAD } from './keyframe-lines';
 import { specKeyframes, type StoredShotSpec } from './shot-list.schema';
 
 /** Join non-empty parts with a separator, dropping blanks. */
@@ -108,18 +108,21 @@ export function deriveMotionPrompt(
     [cameraMovement.pacing, cameraMovement.move],
     ' '
   );
+  const camera = cameraPhrase ? `Camera: ${cameraPhrase}` : '';
+  const lines = keyframeLines(specKeyframes(spec));
+  // A keyframed take opens with the take and its camera move (#2386).
+  const oneTake = lines.length > 0;
   const motion = joinParts(
-    [action, direction, cameraPhrase ? `Camera: ${cameraPhrase}` : ''],
+    oneTake
+      ? [ONE_TAKE_LEAD, camera, action, direction]
+      : [action, direction, camera],
     '. '
   );
-  const body = options.referenceOnly
-    ? joinParts([joinParts(framingParts(spec)), motion], '. ')
-    : motion;
+  const framing = options.referenceOnly ? joinParts(framingParts(spec)) : '';
+  const body = joinParts(oneTake ? [motion, framing] : [framing, motion], '. ');
   return {
     // Keyframes go last, one per line (#2386).
-    text: [body, ...keyframeLines(specKeyframes(spec))]
-      .filter((line) => line.length > 0)
-      .join('\n'),
+    text: [body, ...lines].filter((line) => line.length > 0).join('\n'),
     audio: { ambientSound: soundCue.trim(), soundEffects: [] },
   };
 }

@@ -4,13 +4,18 @@
  * later in a packed clip. One format, so the three cannot drift.
  *
  *   0-4 seconds: she vaults the bonnet
- *   4 seconds to the end: she sprints for the alley
+ *   4 seconds to the end: continuing in the same shot, she sprints for the alley
  */
 
 import type { ShotKeyframe } from './shot-list.schema';
 
 const KEYFRAME_LINE =
   /^(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))? seconds( to the end)?: /;
+
+const SAME_SHOT = 'continuing in the same shot, ';
+
+/** Opens a keyframed take's motion prompt: Seedance wants the take named first. */
+export const ONE_TAKE_LEAD = 'One continuous shot, no cuts';
 
 const seconds = (value: number): string => String(Math.round(value * 10) / 10);
 
@@ -21,7 +26,8 @@ export function keyframeLines(keyframes: readonly ShotKeyframe[]): string[] {
     const range = next
       ? `${seconds(keyframe.atSeconds)}-${seconds(next.atSeconds)} seconds`
       : `${seconds(keyframe.atSeconds)} seconds to the end`;
-    return `${range}: ${keyframe.action}`;
+    // Seedance cuts at a timed line that does not carry on from the last.
+    return `${range}: ${index === 0 ? '' : SAME_SHOT}${keyframe.action}`;
   });
 }
 

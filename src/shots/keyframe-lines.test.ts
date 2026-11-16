@@ -30,8 +30,8 @@ describe('keyframe lines', () => {
   it('writes each keyframe to the next, the last to the end', () => {
     expect(keyframeLines(keyframes)).toEqual([
       '0-4 seconds: MARA drops from the fire escape',
-      '4-9 seconds: she rolls across the car roof',
-      '9 seconds to the end: she hits the ground running',
+      '4-9 seconds: continuing in the same shot, she rolls across the car roof',
+      '9 seconds to the end: continuing in the same shot, she hits the ground running',
     ]);
   });
 
@@ -47,22 +47,27 @@ describe('keyframe lines', () => {
       [
         'She runs.',
         '10-14 seconds: MARA drops from the fire escape',
-        '14-19 seconds: she rolls across the car roof',
-        '19-24 seconds: she hits the ground running',
+        '14-19 seconds: continuing in the same shot, she rolls across the car roof',
+        '19-24 seconds: continuing in the same shot, she hits the ground running',
       ].join('\n')
     );
   });
 });
 
 describe('keyframes on the spec', () => {
-  it('puts the lines last in the motion prompt, and none without keyframes', () => {
+  it('opens a keyframed take with the take and camera, lines last', () => {
     const plain = deriveMotionPrompt(spec, { referenceOnly: false }).text;
-    expect(plain).not.toContain('\n');
+    expect(plain).toBe('MARA escapes down the alley. Camera: fast follow');
     const timed = deriveMotionPrompt(
       { ...spec, keyframes },
       { referenceOnly: false }
     ).text;
-    expect(timed).toBe([plain, ...keyframeLines(keyframes)].join('\n'));
+    expect(timed).toBe(
+      [
+        'One continuous shot, no cuts. Camera: fast follow. MARA escapes down the alley',
+        ...keyframeLines(keyframes),
+      ].join('\n')
+    );
   });
 
   it('stores no keyframes key when there are none, so old digests hold', () => {
