@@ -91,10 +91,13 @@ export const SECRETS = {
   // Designed voices live on this account; there is no organization BYOK (#1552).
   ELEVENLABS_API_KEY: { runtime: true, build: false, optional: true },
   ELEVENLABS_BASE_URL: { runtime: true, build: false, optional: true },
-  // Seed Audio voices and dialogue (#1765); platform key only.
+  // Seed Audio 1.0 key. Kept so this branch does not drop the live secret.
   SEED_SPEECH_API_KEY: { runtime: true, build: false, optional: true },
   SEED_SPEECH_BASE_URL: { runtime: true, build: false, optional: true },
   SEED_SPEECH_QPM: { runtime: true, build: false, optional: true },
+  // Seed Audio 1.5 early access. Voice generation and dialogue.
+  SEED_AUDIO_15_API_KEY: { runtime: true, build: false, optional: true },
+  SEED_AUDIO_15_ENDPOINT: { runtime: true, build: false, optional: true },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
   FAL_KEY: { runtime: true, build: false },
