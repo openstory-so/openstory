@@ -1714,7 +1714,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               shotId={shot.id}
               onOpenHistory={() => setHistoryOpen('spec')}
             />
-            <ShotSpecForm sequenceId={sequenceId} shotId={shot.id} />
+            <ShotSpecForm
+              sequenceId={sequenceId}
+              shotId={shot.id}
+              shotSeconds={(shot.durationMs ?? 0) / 1000}
+            />
           </div>
         )}
       </TabsContent>

@@ -32,13 +32,19 @@ import {
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
-import { Input } from '@/ui/shadcn/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import type { MentionItem } from './prompt-mention/mention-items';
@@ -159,9 +165,11 @@ function writtenLabel(visual: boolean, motion: boolean): string {
 export function ShotSpecForm({
   sequenceId,
   shotId,
+  shotSeconds,
 }: {
   sequenceId: string;
   shotId: string;
+  shotSeconds: number;
 }) {
   const { data } = useShotSpec({ sequenceId, shotId });
   if (!data) {
@@ -185,6 +193,7 @@ export function ShotSpecForm({
       key={JSON.stringify(data.spec)}
       sequenceId={sequenceId}
       shotId={shotId}
+      shotSeconds={shotSeconds}
       spec={data.spec}
       verdict={data.verdict}
       visualWritten={data.visualWritten}
@@ -196,6 +205,7 @@ export function ShotSpecForm({
 function SpecFields({
   sequenceId,
   shotId,
+  shotSeconds,
   spec,
   verdict,
   visualWritten,
@@ -203,6 +213,7 @@ function SpecFields({
 }: {
   sequenceId: string;
   shotId: string;
+  shotSeconds: number;
   spec: StoredShotSpec;
   verdict: 'current' | 'stale' | 'missing' | 'updating';
   visualWritten: boolean;
@@ -305,7 +316,10 @@ function SpecFields({
                 <KeyframeFields
                   key={`keyframes-${resetCount}`}
                   initial={specKeyframes(spec)}
+                  shotSeconds={shotSeconds}
                   disabled={updating || save.isPending}
+                  mentionItems={mentionItems}
+                  onMentionRename={onMentionRename}
                   onEdit={() => setDirty(true)}
                 />
               )}
@@ -451,11 +465,17 @@ type KeyframeRow = { key: number; at: string; action: string };
 /** Keyframes (#2386): the timed actions of a long take, one row each. */
 function KeyframeFields({
   initial,
+  shotSeconds,
   disabled,
+  mentionItems,
+  onMentionRename,
   onEdit,
 }: {
   initial: readonly ShotKeyframe[];
+  shotSeconds: number;
   disabled: boolean;
+  mentionItems: MentionItem[];
+  onMentionRename: (item: MentionItem, name: string) => void;
   onEdit: () => void;
 }) {
   const [rows, setRows] = useState<KeyframeRow[]>(() =>
@@ -466,14 +486,28 @@ function KeyframeFields({
     }))
   );
   const nextKey = useRef(initial.length);
+  // The editor re-emits on mount; only a change after focus is an edit.
+  const focused = useRef(false);
+  const lastSecond = Math.max(0, Math.ceil(shotSeconds) - 1);
   const change = (next: KeyframeRow[]) => {
     setRows(next);
     onEdit();
   };
   const patch = (key: number, fields: Partial<KeyframeRow>) =>
-    change(rows.map((row) => (row.key === key ? { ...row, ...fields } : row)));
+    rows.map((row) => (row.key === key ? { ...row, ...fields } : row));
+  // Every whole second of the shot, plus any stored time off that grid.
+  const seconds = [
+    ...new Set([
+      ...Array.from({ length: lastSecond + 1 }, (_, second) => second),
+      ...rows.map((row) => Number(row.at)),
+    ]),
+  ].sort((a, b) => a - b);
+  const items = seconds.map((second) => ({
+    value: String(second),
+    label: `${second}s`,
+  }));
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <div className="flex min-h-7 items-center justify-between gap-2">
         <span className="text-xs">Keyframes</span>
         <Button
@@ -487,7 +521,11 @@ function KeyframeFields({
               ...rows,
               {
                 key: nextKey.current++,
-                at: last ? String((Number(last.at) || 0) + 3) : '0',
+                at: last
+                  ? String(
+                      Math.min(Math.floor(Number(last.at)) + 3, lastSecond)
+                    )
+                  : '0',
                 action: '',
               },
             ]);
@@ -497,41 +535,62 @@ function KeyframeFields({
         </Button>
       </div>
       {rows.map((row, index) => (
-        <div key={row.key} className="flex items-center gap-2">
-          <Input
-            name="keyframeAt"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            required
-            value={row.at}
-            onChange={(event) => patch(row.key, { at: event.target.value })}
-            disabled={disabled}
-            aria-label={`Keyframe ${index + 1} start, seconds`}
-            className="w-20 shrink-0 tabular-nums"
-          />
-          <Input
-            name="keyframeAction"
-            value={row.action}
-            onChange={(event) => patch(row.key, { action: event.target.value })}
-            disabled={disabled}
+        <div key={row.key} className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <Select
+              name="keyframeAt"
+              value={row.at}
+              items={items}
+              onValueChange={(value) => {
+                if (value != null) change(patch(row.key, { at: value }));
+              }}
+              disabled={disabled}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-20 tabular-nums"
+                aria-label={`Keyframe ${index + 1} starts at`}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {items.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              disabled={disabled}
+              onClick={() =>
+                change(rows.filter((other) => other.key !== row.key))
+              }
+              aria-label={`Remove keyframe ${index + 1}`}
+            >
+              <X aria-hidden />
+            </Button>
+          </div>
+          <MarkdownEditor
             aria-label={`Keyframe ${index + 1} action`}
             placeholder="What happens from this second"
-            className="min-w-0 flex-1"
-          />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
+            value={row.action}
+            onValueChange={(action) => {
+              const next = patch(row.key, { action });
+              if (focused.current) change(next);
+              else setRows(next);
+            }}
+            onFocus={() => {
+              focused.current = true;
+            }}
             disabled={disabled}
-            onClick={() =>
-              change(rows.filter((other) => other.key !== row.key))
-            }
-            aria-label={`Remove keyframe ${index + 1}`}
-          >
-            <X aria-hidden />
-          </Button>
+            mentionItems={mentionItems}
+            onMentionRename={onMentionRename}
+          />
+          <input type="hidden" name="keyframeAction" value={row.action} />
         </div>
       ))}
     </div>
