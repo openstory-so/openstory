@@ -63,6 +63,7 @@ export function renameTokenInSpec(
     keyframes: specKeyframes(spec).map((keyframe) => ({
       ...keyframe,
       action: text(keyframe.action),
+      camera: text(keyframe.camera),
     })),
     cameraMovement: {
       move: text(spec.cameraMovement.move),

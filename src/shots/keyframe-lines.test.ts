@@ -13,9 +13,13 @@ import {
 import { attachSceneShots, defaultSingleShot } from './shot-list-pass';
 
 const keyframes = [
-  { atSeconds: 0, action: 'MARA drops from the fire escape' },
-  { atSeconds: 4, action: 'she rolls across the car roof' },
-  { atSeconds: 9, action: 'she hits the ground running' },
+  { atSeconds: 0, action: 'MARA drops from the fire escape', camera: '' },
+  {
+    atSeconds: 4,
+    action: 'she rolls across the car roof.',
+    camera: 'low beside the car',
+  },
+  { atSeconds: 9, action: 'she hits the ground running', camera: '' },
 ];
 
 const spec: StoredShotSpec = {
@@ -30,7 +34,7 @@ describe('keyframe lines', () => {
   it('writes each keyframe to the next, the last to the end', () => {
     expect(keyframeLines(keyframes)).toEqual([
       '0-4 seconds: MARA drops from the fire escape',
-      '4-9 seconds: continuing in the same shot, she rolls across the car roof',
+      '4-9 seconds: continuing in the same shot, she rolls across the car roof. Camera: low beside the car',
       '9 seconds to the end: continuing in the same shot, she hits the ground running',
     ]);
   });
@@ -47,7 +51,7 @@ describe('keyframe lines', () => {
       [
         'She runs.',
         '10-14 seconds: MARA drops from the fire escape',
-        '14-19 seconds: continuing in the same shot, she rolls across the car roof',
+        '14-19 seconds: continuing in the same shot, she rolls across the car roof. Camera: low beside the car',
         '19-24 seconds: continuing in the same shot, she hits the ground running',
       ].join('\n')
     );
@@ -82,14 +86,14 @@ describe('keyframes on the spec', () => {
       canonicalStoredShotSpec({
         ...spec,
         keyframes: [
-          { atSeconds: 6, action: 'second' },
-          { atSeconds: 3, action: '  ' },
-          { atSeconds: 0, action: 'first' },
+          { atSeconds: 6, action: 'second', camera: '' },
+          { atSeconds: 3, action: '  ', camera: '' },
+          { atSeconds: 0, action: 'first', camera: ' wide ' },
         ],
       }).keyframes
     ).toEqual([
-      { atSeconds: 0, action: 'first' },
-      { atSeconds: 6, action: 'second' },
+      { atSeconds: 0, action: 'first', camera: 'wide' },
+      { atSeconds: 6, action: 'second', camera: '' },
     ]);
   });
 

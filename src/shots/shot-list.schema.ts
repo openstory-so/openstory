@@ -152,6 +152,9 @@ const shotKeyframeSchema = z.object({
   action: z.string().meta({
     description: `What happens from this moment.${CAST_CAPS}`,
   }),
+  camera: z.string().meta({
+    description: 'Where the camera is and what it does in this stage',
+  }),
 });
 
 export type ShotKeyframe = z.infer<typeof shotKeyframeSchema>;
@@ -245,6 +248,7 @@ export const shotSpecEditSchema = z.object({
       z.object({
         atSeconds: z.number().min(0).max(MAX_KEYFRAME_SECONDS),
         action: specEditField.min(1),
+        camera: specEditField,
       })
     )
     .max(MAX_KEYFRAMES),
@@ -290,6 +294,8 @@ export function specKeyframes(
     .map((keyframe) => ({
       atSeconds: Math.max(0, Math.round(keyframe.atSeconds * 10) / 10 || 0),
       action: keyframe.action.trim(),
+      // Absent on a keyframe saved before the field existed.
+      camera: (keyframe.camera || '').trim(),
     }))
     .filter((keyframe) => keyframe.action.length > 0)
     .sort((a, b) => a.atSeconds - b.atSeconds);

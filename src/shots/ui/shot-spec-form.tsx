@@ -130,6 +130,9 @@ function specFromForm(form: FormData, spec: StoredShotSpec): ShotSpecEdit {
     const entry = form.get(name);
     return typeof entry === 'string' ? entry : fallback;
   };
+  const cameras = form
+    .getAll('keyframeCamera')
+    .map((entry) => (typeof entry === 'string' ? entry : ''));
   return {
     framing: {
       shotSize: value('shotSize', spec.framing.shotSize),
@@ -141,13 +144,17 @@ function specFromForm(form: FormData, spec: StoredShotSpec): ShotSpecEdit {
       ),
     },
     action: value('action', spec.action),
-    keyframes: form
-      .getAll('keyframeAction')
-      .flatMap((action, index) =>
-        typeof action === 'string' && action.trim().length > 0
-          ? [{ atSeconds: Number(form.getAll('keyframeAt')[index]), action }]
-          : []
-      ),
+    keyframes: form.getAll('keyframeAction').flatMap((action, index) =>
+      typeof action === 'string' && action.trim().length > 0
+        ? [
+            {
+              atSeconds: Number(form.getAll('keyframeAt')[index]),
+              action,
+              camera: cameras[index] ?? '',
+            },
+          ]
+        : []
+    ),
     cameraMovement: {
       move: value('move', spec.cameraMovement.move),
       pacing: value('pacing', spec.cameraMovement.pacing),
@@ -460,7 +467,12 @@ function SpecField({
   );
 }
 
-type KeyframeRow = { key: number; at: string; action: string };
+type KeyframeRow = {
+  key: number;
+  at: string;
+  action: string;
+  camera: string;
+};
 
 /** Keyframes (#2386): the timed actions of a long take, one row each. */
 function KeyframeFields({
@@ -483,6 +495,7 @@ function KeyframeFields({
       key,
       at: String(keyframe.atSeconds),
       action: keyframe.action,
+      camera: keyframe.camera,
     }))
   );
   const nextKey = useRef(initial.length);
@@ -527,6 +540,7 @@ function KeyframeFields({
                     )
                   : '0',
                 action: '',
+                camera: '',
               },
             ]);
           }}
@@ -591,6 +605,24 @@ function KeyframeFields({
             onMentionRename={onMentionRename}
           />
           <input type="hidden" name="keyframeAction" value={row.action} />
+          <MarkdownEditor
+            aria-label={`Keyframe ${index + 1} camera`}
+            placeholder="Where the camera is in this stage"
+            value={row.camera}
+            onValueChange={(camera) => {
+              const next = patch(row.key, { camera });
+              if (focused.current) change(next);
+              else setRows(next);
+            }}
+            onFocus={() => {
+              focused.current = true;
+            }}
+            disabled={disabled}
+            className="min-h-9 py-1.5"
+            mentionItems={mentionItems}
+            onMentionRename={onMentionRename}
+          />
+          <input type="hidden" name="keyframeCamera" value={row.camera} />
         </div>
       ))}
     </div>

@@ -302,7 +302,7 @@ const rebuildShotPrompts = openstoryTool({
 const updateShotSpec = openstoryTool({
   name: 'update_shot_spec',
   description:
-    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. keyframes are the timed actions of a long continuous take (atSeconds from the shot start, inside its length); send [] for none. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
+    'Edit a shot’s spec (read it with get_shot_spec) and rebuild its prompts from it, free. Send the whole spec. keyframes are the timed actions of a long continuous take (atSeconds from the shot start, inside its length; action; camera, what the camera does in that stage, may be empty); send [] for none. Prompts the user wrote are kept unless replaceWritten names them. Draws no sketch: call regenerate_shot_storyboard for one. Refused while a rewrite of the shot is in flight.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: shotInput.extend({

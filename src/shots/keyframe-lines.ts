@@ -3,7 +3,7 @@
  * motion prompt, found again for the highlight, and moved when the shot sits
  * later in a packed clip. One format, so the three cannot drift.
  *
- *   0-4 seconds: she vaults the bonnet
+ *   0-4 seconds: she vaults the bonnet. Camera: low beside the car
  *   4 seconds to the end: continuing in the same shot, she sprints for the alley
  */
 
@@ -27,7 +27,10 @@ export function keyframeLines(keyframes: readonly ShotKeyframe[]): string[] {
       ? `${seconds(keyframe.atSeconds)}-${seconds(next.atSeconds)} seconds`
       : `${seconds(keyframe.atSeconds)} seconds to the end`;
     // Seedance cuts at a timed line that does not carry on from the last.
-    return `${range}: ${index === 0 ? '' : SAME_SHOT}${keyframe.action}`;
+    const action = `${index === 0 ? '' : SAME_SHOT}${keyframe.action}`;
+    return keyframe.camera
+      ? `${range}: ${action.replace(/\.$/, '')}. Camera: ${keyframe.camera}`
+      : `${range}: ${action}`;
   });
 }
 

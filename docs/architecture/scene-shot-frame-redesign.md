@@ -177,7 +177,9 @@ while a rewrite is in flight is refused.
 ### Keyframes (#2386)
 
 A keyframe is a timed action inside one long continuous take: `atSeconds`
-from the start of the shot, and the action from that moment. A spec holds an
+from the start of the shot, the action from that moment, and `camera`, where
+the camera is and what it does in that stage (empty when it holds the take's
+move). A spec holds an
 ordered list of them (`keyframes`), empty on a shot with one action. It is
 text on the spec. It is not a `frames` row and has no still; the `key` frame
 role is still unused.
@@ -209,6 +211,14 @@ role is still unused.
   the next picks up. Without these Seedance 2.5 cut at every timed line: 5
   setups before, none after, on the same stages (one clip each, 2026-11-16).
   A shot with no keyframes derives the same text as before.
+- **Camera per stage.** Each keyframe's `camera` is written after its
+  action on the same line (`. Camera: ...`). The shot-list pass changes side,
+  height or distance from one stage to the next, and may slow one stage. On
+  one three-stage shot (2026-11-17, one clip per case) the take's single
+  camera sentence left Seedance 2.5 front-on throughout and a second on the
+  bare deck; with a camera per stage Seedance and Omni Flash both went close,
+  then low under the strap, then wide for the pallets. Slow motion was not
+  checked.
 - **One line format.** `src/shots/keyframe-lines.ts` writes the lines
   (`0-4 seconds: ...`, the last `9 seconds to the end: ...`), finds them for
   the highlight, and re-times them for a packed clip. `deriveMotionPrompt`
