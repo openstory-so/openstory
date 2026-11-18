@@ -116,6 +116,22 @@ export async function restoreShotPromptVersion(
   return { variantId: inserted.id };
 }
 
+/** Set a shot's length. Refused while its keyframes would not fit (#2386). */
+export async function setShotDuration(
+  scopedDb: ScopedDb,
+  shotId: string,
+  durationSeconds: number
+) {
+  const selected = await scopedDb.shotSpecVersions.getSelected(shotId);
+  const fault = selected
+    ? keyframeFault(specKeyframes(selected.spec), durationSeconds)
+    : null;
+  if (fault) throw new ValidationError(`${fault}. Remove it first.`);
+  return scopedDb.shots.update(shotId, {
+    durationMs: Math.round(durationSeconds * 1000),
+  });
+}
+
 /** The shot's selected spec, how current it is, and which prompts the user wrote. */
 export async function readShotSpec(
   context: Pick<

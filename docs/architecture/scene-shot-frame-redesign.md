@@ -196,8 +196,9 @@ role is still unused.
   loses its keyframes. One rule, `keyframeFault`, says what a shot can hold:
   every keyframe inside its length, no two at one second. A save refuses a
   spec that breaks it; the shot-list pass and Rewrite shot drop the keyframes
-  that do (`keyframesWithin`). Shortening a shot
-  afterwards does not re-time them.
+  that do (`keyframesWithin`). A shot's length is set through
+  `setShotDuration` (the inspector and `update_shot`), which refuses a length
+  its keyframes do not fit: remove the keyframe, then shorten.
 - **Spaced by the move, not on a grid.** Both prompts (enhance and the
   shot-list pass in `workflow-prompts.ts`) size a stage at about 2 to 3
   seconds and give each keyframe one subject. Measured 2026-11-16 on one

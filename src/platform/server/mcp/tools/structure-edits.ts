@@ -39,6 +39,7 @@ import {
   readToolDefinition,
 } from '../tool-context';
 import { shotEdit } from './shot-content-edits';
+import { setShotDuration } from '@/shots/server/shot-content-edit';
 
 const writeAnnotations = {
   readOnlyHint: false,
@@ -501,9 +502,8 @@ const updateShotTool = openstoryTool({
     }
     if (input.durationSeconds !== undefined) {
       shot =
-        (await scopedDb.shots.update(shot.id, {
-          durationMs: Math.round(input.durationSeconds * 1000),
-        })) ?? shot;
+        (await setShotDuration(scopedDb, shot.id, input.durationSeconds)) ??
+        shot;
     }
     return {
       data: {

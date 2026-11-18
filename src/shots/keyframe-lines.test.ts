@@ -13,6 +13,7 @@ import {
   type StoredShotSpec,
 } from './shot-list.schema';
 import { attachSceneShots, defaultSingleShot } from './shot-list-pass';
+import { buildPackedMotionPrompt } from '@/motion/server/build-motion-prompts';
 
 const keyframes = [
   { atSeconds: 0, action: 'MARA drops from the fire escape', camera: '' },
@@ -57,6 +58,24 @@ describe('keyframe lines', () => {
         '19-24 seconds: continuing in the same shot, she hits the ground running',
       ].join('\n')
     );
+  });
+});
+
+describe('a keyframed shot in a packed clip', () => {
+  it('counts its lines from the clip start', () => {
+    const { prompt } = buildPackedMotionPrompt({
+      model: 'seedance_v2_5',
+      shots: [
+        { durationSeconds: 5, prompt: 'She waits.' },
+        {
+          durationSeconds: 10,
+          prompt: ['She runs.', ...keyframeLines(keyframes)].join('\n'),
+        },
+      ],
+    });
+    expect(prompt).toContain('Shot 2 (5-15s): She runs.');
+    expect(prompt).toContain('5-9 seconds: MARA drops');
+    expect(prompt).toContain('14-15 seconds: continuing in the same shot,');
   });
 });
 

@@ -515,6 +515,17 @@ function KeyframeFields({
       ...rows.map((row) => Number(row.at)),
     ]),
   ].sort((a, b) => a - b);
+  // Whole seconds no row holds; a new row takes one about 3s on.
+  const taken = new Set(rows.map((row) => Number(row.at)));
+  const free = Array.from(
+    { length: lastSecond + 1 },
+    (_, second) => second
+  ).filter((second) => !taken.has(second));
+  const lastAt = Number(rows.at(-1)?.at ?? -3);
+  const nextAt =
+    free.find((second) => second >= lastAt + 3) ??
+    free.filter((second) => second > lastAt).at(-1) ??
+    free[0];
   const items = seconds.map((second) => ({
     value: String(second),
     label: `${second}s`,
@@ -527,18 +538,14 @@ function KeyframeFields({
           type="button"
           size="xs"
           variant="ghost"
-          disabled={disabled}
+          disabled={disabled || nextAt === undefined}
           onClick={() => {
-            const last = rows.at(-1);
+            if (nextAt === undefined) return;
             change([
               ...rows,
               {
                 key: nextKey.current++,
-                at: last
-                  ? String(
-                      Math.min(Math.floor(Number(last.at)) + 3, lastSecond)
-                    )
-                  : '0',
+                at: String(nextAt),
                 action: '',
                 camera: '',
               },

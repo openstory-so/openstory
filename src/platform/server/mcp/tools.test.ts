@@ -2941,6 +2941,27 @@ describe('shot content edits (#1979)', () => {
     }
   });
 
+  it('update_shot refuses a length its keyframes do not fit', async () => {
+    const at = (atSeconds: number) => ({
+      atSeconds,
+      action: 'a wave breaks',
+      camera: '',
+    });
+    await data('update_shot', { sequenceId, shotId, durationSeconds: 10 });
+    await data('update_shot_spec', {
+      sequenceId,
+      shotId,
+      spec: { ...spec, keyframes: [at(0), at(6)] },
+    });
+    expect(
+      await call('update_shot', { sequenceId, shotId, durationSeconds: 5 })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    await data('update_shot', { sequenceId, shotId, durationSeconds: 8 });
+  });
+
   it('rebuild_shot_prompts starts a rewrite when the spec is missing; update_shot_spec refuses meanwhile', async () => {
     vi.mocked(triggerWorkflow).mockResolvedValueOnce('run-1');
     expect(
