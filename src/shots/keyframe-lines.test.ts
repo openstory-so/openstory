@@ -7,6 +7,8 @@ import {
 import { deriveMotionPrompt } from './shot-list.derive';
 import {
   canonicalStoredShotSpec,
+  keyframeFault,
+  keyframesWithin,
   rescaleKeyframes,
   type StoredShotSpec,
 } from './shot-list.schema';
@@ -101,6 +103,36 @@ describe('keyframes on the spec', () => {
     expect(rescaleKeyframes(keyframes, 10, 20).map((k) => k.atSeconds)).toEqual(
       [0, 8, 18]
     );
+  });
+
+  it("refuses a keyframe past the end or on another's second", () => {
+    expect(keyframeFault(keyframes, 10)).toBeNull();
+    expect(keyframeFault(keyframes, 9)).toBe(
+      'Keyframe at 9s is past the end of this 9s shot'
+    );
+    expect(
+      keyframeFault(
+        [...keyframes, { atSeconds: 4, action: 'again', camera: '' }],
+        10
+      )
+    ).toBe('Two keyframes start at 4s');
+  });
+
+  it('keeps the first keyframe at each second when a cut shot collides', () => {
+    // 0, 4, 9 on a 10s take cut to 2s land at 0, 1, 2.
+    expect(
+      keyframesWithin(rescaleKeyframes(keyframes, 10, 2), 2).map(
+        (k) => k.atSeconds
+      )
+    ).toEqual([0, 1]);
+    const close = [0, 2, 4].map((atSeconds) => ({
+      atSeconds,
+      action: 'a',
+      camera: '',
+    }));
+    expect(
+      keyframesWithin(rescaleKeyframes(close, 10, 3), 3).map((k) => k.atSeconds)
+    ).toEqual([0, 1]);
   });
 
   it('is re-timed when the scene label sets the shot length', () => {

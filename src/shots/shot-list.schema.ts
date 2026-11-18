@@ -292,13 +292,42 @@ export function specKeyframes(
 ): ShotKeyframe[] {
   return (spec.keyframes ?? [])
     .map((keyframe) => ({
-      atSeconds: Math.max(0, Math.round(keyframe.atSeconds * 10) / 10 || 0),
+      atSeconds: Math.max(0, Math.round(keyframe.atSeconds * 10) / 10),
       action: keyframe.action.trim(),
-      // Absent on a keyframe saved before the field existed.
-      camera: (keyframe.camera || '').trim(),
+      camera: keyframe.camera.trim(),
     }))
     .filter((keyframe) => keyframe.action.length > 0)
     .sort((a, b) => a.atSeconds - b.atSeconds);
+}
+
+/** Why a shot of `shotSeconds` cannot hold these keyframes, or null. */
+export function keyframeFault(
+  keyframes: readonly ShotKeyframe[],
+  shotSeconds: number
+): string | null {
+  const seen = new Set<number>();
+  for (const { atSeconds } of keyframes) {
+    if (!(atSeconds < shotSeconds)) {
+      return `Keyframe at ${atSeconds}s is past the end of this ${shotSeconds}s shot`;
+    }
+    if (seen.has(atSeconds)) return `Two keyframes start at ${atSeconds}s`;
+    seen.add(atSeconds);
+  }
+  return null;
+}
+
+/** The keyframes a shot of `shotSeconds` can hold: the first at each moment. */
+export function keyframesWithin(
+  keyframes: readonly ShotKeyframe[],
+  shotSeconds: number
+): ShotKeyframe[] {
+  const kept: ShotKeyframe[] = [];
+  for (const keyframe of keyframes) {
+    if (keyframeFault([...kept, keyframe], shotSeconds) === null) {
+      kept.push(keyframe);
+    }
+  }
+  return kept;
 }
 
 /**

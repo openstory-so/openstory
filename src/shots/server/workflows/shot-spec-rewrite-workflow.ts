@@ -21,7 +21,11 @@ import type {
 } from '@/platform/server/workflow/types';
 import { completeDerivedPrompts } from '@/shots/server/rebuild-shot-prompts';
 import { drawSpecSketchInRun } from '@/shots/server/shot-preview';
-import { storedShotSpecSchema } from '@/shots/shot-list.schema';
+import {
+  keyframesWithin,
+  specKeyframes,
+  storedShotSpecSchema,
+} from '@/shots/shot-list.schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-spec-rewrite']);
@@ -81,7 +85,14 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
       const version = await scopedDb.shotSpecVersions.promoteIfPending({
         shotId: input.shotId,
         claimId: input.claimId,
-        spec,
+        // The model's keyframes are held to the shot's length, as a save is.
+        spec: {
+          ...spec,
+          keyframes: keyframesWithin(
+            specKeyframes(spec),
+            input.durationSeconds
+          ),
+        },
         source: 'rewrite',
         inputHash: input.specInputHash,
         createdBy: input.userId,

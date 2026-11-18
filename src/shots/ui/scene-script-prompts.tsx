@@ -84,6 +84,7 @@ import {
 } from './use-shot-staleness';
 import { invalidateRebuiltPrompts, useShotSpec } from './use-shot-spec';
 import { ShotSpecForm } from './shot-spec-form';
+import { durationSecondsOf } from '@/shots/packed-clip-window';
 import {
   sceneKeys,
   useSaveSceneScript,
@@ -1717,7 +1718,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <ShotSpecForm
               sequenceId={sequenceId}
               shotId={shot.id}
-              shotSeconds={(shot.durationMs ?? 0) / 1000}
+              shotSeconds={durationSecondsOf(shot.durationMs)}
             />
           </div>
         )}

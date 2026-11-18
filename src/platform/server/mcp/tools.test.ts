@@ -2918,6 +2918,29 @@ describe('shot content edits (#1979)', () => {
     expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
   });
 
+  it('update_shot_spec refuses a keyframe past the shot or two at one second', async () => {
+    const keyframe = (atSeconds: number) => ({
+      atSeconds,
+      action: 'a wave breaks',
+      camera: '',
+    });
+    for (const keyframes of [
+      [keyframe(0), keyframe(500)],
+      [keyframe(0), keyframe(0)],
+    ]) {
+      expect(
+        await call('update_shot_spec', {
+          sequenceId,
+          shotId,
+          spec: { ...spec, keyframes },
+        })
+      ).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+      });
+    }
+  });
+
   it('rebuild_shot_prompts starts a rewrite when the spec is missing; update_shot_spec refuses meanwhile', async () => {
     vi.mocked(triggerWorkflow).mockResolvedValueOnce('run-1');
     expect(

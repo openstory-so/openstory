@@ -192,8 +192,11 @@ role is still unused.
 - **Timed against the shot.** The shot-list pass times keyframes against its
   own `durationSeconds`. When the system then sets the shot's real length,
   `timedShot` in `shot-list-pass.ts` moves them by the same ratio and drops
-  any that land past the end. A shot split for speech loses its keyframes. A
-  save refuses a keyframe at or past the shot's length. Shortening a shot
+  any that land past the end or on another's second. A shot split for speech
+  loses its keyframes. One rule, `keyframeFault`, says what a shot can hold:
+  every keyframe inside its length, no two at one second. A save refuses a
+  spec that breaks it; the shot-list pass and Rewrite shot drop the keyframes
+  that do (`keyframesWithin`). Shortening a shot
   afterwards does not re-time them.
 - **Spaced by the move, not on a grid.** Both prompts (enhance and the
   shot-list pass in `workflow-prompts.ts`) size a stage at about 2 to 3

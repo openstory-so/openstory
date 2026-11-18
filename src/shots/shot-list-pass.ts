@@ -49,7 +49,7 @@ import type {
   ShotListPassResult,
   ShotSpec,
 } from './shot-list.schema';
-import { rescaleKeyframes } from './shot-list.schema';
+import { keyframesWithin, rescaleKeyframes } from './shot-list.schema';
 
 function editorialGrid(grid: readonly number[]): number[] {
   const maxClip = Math.max(...grid.filter((n) => n > 0));
@@ -122,7 +122,7 @@ export function minShotsForScene(
 /**
  * A shot at its final number and length. Its keyframes were timed against
  * the length the analysis gave it, so they move with it; one that lands on
- * or past the end is dropped.
+ * or past the end, or on another's second, is dropped.
  */
 function timedShot(
   shot: ShotSpec,
@@ -133,11 +133,10 @@ function timedShot(
     ...shot,
     shotNumber,
     durationSeconds,
-    keyframes: rescaleKeyframes(
-      shot.keyframes,
-      shot.durationSeconds,
+    keyframes: keyframesWithin(
+      rescaleKeyframes(shot.keyframes, shot.durationSeconds, durationSeconds),
       durationSeconds
-    ).filter((keyframe) => keyframe.atSeconds < durationSeconds),
+    ),
   };
 }
 

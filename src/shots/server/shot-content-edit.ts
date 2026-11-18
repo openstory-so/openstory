@@ -11,6 +11,7 @@ import {
 } from '@/platform/errors';
 import {
   canonicalStoredShotSpec,
+  keyframeFault,
   specKeyframes,
   type shotSpecEditSchema,
 } from '@/shots/shot-list.schema';
@@ -168,14 +169,8 @@ export async function saveShotSpec(
     );
   }
   const shotSeconds = durationSecondsOf(shot.durationMs);
-  const late = edit.keyframes.find(
-    (keyframe) => keyframe.atSeconds >= shotSeconds
-  );
-  if (late) {
-    throw new ValidationError(
-      `Keyframe at ${late.atSeconds}s is past the end of this ${shotSeconds}s shot`
-    );
-  }
+  const fault = keyframeFault(specKeyframes(edit), shotSeconds);
+  if (fault) throw new ValidationError(fault);
   const spec = canonicalStoredShotSpec(edit);
   const unchanged =
     state.selected !== null &&
