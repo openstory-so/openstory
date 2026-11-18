@@ -1,7 +1,8 @@
 /**
  * Copy local Wrangler D1 + R2 state between the main checkout and a worktree.
  * The main checkout's state is its data folder (~/openstory) when it has one
- * (#2222); --fork clones from there, and --promote refuses to overwrite it.
+ * (#2222); --fork clones from there, and --promote replaces it (no merge),
+ * keeping the old state beside it as `state.before-promote` (#2412).
  *
  *   bun scripts/db-worktree.ts --fork      # main repo  → current worktree
  *   bun scripts/db-worktree.ts --promote   # current worktree → main repo
@@ -16,14 +17,15 @@
  * R2 blobs would leave every stored thumbnail/video 404ing in the worktree.
  * R2 state is optional on the source (a fresh checkout may have none yet).
  * KV/cache/workflows aren't copied; they're either regenerated on demand or
- * stateless. Run with the dev server stopped on both sides.
+ * stateless. Run with the dev server stopped on both sides; --promote refuses
+ * while one holds the data folder.
  */
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { resolveStateDir } from './state-dir';
+import { assertUnlocked, resolveStateDir } from './state-dir';
 
 // D1 is required (the whole point of the script); R2 is best-effort.
 const STATE_SUBDIRS = [
@@ -59,11 +61,36 @@ const main = resolveStateDir({
 });
 const worktreeState = path.join(here, '.wrangler', 'state');
 
-if (mode === '--promote' && main.dataDir) {
-  console.error(
-    `[db-worktree] the main checkout uses the data folder ${main.dataDir}. Promote would overwrite your library; copy what you need by hand.`
-  );
-  process.exit(1);
+// APFS clone: instant, and writes on one side never touch the other.
+function clone(src: string, dest: string): void {
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(path.dirname(dest), { recursive: true });
+  if (process.platform === 'darwin') {
+    execFileSync('cp', ['-c', '-R', src, dest]);
+  } else {
+    cpSync(src, dest, { recursive: true });
+  }
+}
+
+if (mode === '--promote') {
+  if (main.dataDir) {
+    try {
+      assertUnlocked(main.dataDir);
+    } catch (error) {
+      console.error(
+        `[db-worktree] ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exit(1);
+    }
+  }
+  // Only once the promote can go ahead, so a failed run keeps the last backup.
+  if (existsSync(path.join(worktreeState, 'v3/d1')) && existsSync(main.state)) {
+    const backup = `${main.state}.before-promote`;
+    clone(main.state, backup);
+    console.log(
+      `[db-worktree] promote replaces ${main.state}, it does not merge. Old state kept at ${backup}`
+    );
+  }
 }
 
 const [srcRoot, destRoot, verb] =
@@ -86,13 +113,6 @@ for (const { subdir, label, required } of STATE_SUBDIRS) {
     continue;
   }
 
-  rmSync(dest, { recursive: true, force: true });
-  mkdirSync(path.dirname(dest), { recursive: true });
-  // APFS clone: instant, and the worktree's writes never touch the library.
-  if (process.platform === 'darwin') {
-    execFileSync('cp', ['-c', '-R', src, dest]);
-  } else {
-    cpSync(src, dest, { recursive: true });
-  }
+  clone(src, dest);
   console.log(`[db-worktree] ${verb} ${label} state: ${src} → ${dest}`);
 }

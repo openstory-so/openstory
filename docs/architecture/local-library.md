@@ -25,7 +25,7 @@ One resolver, `scripts/state-dir.ts`. `vite.config.ts` (`persistState`) and `scr
 - **Lock.** The dev server writes its pid to `<dir>/.openstory/.lock` and removes it on exit. `bun dev` refuses to start while another live process holds it; a dead holder's lock is taken over.
 - The bindings banner prints the full state path on every boot (`DATA state → …`).
 - `bun setup` can choose another folder (written to `.env.local` as `OPENSTORY_DATA_DIR`) and warns on iCloud Desktop & Documents, `~/Library/Mobile Documents`, Dropbox, OneDrive and `~/Library/CloudStorage`: a sync client can corrupt a live SQLite file.
-- `bun db:fork:local` clones the main checkout's state into a worktree with `cp -c` (an APFS clone; a plain copy elsewhere). `bun db:promote:local` refuses while the main checkout uses a data folder.
+- `bun db:fork:local` clones the main checkout's state into a worktree with `cp -c` (an APFS clone; a plain copy elsewhere). `bun db:promote:local` replaces the main checkout's D1 and R2 state with the worktree's (no merge), also when that is the data folder (#2412). It refuses while a dev server holds the data folder, and first clones the old state to `state.before-promote` beside it, replacing any earlier backup; to undo, stop `bun dev` and swap that folder back in for `state`.
 
 ## Slugs
 
