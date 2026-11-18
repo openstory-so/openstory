@@ -18,6 +18,7 @@ import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
+  BYTEPLUS_ENDPOINTS,
   GATEWAY_VIA,
   type GatewayJobInput,
   type GatewayProvider,
@@ -112,6 +113,18 @@ function validatedBody(
     });
   }
 
+  // The likeness check sees images and video; it cannot hear whose voice a clip is.
+  if (
+    model.provider === 'byteplus' &&
+    model.endpointId === BYTEPLUS_ENDPOINTS.speech &&
+    Array.isArray(body.references) &&
+    body.references.some((entry) => isObject(entry) && 'audio_url' in entry)
+  ) {
+    throw new ValidationError(
+      'Cloning a voice from a clip is not served; use a `speaker`'
+    );
+  }
+
   const priced = new Set(cardParams(model.card).request);
   const unpriced = COUNT_FIELDS.find((field) => {
     const count = body[field];
@@ -126,6 +139,13 @@ function validatedBody(
 }
 
 const INLINE = 'Send media as a URL, not inline data';
+// Bare base64 with no `data:` prefix: Gemini's parts and Seed Audio's references.
+const INLINE_KEYS = new Set([
+  'inlineData',
+  'inline_data',
+  'audio_data',
+  'image_data',
+]);
 
 /**
  * Every URL in the body, for the likeness check. Anything else that could
@@ -156,7 +176,7 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
     for (const item of body) gatedUrls(item, found);
   } else if (body !== null && typeof body === 'object') {
     for (const [key, value] of Object.entries(body)) {
-      if (key === 'inlineData' || key === 'inline_data') {
+      if (INLINE_KEYS.has(key)) {
         throw new ValidationError(INLINE);
       }
       gatedUrls(value, found);

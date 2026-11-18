@@ -12,7 +12,17 @@ import {
   extractAssetOutputs,
   isFalValidationError,
 } from '@/studio/server/workflows/asset-generation-workflow';
-import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
+import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
+import {
+  getSeedSpeechApiKey,
+  getSeedSpeechBaseUrl,
+  isSeedSpeechConfigured,
+} from '@/models/server/seed-speech-config';
+import {
+  BYTEPLUS_ENDPOINTS,
+  type GatewayJobInput,
+  type GatewayProvider,
+} from '@/gateway/schema';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
 import { fal } from '@fal-ai/client';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -245,10 +255,54 @@ async function arkCall(
   );
 }
 
-const ARK_TASKS = 'contents/generations/tasks';
+const ARK_TASKS = BYTEPLUS_ENDPOINTS.tasks;
+
+const SEED_AUDIO_TYPES: Record<string, string> = {
+  wav: 'audio/wav',
+  mp3: 'audio/mpeg',
+  ogg_opus: 'audio/ogg',
+};
+
+/** Seed Audio is not on Ark: its own host, key and account-wide pacing. */
+async function seedSpeech(body: GatewayJobInput): Promise<GatewayStart> {
+  // Also off under E2E_TEST with no base URL override.
+  if (!isSeedSpeechConfigured()) {
+    throw new NonRetryableError('No platform key for Seed Speech');
+  }
+  const format = text(recordOrNull(body.audio_config)?.format) ?? 'wav';
+  const contentType = SEED_AUDIO_TYPES[format];
+  if (!contentType) {
+    throw new NonRetryableError(`Seed Audio format ${format} is not stored`);
+  }
+  await acquireSeedSpeechToken();
+  const answer = await callJson(
+    `${getSeedSpeechBaseUrl()}/api/v3/${BYTEPLUS_ENDPOINTS.speech}`,
+    {
+      method: 'POST',
+      headers: { 'x-api-key': getSeedSpeechApiKey() ?? '' },
+      body,
+    }
+  );
+  const audio = text(answer.audio);
+  // Billed on the seconds before `speech_rate`, which only the answer carries.
+  const billed = answer.original_duration;
+  if (typeof billed !== 'number') {
+    throw new Error('Seed Audio returned no original_duration');
+  }
+  return {
+    result: {
+      media: audio ? [{ base64: audio, contentType }] : [],
+      usage: { original_duration: billed },
+      requestId: null,
+    },
+  };
+}
 
 const bytePlusDriver: Driver = {
   start: async (target, body) => {
+    if (target.endpointId === BYTEPLUS_ENDPOINTS.speech) {
+      return seedSpeech(body);
+    }
     const answer = await arkCall(target.endpointId, body);
     if (target.endpointId === ARK_TASKS) {
       const id = text(answer.id);

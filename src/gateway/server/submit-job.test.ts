@@ -120,6 +120,24 @@ const MODELS: Record<string, GatewayModel> = {
       required: ['prompt', 'duration'],
     },
   },
+  'byteplus/seed-audio-1.0': {
+    provider: 'byteplus',
+    id: 'seed-audio-1.0',
+    name: 'Seed Audio',
+    kind: 'audio',
+    endpointId: 'tts/create',
+    card: PER_SECOND,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string' },
+        text_prompt: { type: 'string' },
+        duration: { type: 'number' },
+        references: { type: 'array' },
+      },
+      required: ['text_prompt'],
+    },
+  },
   'grok/grok-imagine-tokens': {
     provider: 'grok',
     id: 'grok-imagine-tokens',
@@ -411,6 +429,20 @@ describe('submitGatewayJob', () => {
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
   });
 
+  it('refuses a Seed Audio voice cloned from a clip, which the check cannot hear', async () => {
+    const error = await refused({
+      provider: 'byteplus',
+      modelId: 'seed-audio-1.0',
+      body: {
+        text_prompt: '@Audio1 says the port engine is done for',
+        duration: 5,
+        references: [{ audio_url: 'https://a.example/mara.wav' }],
+      },
+    });
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
   it('checks every URL in the body before anything spends', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
     const submit = {
@@ -575,6 +607,12 @@ describe('gatedUrls', () => {
     expect(() => gatedUrls({ parts: [{ inline_data: {} }] })).toThrow(
       ValidationError
     );
+    // Seed Audio's references: bare base64, no `data:` prefix.
+    for (const key of ['audio_data', 'image_data']) {
+      expect(() => gatedUrls({ references: [{ [key]: 'UklGRg==' }] })).toThrow(
+        ValidationError
+      );
+    }
   });
 
   it('refuses inline data however it is spelled', () => {
