@@ -4,6 +4,7 @@ import { fetchCatalogJson, CatalogApiError } from '@/models/catalog';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { JsonValue } from '@/platform/server/db/schema';
 import {
+  BYTEPLUS_ENDPOINTS,
   GATEWAY_JOB_KINDS,
   GATEWAY_PROVIDERS,
   type GatewayJobKind,
@@ -48,10 +49,14 @@ function kindOf(
   provider: GatewayProvider,
   record: ModelRecord
 ): GatewayJobKind | null {
-  const { activity } = record;
+  const { activity, schemaEndpointId } = record;
   if (!activity || !isKind(activity)) return null;
-  // BytePlus audio is Seed Speech: another host and key, not Ark.
-  if (provider === 'byteplus' && activity === 'audio') return null;
+  if (
+    provider === 'byteplus' &&
+    !Object.values<string | null>(BYTEPLUS_ENDPOINTS).includes(schemaEndpointId)
+  ) {
+    return null;
+  }
   return activity;
 }
 

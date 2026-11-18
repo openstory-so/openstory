@@ -26,6 +26,13 @@ export function gatewayProviderOfVia(via: MediaVia): GatewayProvider {
   return provider;
 }
 
+/** The BytePlus endpoints the gateway has a driver for; Seed ASR returns text and is not one. */
+export const BYTEPLUS_ENDPOINTS = {
+  tasks: 'contents/generations/tasks',
+  images: 'images/generations',
+  speech: 'tts/create',
+} as const;
+
 export const GATEWAY_JOB_KINDS = ['image', 'video', 'audio'] as const;
 export type GatewayJobKind = (typeof GATEWAY_JOB_KINDS)[number];
 

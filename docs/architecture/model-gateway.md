@@ -176,8 +176,12 @@ Not served, and why:
   Gemini images per token, Seedream per input and generated image. There is
   no honest hold for those, so they are refused at submit until their cards
   carry an estimate.
-- **BytePlus audio.** Seed Speech is another host and key, not Ark, so
-  `catalog.ts` drops BytePlus audio records.
+- **A BytePlus endpoint with no driver.** `catalog.ts` serves only
+  `BYTEPLUS_ENDPOINTS`: Ark video tasks, Ark images and Seed Audio
+  (`tts/create`). Seed ASR returns text, so it is dropped.
+- **A Seed Audio voice cloned from a clip.** The likeness check sees images
+  and video; it cannot hear whose voice an `audio_url` is, so a reference
+  clip is refused. Stock `speaker` voices and described voices work.
 - **Gemini video.** modelschemas lists no Gemini video model.
 - **Real people on BytePlus.** The proxy does not register Ark portrait
   assets; an image Ark refuses fails as an Ark error.
@@ -228,6 +232,11 @@ content flag or after Ark's InternalServiceError.
   price for the request plus the usage the provider reported (BytePlus
   `completion_tokens`, Gemini `usageMetadata`); a card that reads no usage
   charges exactly the hold.
+- Seed Audio is BytePlus but not Ark: `voice.ap-southeast-1.bytepluses.com`
+  on `SEED_SPEECH_API_KEY`, paced by `acquireSeedSpeechToken` because the
+  requests-per-second cap is the account's, shared with character voices.
+  Its card holds the 120 second cap ($0.30) and charges the answer's
+  `original_duration`.
 - The settle is `deductWorkflowCredits` with the job's `reservationId`
   (capture), idempotency key `${instanceId}:gateway-settle`. When the card
   refuses the reported usage the hold (`holdMicros`) is charged and reported

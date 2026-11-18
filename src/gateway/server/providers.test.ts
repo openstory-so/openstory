@@ -15,6 +15,17 @@ vi.doMock('@/models/server/byteplus-config', () => ({
   getArkBaseUrl: () => arkBaseUrl,
 }));
 
+let seedConfigured = true;
+const acquireSeedSpeechToken = vi.fn(async () => {});
+vi.doMock('@/models/server/seed-speech-config', () => ({
+  getSeedSpeechApiKey: () => 'seed-key',
+  getSeedSpeechBaseUrl: () => 'https://voice.ap-southeast-1.bytepluses.com',
+  isSeedSpeechConfigured: () => seedConfigured,
+}));
+vi.doMock('@/models/server/byteplus-governor', () => ({
+  acquireSeedSpeechToken,
+}));
+
 const fetchMock =
   vi.fn<(input: string | Request, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', fetchMock);
@@ -98,6 +109,7 @@ beforeEach(() => {
   env = {};
   arkKey = 'ark-key';
   arkBaseUrl = undefined;
+  seedConfigured = true;
 });
 
 afterAll(() => {
@@ -313,6 +325,69 @@ describe('byteplus driver', () => {
     arkKey = undefined;
     await expect(start('byteplus')).rejects.toBeInstanceOf(NonRetryableError);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('byteplus driver on Seed Audio', () => {
+  const target = { modelId: 'seed-audio-1.0', endpointId: 'tts/create' };
+  const body = {
+    model: 'seed-audio-1.0',
+    text_prompt: 'Mara, flatly: "The port engine is done for."',
+    audio_config: { format: 'mp3' },
+  };
+  const speak = (input: GatewayJobInput = body) =>
+    GATEWAY_DRIVERS.byteplus.start(target, input, credentials);
+
+  it("sends the caller's body to Seed Speech on its own key, paced, and reports the billed seconds", async () => {
+    fetchMock.mockResolvedValueOnce(
+      answer({ audio: 'UklGRg==', duration: 4.1, original_duration: 3.4 })
+    );
+    expect(await speak()).toEqual({
+      result: {
+        media: [{ base64: 'UklGRg==', contentType: 'audio/mpeg' }],
+        usage: { original_duration: 3.4 },
+        requestId: null,
+      },
+    });
+    const request = await sent();
+    expect(request.url).toBe(
+      'https://voice.ap-southeast-1.bytepluses.com/api/v3/tts/create'
+    );
+    expect(request.headers['x-api-key']).toBe('seed-key');
+    expect(request.headers.authorization).toBeUndefined();
+    expect(request.body).toBe(JSON.stringify(body));
+    expect(acquireSeedSpeechToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores wav when the body names no format', async () => {
+    fetchMock.mockResolvedValueOnce(
+      answer({ audio: 'UklGRg==', original_duration: 2 })
+    );
+    const started = await speak({ model: 'seed-audio-1.0', text_prompt: 'Hi' });
+    expect(started).toMatchObject({
+      result: { media: [{ contentType: 'audio/wav' }] },
+    });
+  });
+
+  it('refuses a format it cannot store, before the call', async () => {
+    await expect(
+      speak({ ...body, audio_config: { format: 'pcm' } })
+    ).rejects.toBeInstanceOf(NonRetryableError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('retries an answer with no billed seconds: there is nothing to charge on', async () => {
+    fetchMock.mockResolvedValueOnce(answer({ audio: 'UklGRg==' }));
+    const error = await speak().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(NonRetryableError);
+  });
+
+  it('refuses when Seed Speech is not configured', async () => {
+    seedConfigured = false;
+    await expect(speak()).rejects.toBeInstanceOf(NonRetryableError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(acquireSeedSpeechToken).not.toHaveBeenCalled();
   });
 });
 

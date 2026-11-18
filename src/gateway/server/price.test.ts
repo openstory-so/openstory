@@ -31,6 +31,22 @@ const PER_TOKEN = rateCardSchema.parse({
   source: SOURCE,
 });
 
+// Seed Audio as modelschemas has it: $0.0025 a second produced, estimated at the 120 second cap.
+const SEED_AUDIO = rateCardSchema.parse({
+  inputs: {
+    original_duration: {
+      param: 'original_duration',
+      bound: 'usage',
+      kind: 'number',
+      estimate: { inputs: {}, value: 120, source: SOURCE },
+    },
+  },
+  tables: {},
+  price: { '*': [{ var: 'original_duration' }, 0.0025] },
+  examples: [],
+  source: SOURCE,
+});
+
 // A Gemini image model: $0.30 a million in, $30 a million image tokens out.
 const GEMINI_IMAGE = rateCardSchema.parse({
   inputs: {
@@ -107,5 +123,13 @@ describe('priceGatewayJob', () => {
     expect(() =>
       priceGatewayJob(PER_TOKEN, { prompt: PROMPT }, { seconds: 5 })
     ).toThrow(RateCardError);
+  });
+
+  it('holds Seed Audio at its cap and charges the seconds it produced', () => {
+    const request = { model: 'seed-audio-1.0', text_prompt: 'Hi' };
+    expect(priceGatewayJob(SEED_AUDIO, request)).toBe(300_000);
+    expect(
+      priceGatewayJob(SEED_AUDIO, request, { original_duration: 3.4 })
+    ).toBe(8_500);
   });
 });

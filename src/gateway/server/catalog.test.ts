@@ -167,7 +167,18 @@ describe('listGatewayModels', () => {
             activity: 'image',
             schemaEndpointId: 'images/generations',
           }),
-          record({ rawId: 'seed-audio-1.0', activity: 'audio' }),
+          record({
+            rawId: 'seed-audio-1.0',
+            displayName: 'Seed Audio',
+            activity: 'audio',
+            schemaEndpointId: 'tts/create',
+          }),
+          // Text out, and no driver for the endpoint.
+          record({
+            rawId: 'seed-asr',
+            activity: 'audio',
+            schemaEndpointId: 'auc/bigmodel/recognize/flash',
+          }),
           record({ rawId: 'hitem3d', activity: null, schemaEndpointId: null }),
         ],
       },
@@ -194,6 +205,12 @@ describe('listGatewayModels', () => {
         id: 'seedream-5',
         name: 'Seedream 5',
         kind: 'image',
+      },
+      {
+        provider: 'byteplus',
+        id: 'seed-audio-1.0',
+        name: 'Seed Audio',
+        kind: 'audio',
       },
       {
         provider: 'grok',
