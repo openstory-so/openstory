@@ -86,13 +86,13 @@ describe('packed Kling queue body', () => {
       }),
       threadId: 'thread-packed-kling',
       prompt: 'the hallway beyond the door',
+      duration: 10,
       modelOptions: {
         multi_prompt: [
           { prompt: 'opens the door', duration: 4 },
           { prompt: 'the hallway beyond the door', duration: 6 },
         ],
         start_image_url: 'https://example.com/image.jpg',
-        duration: 10,
       },
     });
 
