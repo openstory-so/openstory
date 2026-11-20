@@ -13,6 +13,7 @@ function character(
   overrides: Partial<PreviewCharacter> = {}
 ): PreviewCharacter {
   return {
+    characterId: 'char_001',
     name: 'Mina',
     age: '30s',
     gender: 'Female',
@@ -169,6 +170,17 @@ describe('buildPreviewPrompt', () => {
     expect(prompt).not.toContain('Mina:');
     expect(prompt).not.toContain('Otto');
     expect(prompt).not.toContain('Radio:');
+  });
+
+  it('writes the same prompt in any cast order (#2416)', () => {
+    const mina = character();
+    const otto = character({ characterId: 'char_002', name: 'Otto' });
+    const text = 'Otto hands Mina the key.';
+    const prompt = buildPreviewPrompt(text, [mina, otto]);
+    expect(buildPreviewPrompt(text, [otto, mina])).toBe(prompt);
+    expect(prompt.indexOf('Mina, Female')).toBeLessThan(
+      prompt.indexOf('Otto, Female')
+    );
   });
 
   it('drops a stored likeness instruction from the preview', () => {

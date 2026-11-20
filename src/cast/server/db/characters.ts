@@ -1414,7 +1414,7 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           ),
           characters.id,
           page,
-          // Sketch hashes read the cast in this order (#2416).
+          // Oldest first; SQLite picks its own order otherwise (#2416).
           characters.id
         ),
         looks.listBySequence(sequenceId),

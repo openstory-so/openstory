@@ -28,6 +28,7 @@ export type PreviewShotScene = {
 /** Bible fields a preview draws a character from. */
 export type PreviewCharacter = Pick<
   CharacterBibleEntry,
+  | 'characterId'
   | 'name'
   | 'age'
   | 'gender'
@@ -170,6 +171,14 @@ function previewCastForShot(
           !entry.voiceOnly &&
           entry.name.trim().length > 0 &&
           text.includes(entry.name.trim().toLowerCase())
+      )
+      // By script id, so the prompt is the same in any cast order (#2416).
+      .sort((a, b) =>
+        a.characterId < b.characterId
+          ? -1
+          : a.characterId > b.characterId
+            ? 1
+            : 0
       )
       .slice(0, MAX_CAST_IN_SHOT)
       .map((entry) =>

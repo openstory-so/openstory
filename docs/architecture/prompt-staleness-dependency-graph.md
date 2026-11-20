@@ -796,6 +796,8 @@ fresh = simpleHash(buildPreviewPrompt(previewTextForShot(spec), cast));
 
 The prompt stages the action in the bodies. Direction, sound and dialogue
 are not in it, so a direction-only edit does not move the hash (#2379).
+The characters a shot names are written in script-id order, so the hash is
+the same whatever order the cast is handed over in (#2416).
 
 `missing` is none drawn. A sketch of the fresh hash is fresh, whatever
 version it is stamped with, so a rename that leaves the drawn text alone and
