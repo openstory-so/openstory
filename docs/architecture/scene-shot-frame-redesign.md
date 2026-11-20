@@ -202,7 +202,7 @@ role is still unused.
 - **The form shows lengths.** Stored as start seconds; the inspector's row
   shows how long the stage runs, and the last runs to the end, so the lengths
   always sum to the shot. Changing a length moves every later keyframe and
-  the last absorbs it. `+` under a row splits it in two; the bin deletes it
+  the last absorbs it. Each row opens with its length, the bin and `+`; `+` splits it in two; the bin deletes it
   and hands its time to the row before (the first's goes to the next). The
   shot's Duration sits on the same tab, above the form (`ShotDurationField`).
 - **Spaced by the move, not on a grid.** Both prompts (enhance and the
