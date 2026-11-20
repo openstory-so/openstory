@@ -1413,7 +1413,9 @@ export function createCharactersMethods(db: Database, organizationId: string) {
             isNull(sequenceCast.removedAt)
           ),
           characters.id,
-          page
+          page,
+          // Sketch hashes read the cast in this order (#2416).
+          characters.id
         ),
         looks.listBySequence(sequenceId),
       ]);
