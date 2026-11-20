@@ -5,8 +5,9 @@
  */
 
 import { Plus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Separator } from '@/ui/shadcn/separator';
 import { errorMessage } from '@/platform/errors';
 import {
   shotSpecEditSchema,
@@ -558,129 +559,132 @@ function KeyframeFields({
         const actionId = `keyframe-${row.key}-action`;
         const cameraId = `keyframe-${row.key}-camera`;
         return (
-          <div key={row.key} className="flex flex-col gap-1">
-            <input type="hidden" name="keyframeAt" value={row.at} />
-            <label htmlFor={actionId} className="text-xs">
-              Action
-            </label>
-            <MarkdownEditor
-              id={actionId}
-              aria-label={`Keyframe ${index + 1} action`}
-              placeholder="What happens in this stage"
-              value={row.action}
-              onValueChange={(action) => {
-                const next = patch(row.key, { action });
-                if (focused.current) change(next);
-                else setRows(next);
-              }}
-              onFocus={() => {
-                focused.current = true;
-              }}
-              disabled={disabled}
-              mentionItems={mentionItems}
-              onMentionRename={onMentionRename}
-            />
-            <input type="hidden" name="keyframeAction" value={row.action} />
-            <label htmlFor={cameraId} className="text-xs">
-              Camera
-            </label>
-            <MarkdownEditor
-              id={cameraId}
-              aria-label={`Keyframe ${index + 1} camera`}
-              placeholder="Where the camera is in this stage"
-              value={row.camera}
-              onValueChange={(camera) => {
-                const next = patch(row.key, { camera });
-                if (focused.current) change(next);
-                else setRows(next);
-              }}
-              onFocus={() => {
-                focused.current = true;
-              }}
-              disabled={disabled}
-              className="min-h-9 py-1.5"
-              mentionItems={mentionItems}
-              onMentionRename={onMentionRename}
-            />
-            <input type="hidden" name="keyframeCamera" value={row.camera} />
-            <div className="flex min-h-8 items-center gap-2">
-              {last ? (
-                <span className="text-xs tabular-nums">{length}s</span>
-              ) : (
-                <Select
-                  value={String(length)}
-                  items={items}
-                  onValueChange={(value) => {
-                    if (value == null) return;
-                    // Every later row moves with it; the last absorbs it.
-                    const shift = Number(value) - length;
-                    change(
-                      rows.map((other, at) =>
-                        at > index
-                          ? { ...other, at: roundSeconds(other.at + shift) }
-                          : other
-                      )
-                    );
-                  }}
-                  disabled={disabled}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="w-20 tabular-nums"
-                    aria-label={`Keyframe ${index + 1} length`}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {items.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {last
-                  ? `${row.at}s to the end`
-                  : `${row.at}s to ${endOf(index)}s`}
-              </span>
-              <div className="flex items-center gap-1 ms-auto">
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={disabled}
-                  onClick={() =>
-                    // The first row's time goes to the next; any other's to the one before.
-                    change(
-                      rows
-                        .filter((other) => other.key !== row.key)
-                        .map((other, at) =>
-                          index === 0 && at === 0
-                            ? { ...other, at: row.at }
+          <Fragment key={row.key}>
+            {index > 0 && <Separator />}
+            <div className="flex flex-col gap-1">
+              <input type="hidden" name="keyframeAt" value={row.at} />
+              <label htmlFor={actionId} className="text-xs">
+                Action
+              </label>
+              <MarkdownEditor
+                id={actionId}
+                aria-label={`Keyframe ${index + 1} action`}
+                placeholder="What happens in this stage"
+                value={row.action}
+                onValueChange={(action) => {
+                  const next = patch(row.key, { action });
+                  if (focused.current) change(next);
+                  else setRows(next);
+                }}
+                onFocus={() => {
+                  focused.current = true;
+                }}
+                disabled={disabled}
+                mentionItems={mentionItems}
+                onMentionRename={onMentionRename}
+              />
+              <input type="hidden" name="keyframeAction" value={row.action} />
+              <label htmlFor={cameraId} className="text-xs">
+                Camera
+              </label>
+              <MarkdownEditor
+                id={cameraId}
+                aria-label={`Keyframe ${index + 1} camera`}
+                placeholder="Where the camera is in this stage"
+                value={row.camera}
+                onValueChange={(camera) => {
+                  const next = patch(row.key, { camera });
+                  if (focused.current) change(next);
+                  else setRows(next);
+                }}
+                onFocus={() => {
+                  focused.current = true;
+                }}
+                disabled={disabled}
+                className="min-h-9 py-1.5"
+                mentionItems={mentionItems}
+                onMentionRename={onMentionRename}
+              />
+              <input type="hidden" name="keyframeCamera" value={row.camera} />
+              <div className="flex min-h-8 items-center gap-2">
+                {last ? (
+                  <span className="text-xs tabular-nums">{length}s</span>
+                ) : (
+                  <Select
+                    value={String(length)}
+                    items={items}
+                    onValueChange={(value) => {
+                      if (value == null) return;
+                      // Every later row moves with it; the last absorbs it.
+                      const shift = Number(value) - length;
+                      change(
+                        rows.map((other, at) =>
+                          at > index
+                            ? { ...other, at: roundSeconds(other.at + shift) }
                             : other
                         )
-                    )
-                  }
-                  aria-label={`Delete keyframe ${index + 1}`}
-                >
-                  <Trash2 aria-hidden />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  // A one-second row has no half to give.
-                  disabled={disabled || length < 2}
-                  onClick={() => insertAfter(index)}
-                  aria-label={`Add a keyframe after keyframe ${index + 1}`}
-                >
-                  <Plus aria-hidden />
-                </Button>
+                      );
+                    }}
+                    disabled={disabled}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-20 tabular-nums"
+                      aria-label={`Keyframe ${index + 1} length`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {last
+                    ? `${row.at}s to the end`
+                    : `${row.at}s to ${endOf(index)}s`}
+                </span>
+                <div className="flex items-center gap-1 ms-auto">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() =>
+                      // The first row's time goes to the next; any other's to the one before.
+                      change(
+                        rows
+                          .filter((other) => other.key !== row.key)
+                          .map((other, at) =>
+                            index === 0 && at === 0
+                              ? { ...other, at: row.at }
+                              : other
+                          )
+                      )
+                    }
+                    aria-label={`Delete keyframe ${index + 1}`}
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    // A one-second row has no half to give.
+                    disabled={disabled || length < 2}
+                    onClick={() => insertAfter(index)}
+                    aria-label={`Add a keyframe after keyframe ${index + 1}`}
+                  >
+                    <Plus aria-hidden />
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
+          </Fragment>
         );
       })}
     </div>
