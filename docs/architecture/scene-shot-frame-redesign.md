@@ -199,6 +199,12 @@ role is still unused.
   that do (`keyframesWithin`). A shot's length is set through
   `setShotDuration` (the inspector and `update_shot`), which refuses a length
   its keyframes do not fit: remove the keyframe, then shorten.
+- **The form shows lengths.** Stored as start seconds; the inspector's row
+  shows how long the stage runs, and the last runs to the end, so the lengths
+  always sum to the shot. Changing a length moves every later keyframe and
+  the last absorbs it. `+` under a row splits it in two; the bin deletes it
+  and hands its time to the row before (the first's goes to the next). The
+  shot's Duration sits on the same tab, above the form (`ShotDurationField`).
 - **Spaced by the move, not on a grid.** Both prompts (enhance and the
   shot-list pass in `workflow-prompts.ts`) size a stage at about 2 to 3
   seconds and give each keyframe one subject. Measured 2026-11-16 on one

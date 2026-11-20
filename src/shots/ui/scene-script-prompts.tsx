@@ -835,7 +835,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // the selected version flips prompt-input-hash staleness on the scene's shots
   // without forking the sequence. Addressed by scene, not shot — see
   // `updateSceneScriptFn`. (Duration is a separate, per-shot video parameter —
-  // see `ShotDurationField` on the Motion tab.)
+  // see `ShotDurationField` on the Shot tab.)
   const saveSceneScript = useSaveSceneScript(sequenceId);
   const handleSaveScript = (nextExtract: string) => {
     if (!scriptSceneId) return;
@@ -1715,6 +1715,23 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               shotId={shot.id}
               onOpenHistory={() => setHistoryOpen('spec')}
             />
+            {/* Above the keyframes, whose lengths sum to it (#2386). */}
+            <ShotDurationField
+              key={shot.id}
+              shot={shot}
+              sequenceId={sequenceId}
+              motionModel={effectiveMotionModel}
+              scriptExtract={scriptText}
+              sceneSeconds={
+                scopeShots
+                  ? sumShotSeconds(
+                      scopeShots.filter((s) => s.sceneId === shot.sceneId)
+                    )
+                  : undefined
+              }
+              filmSeconds={filmSeconds}
+              dialogueSeconds={shot.audioClips?.[0]?.durationSeconds ?? null}
+            />
             <ShotSpecForm
               sequenceId={sequenceId}
               shotId={shot.id}
@@ -2069,27 +2086,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               selecting={selectSegmentVideoVersion.isPending}
             />
           )}
-
-          {/* Duration is a video parameter, not a prompt driver — it belongs
-              beside the model whose schema defines its legal values and the
-              segment its value tiles into, not under the scene script. Keyed by
-              shot so switching scenes drops any unsaved draft. */}
-          <ShotDurationField
-            key={shot?.id}
-            shot={shot}
-            sequenceId={sequenceId}
-            motionModel={effectiveMotionModel}
-            scriptExtract={scriptText}
-            sceneSeconds={
-              shot && scopeShots
-                ? sumShotSeconds(
-                    scopeShots.filter((s) => s.sceneId === shot.sceneId)
-                  )
-                : undefined
-            }
-            filmSeconds={filmSeconds}
-            dialogueSeconds={shot?.audioClips?.[0]?.durationSeconds ?? null}
-          />
 
           {/* Thinking bar while the model reasons, before the regenerated
               prompt starts streaming back ('pending' → first delta). */}
