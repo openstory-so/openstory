@@ -9,7 +9,7 @@
 /** Same host `app-image.tsx` and `cloudflare-video.ts` transform through. */
 const TRANSFORM_HOST = 'assets.openstory.so';
 
-/** Stay under the 256 KiB MCP response cap once base64 and JSON are added. */
+/** One transform JPEG. Eight of these stay inside the 2 MiB image budget (#2419). */
 const FRAME_JPEG_MAX_BYTES = 48_000;
 
 const ZONE = 'openstory.so';

@@ -5159,9 +5159,16 @@ describe('official MCP client transport (#1463)', () => {
 });
 
 describe('inline review frames', () => {
-  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
+  const tinyJpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
 
-  async function frames(name: string, args: Record<string, unknown>) {
+  async function frames(
+    name: string,
+    args: Record<string, unknown>,
+    jpegBytes = tinyJpeg.byteLength
+  ) {
+    const jpeg = new Uint8Array(jpegBytes);
+    jpeg.set(tinyJpeg.subarray(0, Math.min(3, jpegBytes)));
+    jpeg[jpegBytes - 1] = 0xd9;
     const original = globalThis.fetch;
     vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', 'storage.openstory.so');
     globalThis.fetch = async (input) => {
@@ -5253,6 +5260,23 @@ describe('inline review frames', () => {
     expect(JSON.stringify(result.structuredContent)).not.toContain(
       'openstory.so'
     );
+  });
+
+  it('returns eight max-size frames without the text cap', async () => {
+    const jpegBytes = 48_000;
+    const result = await frames(
+      'get_shot_frames',
+      { shotId, count: 8 },
+      jpegBytes
+    );
+    expect(result.isError).not.toBe(true);
+    const images = result.content.filter((block) => block.type === 'image');
+    expect(images).toHaveLength(8);
+    expect(images[0]?.data).toHaveLength((jpegBytes / 3) * 4);
+    expect(result.structuredContent).toMatchObject({
+      frames: expect.any(Array),
+      unavailable: null,
+    });
   });
 
   it('pages a contact sheet of three shots', async () => {

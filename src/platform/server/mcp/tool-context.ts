@@ -110,9 +110,24 @@ export type OpenStoryMcpContext = {
 /** The same object; the name every tool definition is typed with. */
 export type OpenStoryToolContext = OpenStoryMcpContext;
 
-/** One tool result or resource read (structured data and text together) over 256 KiB. */
+/** Text and structured content of one tool result or resource read, over 256 KiB. */
+const RESPONSE_TEXT_CAP = 256 * 1024;
+
+/** Image-block payloads (base64), together, over 2 MiB. Not part of the text cap (#2419). */
+export const RESPONSE_IMAGE_CAP = 2 * 1024 * 1024;
+
 export const overResponseCap = (text: string) =>
-  new TextEncoder().encode(text).length > 256 * 1024;
+  new TextEncoder().encode(text).length > RESPONSE_TEXT_CAP;
+
+/** Base64 is ASCII, so the string length is the bytes a host receives. */
+export function overImageBudget(images: readonly { data: string }[]): boolean {
+  let total = 0;
+  for (const image of images) {
+    total += image.data.length;
+    if (total > RESPONSE_IMAGE_CAP) return true;
+  }
+  return false;
+}
 
 export const sequenceInput = z.strictObject({
   sequenceId: idOrSlugSchema,
@@ -304,8 +319,22 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
           structuredContent: JSON.parse(json) as Record<string, unknown>,
         }
       : unreportedWrite(spec.name, data, 'its shape was unexpected', json);
-    // Image bytes stay out of structuredContent. The 256 KiB cap still counts them.
+    // Text cap only. Image blocks have their own 2 MiB budget (#2419).
+    if (overResponseCap(JSON.stringify(result))) {
+      return written
+        ? unreportedWrite(spec.name, data, 'it exceeds 256 KiB')
+        : toolError(
+            'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
+          );
+    }
     if (output.success && images?.length) {
+      if (overImageBudget(images)) {
+        return written
+          ? unreportedWrite(spec.name, data, 'its images exceed 2 MiB')
+          : toolError(
+              'Response images exceed 2 MiB. Retry with a smaller count or maxWidth.'
+            );
+      }
       for (const image of images) {
         result.content.push({
           type: 'image',
@@ -313,13 +342,6 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
           mimeType: image.mimeType,
         });
       }
-    }
-    if (overResponseCap(JSON.stringify(result))) {
-      return written
-        ? unreportedWrite(spec.name, data, 'it exceeds 256 KiB')
-        : toolError(
-            'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
-          );
     }
     return result;
   } catch (error) {

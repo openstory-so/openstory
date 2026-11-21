@@ -4,6 +4,8 @@ import { asStub } from '@/test/as-stub';
 import {
   coerceScalars,
   openstoryTool,
+  overImageBudget,
+  RESPONSE_IMAGE_CAP,
   type ReadToolContext,
 } from './tool-context';
 
@@ -16,6 +18,21 @@ const schema = z.object({
   replaceWritten: z
     .strictObject({ visual: z.boolean(), motion: z.boolean() })
     .default({ visual: false, motion: false }),
+});
+
+describe('overImageBudget', () => {
+  const maxFrame = 'a'.repeat(64_000);
+
+  it('fits eight max-size frames and refuses a payload over 2 MiB', () => {
+    expect(8 * maxFrame.length).toBeGreaterThan(256 * 1024);
+    expect(
+      overImageBudget(Array.from({ length: 8 }, () => ({ data: maxFrame })))
+    ).toBe(false);
+    expect(RESPONSE_IMAGE_CAP).toBe(2 * 1024 * 1024);
+    expect(overImageBudget([{ data: 'a'.repeat(2 * 1024 * 1024 + 1) }])).toBe(
+      true
+    );
+  });
 });
 
 describe('coerceScalars', () => {

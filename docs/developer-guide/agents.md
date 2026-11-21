@@ -44,7 +44,7 @@ A missing scope is a tool error with code `INSUFFICIENT_SCOPE` and `details.scop
 - Start with `list_sequences`, then `get_sequence` (summary and counts) or `get_sequence_status` (failures, cheaper).
 - `list_scenes` and `list_shots` page with `limit` and the opaque `nextCursor`. Prompts and media are opt-in (`includePrompts`, `includeAssets`).
 - `get_production_bible` returns style, cast, locations, elements and every scene's narrative in one call. When it cannot include everything, a `*Truncated` field names the list tool (and cursor) that continues it.
-- A successful result has structured content and the same JSON as text; a coded error carries `structuredContent.error` (`code`, `message`, `details`). A read over 256 KiB is refused with a message telling you to page; nothing is silently cut. A write whose result cannot be returned answers `RESULT_NOT_RETURNED` with the ids it did write: the work is done, so do not call it again; read the entity back.
+- A successful result has structured content and the same JSON as text; a coded error carries `structuredContent.error` (`code`, `message`, `details`). A read whose text and structured content together exceed 256 KiB is refused with a message telling you to page; nothing is silently cut. Image blocks are outside that cap and share a 2 MiB budget, so `get_shot_frames` with `count: 8` at the normal width fits. A write whose result cannot be returned answers `RESULT_NOT_RETURNED` with the ids it did write: the work is done, so do not call it again; read the entity back.
 
 ### Resources
 
