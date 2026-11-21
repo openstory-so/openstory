@@ -1,10 +1,15 @@
 /**
- * The per-isolate organization memo (#2082): a GET within the TTL reuses a settled read, a
- * write always reads fresh, a failed read is not kept, an in-flight read is never shared (#2421).
+ * The per-isolate organization memo (#2082): a GET within the TTL shares one read, a
+ * write always reads fresh, a failed read is not kept, the shared read is held with `waitUntil` (#2421).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getUserOrganizationMembership = vi.fn();
+const waitUntil = vi.fn();
+vi.doMock('cloudflare:workers', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  waitUntil,
+}));
 const loadComplianceState = vi.fn();
 vi.doMock('@/platform/server/db/scoped', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -27,46 +32,42 @@ beforeEach(() => {
   vi.useFakeTimers();
   getUserOrganizationMembership.mockReset().mockResolvedValue(membership);
   loadComplianceState.mockReset().mockResolvedValue(compliance);
+  waitUntil.mockReset();
 });
 
 describe('resolveOrganizationAndCompliance (#2082)', () => {
   it('answers a second GET within the TTL from one read', async () => {
-    const a = await resolveOrganizationAndCompliance(
-      'u-get',
-      'GET',
-      'organization-1'
-    );
-    const b = await resolveOrganizationAndCompliance(
-      'u-get',
-      'GET',
-      'organization-1'
-    );
+    const [a, b] = await Promise.all([
+      resolveOrganizationAndCompliance('u-get', 'GET', 'organization-1'),
+      resolveOrganizationAndCompliance('u-get', 'GET', 'organization-1'),
+    ]);
     expect(a).toEqual({ organization: membership, compliance });
     expect(b).toBe(a);
     expect(getUserOrganizationMembership).toHaveBeenCalledTimes(1);
     expect(loadComplianceState).toHaveBeenCalledTimes(1);
   });
 
-  it('never hands one request an in-flight read another request started (#2421)', async () => {
-    // workerd drops a promise's settlement once its request ends, so a shared one can hang another request.
-    let settle!: (value: unknown) => void;
+  it('holds the shared read with waitUntil in the request that starts it (#2421)', async () => {
+    let fail!: (error: Error) => void;
     getUserOrganizationMembership.mockReturnValueOnce(
-      new Promise((resolve) => (settle = resolve))
+      new Promise((_, reject) => (fail = reject))
     );
     const first = resolveOrganizationAndCompliance(
-      'u-flight',
+      'u-hold',
       'GET',
       'organization-1'
     );
-    await expect(
-      resolveOrganizationAndCompliance('u-flight', 'GET', 'organization-1')
-    ).resolves.toEqual({ organization: membership, compliance });
-    expect(getUserOrganizationMembership).toHaveBeenCalledTimes(2);
-    settle(membership);
-    await expect(first).resolves.toEqual({
-      organization: membership,
-      compliance,
-    });
+    const second = resolveOrganizationAndCompliance(
+      'u-hold',
+      'GET',
+      'organization-1'
+    );
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    fail(new Error('primary unreachable'));
+    // The awaiters see the failure; the held copy settles without rejecting.
+    await expect(first).rejects.toThrow('primary unreachable');
+    await expect(second).rejects.toThrow('primary unreachable');
+    await expect(waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
   });
 
   it('drops the compliance read of an organization the user is not in (#2234)', async () => {
