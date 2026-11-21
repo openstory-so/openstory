@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { REFERENCE_LIKENESS_INSTRUCTION } from '@/cast/character-prompt';
 import {
   buildPreviewPrompt,
+  previewPromptsInAnyCastOrder,
   previewTextForShot,
   type PreviewCharacter,
   type PreviewShotScene,
@@ -181,6 +182,23 @@ describe('buildPreviewPrompt', () => {
     expect(prompt.indexOf('Mina, Female')).toBeLessThan(
       prompt.indexOf('Otto, Female')
     );
+  });
+
+  it('offers the prompt in every cast order, the written one first (#2416)', () => {
+    const cast = [
+      character(),
+      character({ characterId: 'char_002', name: 'Otto' }),
+    ];
+    const text = 'Otto hands Mina the key.';
+    const prompts = previewPromptsInAnyCastOrder(text, cast);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toBe(buildPreviewPrompt(text, cast));
+    expect(prompts[1]?.indexOf('Otto, Female')).toBeLessThan(
+      prompts[1]?.indexOf('Mina, Female') ?? -1
+    );
+    expect(previewPromptsInAnyCastOrder('An empty hall.', cast)).toEqual([
+      buildPreviewPrompt('An empty hall.', cast),
+    ]);
   });
 
   it('drops a stored likeness instruction from the preview', () => {

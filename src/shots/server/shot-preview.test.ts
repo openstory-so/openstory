@@ -6,11 +6,15 @@ import {
   buildPreviewPrompt,
   previewTextForShot,
 } from '@/sequences/server/poster-prompt';
+import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { ShotContext } from '@/shots/shot-access.fn';
 import type { StoredShotSpec } from '@/shots/shot-list.schema';
 import { asStub } from '@/test/as-stub';
 
-const mocks = vi.hoisted(() => ({ trigger: vi.fn() }));
+const mocks = vi.hoisted(() => ({ trigger: vi.fn(), cast: vi.fn() }));
+vi.mock('@/cast/server/bibles-from-scoped', () => ({
+  charactersToBible: mocks.cast,
+}));
 vi.mock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mocks.trigger,
 }));
@@ -92,6 +96,7 @@ beforeEach(() => {
   listByShot.mockResolvedValue([]);
   hasEnoughCredits.mockResolvedValue(true);
   mocks.trigger.mockResolvedValue('run-1');
+  mocks.cast.mockReturnValue([]);
 });
 
 describe('drawSpecSketch', () => {
@@ -213,6 +218,50 @@ describe('readShotStoryboard', () => {
     context.sequence.status = 'processing';
     const board = await readShotStoryboard(context);
     expect(board.staleReason).toBe('failed');
+  });
+
+  it('a sketch drawn with the cast in another order stays fresh (#2416)', async () => {
+    const person = (characterId: string, name: string) =>
+      asStub<CharacterBibleEntry>({
+        characterId,
+        name,
+        age: '30s',
+        gender: 'Female',
+        physicalDescription: 'Tall.',
+        standardClothing: 'a grey coat',
+        voiceOnly: false,
+      });
+    const spec = asStub<StoredShotSpec>({
+      ...SPEC,
+      action: 'Mara hands Otto the key',
+    });
+    const text = previewTextForShot(
+      {
+        shots: [{ ...spec, shotNumber: 1 }],
+        originalScript: { extract: '' },
+        metadata: { title: '', location: '', timeOfDay: '' },
+      },
+      1
+    );
+    const cast = [person('mara', 'Mara'), person('otto', 'Otto')];
+    const written = buildPreviewPrompt(text, cast);
+    const legacy = written.replace(
+      /Characters: (Mara[^.]*\.) (Otto[^.]*\.)/,
+      'Characters: $2 $1'
+    );
+    expect(legacy).not.toBe(written);
+    mocks.cast.mockReturnValue(cast);
+    listPreviews.mockResolvedValue([
+      sketch({ id: 'split', promptHash: simpleHash(legacy) }),
+    ]);
+    listByShot.mockResolvedValue([
+      { ...version('spec-2', 'analysis', 2), spec },
+    ]);
+    const board = await readShotStoryboard(contextFor(false));
+    expect(board.staleReason).toBeNull();
+    expect(board.versions[0]?.sketch?.id).toBe('split');
+    await drawSpecSketch(contextFor(false), { id: 'spec-2', spec });
+    expect(mocks.trigger).not.toHaveBeenCalled();
   });
 
   it('a rename that leaves the drawn text alone stays fresh', async () => {
