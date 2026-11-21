@@ -64,6 +64,8 @@ import {
   createStitchesMethods,
 } from '@/stitches/server/db/stitches';
 import { createGatewayJobsMethods } from '@/gateway/server/db/gateway-jobs';
+import { createGatewayAppsMethods } from '@/gateway/server/db/gateway-apps';
+import { createGatewayGrantsMethods } from '@/gateway/server/db/gateway-grants';
 import { createAssistantMethods } from '@/assistant/server/db/assistant';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
@@ -431,6 +433,10 @@ export function createScopedDb(organizationId: string, userId: string) {
     stitches: createStitchesMethods(db, organizationId, userId),
     // Model gateway jobs (docs/architecture/model-gateway.md).
     gatewayJobs: createGatewayJobsMethods(db, organizationId, userId),
+    // The organization's registered apps (OAuth clients it owns).
+    gatewayApps: createGatewayAppsMethods(db, organizationId, userId),
+    // The user's spend caps per (client, organization); bound to the user.
+    gatewayGrants: createGatewayGrantsMethods(db, userId),
     // In-app assistant threads and their persistence stores (#2155).
     assistant: createAssistantMethods(db, organizationId, userId),
 

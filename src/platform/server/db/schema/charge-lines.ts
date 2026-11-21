@@ -36,7 +36,7 @@ export const chargeLines = snakeCase.table(
       onDelete: 'restrict',
     }),
     oauthClientId: text(),
-    // Plain text until the apps table exists (PR 3).
+    // A `gateway_apps` id; plain text, as no column was rebuilt to add the key.
     appId: text(),
     sku: text(),
     createdAt: integer({ mode: 'timestamp' })

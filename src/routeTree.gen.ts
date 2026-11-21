@@ -100,6 +100,7 @@ import { Route as AppSequencesNewIndexRouteImport } from './routes/_app/sequence
 import { Route as AppSequencesNewScenesRouteImport } from './routes/_app/sequences/new/scenes'
 import { Route as ApiV1DeviceCodeRouteImport } from './routes/api/v1/device.code'
 import { Route as ApiV1DeviceTokenRouteImport } from './routes/api/v1/device.token'
+import { Route as ApiV1GatewayGrantRouteImport } from './routes/api/v1/gateway.grant'
 import { Route as ApiV1GatewayModelsRouteImport } from './routes/api/v1/gateway.models'
 import { Route as ApiV1ScriptsEnhanceRouteImport } from './routes/api/v1/scripts.enhance'
 import { Route as ApiV1SequencesIdRouteImport } from './routes/api/v1/sequences.$id'
@@ -571,6 +572,11 @@ const ApiV1DeviceTokenRoute = ApiV1DeviceTokenRouteImport.update({
   path: '/api/v1/device/token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1GatewayGrantRoute = ApiV1GatewayGrantRouteImport.update({
+  id: '/api/v1/gateway/grant',
+  path: '/api/v1/gateway/grant',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1GatewayModelsRoute = ApiV1GatewayModelsRouteImport.update({
   id: '/api/v1/gateway/models',
   path: '/api/v1/gateway/models',
@@ -752,6 +758,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
   '/api/v1/sequences/$id': typeof ApiV1SequencesIdRouteWithChildren
@@ -856,6 +863,7 @@ export interface FileRoutesByTo {
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
   '/api/v1/sequences/$id': typeof ApiV1SequencesIdRouteWithChildren
@@ -967,6 +975,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/scenes': typeof AppSequencesNewScenesRoute
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
+  '/api/v1/gateway/grant': typeof ApiV1GatewayGrantRoute
   '/api/v1/gateway/models': typeof ApiV1GatewayModelsRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
   '/api/v1/sequences/$id': typeof ApiV1SequencesIdRouteWithChildren
@@ -1075,6 +1084,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
     | '/api/v1/sequences/$id'
@@ -1179,6 +1189,7 @@ export interface FileRouteTypes {
     | '/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
     | '/api/v1/sequences/$id'
@@ -1289,6 +1300,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/scenes'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
+    | '/api/v1/gateway/grant'
     | '/api/v1/gateway/models'
     | '/api/v1/scripts/enhance'
     | '/api/v1/sequences/$id'
@@ -1343,6 +1355,7 @@ export interface RootRouteChildren {
   ApiV1IndexRoute: typeof ApiV1IndexRoute
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
+  ApiV1GatewayGrantRoute: typeof ApiV1GatewayGrantRoute
   ApiV1GatewayModelsRoute: typeof ApiV1GatewayModelsRoute
   ApiV1ScriptsEnhanceRoute: typeof ApiV1ScriptsEnhanceRoute
   ApiV1GatewayProviderSplatRoute: typeof ApiV1GatewayProviderSplatRoute
@@ -1989,6 +2002,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1DeviceTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/gateway/grant': {
+      id: '/api/v1/gateway/grant'
+      path: '/api/v1/gateway/grant'
+      fullPath: '/api/v1/gateway/grant'
+      preLoaderRoute: typeof ApiV1GatewayGrantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/gateway/models': {
       id: '/api/v1/gateway/models'
       path: '/api/v1/gateway/models'
@@ -2416,6 +2436,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1IndexRoute: ApiV1IndexRoute,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
+  ApiV1GatewayGrantRoute: ApiV1GatewayGrantRoute,
   ApiV1GatewayModelsRoute: ApiV1GatewayModelsRoute,
   ApiV1ScriptsEnhanceRoute: ApiV1ScriptsEnhanceRoute,
   ApiV1GatewayProviderSplatRoute: ApiV1GatewayProviderSplatRoute,

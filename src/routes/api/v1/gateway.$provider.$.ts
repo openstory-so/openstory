@@ -5,6 +5,7 @@ import { NotFoundError } from '@/platform/errors';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { isGatewayProvider } from '@/gateway/schema';
 import { gatewayJobResource } from '@/gateway/server/read-job';
+import { userPaysClientId } from '@/gateway/server/errors';
 import { assertGatewayRate } from '@/gateway/server/rate-limit';
 import {
   readIdempotencyKey,
@@ -46,7 +47,7 @@ export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
                 userAgent: request.headers.get('user-agent'),
               },
               idempotencyKey: readIdempotencyKey(request.headers),
-              oauthClientId: context.oauth?.clientId ?? null,
+              oauthClientId: userPaysClientId(context.oauth),
             }
           );
           return Response.json(

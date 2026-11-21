@@ -1,17 +1,14 @@
 /**
  * `POST /api/v1/gateway/{provider}/{model}` (docs/architecture/model-gateway.md).
- * Order: replay, model, schema, compliance, upload rights, price, row, hold,
+ * Order: replay, model, schema, app and grant, compliance, upload rights, price, row, hold,
  * trigger. A refused request leaves no row and no hold.
  */
 
 import type { Microdollars } from '@/billing/money';
-import {
-  releaseReservationOnThrow,
-  reserveRunCredits,
-} from '@/billing/server/preflight';
+import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { ValidationError } from '@/platform/errors';
+import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
@@ -28,6 +25,11 @@ import {
   type GatewayProvider,
 } from '@/gateway/schema';
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
+import {
+  AppSuspendedError,
+  GrantRequiredError,
+  SpendCapExceededError,
+} from '@/gateway/server/errors';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
@@ -189,6 +191,53 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
+/**
+ * A user-pays caller's app: refused when suspended, its id when active,
+ * null when the client is not a registered app. Then the grant must be live.
+ */
+async function userPaysApp(
+  scopedDb: ScopedDb,
+  oauthClientId: string
+): Promise<string | null> {
+  const app = await scopedDb.gatewayApps.getByOAuthClient(oauthClientId);
+  if (app?.status === 'suspended') throw new AppSuspendedError();
+  const standing = await scopedDb.gatewayGrants.getStanding(
+    oauthClientId,
+    scopedDb.organizationId
+  );
+  if (!standing) throw new GrantRequiredError();
+  return app?.id ?? null;
+}
+
+/**
+ * Hold the charge. A user-pays hold carries its client and is refused in
+ * the same statement when it would pass the grant's cap; the refusal is
+ * then told apart by reading the grant again.
+ */
+async function holdCharge(
+  scopedDb: ScopedDb,
+  hold: Microdollars,
+  jobId: string,
+  userPays: { oauthClientId: string; appId: string | null } | null
+): Promise<string> {
+  const result = await scopedDb.billing.createReservation(hold, {
+    idempotencyKey: `gateway:${jobId}`,
+    ...(userPays && { spendCap: userPays }),
+  });
+  if (result.ok) return result.reservationId;
+  if (userPays) {
+    const standing = await scopedDb.gatewayGrants.getStanding(
+      userPays.oauthClientId,
+      scopedDb.organizationId
+    );
+    if (!standing) throw new GrantRequiredError();
+    if (hold > standing.remainingMicros) {
+      throw new SpendCapExceededError(standing, hold);
+    }
+  }
+  throw new InsufficientCreditsError('Insufficient credits for this model');
+}
+
 export async function submitGatewayJob(
   request: {
     provider: GatewayProvider;
@@ -208,6 +257,9 @@ export async function submitGatewayJob(
   const model = await getGatewayModel(request.provider, request.modelId);
   const input = validatedBody(model, request.body);
   const media = gatedUrls(input);
+  const appId = ctx.oauthClientId
+    ? await userPaysApp(scopedDb, ctx.oauthClientId)
+    : null;
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
@@ -237,6 +289,10 @@ export async function submitGatewayJob(
     platformFeeBps,
   }).totalMicros;
 
+  const userPays = ctx.oauthClientId
+    ? { oauthClientId: ctx.oauthClientId, appId }
+    : null;
+
   const { job, created } = await scopedDb.gatewayJobs.create({
     kind: model.kind,
     modelKey: model.id,
@@ -247,14 +303,10 @@ export async function submitGatewayJob(
   });
   if (!created) return { job, replay: true };
 
-  // Platform keys only, so no BYOK skip: `providers: []` always holds.
-  let reservationId: string | undefined;
+  // Platform keys only, so no BYOK skip: the hold is always taken.
+  let reservationId: string;
   try {
-    reservationId = await reserveRunCredits(scopedDb, hold, {
-      providers: [],
-      idempotencyKey: `gateway:${job.id}`,
-      errorMessage: 'Insufficient credits for this model',
-    });
+    reservationId = await holdCharge(scopedDb, hold, job.id, userPays);
   } catch (error) {
     await scopedDb.gatewayJobs.deleteUnstarted(job.id);
     throw error;
@@ -274,6 +326,7 @@ export async function submitGatewayJob(
     estimateMicros: estimate,
     platformFeeBps,
     oauthClientId: ctx.oauthClientId,
+    appId,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
@@ -296,7 +349,7 @@ export async function submitGatewayJob(
 
   try {
     await scopedDb.gatewayJobs.attachRun(job.id, {
-      reservationId: reservationId ?? null,
+      reservationId,
       workflowRunId,
     });
   } catch (error) {
