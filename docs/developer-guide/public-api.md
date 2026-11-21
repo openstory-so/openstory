@@ -230,13 +230,15 @@ curl "https://openstory.so/api/v1/gateway/jobs/<id>?wait=60s" \
 provider's own model id. The body is checked against the model's input schema
 on [modelschemas.com](https://modelschemas.com); a body the schema refuses is
 a `400`. The submit answers `202` with the job; it ends `succeeded` with
-absolute URLs in `outputs` and the charge in `charge.totalMicros`, or `failed`
-with an `error`. The price is held at submit (`402 INSUFFICIENT_CREDITS` when
-it cannot be) and released if the job fails. A request the rate card cannot
-price is refused. Every URL in the body is checked for a real person first, as
-uploads are; send media as URLs, not inline data. Repeating an
-`Idempotency-Key` returns the first job. OAuth tokens need the `models:invoke`
-scope.
+absolute URLs in `outputs` and the charge in `charge` (`totalMicros`, the
+wallet debit, and `lines`, what it is made of: `provider_cost`, and a
+`platform_fee` when one applies; the lines sum to the total), or `failed` with
+an `error`. A job that was charged never ends `failed`. The price of the whole
+charge is held at submit (`402 INSUFFICIENT_CREDITS` when it cannot be) and
+released if the job fails. A request the rate card cannot price is refused.
+Every URL in the body is checked for a real person first, as uploads are; send
+media as URLs, not inline data. Repeating an `Idempotency-Key` returns the
+first job. OAuth tokens need the `models:invoke` scope.
 
 ## Long-polling with `?wait`
 

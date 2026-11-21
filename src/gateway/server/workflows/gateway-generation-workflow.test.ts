@@ -1,15 +1,25 @@
 /**
  * GatewayGenerationWorkflow with the drivers mocked: step names, media stored
- * in the step that received it, the settle against the rate card and the
- * hold, platform credentials on every driver call, and the failure paths.
+ * in the step that received it, the charge lines settled against the hold,
+ * success written in the settle step, platform credentials on every driver
+ * call, and the failure paths.
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { micros } from '@/billing/money';
+import {
+  createBillingMethods,
+  type SettleReservationResult,
+} from '@/billing/server/db/billing';
 import { generateId } from '@/platform/id';
 import * as realProvenance from '@/platform/server/compliance/provenance';
-import { organization, user } from '@/platform/server/db/schema';
+import {
+  chargeLines,
+  credits,
+  organization,
+  user,
+} from '@/platform/server/db/schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { GatewayJobInput, GatewayJobOutput } from '@/gateway/schema';
@@ -21,17 +31,15 @@ import type {
 } from '@/gateway/server/providers';
 import { asStub } from '@/test/as-stub';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
+import { eq } from 'drizzle-orm';
 import type { GatewayGenerationWorkflowInput } from './gateway-generation-workflow';
 
-// The step a mocked write ran in, so a test can pin two writes to one step.
+// The step a mocked write ran in, so a test can pin writes to their steps.
 let currentStep = '';
 const order: string[] = [];
 
 const mockStart = vi.fn<(...args: unknown[]) => Promise<GatewayStart>>();
 const mockPoll = vi.fn<(...args: unknown[]) => Promise<GatewayPoll>>();
-const mockDeduct = vi.fn(async (_charge: unknown) => {
-  order.push(`${currentStep}:deduct`);
-});
 const mockRecordProvenance = vi.fn(async () => undefined);
 const mockStore = vi.fn(
   async (params: {
@@ -59,23 +67,23 @@ vi.doMock('@/gateway/server/providers', () => ({
 vi.doMock('@/gateway/server/storage', () => ({
   storeGatewayOutput: mockStore,
 }));
-vi.doMock('@/billing/server/workflow-deduction', () => ({
-  deductWorkflowCredits: mockDeduct,
-}));
 vi.doMock('@/platform/server/compliance/provenance', () => ({
   ...realProvenance,
   recordProvenance: mockRecordProvenance,
 }));
 
 // For the full `run()`: the base class builds its own scoped db.
-const zeroReservation = vi.fn(async () => undefined);
+const zeroReservation = vi.fn(async (_reservationId: string) => undefined);
 const runMarkFailed = vi.fn(async () => undefined);
 type GatewayJobsMethods = ReturnType<typeof createGatewayJobsMethods>;
+type BillingMethods = ReturnType<typeof createBillingMethods>;
 const runScopedDb: {
-  billing: { zeroReservation: typeof zeroReservation };
+  organizationId: string;
+  billing: Partial<BillingMethods>;
   gatewayJobs: Partial<GatewayJobsMethods>;
   provenance: object;
 } = {
+  organizationId: 'org-1',
   billing: { zeroReservation },
   gatewayJobs: {
     markRunning: vi.fn(async () => undefined),
@@ -122,7 +130,8 @@ type ProbeStep = WorkflowStep & {
   results: Record<string, unknown>;
 };
 
-function makeStep(): ProbeStep {
+/** `retry` runs a step that threw once more, as the engine would. */
+function makeStep(opts: { retry?: boolean } = {}): ProbeStep {
   const names: string[] = [];
   const results: Record<string, unknown> = {};
   return asStub<ProbeStep>({
@@ -131,7 +140,7 @@ function makeStep(): ProbeStep {
     do: vi.fn(async (name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       currentStep = name;
-      const result = await fn();
+      const result = opts.retry ? await fn().catch(() => fn()) : await fn();
       results[name] = result;
       return result;
     }),
@@ -143,10 +152,34 @@ function makeScopedDb() {
   const gatewayJobs = {
     markRunning: vi.fn(async () => undefined),
     stampProviderJob: vi.fn(async () => undefined),
+    recordOutputs: vi.fn(async (_id: string, _result: unknown) => {
+      order.push(`${currentStep}:recordOutputs`);
+    }),
     markSucceeded: vi.fn(async (_id: string, _result: unknown) => {
       order.push(`${currentStep}:markSucceeded`);
     }),
     markFailed: vi.fn(async () => undefined),
+  };
+  const billing = {
+    settleReservation: vi.fn(
+      async (
+        _reservationId: string,
+        lines: readonly { amountMicros: number }[],
+        _opts: { idempotencyKey: string }
+      ): Promise<SettleReservationResult> => {
+        order.push(`${currentStep}:settleReservation`);
+        return {
+          ok: true,
+          captured: micros(
+            lines.reduce((sum, line) => sum + line.amountMicros, 0)
+          ),
+          transactionId: 'tx-1',
+          lines: [],
+          replay: false,
+        };
+      }
+    ),
+    checkAutoTopUp: vi.fn(async () => undefined),
   };
   // Organization credentials throw: a gateway run must never reach them.
   const refuse = () => {
@@ -155,10 +188,11 @@ function makeScopedDb() {
   const scopedDb = asStub<WorkflowScopedDb>({
     organizationId: 'org-1',
     gatewayJobs,
+    billing,
     provenance: {},
     credentials: { resolveKey: refuse, resolveOptionalKey: refuse },
   });
-  return { scopedDb, gatewayJobs };
+  return { scopedDb, gatewayJobs, billing };
 }
 
 const SOURCE = {
@@ -196,7 +230,8 @@ const TARGET = {
   modelId: 'grok-imagine-video',
   endpointId: 'v1/videos/generations',
 };
-const HOLD = micros(500_000);
+// What submit priced the request at: 5 seconds at $0.08.
+const ESTIMATE = micros(400_000);
 // A PNG header: stands for the megabytes a real answer carries.
 const BASE64 = 'iVBORw0KGgoAAAANSUhEUg==';
 
@@ -215,7 +250,9 @@ function makeEvent(
       target: TARGET,
       card: PER_SECOND,
       input: INPUT,
-      holdMicros: HOLD,
+      estimateMicros: ESTIMATE,
+      platformFeeBps: 0,
+      oauthClientId: 'client-1',
       ...overrides,
     },
     instanceId: 'run-1',
@@ -238,6 +275,17 @@ const OUTPUTS = [
   { url: '/r2/output-0.png', path: 'output-0.png', contentType: 'image/png' },
   { url: '/r2/output-1.png', path: 'output-1.png', contentType: 'image/png' },
 ];
+
+const providerCost = (amountMicros: number) => ({
+  kind: 'provider_cost',
+  amountMicros,
+  payeeOrganizationId: null,
+});
+const platformFee = (amountMicros: number) => ({
+  kind: 'platform_fee',
+  amountMicros,
+  payeeOrganizationId: null,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -263,8 +311,9 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     expect(step.names).toEqual([
       'set-running',
       'start',
-      'settle',
       'record-provenance',
+      'record-outputs',
+      'settle',
     ]);
     expect(step.results.start).toEqual({
       stored: {
@@ -312,16 +361,19 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     });
   });
 
-  it('charges the card for the request and marks the job in the settle step', async () => {
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+  it('records the outputs, then settles the card price and succeeds in one step', async () => {
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
 
-    // 5 seconds at $0.08, not the $0.50 hold.
-    expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({
-        costMicros: micros(400_000),
-        usedOwnKey: false,
-        reservationId: 'res-1',
+    expect(gatewayJobs.recordOutputs).toHaveBeenCalledWith('job-1', {
+      outputs: OUTPUTS,
+      via: 'xai',
+    });
+    // 5 seconds at $0.08.
+    expect(billing.settleReservation).toHaveBeenCalledWith(
+      'res-1',
+      [providerCost(400_000)],
+      {
         idempotencyKey: 'run-1:gateway-settle',
         description: 'Gateway (grok/grok-imagine-video)',
         metadata: {
@@ -330,14 +382,19 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
           requestId: 'req-1',
           gatewayJobId: 'job-1',
         },
-      })
+        attribution: { gatewayJobId: 'job-1', oauthClientId: 'client-1' },
+      }
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith('job-1', {
       outputs: OUTPUTS,
       costMicros: micros(400_000),
       via: 'xai',
     });
-    expect(order).toEqual(['settle:deduct', 'settle:markSucceeded']);
+    expect(order).toEqual([
+      'record-outputs:recordOutputs',
+      'settle:settleReservation',
+      'settle:markSucceeded',
+    ]);
     expect(mockRecordProvenance).toHaveBeenCalledTimes(2);
     expect(mockRecordProvenance).toHaveBeenCalledWith(
       {},
@@ -354,43 +411,65 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
   });
 
   it('prices a usage card with the usage the provider reported', async () => {
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await makeWorkflow().runBody(
       makeEvent({ card: PER_TOKEN }),
       makeStep(),
       scopedDb
     );
-    // 12,000 output tokens at $10 a million.
-    expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({ costMicros: micros(120_000) })
-    );
+    // 12,000 output tokens at $10 a million, not the estimate.
+    expect(billing.settleReservation.mock.calls[0]?.[1]).toEqual([
+      providerCost(120_000),
+    ]);
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
       'job-1',
       expect.objectContaining({ costMicros: micros(120_000) })
     );
   });
 
-  it('charges the hold when the card refuses the usage', async () => {
-    mockStart.mockResolvedValueOnce({
-      result: { ...SYNC.result, usage: null },
-    });
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+  it('adds the platform fee snapshotted on the payload', async () => {
+    const { scopedDb, billing, gatewayJobs } = makeScopedDb();
     await makeWorkflow().runBody(
-      makeEvent({ card: PER_TOKEN }),
+      makeEvent({ platformFeeBps: 1_000 }),
       makeStep(),
       scopedDb
     );
-    expect(mockDeduct).toHaveBeenCalledWith(
+    expect(billing.settleReservation.mock.calls[0]?.[1]).toEqual([
+      providerCost(400_000),
+      platformFee(40_000),
+    ]);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: micros(440_000) })
+    );
+  });
+
+  it('charges the lines of the estimate when the card refuses the usage', async () => {
+    mockStart.mockResolvedValueOnce({
+      result: { ...SYNC.result, usage: null },
+    });
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    await makeWorkflow().runBody(
+      makeEvent({
+        card: PER_TOKEN,
+        estimateMicros: micros(50_000),
+        platformFeeBps: 500,
+      }),
+      makeStep(),
+      scopedDb
+    );
+    // The hold was the charge on the estimate at this fee: 50_000 + 2_500.
+    expect(billing.settleReservation).toHaveBeenCalledWith(
+      'res-1',
+      [providerCost(50_000), platformFee(2_500)],
       expect.objectContaining({
-        costMicros: HOLD,
-        reservationId: 'res-1',
         idempotencyKey: 'run-1:gateway-settle',
         metadata: expect.objectContaining({ chargedHold: true }),
       })
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
       'job-1',
-      expect.objectContaining({ costMicros: HOLD })
+      expect.objectContaining({ costMicros: micros(52_500) })
     );
   });
 
@@ -398,12 +477,57 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     mockStart.mockResolvedValueOnce({
       result: { media: [], usage: null, requestId: null },
     });
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await expect(
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
     ).rejects.toThrow('The model returned no output files');
-    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(gatewayJobs.recordOutputs).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
     expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('a provenance failure fails the job before any charge', async () => {
+    mockRecordProvenance.mockRejectedValueOnce(new Error('ledger down'));
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow('ledger down');
+    expect(gatewayJobs.recordOutputs).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+    expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('a failed success write retries the settle step, which replays the charge', async () => {
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    gatewayJobs.markSucceeded.mockRejectedValueOnce(new Error('D1 blip'));
+    await makeWorkflow().runBody(
+      makeEvent(),
+      makeStep({ retry: true }),
+      scopedDb
+    );
+    expect(billing.settleReservation).toHaveBeenCalledTimes(2);
+    expect(
+      billing.settleReservation.mock.calls.map((call) => call[2].idempotencyKey)
+    ).toEqual(['run-1:gateway-settle', 'run-1:gateway-settle']);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports what a short capture could not charge and succeeds at the debit', async () => {
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
+    billing.settleReservation.mockResolvedValueOnce({
+      ok: true,
+      captured: micros(150_000),
+      skippedDeltaMicros: micros(250_000),
+      transactionId: 'tx-1',
+      lines: [],
+      replay: false,
+    });
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: micros(150_000) })
+    );
+    expect(billing.checkAutoTopUp).toHaveBeenCalled();
   });
 });
 
@@ -411,7 +535,7 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
   it('stamps the provider job, polls it, stores in the poll step, then settles', async () => {
     mockStart.mockResolvedValueOnce({ jobId: 'provider-1' });
     const step = makeStep();
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await makeWorkflow().runBody(makeEvent(), step, scopedDb);
 
     expect(step.names).toEqual([
@@ -419,8 +543,9 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
       'start',
       'stamp-provider-job',
       'poll-batch-0',
-      'settle',
       'record-provenance',
+      'record-outputs',
+      'settle',
     ]);
     expect(step.results.start).toEqual({ providerJobId: 'provider-1' });
     expect(gatewayJobs.stampProviderJob).toHaveBeenCalledWith('job-1', {
@@ -440,11 +565,14 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
         requestId: 'provider-1',
       },
     });
-    expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({
-        costMicros: micros(400_000),
-        reservationId: 'res-1',
-      })
+    expect(gatewayJobs.recordOutputs).toHaveBeenCalledWith('job-1', {
+      outputs: [OUTPUTS[0]],
+      via: 'xai',
+    });
+    expect(billing.settleReservation).toHaveBeenCalledWith(
+      'res-1',
+      [providerCost(400_000)],
+      expect.anything()
     );
     expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
       'job-1',
@@ -455,12 +583,12 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
   it('fails without storing or settling when the provider fails the job', async () => {
     mockStart.mockResolvedValueOnce({ jobId: 'provider-1' });
     mockPoll.mockResolvedValueOnce({ status: 'failed', error: 'boom' });
-    const { scopedDb, gatewayJobs } = makeScopedDb();
+    const { scopedDb, gatewayJobs, billing } = makeScopedDb();
     await expect(
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
     ).rejects.toThrow('boom');
     expect(mockStore).not.toHaveBeenCalled();
-    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
     expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
   });
 });
@@ -476,7 +604,6 @@ describe('failure', () => {
       code: 'GENERATION_FAILED',
       message: expect.stringContaining('provider down'),
     });
-    expect(mockDeduct).not.toHaveBeenCalled();
   });
 
   it('names a content refusal', () => {
@@ -487,43 +614,74 @@ describe('failure', () => {
   });
 
   it('settle never bills an own-key result', async () => {
+    const { scopedDb, billing, gatewayJobs } = makeScopedDb();
     await expect(
       settleGatewayJob({
-        scopedDb: makeScopedDb().scopedDb,
+        scopedDb,
         jobId: 'job-1',
         model: 'grok/grok-imagine-video',
         reservationId: 'res-1',
         costMicros: micros(1),
-        holdMicros: micros(1),
+        estimateMicros: micros(1),
+        platformFeeBps: 0,
+        oauthClientId: null,
         usedOwnKey: true,
         idempotencyKey: 'k',
+        result: { outputs: OUTPUTS, via: 'xai' },
       })
     ).rejects.toThrow('organization key');
-    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+    expect(gatewayJobs.markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('a job with no hold succeeds uncharged and reports the skip', async () => {
+    const { scopedDb, billing, gatewayJobs } = makeScopedDb();
+    const charged = await settleGatewayJob({
+      scopedDb,
+      jobId: 'job-1',
+      model: 'grok/grok-imagine-video',
+      reservationId: undefined,
+      costMicros: micros(1_000),
+      estimateMicros: micros(1_000),
+      platformFeeBps: 0,
+      oauthClientId: null,
+      usedOwnKey: false,
+      idempotencyKey: 'k',
+      result: { outputs: OUTPUTS, via: 'xai' },
+    });
+    expect(charged).toBe(0);
+    expect(billing.settleReservation).not.toHaveBeenCalled();
+    expect(billing.checkAutoTopUp).toHaveBeenCalled();
+    expect(gatewayJobs.markSucceeded).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ costMicros: 0 })
+    );
   });
 });
 
-describe('a throw after the settle', () => {
+describe('a throw after the charge', () => {
   const organizationId = generateId();
   const userId = generateId();
   let closeDb: (() => Promise<void>) | undefined;
-  const mockedJobs = runScopedDb.gatewayJobs;
+  const mocked = { ...runScopedDb };
 
   afterAll(async () => {
-    runScopedDb.gatewayJobs = mockedJobs;
+    Object.assign(runScopedDb, mocked);
     await closeDb?.();
   });
 
-  it('leaves the job succeeded: the failure write only moves a live row', async () => {
+  it('leaves the job succeeded at its lines: a charged job never reads failed', async () => {
     const { db, close } = await createTestDb();
     closeDb = close;
     await db.insert(user).values({ id: userId, name: 'U', email: 'u@e.com' });
     await db
       .insert(organization)
       .values({ id: organizationId, name: 'T', slug: 't' });
+    await db.insert(credits).values({ organizationId, balance: 1_000_000 });
     // The real rows, so the guard on `markFailed` is the one under test.
     const jobs = createGatewayJobsMethods(db, organizationId, userId);
-    runScopedDb.gatewayJobs = jobs;
+    const billing = createBillingMethods(db, organizationId, userId);
+    Object.assign(runScopedDb, { organizationId, gatewayJobs: jobs, billing });
     const { job } = await jobs.create({
       kind: 'video',
       modelKey: TARGET.modelId,
@@ -532,28 +690,38 @@ describe('a throw after the settle', () => {
       idempotencyKey: null,
       oauthClientId: null,
     });
+    const held = await billing.createReservation(ESTIMATE, {
+      idempotencyKey: `gateway:${job.id}`,
+    });
+    if (!held.ok) throw new Error('fixture reservation failed');
     const markFailed = vi.spyOn(jobs, 'markFailed');
-    mockRecordProvenance.mockRejectedValue(new Error('provenance insert lost'));
+    // The debit and its lines land; the success write after them is lost.
+    vi.spyOn(jobs, 'markSucceeded').mockRejectedValue(new Error('D1 blip'));
 
     const step = makeStep();
     await expect(
       makeWorkflow().run(
-        makeEvent({ organizationId, userId, jobId: job.id }),
+        makeEvent({
+          organizationId,
+          userId,
+          jobId: job.id,
+          reservationId: held.reservationId,
+        }),
         step
       )
-    ).rejects.toThrow('provenance insert lost');
+    ).rejects.toThrow('D1 blip');
 
     expect(step.names).toEqual([
       'set-running',
       'start',
-      'settle',
       'record-provenance',
+      'record-outputs',
+      'settle',
       'emit-failure',
     ]);
-    expect(mockDeduct).toHaveBeenCalledTimes(1);
     expect(markFailed).toHaveBeenCalledWith(job.id, {
       code: 'GENERATION_FAILED',
-      message: expect.stringContaining('provenance insert lost'),
+      message: expect.stringContaining('D1 blip'),
     });
     expect(await jobs.getById(job.id)).toMatchObject({
       status: 'succeeded',
@@ -561,5 +729,11 @@ describe('a throw after the settle', () => {
       costMicros: 400_000,
       error: null,
     });
+    expect(
+      await db
+        .select({ kind: chargeLines.kind, amount: chargeLines.amountMicros })
+        .from(chargeLines)
+        .where(eq(chargeLines.gatewayJobId, job.id))
+    ).toEqual([{ kind: 'provider_cost', amount: 400_000 }]);
   });
 });

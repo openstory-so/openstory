@@ -49,8 +49,12 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   /** The rate card as it read at submit, so the charge uses the price that was held. */
   card: RateCard;
   input: GatewayJobInput;
-  /** The estimate held at submit; the charge when the card cannot price the usage. */
-  holdMicros: Microdollars;
+  /** The card's price for the request at submit; charged when the card cannot price the usage. */
+  estimateMicros: Microdollars;
+  /** The platform fee at submit; the hold is the charge on the estimate at this fee. */
+  platformFeeBps: number;
+  /** The OAuth client that submitted; null for an `osk_` key or a session. */
+  oauthClientId: string | null;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -176,35 +180,6 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     const { outputs, usageJson, requestId } = stored;
     const usage = usageJson ? usageSchema.parse(JSON.parse(usageJson)) : null;
 
-    // Charged only for media that was stored; the row is written with the charge.
-    await step.do('settle', async () => {
-      let cost = ZERO_MICROS;
-      try {
-        cost = priceGatewayJob(card, input, usage);
-      } catch (error) {
-        if (!(error instanceof RateCardError)) throw error;
-        logger.warn(
-          `Rate card refused the usage of gateway job ${jobId}: ${error.message}`
-        );
-      }
-      const charged = await settleGatewayJob({
-        scopedDb,
-        jobId,
-        model: `${provider}/${target.modelId}`,
-        reservationId: event.payload.reservationId,
-        costMicros: cost,
-        holdMicros: event.payload.holdMicros,
-        usedOwnKey: false,
-        idempotencyKey: `${event.instanceId}:gateway-settle`,
-        metadata: { provider, model: target.modelId, requestId },
-      });
-      await scopedDb.gatewayJobs.markSucceeded(jobId, {
-        outputs,
-        costMicros: charged,
-        via,
-      });
-    });
-
     await step.do('record-provenance', async () => {
       for (const output of outputs) {
         await recordProvenance(scopedDb.provenance, {
@@ -221,6 +196,36 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         });
       }
     });
+    // Before the charge, so a charged job always has its outputs.
+    await step.do('record-outputs', async () => {
+      await scopedDb.gatewayJobs.recordOutputs(jobId, { outputs, via });
+    });
+    // The debit, its lines and `succeeded` are written together.
+    await step.do('settle', async () => {
+      let cost = ZERO_MICROS;
+      try {
+        cost = priceGatewayJob(card, input, usage);
+      } catch (error) {
+        if (!(error instanceof RateCardError)) throw error;
+        logger.warn(
+          `Rate card refused the usage of gateway job ${jobId}: ${error.message}`
+        );
+      }
+      await settleGatewayJob({
+        scopedDb,
+        jobId,
+        model: `${provider}/${target.modelId}`,
+        reservationId: event.payload.reservationId,
+        costMicros: cost,
+        estimateMicros: event.payload.estimateMicros,
+        platformFeeBps: event.payload.platformFeeBps,
+        oauthClientId: event.payload.oauthClientId,
+        usedOwnKey: false,
+        idempotencyKey: `${event.instanceId}:gateway-settle`,
+        result: { outputs, via },
+        metadata: { provider, model: target.modelId, requestId },
+      });
+    });
     return { jobId, outputs };
   }
 
@@ -234,7 +239,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const { jobId } = event.payload;
-    // A no-op once the job has settled: `markFailed` only moves a live row.
+    // A charged job ends `succeeded` whatever failed after (`markFailed`).
     await scopedDb.gatewayJobs.markFailed(jobId, {
       code: gatewayErrorCode(error),
       message: error,
