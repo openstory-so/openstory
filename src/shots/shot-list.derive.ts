@@ -92,6 +92,36 @@ export function deriveStillPrompt(
   ]);
 }
 
+/** Sentence parts without their own full stop, so a join never doubles one. */
+function sentences(parts: ReadonlyArray<string>, sep: string): string {
+  return joinParts(
+    parts.map((part) => part.trim().replace(/\.+$/, '')),
+    sep
+  );
+}
+
+/** A keyframed take: the take, its camera path, the action, then the opening frame (#2386). */
+function oneTakeBody(spec: StoredShotSpec, referenceOnly: boolean): string {
+  const { action, direction, cameraMovement } = spec;
+  // The move is a path in prose; pacing qualifies it, so it trails.
+  const pacing = cameraMovement.pacing.trim();
+  const cameraPhrase = sentences(
+    [cameraMovement.move, pacing.charAt(0).toLowerCase() + pacing.slice(1)],
+    ', '
+  );
+  const framing = referenceOnly ? sentences(framingParts(spec), ', ') : '';
+  return sentences(
+    [
+      ONE_TAKE_LEAD,
+      cameraPhrase ? `Camera: ${cameraPhrase}` : '',
+      action,
+      direction,
+      framing ? `Opening frame: ${framing}` : '',
+    ],
+    '. '
+  );
+}
+
 /**
  * Motion text: action, direction and camera move, plus the sound cue as
  * audio direction. Reference-only has no still, so the opening frame lives
@@ -104,25 +134,23 @@ export function deriveMotionPrompt(
   options: { referenceOnly: boolean }
 ): { text: string; audio: MotionAudio } {
   const { action, direction, cameraMovement, soundCue } = spec;
+  const lines = keyframeLines(specKeyframes(spec));
+  if (lines.length > 0) {
+    return {
+      text: [oneTakeBody(spec, options.referenceOnly), ...lines].join('\n'),
+      audio: { ambientSound: soundCue.trim(), soundEffects: [] },
+    };
+  }
   const cameraPhrase = joinParts(
     [cameraMovement.pacing, cameraMovement.move],
     ' '
   );
   const camera = cameraPhrase ? `Camera: ${cameraPhrase}` : '';
-  const lines = keyframeLines(specKeyframes(spec));
-  // A keyframed take opens with the take and its camera move (#2386).
-  const oneTake = lines.length > 0;
-  const motion = joinParts(
-    oneTake
-      ? [ONE_TAKE_LEAD, camera, action, direction]
-      : [action, direction, camera],
-    '. '
-  );
+  const motion = joinParts([action, direction, camera], '. ');
   const framing = options.referenceOnly ? joinParts(framingParts(spec)) : '';
-  const body = joinParts(oneTake ? [motion, framing] : [framing, motion], '. ');
+  const body = joinParts([framing, motion], '. ');
   return {
-    // Keyframes go last, one per line (#2386).
-    text: [body, ...lines].filter((line) => line.length > 0).join('\n'),
+    text: body,
     audio: { ambientSound: soundCue.trim(), soundEffects: [] },
   };
 }

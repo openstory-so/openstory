@@ -221,6 +221,11 @@ role is still unused.
   the next picks up. Without these Seedance 2.5 cut at every timed line: 5
   setups before, none after, on the same stages (one clip each, 2026-11-16).
   A shot with no keyframes derives the same text as before.
+  The take's sentences are joined without doubled full stops, its camera reads
+  move first then pacing, a reference-only shot's framing is labelled
+  `Opening frame:`, and Seedance's closing `Single continuous shot, no cuts`
+  is left off because the take already opens with it.
+  No motion prompt carries "Avoid jitter and bent limbs" any more.
 - **Camera per stage.** Each keyframe's `camera` is written after its
   action on the same line (`. Camera: ...`). The shot-list pass changes side,
   height or distance from one stage to the next, and may slow one stage. On

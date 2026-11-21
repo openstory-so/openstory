@@ -13,7 +13,10 @@ import {
   type StoredShotSpec,
 } from './shot-list.schema';
 import { attachSceneShots, defaultSingleShot } from './shot-list-pass';
-import { buildPackedMotionPrompt } from '@/motion/server/build-motion-prompts';
+import {
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
+} from '@/motion/server/build-motion-prompts';
 
 const keyframes = [
   { atSeconds: 0, action: 'MARA drops from the fire escape', camera: '' },
@@ -89,10 +92,46 @@ describe('keyframes on the spec', () => {
     ).text;
     expect(timed).toBe(
       [
-        'One continuous shot, no cuts. Camera: fast follow. MARA escapes down the alley',
+        'One continuous shot, no cuts. Camera: follow, fast. MARA escapes down the alley',
         ...keyframeLines(keyframes),
       ].join('\n')
     );
+  });
+
+  it('joins prose fields without doubled stops, and labels the opening frame', () => {
+    const timed = deriveMotionPrompt(
+      {
+        ...spec,
+        framing: {
+          shotSize: 'wide',
+          angle: 'low angle',
+          subjectStartState: 'MARA on the lower landing, looking up.',
+          composition: 'The fire escape zigzagging up the wall.',
+        },
+        action: 'MARA climbs the fire escape.',
+        cameraMovement: {
+          move: 'Crane up the wall following MARA.',
+          pacing: 'Steady, climbing with her',
+        },
+        keyframes,
+      },
+      { referenceOnly: true }
+    ).text;
+    expect(timed.split('\n')[0]).toBe(
+      'One continuous shot, no cuts. Camera: Crane up the wall following MARA, steady, climbing with her. MARA climbs the fire escape. Opening frame: wide, low angle, MARA on the lower landing, looking up, The fire escape zigzagging up the wall'
+    );
+  });
+
+  it('says the one-take pin once on Seedance', () => {
+    const text = deriveMotionPrompt(
+      { ...spec, keyframes },
+      { referenceOnly: false }
+    ).text;
+    const prompt = buildMotionShotPrompt({
+      motionPrompt: { fullPrompt: text },
+      model: 'seedance_v2_5',
+    });
+    expect(prompt.match(/no cuts/g)).toHaveLength(1);
   });
 
   it('stores no keyframes key when there are none, so old digests hold', () => {

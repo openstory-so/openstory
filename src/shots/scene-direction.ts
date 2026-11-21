@@ -1,4 +1,5 @@
 import type { Scene } from './scene-analysis.schema';
+import { nameHexColours } from '@/look/colour-name';
 import type { StyleConfig } from '@/look/style-config';
 
 /** The moment belongs to the scene; palette, grading and art style to the look. */
@@ -16,15 +17,13 @@ export function sceneDirection(
   return {
     location: scene.metadata?.location?.trim() || '',
     timeOfDay,
-    lightingSetup:
-      scene.continuity?.lightingSetup?.trim() ||
-      (timeOfDay
-        ? `Natural lighting appropriate to ${timeOfDay}`
-        : 'Natural, even lighting'),
-    colorPalette:
+    // Unknown lighting is left unsaid: a stock line fights the style's grade.
+    lightingSetup: scene.continuity?.lightingSetup?.trim() || '',
+    colorPalette: nameHexColours(
       scene.continuity?.colorPalette?.trim() ||
-      style?.look.colorPalette.join(', ') ||
-      '',
+        [...new Set(style?.look.colorPalette.map(nameHexColours))].join(', ') ||
+        ''
+    ),
     look: [style?.look.medium, style?.look.artStyle, style?.look.colorGrading]
       .filter(Boolean)
       .join(', '),

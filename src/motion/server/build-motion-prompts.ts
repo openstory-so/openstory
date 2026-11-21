@@ -1,5 +1,5 @@
 import { sceneDirection } from '@/shots/scene-direction';
-import { shiftKeyframeLines } from '@/shots/keyframe-lines';
+import { ONE_TAKE_LEAD, shiftKeyframeLines } from '@/shots/keyframe-lines';
 import type { StyleConfig } from '@/look/style-config';
 /**
  * Model-Aware Motion Prompt Builder
@@ -73,9 +73,8 @@ type AssembleOptions = {
   motionPrompt: AssemblableMotionPrompt;
   model: ImageToVideoModel;
   /**
-   * Scene character tags (`continuity.characterTags`). Drives character-only
-   * guards for models that need them in-prompt (e.g. Seedance's
-   * "Avoid jitter and bent limbs.").
+   * Scene character tags (`continuity.characterTags`). No model reads them
+   * now the jitter guard is gone.
    */
   characterTags?: readonly string[];
   /**
@@ -91,7 +90,7 @@ type AssembleOptions = {
    */
   singleTake?: boolean;
   /**
-   * Packed members omit clip-wide constraints (no-music, jitter). The pack
+   * Packed members omit clip-wide constraints (no-music). The pack
    * header states those once so they are not repeated per shot.
    */
   omitSharedConstraints?: boolean;
@@ -117,7 +116,6 @@ type AssembleOptions = {
 export function buildMotionShotPrompt({
   motionPrompt,
   model,
-  characterTags,
   generateAudio,
   singleTake = true,
   omitSharedConstraints = false,
@@ -162,7 +160,6 @@ export function buildMotionShotPrompt({
           fullPrompt,
           dialogueData,
           audioData,
-          characterTags,
           singleTake,
           omitSharedConstraints
         );
@@ -290,7 +287,7 @@ export type PackedMotionPrompt = {
  * come from {@link buildMotionShotPrompt}; this only adds vendor shot-list
  * syntax and timings. A 1-shot list is the existing single-take path.
  *
- * A 2+ shot clip is a scene header (environment, no-music, jitter) once,
+ * A 2+ shot clip is a scene header (environment, no-music) once,
  * then short per-shot bodies. Truncating the joined prompt would drop a
  * whole trailing shot — callers split membership instead.
  */
@@ -321,7 +318,6 @@ export function buildPackedMotionPrompt({
     return { prompt: joinPacked(header, body) };
   }
 
-  const characterTags = uniqueCharacterTags(shots);
   const bodies = shots.map((shot) =>
     assembleOnePackedShot(shot, model, generateAudio, false, true)
   );
@@ -331,19 +327,14 @@ export function buildPackedMotionPrompt({
     // 2.0 only follows shot numbers and uses `cut to`; 2.5 does not.
     // https://docs.byteplus.com/en/docs/ModelArk/2607689
     const env = formatPackedEnvironment(scene);
-    const guards = [
-      'No BGM; generate only environmental sounds and action sounds.',
-      characterTags.length > 0 ? 'Avoid jitter and bent limbs.' : '',
-    ].filter((part) => part.length > 0);
+    const guard =
+      'No BGM; generate only environmental sounds and action sounds.';
     return {
-      prompt: [env, list, guards.join('\n')]
-        .filter((part) => part.length > 0)
-        .join('\n\n'),
+      prompt: [env, list, guard].filter((part) => part.length > 0).join('\n\n'),
     };
   }
   const header = formatPackedHeader({
     scene,
-    characterTags,
     model,
     generateAudio,
     hasDialogue: shots.some(
@@ -374,12 +365,6 @@ export function buildPackedMotionPrompt({
   };
 }
 
-function uniqueCharacterTags(
-  shots: readonly PackedMotionPromptShot[]
-): string[] {
-  return [...new Set(shots.flatMap((shot) => shot.characterTags ?? []))];
-}
-
 function joinPacked(header: string, body: string): string {
   if (header.length === 0) return body;
   if (body.length === 0) return header;
@@ -402,7 +387,6 @@ function formatPackedEnvironment(scene?: PackedMotionSceneHeader): string {
 
 function formatPackedHeader(input: {
   scene?: PackedMotionSceneHeader;
-  characterTags: readonly string[];
   model: ImageToVideoModel;
   generateAudio?: boolean;
   hasDialogue: boolean;
@@ -421,9 +405,6 @@ function formatPackedHeader(input: {
     if (input.model === 'minimax_h3_max') {
       parts.push('non_diegetic_music: N/A');
     }
-  }
-  if (input.characterTags.length > 0) {
-    parts.push('Avoid jitter and bent limbs.');
   }
   return parts.join('\n\n');
 }
@@ -564,7 +545,6 @@ function buildSeedancePrompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
   audio: MotionAudio | undefined,
-  characterTags: readonly string[] | undefined,
   singleTake: boolean,
   omitSharedConstraints: boolean
 ): string {
@@ -614,12 +594,9 @@ function buildSeedancePrompt(
   // prompt. Seedance invents edits otherwise, conflicting with
   // one-scene-one-take — omit that pin when the clip is a packed multi-shot.
   const guards = [noMusicDirection(Boolean(dialogue))];
-  if (singleTake) {
+  // A keyframed take already opens with the pin (#2386).
+  if (singleTake && !fullPrompt.includes(ONE_TAKE_LEAD)) {
     guards.push('Single continuous shot, no cuts.');
-  }
-  // Standard guard from the ByteDance prompt guide for scenes with characters
-  if (characterTags && characterTags.length > 0) {
-    guards.push('Avoid jitter and bent limbs.');
   }
   parts.push(guards.join(' '));
 

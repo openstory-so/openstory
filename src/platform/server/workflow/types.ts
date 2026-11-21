@@ -1538,7 +1538,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /**
      * Scene character tags (`continuity.characterTags`). Passed alongside
      * `motionPrompt` so per-model re-assembly can apply character-only
-     * in-prompt guards (e.g. Seedance's "Avoid jitter and bent limbs.").
+     * in-prompt guards. None today.
      */
     characterTags?: string[];
     duration?: number;
