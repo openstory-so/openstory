@@ -63,6 +63,7 @@ import {
   createPublicStitchReads,
   createStitchesMethods,
 } from '@/stitches/server/db/stitches';
+import { createGatewayJobsMethods } from '@/gateway/server/db/gateway-jobs';
 import { createAssistantMethods } from '@/assistant/server/db/assistant';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
@@ -428,6 +429,8 @@ export function createScopedDb(organizationId: string, userId: string) {
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
     stitches: createStitchesMethods(db, organizationId, userId),
+    // Model gateway jobs (docs/architecture/model-gateway.md).
+    gatewayJobs: createGatewayJobsMethods(db, organizationId, userId),
     // In-app assistant threads and their persistence stores (#2155).
     assistant: createAssistantMethods(db, organizationId, userId),
 

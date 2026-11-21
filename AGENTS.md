@@ -324,6 +324,13 @@ changing the area, and update it in the same PR.**
   `docs/architecture/oauth-server.md`. Bearer JWTs are accepted on `/api/v1`
   and `/mcp` only; `osk_` keys are unscoped; OAuth tables come from
   `bun auth:generate`, never by hand.
+- **Model gateway** — `docs/architecture/model-gateway.md`. The body is the
+  provider's own, checked against its modelschemas schema and sent as it is;
+  never normalise, default or rename a field. The price is the model's rate
+  card, never the provider's billed units, and a request the card cannot
+  price is refused. A gateway job spends platform keys only
+  (`platformOnlyCredentials`, never `scopedDb.credentials`) and is always
+  billed: hold at submit, charge in `settleGatewayJob`, release on failure.
 - **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
   runs `MCP_TOOLS` through `chat()` under the session; never add an
   assistant-only tool, add an MCP tool. Only a delete

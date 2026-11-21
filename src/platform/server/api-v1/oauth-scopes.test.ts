@@ -55,6 +55,34 @@ describe('requiredOAuthScope', () => {
     );
   });
 
+  it('requires models:invoke for every gateway request, reads included', () => {
+    for (const [method, path] of [
+      ['GET', '/api/v1/gateway/models'],
+      ['POST', '/api/v1/gateway/jobs'],
+      ['GET', '/api/v1/gateway/jobs/01JOB'],
+      ['GET', '/api/v1/gateway'],
+    ] as const) {
+      expect(requiredOAuthScope(req(method, path))).toBe('models:invoke');
+    }
+    expect(requiredOAuthScope(req('GET', '/api/v1/gatewayish'))).toBe(
+      'sequences:read'
+    );
+  });
+
+  it('reads the path as the case-insensitive router matches it', () => {
+    for (const [method, path] of [
+      ['POST', '/api/v1/GATEWAY/jobs'],
+      ['GET', '/api/v1/Gateway/jobs/01JOB'],
+      ['POST', '/api/v1/%67ateway/jobs'],
+      ['POST', '/api/v1//gateway/jobs'],
+    ] as const) {
+      expect(requiredOAuthScope(req(method, path))).toBe('models:invoke');
+    }
+    expect(requiredOAuthScope(req('POST', '/api/v1/Sequences'))).toBe(
+      'generate'
+    );
+  });
+
   it('ignores non-v1 paths', () => {
     expect(requiredOAuthScope(req('GET', '/api/auth/session'))).toBeNull();
   });
