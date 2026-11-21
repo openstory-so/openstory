@@ -19,9 +19,10 @@ function colourName(hex: string): string {
   const digits = hex.slice(1);
   const full =
     digits.length === 3 ? digits.replace(/./g, (c) => c + c) : digits;
-  const [r, g, b] = [0, 2, 4].map(
-    (at) => parseInt(full.slice(at, at + 2), 16) / 255
-  );
+  const channel = (at: number) => parseInt(full.slice(at, at + 2), 16) / 255;
+  const r = channel(0);
+  const g = channel(2);
+  const b = channel(4);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const light = (max + min) / 2;
