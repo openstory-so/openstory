@@ -198,7 +198,9 @@ role is still unused.
   spec that breaks it; the shot-list pass and Rewrite shot drop the keyframes
   that do (`keyframesWithin`). A shot's length is set through
   `setShotDuration` (the inspector and `update_shot`), which refuses a length
-  its keyframes do not fit: remove the keyframe, then shorten.
+  its keyframes do not fit: remove the keyframe, then shorten. It also
+  refuses while a rewrite is in flight, whose keyframes are timed against the
+  old length. A video upload sets the length without this check.
 - **The form shows lengths.** Stored as start seconds; the inspector's row
   shows how long the stage runs, and the last runs to the end, so the lengths
   always sum to the shot. Changing a length moves every later keyframe and
@@ -240,6 +242,8 @@ role is still unused.
   puts them last in the motion prompt, one per line. Seconds are shot-local;
   `formatPackedShotList` shifts them to clip seconds for a shot that does
   not start its clip.
+  A take that shares its clip drops the `One continuous shot, no cuts`
+  opening (`withoutTakeLead`): the clip has cuts.
 - **Highlight.** The prompt editor and the Optimised prompt panel tint any
   line in that format, whoever wrote it.
 - **Who writes them.** The shot-list prompt and Rewrite shot are told the

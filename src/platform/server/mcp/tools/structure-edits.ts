@@ -502,8 +502,7 @@ const updateShotTool = openstoryTool({
     }
     if (input.durationSeconds !== undefined) {
       shot =
-        (await setShotDuration(scopedDb, shot.id, input.durationSeconds)) ??
-        shot;
+        (await setShotDuration(scopedDb, shot, input.durationSeconds)) ?? shot;
     }
     return {
       data: {

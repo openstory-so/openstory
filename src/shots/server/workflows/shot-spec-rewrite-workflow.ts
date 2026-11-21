@@ -13,6 +13,7 @@ import {
 } from '@/platform/realtime';
 import { getLogger } from '@/platform/logger';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
@@ -45,6 +46,10 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
     scopedDb: WorkflowScopedDb
   ): Promise<ShotSpecRewriteWorkflowResult> {
     const input = event.payload;
+    // A run queued before #2386 has no length to time keyframes against.
+    if (!(input.durationSeconds > 0)) {
+      throw new WorkflowValidationError('Shot length is required');
+    }
     const spec = await durableLLMCallCf(
       step,
       {
@@ -82,17 +87,19 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
     );
 
     return step.do('promote-rewritten-spec', async () => {
+      const written = specKeyframes(spec);
+      const keyframes = keyframesWithin(written, input.durationSeconds);
+      if (keyframes.length < written.length) {
+        logger.warn('Dropped keyframes that do not fit the shot', {
+          shotId: input.shotId,
+          dropped: written.length - keyframes.length,
+        });
+      }
       const version = await scopedDb.shotSpecVersions.promoteIfPending({
         shotId: input.shotId,
         claimId: input.claimId,
         // The model's keyframes are held to the shot's length, as a save is.
-        spec: {
-          ...spec,
-          keyframes: keyframesWithin(
-            specKeyframes(spec),
-            input.durationSeconds
-          ),
-        },
+        spec: { ...spec, keyframes },
         source: 'rewrite',
         inputHash: input.specInputHash,
         createdBy: input.userId,

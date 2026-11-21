@@ -22,6 +22,7 @@ import {
 import type { ShotEditContext } from './shot-context';
 import { durationSecondsOf } from '@/shots/packed-clip-window';
 import { drawSpecSketch } from './shot-preview';
+import type { Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
@@ -116,12 +117,21 @@ export async function restoreShotPromptVersion(
   return { variantId: inserted.id };
 }
 
-/** Set a shot's length. Refused while its keyframes would not fit (#2386). */
+/**
+ * Set a shot's length. Refused while its keyframes would not fit, or while a
+ * rewrite timed against the old length is in flight (#2386).
+ */
 export async function setShotDuration(
   scopedDb: ScopedDb,
-  shotId: string,
+  shot: Pick<Shot, 'id' | 'pendingSpecVersionId'>,
   durationSeconds: number
 ) {
+  if (shot.pendingSpecVersionId) {
+    throw new ConflictError(
+      'This shot is being rewritten. Try again when it lands.'
+    );
+  }
+  const shotId = shot.id;
   const selected = await scopedDb.shotSpecVersions.getSelected(shotId);
   const fault = selected
     ? keyframeFault(specKeyframes(selected.spec), durationSeconds)

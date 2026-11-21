@@ -441,7 +441,7 @@ location's tag (`canonicalBibleTag`) to `continuity.environmentTag` and its
 name to the scene's location text, so the sheet match has one answer. A pick is
 scene-owned, so shot scope does not offer it. Empty lighting is left unsaid (#2386): a stock line such as "Natural, even lighting" fought the style's grade. The style
 owns medium, art style, grading and palette; an optional scene palette override
-wins when nonempty. Clearing it restores the style. A palette is stored as hex and written into prompts as colour words (`nameHexColours`, `src/look/colour-name.ts`). A Match script style states the look that holds in every scene: its prompt forbids naming a scene, place, prop or story moment. Legacy scene `styleTag`
+wins when nonempty. Clearing it restores the style. A Match script style states the look that holds in every scene: its prompt forbids naming a scene, place, prop or story moment. Legacy scene `styleTag`
 is not a source of look. Location sheets use style art direction but always
 neutral illumination.
 

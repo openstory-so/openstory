@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "medium wide, eye level, MARA (Image 2) and DEV (Image 1) climb the steps together; SPOKESPERSON (Image 3) is not yet in frame., Handheld observational frame follows MARA (Image 2) and DEV (Image 1) up the steps, with the doorway held in the background and the cameras edging the frame., EXT. CITY HALL STEPS - MORNING, morning, city_hall_steps (Image 4), muted orange, orange, pale orange, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "userMessage": "medium wide, eye level, MARA (Image 2) and DEV (Image 1) climb the steps together; SPOKESPERSON (Image 3) is not yet in frame., Handheld observational frame follows MARA (Image 2) and DEV (Image 1) up the steps, with the doorway held in the background and the cameras edging the frame., EXT. CITY HALL STEPS - MORNING, morning, city_hall_steps (Image 4), #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
         "model": "google/nano-banana-lite/edit"
       },
       "response": {

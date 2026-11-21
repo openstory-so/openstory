@@ -7,7 +7,6 @@
  * images (recurring products detected during scene split with no upload).
  */
 
-import { nameHexColours } from '@/look/colour-name';
 import { formatElementDuration } from '@/cast/element-kind';
 import type { ElementBibleEntry } from '@/shots/scene-analysis.schema';
 import type {
@@ -103,7 +102,7 @@ export function buildElementSheetPrompt(
 ): string {
   const styled = styleConfig
     ? {
-        environment: `Render in ${styleConfig.look.artStyle} style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone drawn from the style's color palette: ${[...new Set(styleConfig.look.colorPalette.map(nameHexColours))].join(', ')}. Color grading: ${styleConfig.look.colorGrading}.`,
+        environment: `Render in ${styleConfig.look.artStyle} style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone drawn from the style's color palette: ${styleConfig.look.colorPalette.join(', ')}. Color grading: ${styleConfig.look.colorGrading}.`,
         lighting: `${styleConfig.look.lighting}. Even, controlled illumination that reveals true colors, materials, and surface finish.`,
       }
     : {

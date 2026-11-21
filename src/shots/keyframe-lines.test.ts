@@ -80,6 +80,24 @@ describe('a keyframed shot in a packed clip', () => {
     expect(prompt).toContain('5-9 seconds: MARA drops');
     expect(prompt).toContain('14-15 seconds: continuing in the same shot,');
   });
+
+  it('drops the one-take pin: the clip has other shots', () => {
+    const { prompt } = buildPackedMotionPrompt({
+      model: 'seedance_v2_5',
+      shots: [
+        { durationSeconds: 5, prompt: 'She waits.' },
+        {
+          durationSeconds: 10,
+          prompt: deriveMotionPrompt(
+            { ...spec, keyframes },
+            { referenceOnly: false }
+          ).text,
+        },
+      ],
+    });
+    expect(prompt).not.toContain('no cuts');
+    expect(prompt).toContain('Shot 2 (5-15s): Camera: follow, fast.');
+  });
 });
 
 describe('keyframes on the spec', () => {

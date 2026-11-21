@@ -505,11 +505,7 @@ export const updateShotDurationFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(updateShotDurationSchema))
   .handler(async ({ data, context }) => {
     const { shot, scopedDb } = context;
-    const updated = await setShotDuration(
-      scopedDb,
-      shot.id,
-      data.durationSeconds
-    );
+    const updated = await setShotDuration(scopedDb, shot, data.durationSeconds);
     return updated ?? shot;
   });
 

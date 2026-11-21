@@ -17,6 +17,11 @@ const SAME_SHOT = 'continuing in the same shot, ';
 /** Opens a keyframed take's motion prompt: Seedance wants the take named first. */
 export const ONE_TAKE_LEAD = 'One continuous shot, no cuts';
 
+/** A take sharing a clip with other shots is not the whole clip: no pin. */
+export function withoutTakeLead(text: string): string {
+  return text.replace(`${ONE_TAKE_LEAD}. `, '');
+}
+
 const seconds = (value: number): string => String(Math.round(value * 10) / 10);
 
 /** One line per keyframe; each runs to the next, the last to the end. */
