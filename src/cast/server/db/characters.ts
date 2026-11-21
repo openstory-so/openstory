@@ -1414,8 +1414,8 @@ export function createCharactersMethods(db: Database, organizationId: string) {
           ),
           characters.id,
           page,
-          // Oldest first; SQLite picks its own order otherwise (#2416).
-          characters.id
+          // By script id; SQLite picks its own order otherwise (#2416).
+          sequenceCast.scriptCharacterId
         ),
         looks.listBySequence(sequenceId),
       ]);

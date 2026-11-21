@@ -1043,13 +1043,13 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(events.at(-1)?.data).toMatchObject({ bibleVersion: null });
   });
 
-  it('lists the cast in id order, whatever order the rows were written in (#2416)', async () => {
+  it('lists the cast in script-id order, whatever order the rows were written in (#2416)', async () => {
     const m = createCharactersMethods(db, organizationId);
     const first = generateId();
     const second = generateId();
     for (const [id, characterId, name] of [
-      [second, 'char_001', 'Alice'],
       [first, 'char_002', 'Bea'],
+      [second, 'char_001', 'Alice'],
     ] as const) {
       await m.create(
         {
@@ -1063,7 +1063,7 @@ describe('characters bible CRUD + soft-remove', () => {
       );
     }
     const listed = await m.list(sequenceId);
-    expect(listed.map((c) => c.id)).toEqual([first, second]);
+    expect(listed.map((c) => c.id)).toEqual([second, first]);
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
