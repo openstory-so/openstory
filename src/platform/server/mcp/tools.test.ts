@@ -2884,6 +2884,7 @@ describe('shot content edits (#1979)', () => {
       subjectStartState: 'still',
     },
     action: 'Waves break on the rocks',
+    keyframes: [],
     cameraMovement: { move: 'push in', pacing: 'slow' },
     direction: 'calm',
     soundCue: 'surf',
@@ -2915,6 +2916,50 @@ describe('shot content edits (#1979)', () => {
     });
     expect((await promptsOf()).anchorFrame.prompt).not.toBe('Visual prompt');
     expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
+  });
+
+  it('update_shot_spec refuses a keyframe past the shot or two at one second', async () => {
+    const keyframe = (atSeconds: number) => ({
+      atSeconds,
+      action: 'a wave breaks',
+      camera: '',
+    });
+    for (const keyframes of [
+      [keyframe(0), keyframe(500)],
+      [keyframe(0), keyframe(0)],
+    ]) {
+      expect(
+        await call('update_shot_spec', {
+          sequenceId,
+          shotId,
+          spec: { ...spec, keyframes },
+        })
+      ).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+      });
+    }
+  });
+
+  it('update_shot refuses a length its keyframes do not fit', async () => {
+    const at = (atSeconds: number) => ({
+      atSeconds,
+      action: 'a wave breaks',
+      camera: '',
+    });
+    await data('update_shot', { sequenceId, shotId, durationSeconds: 10 });
+    await data('update_shot_spec', {
+      sequenceId,
+      shotId,
+      spec: { ...spec, keyframes: [at(0), at(6)] },
+    });
+    expect(
+      await call('update_shot', { sequenceId, shotId, durationSeconds: 5 })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    await data('update_shot', { sequenceId, shotId, durationSeconds: 8 });
   });
 
   it('rebuild_shot_prompts starts a rewrite when the spec is missing; update_shot_spec refuses meanwhile', async () => {

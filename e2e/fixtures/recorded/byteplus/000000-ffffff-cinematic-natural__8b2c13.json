@@ -1,0 +1,37 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "video",
+        "userMessage": "#000000, #FFFFFF. Cinematic, Natural.\n\n@Image1 looks up toward the front door, reacting to a faint off-screen sound. Slow push in on her face. Quiet ambient room tone only, with no music and no melody.\n\nNo BGM, no music, no dialogue. Generate only environmental sounds and action sounds. Single continuous shot, no cuts.\n[media: reference_image:e4eb8be57d90]",
+        "model": "dreamina-seedance-2-5-260628"
+      },
+      "response": {
+        "json": {
+          "model": "dreamina-seedance-2-5-260628",
+          "status": "succeeded",
+          "content": {
+            "video_url": "https://assets.openstory.so/e2e/c1d2a83f7cf156c94d7293453052cb8415b414ec0973d66a979720ba770b6dc2.mp4"
+          },
+          "usage": {
+            "completion_tokens": 38830,
+            "total_tokens": 38830
+          },
+          "created_at": 1795219969,
+          "updated_at": 1795220015,
+          "seed": 63490,
+          "resolution": "480p",
+          "ratio": "16:9",
+          "duration": 4,
+          "framespersecond": 24,
+          "service_tier": "default",
+          "execution_expires_after": 172800,
+          "generate_audio": true,
+          "draft": true,
+          "priority": 0,
+          "output_format": "mp4"
+        }
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "medium wide, eye level, MARA (Image 2) sits facing the monitor, tired and still, wearing a green cardigan; DEV (Image 1) is not yet in frame., Observational handheld frame with MARA (Image 2) at the monitor in the foreground; leave open space at the edge for DEV (Image 1) to enter., INT. newsroom (Image 3) - NIGHT, night, newsroom (Image 3), Natural lighting appropriate to night, #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "userMessage": "medium wide, eye level, MARA (Image 2) sits facing the monitor, tired and still, wearing a green cardigan; DEV (Image 1) is not yet in frame., Observational handheld frame with MARA (Image 2) at the monitor in the foreground; leave open space at the edge for DEV (Image 1) to enter., INT. newsroom (Image 3) - NIGHT, night, newsroom (Image 3), #8B7355, #CD853F, #DEB887, #F5DEB3, #FFE4B5, Natural documentary style with authentic environments, Natural color with slight desaturation\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
         "model": "google/nano-banana-lite/edit"
       },
       "response": {

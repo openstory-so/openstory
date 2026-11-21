@@ -1148,6 +1148,8 @@ export interface ShotSpecRewriteWorkflowInput extends SequenceWorkflowContext {
   motionWritten: boolean;
   referenceOnly: boolean;
   scene: Scene;
+  /** The shot's length, for timing its keyframes (#2386). */
+  durationSeconds: number;
   /** Other shots in the scene. This shot is not in the list. */
   siblingSpecs: Array<{ shotNumber: number | null; spec: StoredShotSpec }>;
   characterBible: CharacterBibleEntry[];
@@ -1536,7 +1538,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /**
      * Scene character tags (`continuity.characterTags`). Passed alongside
      * `motionPrompt` so per-model re-assembly can apply character-only
-     * in-prompt guards (e.g. Seedance's "Avoid jitter and bent limbs.").
+     * in-prompt guards. None today.
      */
     characterTags?: string[];
     duration?: number;

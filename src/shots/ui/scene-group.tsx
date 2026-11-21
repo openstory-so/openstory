@@ -497,7 +497,13 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent
+            align="end"
+            // Rename focuses its input: handing focus back to the trigger blurs and closes it.
+            onCloseAutoFocus={(e) => {
+              if (titleDraft !== null) e.preventDefault();
+            }}
+          >
             <DropdownMenuItem
               onClick={() =>
                 openAssistant({

@@ -28,6 +28,7 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import {
   buildPreviewPrompt,
+  previewPromptsInAnyCastOrder,
   previewTextForShot,
 } from '@/sequences/server/poster-prompt';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
@@ -100,13 +101,9 @@ type SketchScene = {
   metadata?: { title?: string } | null;
 } | null;
 
-/** The sketch prompt for one spec, the same text scene split draws from. */
-function specSketchPrompt(
-  spec: StoredShotSpec,
-  scene: SketchScene,
-  cast: readonly CharacterBibleEntry[]
-): string {
-  const text = previewTextForShot(
+/** The text a spec's sketch is drawn from, the same scene split draws from. */
+function specSketchText(spec: StoredShotSpec, scene: SketchScene): string {
+  return previewTextForShot(
     {
       shots: [{ ...spec, shotNumber: 1 }],
       originalScript: { extract: scene?.originalScript?.extract ?? '' },
@@ -118,7 +115,14 @@ function specSketchPrompt(
     },
     1
   );
-  return buildPreviewPrompt(text, cast);
+}
+
+/** Hashes a sketch of this text may carry: the cast in any order (#2416). */
+function sketchHashes(
+  text: string,
+  cast: readonly CharacterBibleEntry[]
+): ReadonlySet<string> {
+  return new Set(previewPromptsInAnyCastOrder(text, cast).map(simpleHash));
 }
 
 type PreviewContext = Pick<
@@ -180,19 +184,18 @@ export async function drawSpecSketch(
 ): Promise<void> {
   const { scopedDb, shot, frame, scene } = context;
   try {
-    const prompt = specSketchPrompt(
-      version.spec,
-      scene,
-      await previewCast(context)
-    );
-    const hash = simpleHash(prompt);
+    const text = specSketchText(version.spec, scene);
+    const cast = await previewCast(context);
+    const hashes = sketchHashes(text, cast);
     const rows = await scopedDb.frameVariants.listPreviews(frame.id);
     const drawn = rows.some(
       (row) =>
-        row.promptHash === hash && (row.status === 'completed' || isLive(row))
+        !!row.promptHash &&
+        hashes.has(row.promptHash) &&
+        (row.status === 'completed' || isLive(row))
     );
     if (drawn) return;
-    await startPreview(context, prompt, version.id);
+    await startPreview(context, buildPreviewPrompt(text, cast), version.id);
   } catch (error) {
     logger.warn(
       `Sketch for shot ${shot.id} spec ${version.id} did not start; its old sketch stays up`,
@@ -218,26 +221,28 @@ export async function readShotStoryboard(context: PreviewContext) {
     previewCast(context),
     scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
   ]);
-  const hashOf = (version: ShotSpecVersion) =>
-    simpleHash(specSketchPrompt(version.spec, scene, cast));
+  const hashesOf = (version: ShotSpecVersion) =>
+    sketchHashes(specSketchText(version.spec, scene), cast);
   const selected =
     versions.find((v) => v.id === shot.selectedSpecVersionId) ?? null;
   const done = (row: FrameVariant) => row.status === 'completed' && !!row.url;
 
   // A shot with no spec (from before #1915) is drawn from its motion prompt.
   const fresh = selected
-    ? hashOf(selected)
+    ? hashesOf(selected)
     : motion?.text
-      ? simpleHash(buildPreviewPrompt(motion.text, cast))
+      ? sketchHashes(motion.text, cast)
       : null;
+  const isFresh = (row: FrameVariant) =>
+    fresh
+      ? !!row.promptHash && fresh.has(row.promptHash)
+      : row.promptHash === null;
   const current =
-    rows.find((row) => done(row) && row.promptHash === fresh) ??
-    rows.find(done) ??
-    null;
+    rows.find((row) => done(row) && isFresh(row)) ?? rows.find(done) ?? null;
   const generating = rows[0] ? isLive(rows[0]) : false;
   const mismatch: StoryboardStaleReason | null = !current
     ? 'missing'
-    : current.promptHash === fresh
+    : isFresh(current)
       ? null
       : rows[0]?.status === 'failed'
         ? 'failed'
@@ -265,10 +270,10 @@ export async function readShotStoryboard(context: PreviewContext) {
     current: current && sketch(current),
     history: rows.map(sketch),
     versions: versions.map((version) => {
-      const hash = hashOf(version);
+      const hashes = hashesOf(version);
       const drawn =
         rows.find((row) => row.specVersionId === version.id) ??
-        rows.find((row) => row.promptHash === hash);
+        rows.find((row) => !!row.promptHash && hashes.has(row.promptHash));
       return {
         id: version.id,
         source: version.source,
@@ -297,7 +302,7 @@ export async function regenerateShotStoryboard(context: PreviewContext) {
     previewCast(context),
   ]);
   const prompt = spec
-    ? specSketchPrompt(spec.spec, scene, cast)
+    ? buildPreviewPrompt(specSketchText(spec.spec, scene), cast)
     : motion?.text
       ? buildPreviewPrompt(motion.text, cast)
       : null;
@@ -335,9 +340,8 @@ export async function drawSpecSketchInRun(
     await triggerShotPreview(
       {
         ...target,
-        prompt: specSketchPrompt(
-          target.version.spec,
-          target.scene,
+        prompt: buildPreviewPrompt(
+          specSketchText(target.version.spec, target.scene),
           target.characterBible
         ),
         specVersionId: target.version.id,

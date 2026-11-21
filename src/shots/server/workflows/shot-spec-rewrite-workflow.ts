@@ -13,6 +13,7 @@ import {
 } from '@/platform/realtime';
 import { getLogger } from '@/platform/logger';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
@@ -21,7 +22,11 @@ import type {
 } from '@/platform/server/workflow/types';
 import { completeDerivedPrompts } from '@/shots/server/rebuild-shot-prompts';
 import { drawSpecSketchInRun } from '@/shots/server/shot-preview';
-import { storedShotSpecSchema } from '@/shots/shot-list.schema';
+import {
+  keyframesWithin,
+  specKeyframes,
+  storedShotSpecSchema,
+} from '@/shots/shot-list.schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-spec-rewrite']);
@@ -41,6 +46,10 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
     scopedDb: WorkflowScopedDb
   ): Promise<ShotSpecRewriteWorkflowResult> {
     const input = event.payload;
+    // A run queued before #2386 has no length to time keyframes against.
+    if (!(input.durationSeconds > 0)) {
+      throw new WorkflowValidationError('Shot length is required');
+    }
     const spec = await durableLLMCallCf(
       step,
       {
@@ -50,6 +59,7 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         promptVariables: {
           scene: JSON.stringify(input.scene),
           lines: JSON.stringify(input.lines),
+          durationSeconds: String(input.durationSeconds),
           currentSpec: JSON.stringify(input.currentSpec),
           siblings: JSON.stringify(input.siblingSpecs),
           // Each character in the outfit this shot's scene dresses it in,
@@ -77,10 +87,19 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
     );
 
     return step.do('promote-rewritten-spec', async () => {
+      const written = specKeyframes(spec);
+      const keyframes = keyframesWithin(written, input.durationSeconds);
+      if (keyframes.length < written.length) {
+        logger.warn('Dropped keyframes that do not fit the shot', {
+          shotId: input.shotId,
+          dropped: written.length - keyframes.length,
+        });
+      }
       const version = await scopedDb.shotSpecVersions.promoteIfPending({
         shotId: input.shotId,
         claimId: input.claimId,
-        spec,
+        // The model's keyframes are held to the shot's length, as a save is.
+        spec: { ...spec, keyframes },
         source: 'rewrite',
         inputHash: input.specInputHash,
         createdBy: input.userId,

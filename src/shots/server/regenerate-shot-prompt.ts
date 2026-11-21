@@ -7,6 +7,7 @@
  * prompt is left alone unless the caller names it in `replace`.
  */
 
+import { durationSecondsOf } from '@/shots/packed-clip-window';
 import type { ShotEditContext } from './shot-context';
 import type { ShotSpecVersion } from '@/platform/server/db/schema';
 import type { ShotSpecRewriteWorkflowInput } from '@/platform/server/workflow/types';
@@ -320,6 +321,7 @@ export async function regenerateShotPrompt(
         motionWritten: motionKept,
         referenceOnly: shotReferenceOnly,
         scene,
+        durationSeconds: durationSecondsOf(shot.durationMs),
         siblingSpecs,
         characterBible: [...ctx.characterBible],
         locationBible: [...ctx.locationBible],

@@ -131,6 +131,7 @@ test.describe('MCP tools', () => {
       shotId: first.shotId,
       spec: {
         action: 'Maya wipes the counter as the door opens',
+        keyframes: [],
         framing: {
           shotSize: 'medium close-up',
           angle: 'eye level',

@@ -174,6 +174,88 @@ it. The Rebuild prompt button reads Rewrite shot when the spec is stale or
 missing, and asks the same question before it touches written text. A save
 while a rewrite is in flight is refused.
 
+### Keyframes (#2386)
+
+A keyframe is a timed action inside one long continuous take: `atSeconds`
+from the start of the shot, the action from that moment, and `camera`, where
+the camera is and what it does in that stage (empty when it holds the take's
+move). A spec holds an
+ordered list of them (`keyframes`), empty on a shot with one action. It is
+text on the spec. It is not a `frames` row and has no still; the `key` frame
+role is still unused.
+
+- **Stored only when present.** `canonicalStoredShotSpec` leaves the key out
+  when the list is empty, so no digest stamped before #2386 moves. Read them
+  with `specKeyframes`, which sorts by time and drops blanks. `readShotSpec`
+  always answers with `keyframes`, so a read can be sent straight back to
+  `update_shot_spec`, where the field is required.
+- **Timed against the shot.** The shot-list pass times keyframes against its
+  own `durationSeconds`. When the system then sets the shot's real length,
+  `timedShot` in `shot-list-pass.ts` moves them by the same ratio and drops
+  any that land past the end or on another's second. A shot split for speech
+  loses its keyframes. One rule, `keyframeFault`, says what a shot can hold:
+  every keyframe inside its length, no two at one second. A save refuses a
+  spec that breaks it; the shot-list pass and Rewrite shot drop the keyframes
+  that do (`keyframesWithin`). A shot's length is set through
+  `setShotDuration` (the inspector and `update_shot`), which refuses a length
+  its keyframes do not fit: remove the keyframe, then shorten. It also
+  refuses while a rewrite is in flight, whose keyframes are timed against the
+  old length. A video upload sets the length without this check; the inspector
+  marks a keyframe it left past the end, and a save is refused until it is
+  moved or removed.
+- **The form shows lengths.** Stored as start seconds; the inspector's row
+  shows how long the stage runs, and the last runs to the end, so the lengths
+  always sum to the shot. Changing a length moves every later keyframe and
+  the last absorbs it. Each row opens with its length, the bin and `+`; `+` splits it in two; the bin deletes it
+  and hands its time to the row before (the first's goes to the next). The
+  shot's Duration sits on the same tab, above the form (`ShotDurationField`).
+- **Spaced by the move, not on a grid.** Both prompts (enhance and the
+  shot-list pass in `workflow-prompts.ts`) size a stage at about 2 to 3
+  seconds and give each keyframe one subject. Measured 2026-11-16 on one
+  five-stage run, one clip per case: 5-second windows left about 8 of 25
+  seconds on an empty frame; 2 to 3 second windows hit the stages on
+  Seedance 2.5, Kling v3 Pro and Omni Flash; the same stages with no times
+  lost two of five on Seedance and Kling. Seedance 2.5 cuts at every timed
+  line whatever the prompt says about one take; Kling and Omni hold the take.
+- **Written as one take.** A keyframed shot's motion prompt opens with
+  `One continuous shot, no cuts` and its camera move, then the action
+  (`deriveMotionPrompt`), and every line after the first starts
+  `continuing in the same shot,` (`keyframeLines`). The shot-list pass writes
+  the camera move as one path through the stages and ends each keyframe where
+  the next picks up. Without these Seedance 2.5 cut at every timed line: 5
+  setups before, none after, on the same stages (one clip each, 2026-11-16).
+  A shot with no keyframes derives the same text as before.
+  The take's sentences are joined without doubled full stops, its camera reads
+  move first then pacing, a reference-only shot's framing is labelled
+  `Opening frame:`, and Seedance's closing `Single continuous shot, no cuts`
+  is left off because the take already opens with it.
+  No motion prompt carries "Avoid jitter and bent limbs" any more.
+- **Camera per stage.** Each keyframe's `camera` is written after its
+  action on the same line (`. Camera: ...`). The shot-list pass changes side,
+  height or distance from one stage to the next, and may slow one stage. On
+  one three-stage shot (2026-11-17, one clip per case) the take's single
+  camera sentence left Seedance 2.5 front-on throughout and a second on the
+  bare deck; with a camera per stage Seedance and Omni Flash both went close,
+  then low under the strap, then wide for the pallets. Slow motion was not
+  checked.
+- **One line format.** `src/shots/keyframe-lines.ts` writes the lines
+  (`0-4 seconds: ...`, the last `9 seconds to the end: ...`), finds them for
+  the highlight, and re-times them for a packed clip. `deriveMotionPrompt`
+  puts them last in the motion prompt, one per line. Seconds are shot-local;
+  `formatPackedShotList` shifts them to clip seconds for a shot that does
+  not start its clip.
+  A take that shares its clip drops the `One continuous shot, no cuts`
+  opening (`withoutTakeLead`): the clip has cuts.
+- **Highlight.** The prompt editor and the Optimised prompt panel tint any
+  line in that format, whoever wrote it.
+- **Who writes them.** The shot-list prompt and Rewrite shot are told the
+  model's longest take (`longestTakeSeconds`) and the shot's length. Script
+  enhancement is told the longest take too, and keeps continuous action in
+  one scene as an unbroken run.
+
+A shot still cannot run past the model's longest clip. Chaining clips past
+that cap with first and last frames is not built.
+
 ### Video variants + the 15s constraint _(Phase 3)_
 
 Render models cap a single render at **15s** (multi-shot included). Scenes are

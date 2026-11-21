@@ -18,6 +18,8 @@ import type {
   OptimisedPromptPreview,
 } from '@/shots/server/optimised-prompt-preview';
 import { cn } from '@/ui/utils';
+import { isKeyframeLine } from '@/shots/keyframe-lines';
+import { KEYFRAME_LINE_CLASS } from '@/ui/text-editor/keyframe-highlight';
 import { copyImageToClipboard } from '@/ui/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -167,7 +169,18 @@ export const OptimisedPromptPanel: React.FC<{
                 aria-labelledby={headingId}
                 className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm leading-relaxed text-foreground"
               >
-                {preview.prompt}
+                {preview.prompt.split('\n').map((line, index) => (
+                  // Lines never reorder: the index is the line.
+                  <span
+                    key={index}
+                    className={cn(
+                      'block min-h-[1lh]',
+                      isKeyframeLine(line) && KEYFRAME_LINE_CLASS
+                    )}
+                  >
+                    {line}
+                  </span>
+                ))}
               </p>
             )}
             {footnote && (

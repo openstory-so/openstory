@@ -1,20 +1,8 @@
 /**
- * Shot Duration Field — the duration control for a shot, on the video surface.
- *
- * Duration is a **video parameter**, not a prompt driver: `sceneInputContext`
- * (input-hash.ts) allowlists it out of the prompt hashes, and only the render
- * manifest's `durationMs` reads it. Changing it re-stales the render, never the
- * image/motion prompts — which is why this lives on the Motion tab next to the
- * model and the segment panel rather than under the scene script.
- *
- * It is also per-**shot**, not per-scene: `shots.durationMs` is the only store
- * (a scene's duration is the sum of its shots, which is exactly what
- * `tileSceneIntoSegments` packs against).
- *
- * Options are 1s through the model's max — editorial length, not the render
- * floor. A stored value outside the model's legal set (legacy data, or a
- * leftover pack under the min) is shown snapped, with a note. The render path
- * snaps it too (`resolveShotDuration`).
+ * A shot's length, on the Shot tab above its keyframes, whose lengths sum to
+ * it (#2386). Per shot (`shots.durationMs`); it stales the render, never the
+ * prompts. Options are 1s to the model's max; a stored value off the model's
+ * grid shows snapped with a note, as `resolveShotDuration` renders it.
  */
 
 import { Button } from '@/ui/shadcn/button';
