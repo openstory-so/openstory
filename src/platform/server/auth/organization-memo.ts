@@ -1,4 +1,5 @@
 import { waitUntil } from 'cloudflare:workers';
+import { holdSharedPromise } from '@/platform/server/instance-startup';
 import { getUserOrganizationMembership } from '@/platform/server/db/scoped';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 
@@ -7,9 +8,7 @@ import { loadComplianceState } from '@/platform/server/compliance/generation-gat
  * memoised per isolate for a few seconds (#2082). A sequence page fires ~40 server fns within a
  * second or two, and each resolved both from the primary — two round trips,
  * 350–450 ms apiece from Europe — before any work. Concurrent calls share one
- * in-flight read, held with `waitUntil` in the request that started it (#2421,
- * as #2073): workerd drops a promise's settlement once its request ends, which
- * would fail every other request awaiting it. A change to membership or enforcement is seen within
+ * in-flight read, held by the request that started it (#2421). A change to membership or enforcement is seen within
  * `ORGANIZATION_MEMO_TTL_MS` on an isolate that already answered for the user. Only
  * a GET is answered from the memo: a write reads both fresh (and refreshes
  * the memo), so a removed member or a new enforcement bites on the next
@@ -50,13 +49,7 @@ export async function resolveOrganizationAndCompliance(
     until: now + ORGANIZATION_MEMO_TTL_MS,
     value,
   });
-  // Settles either way: a rejection reaches the awaiters, not `waitUntil`.
-  waitUntil(
-    value.then(
-      () => undefined,
-      () => undefined
-    )
-  );
+  holdSharedPromise({ waitUntil }, value);
   // A failed read is not kept: the next call reads again.
   value.catch(() => organizationMemo.delete(memoKey));
   return value;

@@ -35,7 +35,7 @@ import {
 import { ensureLocalModelPricingSeeded } from '@/billing/server/seed-model-pricing';
 import { ensureSystemTemplatesSeeded } from '@/platform/server/db/seed-system-templates';
 import { authStartupPromise } from '@/platform/server/auth/config';
-import { holdInstanceStartup } from '@/platform/server/instance-startup';
+import { holdSharedPromise } from '@/platform/server/instance-startup';
 
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import {
@@ -185,7 +185,7 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
       // Before the await: a disconnect during this read must not stick the
       // isolate (#2073). Same hold for sign-in, below, once we know this
       // request will reach a route that can be the first `getAuth()` caller.
-      holdInstanceStartup(ctx, seeded);
+      holdSharedPromise(ctx, seeded);
       if (!readsNoTemplates) await seeded;
     }
 
@@ -200,7 +200,7 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     }
 
     if (!servesMedia) {
-      holdInstanceStartup(ctx, authStartupPromise());
+      holdSharedPromise(ctx, authStartupPromise());
     }
 
     let response = await handler.fetch(
