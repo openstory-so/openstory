@@ -2,6 +2,8 @@
 
 import type { MediaVia } from '@/models/via';
 import type { JsonValue } from '@/platform/server/db/schema';
+import { APP_SKU_KEY_PATTERN } from '@/gateway/apps';
+import { z } from 'zod';
 
 /** modelschemas provider ids: the `{provider}` in `/gateway/{provider}/{model}`. */
 export const GATEWAY_PROVIDERS = ['fal', 'byteplus', 'gemini', 'grok'] as const;
@@ -62,3 +64,15 @@ export const GATEWAY_ERROR_CODES = [
 export type GatewayErrorCode = (typeof GATEWAY_ERROR_CODES)[number];
 
 export type GatewayJobError = { code: GatewayErrorCode; message: string };
+
+/** `POST /api/v1/gateway/charges`: one of the caller app's declared SKUs. */
+export const gatewayChargeRequestSchema = z
+  .object({
+    sku: z
+      .string()
+      .regex(APP_SKU_KEY_PATTERN, 'A SKU key from Settings → Developer → Apps')
+      .describe(
+        "The key of an active SKU the app declared. Its price is the app's, never the request's."
+      ),
+  })
+  .meta({ id: 'GatewayChargeRequest' });

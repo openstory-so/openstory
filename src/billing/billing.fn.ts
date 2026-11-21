@@ -501,6 +501,7 @@ const VALID_TRANSACTION_TYPES: readonly TransactionType[] = [
   'credit_usage',
   'credit_adjustment',
   'credit_refund',
+  'credit_earned',
 ];
 
 function isTransactionType(value: string): value is TransactionType {

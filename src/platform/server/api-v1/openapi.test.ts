@@ -3,6 +3,7 @@ import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
 import { apiCreateStyleSchema } from './style-input-schema';
 import { buildOpenApiDocument } from './openapi';
+import { gatewayChargeRequestSchema } from '@/gateway/schema';
 
 /** Collect every `$ref` string anywhere in the document. */
 function collectRefs(node: unknown, acc: string[] = []): string[] {
@@ -82,6 +83,41 @@ describe('buildOpenApiDocument', () => {
     const submit = doc.paths['/api/v1/gateway/{provider}/{model}'].post;
     expect(submit.responses['402'].description).toMatch(/SPEND_CAP_EXCEEDED/);
     expect(submit.responses['403'].description).toMatch(/APP_SUSPENDED/);
+  });
+
+  it('documents the estimate and the app charge with their refusals', () => {
+    const estimate =
+      doc.paths['/api/v1/gateway/estimate/{provider}/{model}'].post;
+    expect(estimate.parameters.map((p: { name: string }) => p.name)).toEqual([
+      'provider',
+      'model',
+    ]);
+    expect(estimate.responses['400']).toBeDefined();
+    expect(estimate.responses['403'].description).toMatch(/GRANT_REQUIRED/);
+    expect(estimate.responses['403'].description).toMatch(/APP_SUSPENDED/);
+    expect(
+      estimate.responses['200'].content['application/json'].schema
+    ).toEqual({ $ref: '#/components/schemas/GatewayEstimate' });
+    expect(doc.components.schemas.GatewayEstimate.required).toEqual(
+      expect.arrayContaining(['lines', 'totalMicros', 'remainingMicros'])
+    );
+
+    const charge = doc.paths['/api/v1/gateway/charges'].post;
+    expect(charge.responses['201'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GatewayCharge',
+    });
+    expect(charge.responses['403'].description).toMatch(/USER_PAYS_ONLY/);
+    expect(charge.responses['403'].description).toMatch(/SKU_NOT_APPROVED/);
+    expect(charge.responses['402'].description).toMatch(/SPEND_CAP_EXCEEDED/);
+    expect(charge.responses['404'].description).toMatch(/UNKNOWN_SKU/);
+    expect(
+      charge.parameters.find(
+        (p: { name: string }) => p.name === 'Idempotency-Key'
+      )?.required
+    ).toBe(true);
+    const example = charge.requestBody.content['application/json'].example;
+    expect(() => gatewayChargeRequestSchema.parse(example)).not.toThrow();
+    expect(doc.components.schemas).toHaveProperty('GatewayChargeRequest');
   });
 
   it('documents the create-style endpoint with a valid example and a 409', () => {

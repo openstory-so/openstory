@@ -66,7 +66,8 @@ import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
 import { gatewayJobs } from './gateway-jobs';
 import { chargeLines } from './charge-lines';
-import { gatewayApps, gatewayGrants } from './gateway-apps';
+import { gatewayAppSkus, gatewayApps, gatewayGrants } from './gateway-apps';
+import { gatewayEarnings } from './gateway-earnings';
 import {
   assistantInterrupts,
   assistantMessages,
@@ -341,8 +342,12 @@ export { chargeLines };
 export type { ChargeLine } from './charge-lines';
 
 // Gateway apps and grants (docs/architecture/model-gateway.md)
-export { gatewayApps, gatewayGrants };
-export type { GatewayApp, GatewayGrant } from './gateway-apps';
+export { gatewayApps, gatewayGrants, gatewayAppSkus };
+export type { GatewayApp, GatewayAppSku, GatewayGrant } from './gateway-apps';
+
+// Gateway earnings: payee lines held, then matured into wallet credit (docs/architecture/model-gateway.md)
+export { gatewayEarnings };
+export type { GatewayEarning } from './gateway-earnings';
 
 // In-app assistant threads and their TanStack AI persistence stores (#2155)
 export {
@@ -593,6 +598,8 @@ export const schema = {
   chargeLines,
   gatewayApps,
   gatewayGrants,
+  gatewayAppSkus,
+  gatewayEarnings,
   assistantThreads,
   assistantMessages,
   assistantRuns,

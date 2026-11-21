@@ -1,4 +1,7 @@
-/** `GET /api/v1/gateway/jobs/$id`: organization-scoped, so another organization's job is a 404. */
+/**
+ * `GET /api/v1/gateway/jobs/$id`: another organization's job is a 404, and so
+ * is another OAuth client's; an `osk_` key reads the organization's jobs.
+ */
 
 import { NotFoundError } from '@/platform/errors';
 import { longPoll } from '@/platform/server/api-v1/wait';
@@ -28,12 +31,18 @@ export async function gatewayJobResource(
 export async function readGatewayJob(
   scopedDb: GatewayJobsDb,
   id: string,
-  opts: { origin: string; waitMs: number; signal?: AbortSignal }
+  opts: {
+    origin: string;
+    waitMs: number;
+    signal?: AbortSignal;
+    /** The OAuth caller's client; null for an `osk_` key or a session. */
+    oauthClientId: string | null;
+  }
 ): Promise<GatewayJobResource> {
   const { value: job } = await longPoll({
     waitMs: opts.waitMs,
     signal: opts.signal,
-    load: () => scopedDb.gatewayJobs.getById(id),
+    load: () => scopedDb.gatewayJobs.getForCaller(id, opts.oauthClientId),
     cursor: (row) => (row ? `${row.status}:${row.updatedAt.getTime()}` : ''),
     done: (row) => !row || isTerminalGatewayJob(row),
   });

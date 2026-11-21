@@ -28,6 +28,7 @@ import {
 } from '@/gateway/server/providers';
 import { settleGatewayJob } from '@/gateway/server/settle';
 import { storeGatewayOutput } from '@/gateway/server/storage';
+import type { AppMargin } from '@/gateway/server/user-pays';
 import {
   RateCardError,
   type RateCard,
@@ -57,6 +58,8 @@ export interface GatewayGenerationWorkflowInput extends UserWorkflowContext {
   oauthClientId: string | null;
   /** The registered app that client is, at submit. */
   appId: string | null;
+  /** The margin applied at submit and its payee; the hold included it. */
+  appMargin: AppMargin | null;
 }
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -223,6 +226,7 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         platformFeeBps: event.payload.platformFeeBps,
         oauthClientId: event.payload.oauthClientId,
         appId: event.payload.appId,
+        appMargin: event.payload.appMargin,
         usedOwnKey: false,
         idempotencyKey: `${event.instanceId}:gateway-settle`,
         result: { outputs, via },
