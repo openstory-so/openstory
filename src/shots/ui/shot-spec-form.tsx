@@ -553,6 +553,7 @@ function KeyframeFields({
       {rows.map((row, index) => {
         const last = index === rows.length - 1;
         const length = lengthOf(index);
+        const past = row.at >= shotSeconds;
         // Whole seconds that leave the last row at least one, plus its own.
         const longest = Math.floor(length + lastLength - 1);
         const items = [
@@ -571,41 +572,48 @@ function KeyframeFields({
             <div className="flex flex-col gap-1">
               <input type="hidden" name="keyframeAt" value={row.at} />
               <div className="flex min-h-8 items-center gap-2">
-                <Select
-                  value={String(length)}
-                  items={items}
-                  onValueChange={(value) => {
-                    if (value == null) return;
-                    // Every later row moves with it; the last absorbs it.
-                    const shift = Number(value) - length;
-                    change(
-                      rows.map((other, at) =>
-                        at > index
-                          ? { ...other, at: roundSeconds(other.at + shift) }
-                          : other
-                      )
-                    );
-                  }}
-                  // The last takes what is left of the shot.
-                  disabled={disabled || last}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="w-20 tabular-nums"
-                    aria-label={`Keyframe ${index + 1} length`}
+                {/* A video upload can shorten the shot under a keyframe. */}
+                {!past && (
+                  <Select
+                    value={String(length)}
+                    items={items}
+                    onValueChange={(value) => {
+                      if (value == null) return;
+                      // Every later row moves with it; the last absorbs it.
+                      const shift = Number(value) - length;
+                      change(
+                        rows.map((other, at) =>
+                          at > index
+                            ? { ...other, at: roundSeconds(other.at + shift) }
+                            : other
+                        )
+                      );
+                    }}
+                    // The last takes what is left of the shot.
+                    disabled={disabled || last}
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {items.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <SelectTrigger
+                      size="sm"
+                      className="w-20 tabular-nums"
+                      aria-label={`Keyframe ${index + 1} length`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {last ? `${row.at}s–end` : `${row.at}–${endOf(index)}s`}
+                  {past
+                    ? `Starts at ${row.at}s, past the end of this ${shotSeconds}s shot`
+                    : last
+                      ? `${row.at}s–end`
+                      : `${row.at}–${endOf(index)}s`}
                 </span>
                 <div className="flex items-center gap-1 ms-auto">
                   <Button

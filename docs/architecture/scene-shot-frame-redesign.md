@@ -200,7 +200,9 @@ role is still unused.
   `setShotDuration` (the inspector and `update_shot`), which refuses a length
   its keyframes do not fit: remove the keyframe, then shorten. It also
   refuses while a rewrite is in flight, whose keyframes are timed against the
-  old length. A video upload sets the length without this check.
+  old length. A video upload sets the length without this check; the inspector
+  marks a keyframe it left past the end, and a save is refused until it is
+  moved or removed.
 - **The form shows lengths.** Stored as start seconds; the inspector's row
   shows how long the stage runs, and the last runs to the end, so the lengths
   always sum to the shot. Changing a length moves every later keyframe and
