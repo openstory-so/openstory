@@ -4,11 +4,16 @@
  * prompt is replaced only when the user says so.
  */
 
-import { useRef, useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import { Fragment, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Separator } from '@/ui/shadcn/separator';
 import { errorMessage } from '@/platform/errors';
 import {
   shotSpecEditSchema,
+  specKeyframes,
+  type ShotKeyframe,
+  type ShotSpecEdit,
   type StoredShotSpec,
 } from '@/shots/shot-list.schema';
 import {
@@ -34,6 +39,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import type { MentionItem } from './prompt-mention/mention-items';
@@ -113,12 +125,15 @@ const GROUPS: { label: string; fields: Field[] }[] = [
   },
 ];
 
-/** The spec read off the form. */
-function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
+/** The spec read off the form. A keyframe row with no action is dropped. */
+function specFromForm(form: FormData, spec: StoredShotSpec): ShotSpecEdit {
   const value = (name: string, fallback: string) => {
     const entry = form.get(name);
     return typeof entry === 'string' ? entry : fallback;
   };
+  const cameras = form
+    .getAll('keyframeCamera')
+    .map((entry) => (typeof entry === 'string' ? entry : ''));
   return {
     framing: {
       shotSize: value('shotSize', spec.framing.shotSize),
@@ -130,6 +145,17 @@ function specFromForm(form: FormData, spec: StoredShotSpec): StoredShotSpec {
       ),
     },
     action: value('action', spec.action),
+    keyframes: form.getAll('keyframeAction').flatMap((action, index) =>
+      typeof action === 'string' && action.trim().length > 0
+        ? [
+            {
+              atSeconds: Number(form.getAll('keyframeAt')[index]),
+              action,
+              camera: cameras[index] ?? '',
+            },
+          ]
+        : []
+    ),
     cameraMovement: {
       move: value('move', spec.cameraMovement.move),
       pacing: value('pacing', spec.cameraMovement.pacing),
@@ -147,9 +173,11 @@ function writtenLabel(visual: boolean, motion: boolean): string {
 export function ShotSpecForm({
   sequenceId,
   shotId,
+  shotSeconds,
 }: {
   sequenceId: string;
   shotId: string;
+  shotSeconds: number;
 }) {
   const { data } = useShotSpec({ sequenceId, shotId });
   if (!data) {
@@ -173,6 +201,7 @@ export function ShotSpecForm({
       key={JSON.stringify(data.spec)}
       sequenceId={sequenceId}
       shotId={shotId}
+      shotSeconds={shotSeconds}
       spec={data.spec}
       verdict={data.verdict}
       visualWritten={data.visualWritten}
@@ -184,6 +213,7 @@ export function ShotSpecForm({
 function SpecFields({
   sequenceId,
   shotId,
+  shotSeconds,
   spec,
   verdict,
   visualWritten,
@@ -191,6 +221,7 @@ function SpecFields({
 }: {
   sequenceId: string;
   shotId: string;
+  shotSeconds: number;
   spec: StoredShotSpec;
   verdict: 'current' | 'stale' | 'missing' | 'updating';
   visualWritten: boolean;
@@ -202,7 +233,7 @@ function SpecFields({
   // Remounts the fields on Cancel, back to the saved spec.
   const [resetCount, setResetCount] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const [pending, setPending] = useState<StoredShotSpec | null>(null);
+  const [pending, setPending] = useState<ShotSpecEdit | null>(null);
   const updating = verdict === 'updating';
   const status = updating
     ? 'Rewriting…'
@@ -212,7 +243,7 @@ function SpecFields({
         ? 'Script changed since it was written'
         : '';
 
-  const submit = (next: StoredShotSpec, replace: boolean) => {
+  const submit = (next: ShotSpecEdit, replace: boolean) => {
     setPending(null);
     save.mutate(
       {
@@ -281,7 +312,12 @@ function SpecFields({
                 <SpecField
                   key={`${field.name}-${resetCount}`}
                   id={`${shotId}-${field.name}`}
-                  field={field}
+                  field={
+                    // With keyframes, the shot's action sums up the take.
+                    field.name === 'action' && specKeyframes(spec).length > 0
+                      ? { ...field, label: 'Action (whole take)' }
+                      : field
+                  }
                   initial={field.read(spec)}
                   disabled={updating || save.isPending}
                   mentionItems={mentionItems}
@@ -289,6 +325,17 @@ function SpecFields({
                   onEdit={() => setDirty(true)}
                 />
               ))}
+              {group.label === 'Motion' && (
+                <KeyframeFields
+                  key={`keyframes-${resetCount}`}
+                  initial={specKeyframes(spec)}
+                  shotSeconds={shotSeconds}
+                  disabled={updating || save.isPending}
+                  mentionItems={mentionItems}
+                  onMentionRename={onMentionRename}
+                  onEdit={() => setDirty(true)}
+                />
+              )}
             </div>
           ))}
         </fieldset>
@@ -425,3 +472,234 @@ function SpecField({
     </div>
   );
 }
+
+type KeyframeRow = {
+  key: number;
+  /** Seconds from the start of the shot. */
+  at: number;
+  action: string;
+  camera: string;
+};
+
+/**
+ * Keyframes (#2386): the timed stages of a long take, one row each. A row
+ * shows its length; the last runs to the end, so the lengths sum to the shot.
+ */
+function KeyframeFields({
+  initial,
+  shotSeconds,
+  disabled,
+  mentionItems,
+  onMentionRename,
+  onEdit,
+}: {
+  initial: readonly ShotKeyframe[];
+  shotSeconds: number;
+  disabled: boolean;
+  mentionItems: MentionItem[];
+  onMentionRename: (item: MentionItem, name: string) => void;
+  onEdit: () => void;
+}) {
+  const [rows, setRows] = useState<KeyframeRow[]>(() =>
+    initial.map((keyframe, key) => ({
+      key,
+      at: keyframe.atSeconds,
+      action: keyframe.action,
+      camera: keyframe.camera,
+    }))
+  );
+  const nextKey = useRef(initial.length);
+  // The editor re-emits on mount; only a change after focus is an edit.
+  const focused = useRef(false);
+  const change = (next: KeyframeRow[]) => {
+    setRows(next);
+    onEdit();
+  };
+  const patch = (key: number, fields: Partial<KeyframeRow>) =>
+    rows.map((row) => (row.key === key ? { ...row, ...fields } : row));
+  const endOf = (index: number) => rows[index + 1]?.at ?? shotSeconds;
+  const lengthOf = (index: number) =>
+    roundSeconds(endOf(index) - (rows[index]?.at ?? 0));
+  const lastLength = lengthOf(rows.length - 1);
+  /** A new row takes the second half of the row before it. */
+  const insertAfter = (index: number) => {
+    const before = rows[index];
+    const row = {
+      key: nextKey.current++,
+      at: before ? before.at + Math.ceil(lengthOf(index) / 2) : 0,
+      action: '',
+      camera: '',
+    };
+    change([...rows.slice(0, index + 1), row, ...rows.slice(index + 1)]);
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          Keyframes
+        </span>
+        {rows.length === 0 && (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={disabled}
+            onClick={() => insertAfter(-1)}
+          >
+            Add keyframe
+          </Button>
+        )}
+      </div>
+      {rows.map((row, index) => {
+        const last = index === rows.length - 1;
+        const length = lengthOf(index);
+        const past = row.at >= shotSeconds;
+        // Whole seconds that leave the last row at least one, plus its own.
+        const longest = Math.floor(length + lastLength - 1);
+        const items = [
+          ...new Set([
+            ...Array.from({ length: Math.max(0, longest) }, (_, n) => n + 1),
+            length,
+          ]),
+        ]
+          .sort((a, b) => a - b)
+          .map((seconds) => ({ value: String(seconds), label: `${seconds}s` }));
+        const actionId = `keyframe-${row.key}-action`;
+        const cameraId = `keyframe-${row.key}-camera`;
+        return (
+          <Fragment key={row.key}>
+            {index > 0 && <Separator />}
+            <div className="flex flex-col gap-1">
+              <input type="hidden" name="keyframeAt" value={row.at} />
+              <div className="flex min-h-8 items-center gap-2">
+                {/* A video upload can shorten the shot under a keyframe. */}
+                {!past && (
+                  <Select
+                    value={String(length)}
+                    items={items}
+                    onValueChange={(value) => {
+                      if (value == null) return;
+                      // Every later row moves with it; the last absorbs it.
+                      const shift = Number(value) - length;
+                      change(
+                        rows.map((other, at) =>
+                          at > index
+                            ? { ...other, at: roundSeconds(other.at + shift) }
+                            : other
+                        )
+                      );
+                    }}
+                    // The last takes what is left of the shot.
+                    disabled={disabled || last}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-20 tabular-nums"
+                      aria-label={`Keyframe ${index + 1} length`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {past
+                    ? `Starts at ${row.at}s, past the end of this ${shotSeconds}s shot`
+                    : last
+                      ? `${row.at}s–end`
+                      : `${row.at}–${endOf(index)}s`}
+                </span>
+                <div className="flex items-center gap-1 ms-auto">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() =>
+                      // The first row's time goes to the next; any other's to the one before.
+                      change(
+                        rows
+                          .filter((other) => other.key !== row.key)
+                          .map((other, at) =>
+                            index === 0 && at === 0
+                              ? { ...other, at: row.at }
+                              : other
+                          )
+                      )
+                    }
+                    aria-label={`Delete keyframe ${index + 1}`}
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    // A one-second row has no half to give.
+                    disabled={disabled || length < 2}
+                    onClick={() => insertAfter(index)}
+                    aria-label={`Add a keyframe after keyframe ${index + 1}`}
+                  >
+                    <Plus aria-hidden />
+                  </Button>
+                </div>
+              </div>
+              <label htmlFor={actionId} className="text-xs">
+                Action
+              </label>
+              <MarkdownEditor
+                id={actionId}
+                aria-label={`Keyframe ${index + 1} action`}
+                placeholder="What happens in this stage"
+                value={row.action}
+                onValueChange={(action) => {
+                  const next = patch(row.key, { action });
+                  if (focused.current) change(next);
+                  else setRows(next);
+                }}
+                onFocus={() => {
+                  focused.current = true;
+                }}
+                disabled={disabled}
+                mentionItems={mentionItems}
+                onMentionRename={onMentionRename}
+              />
+              <input type="hidden" name="keyframeAction" value={row.action} />
+              <label htmlFor={cameraId} className="text-xs">
+                Camera
+              </label>
+              <MarkdownEditor
+                id={cameraId}
+                aria-label={`Keyframe ${index + 1} camera`}
+                placeholder="Where the camera is in this stage"
+                value={row.camera}
+                onValueChange={(camera) => {
+                  const next = patch(row.key, { camera });
+                  if (focused.current) change(next);
+                  else setRows(next);
+                }}
+                onFocus={() => {
+                  focused.current = true;
+                }}
+                disabled={disabled}
+                className="min-h-9 py-1.5"
+                mentionItems={mentionItems}
+                onMentionRename={onMentionRename}
+              />
+              <input type="hidden" name="keyframeCamera" value={row.camera} />
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Seconds to one decimal, the grain a keyframe is stored at. */
+const roundSeconds = (seconds: number) => Math.round(seconds * 10) / 10;

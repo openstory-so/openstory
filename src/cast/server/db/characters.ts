@@ -1413,7 +1413,9 @@ export function createCharactersMethods(db: Database, organizationId: string) {
             isNull(sequenceCast.removedAt)
           ),
           characters.id,
-          page
+          page,
+          // By script id; SQLite picks its own order otherwise (#2416).
+          sequenceCast.scriptCharacterId
         ),
         looks.listBySequence(sequenceId),
       ]);

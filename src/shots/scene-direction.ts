@@ -16,11 +16,8 @@ export function sceneDirection(
   return {
     location: scene.metadata?.location?.trim() || '',
     timeOfDay,
-    lightingSetup:
-      scene.continuity?.lightingSetup?.trim() ||
-      (timeOfDay
-        ? `Natural lighting appropriate to ${timeOfDay}`
-        : 'Natural, even lighting'),
+    // Unknown lighting is left unsaid: a stock line fights the style's grade.
+    lightingSetup: scene.continuity?.lightingSetup?.trim() || '',
     colorPalette:
       scene.continuity?.colorPalette?.trim() ||
       style?.look.colorPalette.join(', ') ||

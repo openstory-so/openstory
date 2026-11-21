@@ -13,7 +13,7 @@ import { sceneDirection } from './scene-direction';
  *
  *   start-frame visual prompt = scene context + shot framing/start-state
  *   motion prompt             = shot action + direction + camera movement
- *                               + sound cue
+ *                               + sound cue + keyframe lines
  *                               (reference-only prefixes unique framing;
  *                               scene lighting/palette/look stay on the scene)
  *
@@ -23,7 +23,8 @@ import { sceneDirection } from './scene-direction';
 
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import type { MotionAudio } from './scene-analysis.schema';
-import type { StoredShotSpec } from './shot-list.schema';
+import { keyframeLines, ONE_TAKE_LEAD } from './keyframe-lines';
+import { specKeyframes, type StoredShotSpec } from './shot-list.schema';
 
 /** Join non-empty parts with a separator, dropping blanks. */
 function joinParts(parts: ReadonlyArray<string>, sep = ', '): string {
@@ -91,6 +92,36 @@ export function deriveStillPrompt(
   ]);
 }
 
+/** Sentence parts without their own full stop, so a join never doubles one. */
+function sentences(parts: ReadonlyArray<string>, sep: string): string {
+  return joinParts(
+    parts.map((part) => part.trim().replace(/\.+$/, '')),
+    sep
+  );
+}
+
+/** A keyframed take: the take, its camera path, the action, then the opening frame (#2386). */
+function oneTakeBody(spec: StoredShotSpec, referenceOnly: boolean): string {
+  const { action, direction, cameraMovement } = spec;
+  // The move is a path in prose; pacing qualifies it, so it trails.
+  const pacing = cameraMovement.pacing.trim();
+  const cameraPhrase = sentences(
+    [cameraMovement.move, pacing.charAt(0).toLowerCase() + pacing.slice(1)],
+    ', '
+  );
+  const framing = referenceOnly ? sentences(framingParts(spec), ', ') : '';
+  return sentences(
+    [
+      ONE_TAKE_LEAD,
+      cameraPhrase ? `Camera: ${cameraPhrase}` : '',
+      action,
+      direction,
+      framing ? `Opening frame: ${framing}` : '',
+    ],
+    '. '
+  );
+}
+
 /**
  * Motion text: action, direction and camera move, plus the sound cue as
  * audio direction. Reference-only has no still, so the opening frame lives
@@ -103,18 +134,23 @@ export function deriveMotionPrompt(
   options: { referenceOnly: boolean }
 ): { text: string; audio: MotionAudio } {
   const { action, direction, cameraMovement, soundCue } = spec;
+  const lines = keyframeLines(specKeyframes(spec));
+  if (lines.length > 0) {
+    return {
+      text: [oneTakeBody(spec, options.referenceOnly), ...lines].join('\n'),
+      audio: { ambientSound: soundCue.trim(), soundEffects: [] },
+    };
+  }
   const cameraPhrase = joinParts(
     [cameraMovement.pacing, cameraMovement.move],
     ' '
   );
-  const motion = joinParts(
-    [action, direction, cameraPhrase ? `Camera: ${cameraPhrase}` : ''],
-    '. '
-  );
+  const camera = cameraPhrase ? `Camera: ${cameraPhrase}` : '';
+  const motion = joinParts([action, direction, camera], '. ');
+  const framing = options.referenceOnly ? joinParts(framingParts(spec)) : '';
+  const body = joinParts([framing, motion], '. ');
   return {
-    text: options.referenceOnly
-      ? joinParts([joinParts(framingParts(spec)), motion], '. ')
-      : motion,
+    text: body,
     audio: { ambientSound: soundCue.trim(), soundEffects: [] },
   };
 }

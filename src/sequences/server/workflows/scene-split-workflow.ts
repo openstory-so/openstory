@@ -87,6 +87,7 @@ import {
   formatCastForShotList,
   formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
+  longestTakeSeconds,
 } from '@/shots/shot-list-pass';
 import {
   shotListPassResultSchema,
@@ -1031,6 +1032,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 // hold the lines put in it, or the recorded take overruns the
                 // clip and the model's reference-audio window.
                 dialogueWordsPerSecond: String(DIALOGUE_WORDS_PER_SECOND),
+                longestTakeSeconds: String(longestTakeSeconds(clipGrid)),
               },
               responseSchema: shotListPassResultSchema,
               maxTokens: shotListMaxTokens,

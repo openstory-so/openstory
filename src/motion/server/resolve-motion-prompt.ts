@@ -54,7 +54,7 @@ type ResolveMotionPromptInput = {
   motionPrompt: AssemblableMotionPrompt | null;
   /**
    * Scene character tags (`continuity.characterTags`) for model-specific
-   * in-prompt guards (e.g. Seedance's "Avoid jitter and bent limbs.").
+   * in-prompt guards. None today.
    */
   characterTags?: readonly string[];
   /** Fallback prompt when the shot has no motion prompt version. */

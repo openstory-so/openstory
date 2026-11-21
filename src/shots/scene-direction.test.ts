@@ -70,9 +70,9 @@ describe('scene direction ownership', () => {
       sceneDirection({ continuity: { colorPalette: '  ' } }, style).colorPalette
     ).toBe('blue, silver');
   });
-  it('defaults lighting from time of day, independently of style lighting', () => {
+  it('leaves unknown lighting unsaid', () => {
     expect(
       sceneDirection({ metadata: { timeOfDay: 'dawn' } }, style).lightingSetup
-    ).toBe('Natural lighting appropriate to dawn');
+    ).toBe('');
   });
 });

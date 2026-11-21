@@ -11,6 +11,8 @@ import {
 } from '@/platform/errors';
 import {
   canonicalStoredShotSpec,
+  keyframeFault,
+  specKeyframes,
   type shotSpecEditSchema,
 } from '@/shots/shot-list.schema';
 import {
@@ -18,7 +20,9 @@ import {
   regenerateShotPrompt,
 } from './regenerate-shot-prompt';
 import type { ShotEditContext } from './shot-context';
+import { durationSecondsOf } from '@/shots/packed-clip-window';
 import { drawSpecSketch } from './shot-preview';
+import type { Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
@@ -113,6 +117,31 @@ export async function restoreShotPromptVersion(
   return { variantId: inserted.id };
 }
 
+/**
+ * Set a shot's length. Refused while its keyframes would not fit, or while a
+ * rewrite timed against the old length is in flight (#2386).
+ */
+export async function setShotDuration(
+  scopedDb: ScopedDb,
+  shot: Pick<Shot, 'id' | 'pendingSpecVersionId'>,
+  durationSeconds: number
+) {
+  if (shot.pendingSpecVersionId) {
+    throw new ConflictError(
+      'This shot is being rewritten. Try again when it lands.'
+    );
+  }
+  const shotId = shot.id;
+  const selected = await scopedDb.shotSpecVersions.getSelected(shotId);
+  const fault = selected
+    ? keyframeFault(specKeyframes(selected.spec), durationSeconds)
+    : null;
+  if (fault) throw new ValidationError(`${fault}. Remove it first.`);
+  return scopedDb.shots.update(shotId, {
+    durationMs: Math.round(durationSeconds * 1000),
+  });
+}
+
 /** The shot's selected spec, how current it is, and which prompts the user wrote. */
 export async function readShotSpec(
   context: Pick<
@@ -126,8 +155,10 @@ export async function readShotSpec(
     scopedDb.framePromptVersions.getSelected(frame.id),
     scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
   ]);
+  const selected = state?.selected?.spec;
   return {
-    spec: state?.selected?.spec ?? null,
+    // Always with `keyframes`, so what is read can be sent straight back.
+    spec: selected ? { ...selected, keyframes: specKeyframes(selected) } : null,
     verdict: state?.verdict ?? ('missing' as const),
     visualWritten: visual?.source === 'user-edit',
     motionWritten: motion?.source === 'user-edit',
@@ -163,6 +194,9 @@ export async function saveShotSpec(
       'This shot is being rewritten. Try again when it lands.'
     );
   }
+  const shotSeconds = durationSecondsOf(shot.durationMs);
+  const fault = keyframeFault(specKeyframes(edit), shotSeconds);
+  if (fault) throw new ValidationError(fault);
   const spec = canonicalStoredShotSpec(edit);
   const unchanged =
     state.selected !== null &&

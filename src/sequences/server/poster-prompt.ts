@@ -28,6 +28,7 @@ export type PreviewShotScene = {
 /** Bible fields a preview draws a character from. */
 export type PreviewCharacter = Pick<
   CharacterBibleEntry,
+  | 'characterId'
   | 'name'
   | 'age'
   | 'gender'
@@ -159,7 +160,7 @@ function sketchLook(part: string): string {
 function previewCastForShot(
   shotText: string,
   cast: ReadonlyArray<PreviewCharacter>
-): string {
+): string[] {
   const text = shotText.toLowerCase();
   return (
     cast
@@ -170,6 +171,14 @@ function previewCastForShot(
           !entry.voiceOnly &&
           entry.name.trim().length > 0 &&
           text.includes(entry.name.trim().toLowerCase())
+      )
+      // By script id, so the prompt is the same in any cast order (#2416).
+      .sort((a, b) =>
+        a.characterId < b.characterId
+          ? -1
+          : a.characterId > b.characterId
+            ? 1
+            : 0
       )
       .slice(0, MAX_CAST_IN_SHOT)
       .map((entry) =>
@@ -190,7 +199,47 @@ function previewCastForShot(
       )
       .filter((line) => line.length > 0)
       .map((line) => `${line}.`)
-      .join(' ')
+  );
+}
+
+function everyOrder<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [[...items]];
+  return items.flatMap((item, i) =>
+    everyOrder(items.filter((_, j) => j !== i)).map((rest) => [item, ...rest])
+  );
+}
+
+function sketchExcerpt(shotText: string): string {
+  return shotText.slice(0, MAX_SHOT_TEXT_LENGTH).trim().replace(/\.+$/, '');
+}
+
+function sketchPrompt(excerpt: string, characters: readonly string[]): string {
+  return clampPrompt(
+    [
+      `One greyscale storyboard frame. ${excerpt}.`,
+      characters.length > 0 && `Characters: ${characters.join(' ')}`,
+      SKETCH_SUFFIX,
+      NO_TEXT_SUFFIX,
+    ]
+      .filter((part) => part)
+      .join(' '),
+    MAX_PREVIEW_PROMPT_LENGTH
+  );
+}
+
+/**
+ * The preview prompt with its characters in every order, the one
+ * `buildPreviewPrompt` writes first. A sketch from before #2416 was drawn in
+ * cast order. Delete after `LEGACY_HASH_UNTIL`.
+ */
+// ponytail: a pre-#2416 sketch naming five or more characters may have drawn a different four, and reads stale once.
+export function previewPromptsInAnyCastOrder(
+  shotText: string,
+  cast: ReadonlyArray<PreviewCharacter>
+): string[] {
+  const excerpt = sketchExcerpt(shotText);
+  return everyOrder(previewCastForShot(excerpt, cast)).map((characters) =>
+    sketchPrompt(excerpt, characters)
   );
 }
 
@@ -209,21 +258,6 @@ export function buildPreviewPrompt(
   shotText: string,
   cast: ReadonlyArray<PreviewCharacter>
 ): string {
-  const excerpt = shotText
-    .slice(0, MAX_SHOT_TEXT_LENGTH)
-    .trim()
-    .replace(/\.+$/, '');
-  const characters = previewCastForShot(excerpt, cast);
-
-  return clampPrompt(
-    [
-      `One greyscale storyboard frame. ${excerpt}.`,
-      characters && `Characters: ${characters}`,
-      SKETCH_SUFFIX,
-      NO_TEXT_SUFFIX,
-    ]
-      .filter((part) => part)
-      .join(' '),
-    MAX_PREVIEW_PROMPT_LENGTH
-  );
+  const excerpt = sketchExcerpt(shotText);
+  return sketchPrompt(excerpt, previewCastForShot(excerpt, cast));
 }

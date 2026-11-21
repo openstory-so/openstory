@@ -34,6 +34,7 @@ import { dbSceneId } from './scene-id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { typedFromEntries } from '@/platform/typed-object';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
+import { setShotDuration } from '@/shots/server/shot-content-edit';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -504,9 +505,7 @@ export const updateShotDurationFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(updateShotDurationSchema))
   .handler(async ({ data, context }) => {
     const { shot, scopedDb } = context;
-    const updated = await scopedDb.shots.update(shot.id, {
-      durationMs: Math.round(data.durationSeconds * 1000),
-    });
+    const updated = await setShotDuration(scopedDb, shot, data.durationSeconds);
     return updated ?? shot;
   });
 

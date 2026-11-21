@@ -18,6 +18,7 @@ const specShot = {
   durationSeconds: 3,
   dialogue: [],
   action: 'Maya turns',
+  keyframes: [],
   direction: 'slow',
   soundCue: '',
   cameraMovement: { move: 'push in', pacing: 'slow' },

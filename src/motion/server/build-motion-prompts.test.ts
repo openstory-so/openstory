@@ -299,22 +299,6 @@ describe('buildMotionShotPrompt', () => {
         expect(result).not.toContain('Single continuous shot, no cuts.');
       });
 
-      it('adds the jitter guard only when the scene has characters', () => {
-        const withCharacters = buildMotionShotPrompt({
-          motionPrompt: makeMotionPrompt(),
-          model,
-          characterTags: ['sarah', 'james'],
-        });
-        const withoutCharacters = buildMotionShotPrompt({
-          motionPrompt: makeMotionPrompt(),
-          model,
-          characterTags: [],
-        });
-
-        expect(withCharacters).toContain('Avoid jitter and bent limbs.');
-        expect(withoutCharacters).not.toContain('Avoid jitter and bent limbs.');
-      });
-
       it('omits dialogue and sound prose when absent, keeps guards', () => {
         const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt({
@@ -682,7 +666,6 @@ describe('buildPackedMotionPrompt', () => {
       /^INT\. HALLWAY - NIGHT\. single overhead bulb\. neo-noir\./
     );
     expect(packed.prompt.split('No BGM').length).toBe(2);
-    expect(packed.prompt.split('Avoid jitter and bent limbs.').length).toBe(2);
     expect(packed.prompt.indexOf('INT. HALLWAY')).toBeLessThan(
       packed.prompt.indexOf('Shot 1 (')
     );
