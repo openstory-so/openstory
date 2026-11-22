@@ -25,7 +25,7 @@ import {
 } from '@/shots/update-stale-depth';
 import { cn } from '@/ui/utils';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 type UpdateAllScope = {
   sequenceId: string;
@@ -36,8 +36,14 @@ type UpdateAllScope = {
 type UpdateAllDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Confirm with the chosen cascade depth; the dialog closes itself. */
-  onConfirm: (depth: UpdateStaleDepth) => void;
+  /**
+   * Confirm with the chosen cascade depth and, when videos re-render on a
+   * draft-capable model, the draft switch (#2424); else undefined.
+   */
+  onConfirm: (
+    depth: UpdateStaleDepth,
+    draftMotion: boolean | undefined
+  ) => void;
   /** Staleness of each out-of-date shot in scope — supplies the causes (#1194). */
   staleShots: ShotStaleness[];
   /** What the dry-run preview plans over (shot / scene / sequence). */
@@ -161,6 +167,8 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   // 'images' is the middle-ground default — the closest match to what
   // "Update all" did before depths existed.
   const [depth, setDepth] = useState<UpdateStaleDepth | null>('dialogue');
+  // null = the server's default: draft when a replaced clip is a draft.
+  const [draftChoice, setDraftChoice] = useState<boolean | null>(null);
   const { showCosts } = useShowCosts();
   const singleShotScope = scope.shotId != null;
 
@@ -194,10 +202,17 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
     (isError && depth != null ? 'dialogue' : null);
   const checked = (d: UpdateStaleDepth) =>
     selectedDepth != null && RANK[d] <= RANK[selectedDepth];
+  const videoDraft = preview?.videoDraft ?? null;
+  const draft = videoDraft ? (draftChoice ?? videoDraft.selected) : undefined;
+  const levelCost = (d: UpdateStaleDepth): Microdollars | null => {
+    if (d === 'video' && videoDraft)
+      return draft ? videoDraft.draftCost : videoDraft.finalCost;
+    return preview?.costByLevel[d] ?? null;
+  };
   const total = levels
     .filter((l) => checked(l.depth))
     .reduce<Microdollars | null>((acc, l) => {
-      const c = preview?.costByLevel[l.depth] ?? null;
+      const c = levelCost(l.depth);
       return acc == null || c == null ? null : addMicros(acc, c);
     }, ZERO_MICROS);
 
@@ -243,47 +258,64 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
               const locked =
                 selectedDepth != null &&
                 RANK[level.depth] < RANK[selectedDepth];
-              const cost = showCosts
-                ? costLabel(preview?.costByLevel[level.depth])
-                : null;
+              const cost = showCosts ? costLabel(levelCost(level.depth)) : null;
+              const draftRow = level.depth === 'video' &&
+                videoDraft &&
+                isChecked && (
+                  <label
+                    htmlFor="update-all-video-draft"
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-3 pl-9 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50"
+                  >
+                    <input
+                      id="update-all-video-draft"
+                      type="checkbox"
+                      checked={draft === true}
+                      onChange={(e) => setDraftChoice(e.currentTarget.checked)}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm">As 480p drafts</span>
+                  </label>
+                );
               return (
-                <label
-                  key={level.depth}
-                  htmlFor={`update-all-level-${level.depth}`}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-                    'has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50',
-                    isChecked
-                      ? 'border-primary/40 bg-primary/5'
-                      : 'hover:bg-muted/50',
-                    locked && 'cursor-default'
-                  )}
-                >
-                  <input
-                    id={`update-all-level-${level.depth}`}
-                    type="checkbox"
-                    checked={isChecked}
-                    disabled={locked}
-                    onChange={(e) =>
-                      toggle(level.depth, e.currentTarget.checked)
-                    }
-                    aria-label={UPDATE_STALE_DEPTH_LABELS[level.depth]}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <span className="flex min-w-0 grow items-baseline justify-between gap-2">
-                    <span className="text-sm">
-                      {index > 0 && (
-                        <span className="text-muted-foreground">+ </span>
-                      )}
-                      {level.label}
-                    </span>
-                    {cost && (
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {cost}
-                      </span>
+                <Fragment key={level.depth}>
+                  <label
+                    htmlFor={`update-all-level-${level.depth}`}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
+                      'has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50',
+                      isChecked
+                        ? 'border-primary/40 bg-primary/5'
+                        : 'hover:bg-muted/50',
+                      locked && 'cursor-default'
                     )}
-                  </span>
-                </label>
+                  >
+                    <input
+                      id={`update-all-level-${level.depth}`}
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={locked}
+                      onChange={(e) =>
+                        toggle(level.depth, e.currentTarget.checked)
+                      }
+                      aria-label={UPDATE_STALE_DEPTH_LABELS[level.depth]}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <span className="flex min-w-0 grow items-baseline justify-between gap-2">
+                      <span className="text-sm">
+                        {index > 0 && (
+                          <span className="text-muted-foreground">+ </span>
+                        )}
+                        {level.label}
+                      </span>
+                      {cost && (
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {cost}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                  {draftRow}
+                </Fragment>
               );
             })
           )}
@@ -292,7 +324,13 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             disabled={selectedDepth == null}
-            onClick={() => selectedDepth && onConfirm(selectedDepth)}
+            onClick={() =>
+              selectedDepth &&
+              onConfirm(
+                selectedDepth,
+                RANK[selectedDepth] >= RANK.video ? draft : undefined
+              )
+            }
           >
             {showCosts && selectedDepth != null && total != null
               ? `Update · ~${microsToDisplayUsd(total)}`

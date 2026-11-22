@@ -42,6 +42,8 @@ import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { computePlan } from '@/shots/server/update-stale-plan';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { buildUpdateStalePreview } from '@/shots/server/update-stale-preview';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   launchUpdateStale,
   prepareUpdateStale,
@@ -313,7 +315,8 @@ async function prepareGeneration(
     const estimateMicros = buildUpdateStalePreview(
       plan,
       await getEffectiveFalPricing(),
-      sequence.musicModel
+      sequence.musicModel,
+      await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials)
     ).costByLevel[request.depth];
     return {
       sequence,

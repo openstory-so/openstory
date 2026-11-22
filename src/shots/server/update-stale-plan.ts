@@ -195,6 +195,8 @@ export type PlanTarget = {
    * the same shape.
    */
   lipsyncVideo?: boolean;
+  /** The clip being replaced is an Ark draft (#2424); omitted when false. */
+  staleVideoDraft?: boolean;
   /**
    * A continue (#1818) renders the shot's FIRST video too; Update all never
    * does, so the render stands down when the selection is gone.
@@ -527,6 +529,8 @@ export async function planUpdateAll(args: {
   userId: string;
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
+  /** Render clips as Ark drafts; absent, {@link updateAllDraftMotion} decides. */
+  draftMotion?: boolean;
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
   const [generationPlan, allShots] = await Promise.all([
@@ -547,6 +551,7 @@ export async function planUpdateAll(args: {
     units: updateAllUnits(generationPlan, { depth, shotIds }),
     userId,
   });
+  plan.sequence.draftMotion = args.draftMotion ?? updateAllDraftMotion(plan);
   const unchecked = new Set(
     generationPlan
       .filter(
@@ -568,6 +573,16 @@ export async function planUpdateAll(args: {
       })),
     ],
   };
+}
+
+/** A stale draft re-renders as a draft (#2424), as does a draft-mode sequence. */
+export function updateAllDraftMotion(
+  plan: Pick<UpdateStalePlan, 'sequence' | 'targets'>
+): boolean {
+  return (
+    plan.sequence.draftMotion ||
+    plan.targets.some((target) => target.staleVideoDraft === true)
+  );
 }
 
 const SHOT_UNIT_KINDS = new Set<PlanUnitKind>([
@@ -934,6 +949,8 @@ type ShotVideoState = {
   hasVideo: boolean;
   selectedVersionId: string | null;
   selectedModel: string | null;
+  /** The selected clip is an Ark draft (#1756). */
+  selectedDraft: boolean;
   alreadyStale: boolean;
   generating: boolean;
   /** Absent on a segment assembled before drift existed: stale means picture. */
@@ -970,6 +987,7 @@ async function loadVideoStateByShot(
         hasVideo: segment.selectedVersion !== null,
         selectedVersionId: segment.selectedVersion?.id ?? null,
         selectedModel: segment.selectedVersion?.model ?? null,
+        selectedDraft: Boolean(segment.selectedVersion?.draftTaskId),
         alreadyStale: segment.stale,
         generating,
         drift: segment.drift ?? (segment.stale ? 'picture' : 'current'),
@@ -1185,6 +1203,9 @@ async function decideShotTarget(args: {
       imageModel,
       regenVideo: flags.regenVideo,
       ...(lipsyncVideo ? { lipsyncVideo: true as const } : {}),
+      ...(flags.regenVideo && videoState?.selectedDraft
+        ? { staleVideoDraft: true as const }
+        : {}),
       createsVideo: flags.regenVideo && !videoState?.hasVideo,
       staleVideoVersionId: flags.regenVideo
         ? (videoState?.selectedVersionId ?? null)

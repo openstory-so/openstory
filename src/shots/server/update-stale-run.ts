@@ -77,6 +77,8 @@ export async function prepareUpdateStale(args: {
   shotIds?: readonly string[];
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
+  /** The dialog's draft switch; absent, `updateAllDraftMotion` decides. */
+  draftMotion?: boolean;
 }): Promise<{ plan: UpdateStalePlan; creditFloorMicros: Microdollars }> {
   const { scopedDb, sequence, depth } = args;
   if (sequence.status === 'processing') {
@@ -104,6 +106,7 @@ export async function prepareUpdateStale(args: {
     depth,
     userId: args.userId,
     generationPlan: args.generationPlan,
+    draftMotion: args.draftMotion,
   });
   return { plan, creditFloorMicros };
 }

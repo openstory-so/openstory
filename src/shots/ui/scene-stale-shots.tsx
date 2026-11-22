@@ -40,7 +40,10 @@ type SceneStaleShotsProps = {
    * Regenerate out-of-date artifacts across these shots at the chosen
    * cascade depth (#1085) — rendered as a depth menu on the action.
    */
-  onUpdateAll?: (depth: UpdateStaleDepth) => void;
+  onUpdateAll?: (
+    depth: UpdateStaleDepth,
+    draftMotion: boolean | undefined
+  ) => void;
   isUpdating?: boolean;
 };
 
@@ -226,9 +229,9 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
             // Across scenes a position number names nothing on the rail;
             // the dialog says how many shots instead.
             shotNumberById={sceneChips ? undefined : numberByShotId}
-            onConfirm={(depth: UpdateStaleDepth) => {
+            onConfirm={(depth, draftMotion) => {
               setUpdateAllOpen(false);
-              onUpdateAll(depth);
+              onUpdateAll(depth, draftMotion);
             }}
           />
         </>

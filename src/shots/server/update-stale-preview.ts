@@ -19,7 +19,10 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  supportsDraftMode,
 } from '@/models/models';
+import { resolveVideoModel } from '@/models/resolve-asset-models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
@@ -45,6 +48,16 @@ export type UpdateStalePreview = {
    * signal for a component — never invent a number.
    */
   costByLevel: Record<UpdateStaleDepth, Microdollars | null>;
+  /**
+   * The draft switch for the re-rendered clips (#2424): on by default when
+   * the run would draft. Null when no clip can render as an Ark draft.
+   * `costByLevel.video` is the cost at `selected`.
+   */
+  videoDraft: {
+    selected: boolean;
+    draftCost: Microdollars | null;
+    finalCost: Microdollars | null;
+  } | null;
 };
 
 /** Fallback clip length for video pricing when the plan carries none. */
@@ -65,7 +78,9 @@ const addMaybe = (
 export function buildUpdateStalePreview(
   plan: UpdateStalePlan,
   pricing: FalPricingMap,
-  musicModel: string | null
+  musicModel: string | null,
+  /** Seedance submits to Ark for this organization (`seedanceRunsOnArk`). */
+  onArk: boolean
 ): UpdateStalePreview {
   const visual = plan.targets.filter((t) => t.regenVisual);
   const motion = plan.targets.filter((t) => t.regenMotion);
@@ -116,23 +131,45 @@ export function buildUpdateStalePreview(
       : 'video';
     speechChars[level] += ttsCharacterCount(job.voiced);
   }
-  const videosCost = sum(
-    videos.map((t) =>
-      t.lipsyncVideo
-        ? estimateLipsyncCost(
-            (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000
-          )
-        : estimateVideoCost(
-            videoModel,
-            (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-            {
-              pricing,
-              resolution: plan.sequence.resolution,
-              referenceOnly: !t.usesStartFrame,
-            }
-          )
-    )
-  );
+  const videosCost = (draft: boolean) =>
+    sum(
+      videos.map((t) =>
+        t.lipsyncVideo
+          ? estimateLipsyncCost(
+              (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000
+            )
+          : estimateVideoCost(
+              videoModel,
+              (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
+              {
+                pricing,
+                resolution:
+                  draft && supportsDraftMode(videoModel)
+                    ? DRAFT_RESOLUTION
+                    : plan.sequence.resolution,
+                referenceOnly: !t.usesStartFrame,
+              }
+            )
+      )
+    );
+  const videoLevelCost = (draft: boolean) =>
+    speechChars.video > 0
+      ? addMaybe(videosCost(draft), estimateTtsCost(speechChars.video))
+      : videosCost(draft);
+  // The model each clip renders with, as the run resolves it.
+  const draftable =
+    onArk &&
+    videos.some(
+      (t) =>
+        !t.lipsyncVideo &&
+        supportsDraftMode(
+          resolveVideoModel({
+            selectedVersionModel: t.motionRender.selectedModel,
+            sequenceModel: plan.sequence.videoModel,
+          })
+        )
+    );
+  const draftSelected = draftable && plan.sequence.draftMotion;
   const musicCost = music
     ? addMaybe(
         music.regenPrompt ? estimateLLMCost(1) : ZERO_MICROS,
@@ -164,11 +201,15 @@ export function buildUpdateStalePreview(
         speechChars.dialogue > 0
           ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
-      video:
-        speechChars.video > 0
-          ? addMaybe(videosCost, estimateTtsCost(speechChars.video))
-          : videosCost,
+      video: videoLevelCost(draftSelected),
       music: musicCost,
     },
+    videoDraft: draftable
+      ? {
+          selected: draftSelected,
+          draftCost: videoLevelCost(true),
+          finalCost: videoLevelCost(false),
+        }
+      : null,
   };
 }

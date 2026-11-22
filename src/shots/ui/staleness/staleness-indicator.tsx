@@ -78,7 +78,10 @@ type StalenessIndicatorProps = StalenessIndicatorBaseProps &
         density: 'status-line';
         artifact?: StalenessArtifact;
         onRegenerate?: () => void;
-        onRegenerateDepth?: (depth: UpdateStaleDepth) => void;
+        onRegenerateDepth?: (
+          depth: UpdateStaleDepth,
+          draftMotion: boolean | undefined
+        ) => void;
         /** The shot's staleness — explains "what changed" in the depth dialog (#1194). */
         staleness?: ShotStaleness;
         /** Dry-run preview scope for the depth dialog (#1194). Required with `onRegenerateDepth`. */
@@ -227,9 +230,9 @@ export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (
               onOpenChange={setUpdateAllOpen}
               staleShots={props.staleness ? [props.staleness] : []}
               scope={props.updateAllScope ?? { sequenceId: '' }}
-              onConfirm={(depth: UpdateStaleDepth) => {
+              onConfirm={(depth, draftMotion) => {
                 setUpdateAllOpen(false);
-                props.onRegenerateDepth?.(depth);
+                props.onRegenerateDepth?.(depth, draftMotion);
               }}
             />
           </>

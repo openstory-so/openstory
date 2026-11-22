@@ -147,6 +147,7 @@ const {
   claimTargets,
   findTargetMissingStartFrameMode,
   siblingPrompts,
+  updateAllDraftMotion,
 } = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
 type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
@@ -913,5 +914,22 @@ describe('saved sibling direction snapshots', () => {
       visual: [{ shotId: 'sibling', text: 'Close-up of the listener' }],
       motion: [{ shotId: 'sibling', text: 'Listener turns toward camera' }],
     });
+  });
+});
+
+describe('updateAllDraftMotion (#2424)', () => {
+  const plan = (draftMotion: boolean, staleVideoDraft?: boolean) =>
+    asStub<Parameters<typeof updateAllDraftMotion>[0]>({
+      sequence: { draftMotion },
+      targets: [{ staleVideoDraft }],
+    });
+
+  it('re-renders a stale draft as a draft', () => {
+    expect(updateAllDraftMotion(plan(false, true))).toBe(true);
+  });
+
+  it('follows the sequence when no replaced clip is a draft', () => {
+    expect(updateAllDraftMotion(plan(false))).toBe(false);
+    expect(updateAllDraftMotion(plan(true))).toBe(true);
   });
 });
