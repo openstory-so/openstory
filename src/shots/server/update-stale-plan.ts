@@ -410,6 +410,8 @@ export function siblingPrompts(
 
 export type UpdateStalePlan = {
   renderOptions?: PlanRenderOptions;
+  /** The dialog's draft switch for every clip (#2424); absent, each clip decides. */
+  draftOverride?: boolean;
   aspectRatio: AspectRatio;
   resolution: Resolution;
   sequence: PlanSequence;
@@ -529,7 +531,7 @@ export async function planUpdateAll(args: {
   userId: string;
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
-  /** Render clips as Ark drafts; absent, {@link updateAllDraftMotion} decides. */
+  /** Render every clip as an Ark draft or not; absent, {@link targetRendersDraft} decides per clip. */
   draftMotion?: boolean;
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
@@ -551,7 +553,6 @@ export async function planUpdateAll(args: {
     units: updateAllUnits(generationPlan, { depth, shotIds }),
     userId,
   });
-  plan.sequence.draftMotion = args.draftMotion ?? updateAllDraftMotion(plan);
   const unchecked = new Set(
     generationPlan
       .filter(
@@ -565,6 +566,9 @@ export async function planUpdateAll(args: {
   );
   return {
     ...plan,
+    ...(args.draftMotion === undefined
+      ? {}
+      : { draftOverride: args.draftMotion }),
     skipped: [
       ...plan.skipped,
       ...[...unchecked].map((id) => ({
@@ -575,13 +579,14 @@ export async function planUpdateAll(args: {
   };
 }
 
-/** A stale draft re-renders as a draft (#2424), as does a draft-mode sequence. */
-export function updateAllDraftMotion(
-  plan: Pick<UpdateStalePlan, 'sequence' | 'targets'>
+/** A clip drafts on the run's override, else in a draft-mode sequence or when it replaces a draft (#2424). */
+export function targetRendersDraft(
+  plan: Pick<UpdateStalePlan, 'sequence' | 'draftOverride'>,
+  target: Pick<PlanTarget, 'staleVideoDraft'>
 ): boolean {
   return (
-    plan.sequence.draftMotion ||
-    plan.targets.some((target) => target.staleVideoDraft === true)
+    plan.draftOverride ??
+    (plan.sequence.draftMotion || target.staleVideoDraft === true)
   );
 }
 

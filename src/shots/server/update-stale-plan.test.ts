@@ -147,7 +147,7 @@ const {
   claimTargets,
   findTargetMissingStartFrameMode,
   siblingPrompts,
-  updateAllDraftMotion,
+  targetRendersDraft,
 } = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
 type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
@@ -917,19 +917,26 @@ describe('saved sibling direction snapshots', () => {
   });
 });
 
-describe('updateAllDraftMotion (#2424)', () => {
-  const plan = (draftMotion: boolean, staleVideoDraft?: boolean) =>
-    asStub<Parameters<typeof updateAllDraftMotion>[0]>({
+describe('targetRendersDraft (#2424)', () => {
+  const plan = (draftMotion: boolean, draftOverride?: boolean) =>
+    asStub<Parameters<typeof targetRendersDraft>[0]>({
       sequence: { draftMotion },
-      targets: [{ staleVideoDraft }],
+      ...(draftOverride === undefined ? {} : { draftOverride }),
     });
+  const draftClip = { staleVideoDraft: true as const };
+  const finalClip = {};
 
-  it('re-renders a stale draft as a draft', () => {
-    expect(updateAllDraftMotion(plan(false, true))).toBe(true);
+  it('re-renders a stale draft as a draft and leaves a final a final', () => {
+    expect(targetRendersDraft(plan(false), draftClip)).toBe(true);
+    expect(targetRendersDraft(plan(false), finalClip)).toBe(false);
   });
 
-  it('follows the sequence when no replaced clip is a draft', () => {
-    expect(updateAllDraftMotion(plan(false))).toBe(false);
-    expect(updateAllDraftMotion(plan(true))).toBe(true);
+  it('drafts every clip in a Draft first sequence', () => {
+    expect(targetRendersDraft(plan(true), finalClip)).toBe(true);
+  });
+
+  it('lets the dialog override every clip', () => {
+    expect(targetRendersDraft(plan(true, false), draftClip)).toBe(false);
+    expect(targetRendersDraft(plan(false, true), finalClip)).toBe(true);
   });
 });

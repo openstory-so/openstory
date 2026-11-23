@@ -28,6 +28,7 @@ const target = (o: object) =>
     regenVideo: false,
     durationMs: 4000,
     imageModel: 'seedream_v5',
+    motionRender: { selectedModel: null },
     ...o,
   });
 
@@ -233,7 +234,14 @@ describe('buildUpdateStalePreview sheet reuse (#2017)', () => {
 });
 
 describe('buildUpdateStalePreview draft switch (#2424)', () => {
-  const draftPlan = (draftMotion: boolean) =>
+  const clip = (shotId: string, staleVideoDraft?: boolean) =>
+    target({
+      shotId,
+      regenVideo: true,
+      motionRender: { selectedModel: 'seedance_v2_5' },
+      ...(staleVideoDraft ? { staleVideoDraft } : {}),
+    });
+  const draftPlan = (draftMotion: boolean, targets = [clip('a')]) =>
     asStub<never>({
       aspectRatio: '16:9',
       sequence: {
@@ -241,24 +249,20 @@ describe('buildUpdateStalePreview draft switch (#2424)', () => {
         resolution: '1080p',
         draftMotion,
       },
-      targets: [
-        target({
-          shotId: 'a',
-          regenVideo: true,
-          motionRender: { selectedModel: 'seedance_v2_5' },
-        }),
-      ],
+      targets,
       music: null,
       dialogueSpeech: null,
       skipped: [],
       promptContext: null,
     });
-
-  it('offers drafts on Ark and prices both choices', () => {
+  const priceByResolution = () =>
     estimateVideoCost.mockImplementation(
       (_model: string, _s: number, o: { resolution: string }) =>
         micros(o.resolution === '480p' ? 100_000 : 900_000)
     );
+
+  it('offers drafts on Ark and prices both choices', () => {
+    priceByResolution();
     const preview = buildUpdateStalePreview(draftPlan(true), {}, null, true);
     expect(preview.videoDraft).toEqual({
       selected: true,
@@ -266,6 +270,22 @@ describe('buildUpdateStalePreview draft switch (#2424)', () => {
       finalCost: 900_000,
     });
     expect(preview.costByLevel.video).toBe(100_000);
+  });
+
+  it('keeps a final a final beside a stale draft', () => {
+    priceByResolution();
+    const preview = buildUpdateStalePreview(
+      draftPlan(false, [clip('a', true), clip('b')]),
+      {},
+      null,
+      true
+    );
+    expect(preview.videoDraft).toEqual({
+      selected: 'mixed',
+      draftCost: 200_000,
+      finalCost: 1_800_000,
+    });
+    expect(preview.costByLevel.video).toBe(1_000_000);
   });
 
   it('offers no switch off Ark', () => {

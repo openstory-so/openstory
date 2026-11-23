@@ -17,7 +17,6 @@ type FalPricingMap = Record<string, EffectiveFalPricing>;
 import {
   DEFAULT_IMAGE_MODEL,
   safeAudioModel,
-  safeImageToVideoModel,
   safeTextToImageModel,
   supportsDraftMode,
 } from '@/models/models';
@@ -27,7 +26,7 @@ import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
 import { estimateLipsyncCost } from '@/motion/lipsync';
-import type { UpdateStalePlan } from './update-stale-plan';
+import { targetRendersDraft, type UpdateStalePlan } from './update-stale-plan';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 
 export type UpdateStalePreview = {
@@ -49,12 +48,13 @@ export type UpdateStalePreview = {
    */
   costByLevel: Record<UpdateStaleDepth, Microdollars | null>;
   /**
-   * The draft switch for the re-rendered clips (#2424): on by default when
-   * the run would draft. Null when no clip can render as an Ark draft.
-   * `costByLevel.video` is the cost at `selected`.
+   * The draft switch for the re-rendered clips (#2424). `selected` is each
+   * clip's default (a draft stays a draft); 'mixed' when they differ. Null
+   * when no clip can render as an Ark draft. `costByLevel.video` is the
+   * default's cost.
    */
   videoDraft: {
-    selected: boolean;
+    selected: boolean | 'mixed';
     draftCost: Microdollars | null;
     finalCost: Microdollars | null;
   } | null;
@@ -117,7 +117,6 @@ export function buildUpdateStalePreview(
           { pricing }
         )
       : ZERO_MICROS;
-  const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
   // Dialogue is recorded once per SCENE before the renders (#1657), so it is
   // priced per scene: the whole conversation, on the earliest depth that needs
   // it — dialogue when a shot in the scene re-records, else video, whose
@@ -131,20 +130,32 @@ export function buildUpdateStalePreview(
       : 'video';
     speechChars[level] += ttsCharacterCount(job.voiced);
   }
-  const videosCost = (draft: boolean) =>
+  // Each clip's model and draft default, as the run resolves them.
+  const clips = videos.map((t) => {
+    const model =
+      plan.renderOptions?.videoModels?.[0] ??
+      resolveVideoModel({
+        selectedVersionModel: t.motionRender.selectedModel,
+        sequenceModel: plan.sequence.videoModel,
+      });
+    const draftable = onArk && !t.lipsyncVideo && supportsDraftMode(model);
+    return { t, model, draftable, drafts: targetRendersDraft(plan, t) };
+  });
+  // `draft` undefined = each clip's own default.
+  const videosCost = (draft: boolean | undefined) =>
     sum(
-      videos.map((t) =>
+      clips.map(({ t, model, draftable, drafts }) =>
         t.lipsyncVideo
           ? estimateLipsyncCost(
               (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000
             )
           : estimateVideoCost(
-              videoModel,
+              model,
               (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
               {
                 pricing,
                 resolution:
-                  draft && supportsDraftMode(videoModel)
+                  draftable && (draft ?? drafts)
                     ? DRAFT_RESOLUTION
                     : plan.sequence.resolution,
                 referenceOnly: !t.usesStartFrame,
@@ -152,24 +163,12 @@ export function buildUpdateStalePreview(
             )
       )
     );
-  const videoLevelCost = (draft: boolean) =>
+  const videoLevelCost = (draft: boolean | undefined) =>
     speechChars.video > 0
       ? addMaybe(videosCost(draft), estimateTtsCost(speechChars.video))
       : videosCost(draft);
-  // The model each clip renders with, as the run resolves it.
-  const draftable =
-    onArk &&
-    videos.some(
-      (t) =>
-        !t.lipsyncVideo &&
-        supportsDraftMode(
-          resolveVideoModel({
-            selectedVersionModel: t.motionRender.selectedModel,
-            sequenceModel: plan.sequence.videoModel,
-          })
-        )
-    );
-  const draftSelected = draftable && plan.sequence.draftMotion;
+  const draftable = clips.filter((c) => c.draftable);
+  const draftDefaults = new Set(draftable.map((c) => c.drafts));
   const musicCost = music
     ? addMaybe(
         music.regenPrompt ? estimateLLMCost(1) : ZERO_MICROS,
@@ -201,15 +200,17 @@ export function buildUpdateStalePreview(
         speechChars.dialogue > 0
           ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
-      video: videoLevelCost(draftSelected),
+      video: videoLevelCost(undefined),
       music: musicCost,
     },
-    videoDraft: draftable
-      ? {
-          selected: draftSelected,
-          draftCost: videoLevelCost(true),
-          finalCost: videoLevelCost(false),
-        }
-      : null,
+    videoDraft:
+      draftable.length > 0
+        ? {
+            selected:
+              draftDefaults.size > 1 ? 'mixed' : draftDefaults.has(true),
+            draftCost: videoLevelCost(true),
+            finalCost: videoLevelCost(false),
+          }
+        : null,
   };
 }

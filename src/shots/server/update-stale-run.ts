@@ -77,7 +77,7 @@ export async function prepareUpdateStale(args: {
   shotIds?: readonly string[];
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
-  /** The dialog's draft switch; absent, `updateAllDraftMotion` decides. */
+  /** The dialog's draft switch for every clip; absent, each clip decides. */
   draftMotion?: boolean;
 }): Promise<{ plan: UpdateStalePlan; creditFloorMicros: Microdollars }> {
   const { scopedDb, sequence, depth } = args;

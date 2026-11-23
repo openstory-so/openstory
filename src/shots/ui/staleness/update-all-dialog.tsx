@@ -37,8 +37,8 @@ type UpdateAllDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
-   * Confirm with the chosen cascade depth and, when videos re-render on a
-   * draft-capable model, the draft switch (#2424); else undefined.
+   * Confirm with the chosen cascade depth and, when the user set it, the
+   * draft switch for every clip (#2424); undefined leaves each clip's default.
    */
   onConfirm: (
     depth: UpdateStaleDepth,
@@ -167,8 +167,12 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   // 'images' is the middle-ground default — the closest match to what
   // "Update all" did before depths existed.
   const [depth, setDepth] = useState<UpdateStaleDepth | null>('dialogue');
-  // null = the server's default: draft when a replaced clip is a draft.
+  // null = each clip's default: a draft stays a draft.
   const [draftChoice, setDraftChoice] = useState<boolean | null>(null);
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setDraftChoice(null);
+    onOpenChange(next);
+  };
   const { showCosts } = useShowCosts();
   const singleShotScope = scope.shotId != null;
 
@@ -203,10 +207,10 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   const checked = (d: UpdateStaleDepth) =>
     selectedDepth != null && RANK[d] <= RANK[selectedDepth];
   const videoDraft = preview?.videoDraft ?? null;
-  const draft = videoDraft ? (draftChoice ?? videoDraft.selected) : undefined;
+  const draftShown = draftChoice ?? videoDraft?.selected;
   const levelCost = (d: UpdateStaleDepth): Microdollars | null => {
-    if (d === 'video' && videoDraft)
-      return draft ? videoDraft.draftCost : videoDraft.finalCost;
+    if (d === 'video' && videoDraft && draftChoice != null)
+      return draftChoice ? videoDraft.draftCost : videoDraft.finalCost;
     return preview?.costByLevel[d] ?? null;
   };
   const total = levels
@@ -227,7 +231,7 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Update out-of-date items</AlertDialogTitle>
@@ -269,7 +273,10 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
                     <input
                       id="update-all-video-draft"
                       type="checkbox"
-                      checked={draft === true}
+                      checked={draftShown === true}
+                      ref={(el) => {
+                        if (el) el.indeterminate = draftShown === 'mixed';
+                      }}
                       onChange={(e) => setDraftChoice(e.currentTarget.checked)}
                       className="accent-primary"
                     />
@@ -324,13 +331,16 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             disabled={selectedDepth == null}
-            onClick={() =>
-              selectedDepth &&
+            onClick={() => {
+              if (!selectedDepth) return;
+              setDraftChoice(null);
               onConfirm(
                 selectedDepth,
-                RANK[selectedDepth] >= RANK.video ? draft : undefined
-              )
-            }
+                RANK[selectedDepth] >= RANK.video && videoDraft
+                  ? (draftChoice ?? undefined)
+                  : undefined
+              );
+            }}
           >
             {showCosts && selectedDepth != null && total != null
               ? `Update · ~${microsToDisplayUsd(total)}`
