@@ -11,11 +11,14 @@
  * and from there, not from a single route, because whichever request arrives
  * first is the one that creates it.
  *
+ * Any other promise shared across requests is held the same way, from the
+ * request that creates it (the organization memo, #2421).
+ *
  * The handler passed to `waitUntil` settles either way. A rejection must
  * still reach whoever awaits `promise` (sign-in should fail visibly), and
  * must not also surface as an unhandled `waitUntil` rejection.
  */
-export function holdInstanceStartup(
+export function holdSharedPromise(
   ctx: { waitUntil(promise: Promise<unknown>): void },
   promise: Promise<unknown>
 ): void {

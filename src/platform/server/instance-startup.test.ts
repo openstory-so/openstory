@@ -1,18 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { holdInstanceStartup } from './instance-startup';
+import { holdSharedPromise } from './instance-startup';
 
-describe('holdInstanceStartup', () => {
+describe('holdSharedPromise', () => {
   test('registers the startup promise before it settles', async () => {
     let release: () => void = () => {};
     const startup = new Promise<void>((resolve) => {
       release = resolve;
     });
     const held: Promise<unknown>[] = [];
-    holdInstanceStartup(
-      { waitUntil: (promise) => held.push(promise) },
-      startup
-    );
+    holdSharedPromise({ waitUntil: (promise) => held.push(promise) }, startup);
 
     expect(held).toHaveLength(1);
     let settled = false;
@@ -29,10 +26,7 @@ describe('holdInstanceStartup', () => {
   test('keeps the context when startup rejects, without swallowing the error', async () => {
     const startup = Promise.reject(new Error('oauth_resource unread'));
     const held: Promise<unknown>[] = [];
-    holdInstanceStartup(
-      { waitUntil: (promise) => held.push(promise) },
-      startup
-    );
+    holdSharedPromise({ waitUntil: (promise) => held.push(promise) }, startup);
 
     await expect(held[0]).resolves.toBeUndefined();
     await expect(startup).rejects.toThrow('oauth_resource unread');
@@ -47,9 +41,9 @@ describe('worker fetch wiring (#2073)', () => {
     const fetchBody = source.slice(fetchStart, scheduledStart);
 
     expect(fetchBody).toContain('async fetch(request, env, ctx)');
-    const seedHold = fetchBody.indexOf('holdInstanceStartup(ctx, seeded)');
+    const seedHold = fetchBody.indexOf('holdSharedPromise(ctx, seeded)');
     const authHold = fetchBody.indexOf(
-      'holdInstanceStartup(ctx, authStartupPromise())'
+      'holdSharedPromise(ctx, authStartupPromise())'
     );
     expect(seedHold).toBeGreaterThan(-1);
     expect(authHold).toBeGreaterThan(-1);
