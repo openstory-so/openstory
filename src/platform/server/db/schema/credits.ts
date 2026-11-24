@@ -159,6 +159,8 @@ export const organizationBillingSettings = snakeCase.table(
      */
     autoTopUpFailedAt: integer({ mode: 'timestamp' }),
     autoTopUpDeclineCode: text(),
+    // Free sketch sequences started (#2390); never given back.
+    freeSequencesUsed: integer().default(0).notNull(),
     updatedAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

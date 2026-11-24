@@ -2,6 +2,7 @@ import { createShotSpecVersionsMethods } from '@/shots/server/db/shot-spec-versi
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
+import { micros } from '@/billing/money';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -34,6 +35,8 @@ import { createFrameVariantsMethods } from '@/stills/server/db/frame-variants';
 import { createSequenceExportsMethods } from './db/sequence-exports';
 import { createSequencesMethods } from './db/sequences';
 import { listSequenceAssets, type SequenceAssetDb } from './sequence-assets';
+import { createApiKeysReadMethods } from '@/models/server/db/api-keys';
+import { createBillingMethods } from '@/billing/server/db/billing';
 
 let closeDb: () => Promise<void>;
 let db: Database;
@@ -48,6 +51,8 @@ afterAll(async () => {
 
 function reads(organizationId: string): SequenceAssetDb {
   return {
+    apiKeys: createApiKeysReadMethods(db, organizationId),
+    billing: createBillingMethods(db, organizationId, 'user-1'),
     sequences: createSequencesMethods(db, organizationId, 'user-1'),
     scenes: createScenesMethods(db),
     shots: createShotsMethods(db),
@@ -225,5 +230,58 @@ describe('listSequenceAssets', () => {
       }
     );
     expect(current.assets.some((asset) => asset.kind === 'video')).toBe(false);
+  });
+
+  it('refuses a free sketch until the organization has funds (#2390)', async () => {
+    const organizationId = generateId();
+    const sequenceId = generateId();
+    await db
+      .insert(organization)
+      .values({ id: organizationId, name: 'F', slug: organizationId });
+    const [style] = await db
+      .insert(styles)
+      .values({
+        organizationId,
+        name: 'default',
+        config: {
+          mood: 'neutral',
+          artStyle: 'cinematic',
+          lighting: 'natural',
+          colorPalette: ['#000'],
+          cameraWork: 'static',
+          referenceFilms: [],
+          colorGrading: 'neutral',
+        },
+      })
+      .returning();
+    if (!style) throw new Error('style');
+    await db.insert(sequences).values({
+      id: sequenceId,
+      organizationId,
+      title: 'Sketch',
+      styleId: style.id,
+      script: 'INT. ROOM',
+      freeSketch: true,
+    });
+    const options = { scope: 'selected', includeExports: false } as const;
+
+    await expect(
+      listSequenceAssets(reads(organizationId), sequenceId, options)
+    ).rejects.toThrow('Add credits or a key to download a free sketch.');
+
+    await createBillingMethods(db, organizationId, 'user-1').addCredits(
+      micros(1_000_000),
+      {
+        idempotencyKey: `test-${organizationId}`,
+      }
+    );
+    const listed = await listSequenceAssets(
+      reads(organizationId),
+      sequenceId,
+      options
+    );
+    expect(listed.assets.map((asset) => asset.relativePath)).toContain(
+      'script.txt'
+    );
   });
 });

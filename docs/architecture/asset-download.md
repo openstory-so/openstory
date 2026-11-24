@@ -7,6 +7,7 @@ The manifest is the product. The asset page, the Chromium folder save, and `npx 
 - `GET /api/v1/sequences/{id}/assets` returns the list. `scope` is `selected` (default) or `history`. `exports=true` adds rendered MP4s. Any other `scope` is read as `selected`.
 - The page is `/sequences/$id/assets`. Download → All files opens it. The Canvas/Script bar does not. The page shows `npx @openstory/cli@latest pull` for the toggles on screen, in the same terminal block as Skills & MCP (`/connect`). `--origin` is added when the page is not `https://openstory.so`.
 - Download folder calls `showDirectoryPicker` with `startIn: 'videos'` and id `openstory-sequence-assets`, then writes a child folder named for the sequence. Chrome blocks the home folder, Desktop, Documents, and Downloads themselves. Movies is not on that list.
+- A free sketch (#2390) is refused with a 402 while its organization has no credits and no key. See `free-sketches.md`.
 - MCP tool `openstory.list_sequence_assets`. Same list. A long history can exceed the 256 KiB tool cap, and that call fails. v1 does not page it.
 - `npx @openstory/cli@latest pull <sequenceId>` (`@openstory/cli`, bin `openstory`; `stitch pull` passes through to it for one minor version). Shared files are cached in `~/.openstory/assets` (`openstory sync` uses `<data folder>/.openstory/cache`, on the same volume, so hard links hold). Flags: `--history`, `--exports`, `--origin`, `--dir` (default `./<sequenceId>`).
 

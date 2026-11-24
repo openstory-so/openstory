@@ -3,6 +3,11 @@ import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { InButtonCost } from '@/billing/ui/action-cost';
+import {
+  FREE_SCRIPT_MAX_CHARS,
+  FREE_SEQUENCE_LIMIT,
+  freeSketchRefusal,
+} from '@/billing/free-sketch';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import {
   useViaAvailability,
@@ -1002,7 +1007,22 @@ export const ScriptView: FC<{
       });
     },
   });
-  const { needsBillingSetup, showGate } = useBillingGate();
+  const { needsBillingSetup, showGate, freeSequencesLeft } = useBillingGate();
+  // Same terms the server checks in createSequences (#2390).
+  const isFreeRun = (run: {
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
+  }) =>
+    freeSequencesLeft > 0 &&
+    freeSketchRefusal({ ...run, script: script ?? baseScript ?? '' }) === null;
+  const freeSketch = isFreeRun({ stopAt, generateStartFrames });
+  const runNeedsFunds = (run: {
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
+  }) =>
+    needsBillingSetup &&
+    !isFreeRun(run) &&
+    !allowsUnfundedGeneration(run.stopAt);
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
   // value) so the LLM call only fires on an explicit trigger — Recommend in
@@ -1071,7 +1091,7 @@ export const ScriptView: FC<{
     > = genSettings
   ) => {
     const { stopAt: runUntil, generateStartFrames, videoModels } = run;
-    if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
+    if (runNeedsFunds({ stopAt: runUntil, generateStartFrames })) {
       showGate();
       return;
     }
@@ -1134,10 +1154,7 @@ export const ScriptView: FC<{
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
     // Generate (the credit gate still runs on confirm).
-    if (
-      savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
-    ) {
+    if (savedSettings.rememberStopAt && !runNeedsFunds(genSettings)) {
       executeRegeneration();
       return;
     }
@@ -1896,7 +1913,11 @@ export const ScriptView: FC<{
                 >
                   <span className="relative z-10">
                     <InButtonCost
-                      estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      estimate={
+                        isAuthenticated && !freeSketch
+                          ? storyboardCostEstimate
+                          : null
+                      }
                       onPrimary={isAuthenticated}
                       hideLoggedOutPrice
                       amountWidth={
@@ -1934,13 +1955,15 @@ export const ScriptView: FC<{
                 {generateScopeLabel}
               </button>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
-                {isEditing
-                  ? analysisModels.length === 1
-                    ? '1 copy will be created'
-                    : `${analysisModels.length} copies will be created`
-                  : analysisModels.length === 1
-                    ? '1 sequence will be created'
-                    : `${analysisModels.length} sequences will be created`}
+                {freeSketch
+                  ? `Free sketch, ${freeSequencesLeft} of ${FREE_SEQUENCE_LIMIT} left: up to dialogue, ${FREE_SCRIPT_MAX_CHARS.toLocaleString('en')} characters`
+                  : isEditing
+                    ? analysisModels.length === 1
+                      ? '1 copy will be created'
+                      : `${analysisModels.length} copies will be created`
+                    : analysisModels.length === 1
+                      ? '1 sequence will be created'
+                      : `${analysisModels.length} sequences will be created`}
               </span>
             </div>
           </div>

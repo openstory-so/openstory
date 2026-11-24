@@ -126,6 +126,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     generateStartFrames: true,
     generateVoices: false,
     draftMotion: false,
+    freeSketch: false,
     targetDurationSeconds: null,
     suggestedLocationIds: null,
     ...overrides,

@@ -215,7 +215,8 @@ export function NewSequencePage({
     [styles, navigate, composerPath]
   );
 
-  const { needsBillingSetup, hasFalKey, stripeEnabled } = useBillingGate();
+  const { needsBillingSetup, hasFalKey, stripeEnabled, freeSequencesLeft } =
+    useBillingGate();
   const [billingOpen, setBillingOpen] = useState(false);
 
   // Clear billing return flag when user is back on this page
@@ -224,10 +225,15 @@ export function NewSequencePage({
   }, []);
 
   useEffect(() => {
-    if (needsBillingSetup && !wasBillingPromptDismissed()) {
+    // A free sketch left (#2390) means the first Generate works: no prompt yet.
+    if (
+      needsBillingSetup &&
+      freeSequencesLeft === 0 &&
+      !wasBillingPromptDismissed()
+    ) {
       setBillingOpen(true);
     }
-  }, [needsBillingSetup]);
+  }, [needsBillingSetup, freeSequencesLeft]);
 
   const handleSuccess = useCallback(
     (sequenceIds: string[]) => {

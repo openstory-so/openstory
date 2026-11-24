@@ -80,6 +80,7 @@ async function createAutoSequence() {
   });
   const sequence = await sequencesDb.create({
     generationStopAt: 'images',
+    freeSketch: false,
     id: sequenceId,
     title: 'S',
     styleId: style.id,

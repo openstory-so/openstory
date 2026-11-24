@@ -63,6 +63,7 @@ export const fixtureSequence: Sequence = {
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,
+  freeSketch: false,
   targetDurationSeconds: null,
   posterUrl: null,
   readyEmailSentAt: null,

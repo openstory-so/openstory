@@ -37,6 +37,7 @@ import {
   generationStageSchema,
   resolveStopAt,
 } from './pipeline';
+import { isFreeSketchRetry } from '@/billing/free-sketch';
 import { planWork } from './generation-plan';
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import {
@@ -398,37 +399,40 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
     const stopAt = resolveStopAt({
       generationStopAt: sequence.generationStopAt,
     });
-    const reservationId = allowsUnfundedGeneration(stopAt)
-      ? undefined
-      : await reserveRunCredits(
-          context.scopedDb,
-          estimateStoryboardPreflightCost({
-            script: sequence.script ?? '',
-            imageModel: safeTextToImageModel(
-              sequence.imageModel,
-              DEFAULT_IMAGE_MODEL
-            ),
-            aspectRatio: sequence.aspectRatio,
-            resolution: sequence.resolution,
-            stopAt,
-            videoModels: [
-              safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-            ],
-            audioModels: [
-              safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
-            ],
-            referenceOnly: !sequence.generateStartFrames,
-            generateVoices: sequence.generateVoices,
-            draftMotion: sequence.draftMotion,
-            targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-            pricing: await getEffectiveFalPricing(),
-          }),
-          {
-            providers: ['fal', 'openrouter'],
-            errorMessage: 'Insufficient credits to retry storyboard',
-            sequenceId: sequence.id,
-          }
-        );
+    // A free sketch's retry stays free (#2390).
+    const reservationId =
+      allowsUnfundedGeneration(stopAt) || isFreeSketchRetry(sequence, stopAt)
+        ? undefined
+        : await reserveRunCredits(
+            context.scopedDb,
+            estimateStoryboardPreflightCost({
+              script: sequence.script ?? '',
+              imageModel: safeTextToImageModel(
+                sequence.imageModel,
+                DEFAULT_IMAGE_MODEL
+              ),
+              aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
+              stopAt,
+              videoModels: [
+                safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+              ],
+              audioModels: [
+                safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
+              ],
+              referenceOnly: !sequence.generateStartFrames,
+              generateVoices: sequence.generateVoices,
+              draftMotion: sequence.draftMotion,
+              targetDurationSeconds:
+                sequence.targetDurationSeconds ?? undefined,
+              pricing: await getEffectiveFalPricing(),
+            }),
+            {
+              providers: ['fal', 'openrouter'],
+              errorMessage: 'Insufficient credits to retry storyboard',
+              sequenceId: sequence.id,
+            }
+          );
 
     const workflowInput: StoryboardTriggerInput = {
       userId: user.id,

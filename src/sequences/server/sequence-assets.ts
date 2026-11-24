@@ -3,7 +3,8 @@
  * Request-time only: a workflow must not call this. SQL stays in the
  * scoped-db modules named below.
  */
-import { NotFoundError } from '@/platform/errors';
+import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
+import { type FundsDb, isUnfunded } from '@/billing/server/free-sketch';
 import type { VoicePreview } from '@/platform/server/db/schema';
 import {
   projectSequenceAssets,
@@ -22,7 +23,7 @@ type Stored = {
 };
 
 /** The scoped reads the manifest uses. A real `scopedDb` satisfies this. */
-export type SequenceAssetDb = {
+export type SequenceAssetDb = FundsDb & {
   sequences: {
     getById(sequenceId: string): Promise<{
       id: string;
@@ -30,6 +31,7 @@ export type SequenceAssetDb = {
       script: string | null;
       styleId: string;
       selectedMusicVariantId: string | null;
+      freeSketch: boolean;
     } | null>;
   };
   scenes: {
@@ -207,6 +209,11 @@ export async function listSequenceAssets(
 ): Promise<SequenceAssetsBody> {
   const sequence = await db.sequences.getById(sequenceId);
   if (!sequence) throw new NotFoundError('Sequence not found');
+  if (sequence.freeSketch && (await isUnfunded(db))) {
+    throw new InsufficientCreditsError(
+      'Add credits or a key to download a free sketch.'
+    );
+  }
   const includeDiscarded = options.scope === 'history';
   const [
     scenes,

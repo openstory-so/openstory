@@ -89,6 +89,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId: style.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -104,6 +105,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId: style.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -124,6 +126,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId: styleA.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -142,6 +145,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId: styleA.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -166,6 +170,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId,
       deferStyleSnapshot,
@@ -287,6 +292,7 @@ describe('createSequencesMethods style snapshot', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'S',
       styleId: style.id,
       deferStyleSnapshot: true,

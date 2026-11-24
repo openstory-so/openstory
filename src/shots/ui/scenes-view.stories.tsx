@@ -73,6 +73,7 @@ const mockSequence: Sequence = {
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,
+  freeSketch: false,
   targetDurationSeconds: null,
   suggestedLocationIds: null,
 };

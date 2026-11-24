@@ -68,6 +68,7 @@ async function createAutoSequence(derive: boolean) {
   });
   await scopedDb.sequences.create({
     generationStopAt: 'images',
+    freeSketch: false,
     id: sequenceId,
     title: 'S',
     styleId: style.id,

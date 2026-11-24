@@ -652,6 +652,8 @@ export function createSequencesMethods(
         videoModel?: string;
         musicModel?: string;
         generationStopAt: GenerationStage;
+        /** Started as a free sketch (#2390). */
+        freeSketch: boolean;
         /** Opt-in to the frame-based workflow; off = reference-only (the default). */
         generateStartFrames?: boolean;
         /** Design a voice per speaking character (#1553); off by default. */
@@ -688,6 +690,7 @@ export function createSequencesMethods(
           videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
           musicModel: params.musicModel,
           generationStopAt: params.generationStopAt,
+          freeSketch: params.freeSketch,
           generateStartFrames: params.generateStartFrames ?? false,
           generateVoices: params.generateVoices ?? false,
           targetDurationSeconds: params.targetDurationSeconds ?? null,

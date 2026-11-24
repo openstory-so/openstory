@@ -84,6 +84,7 @@ describe('sequences.create persists the chosen settings', () => {
       styleId,
       videoModel: 'minimax_h3_max',
       generationStopAt: 'motion',
+      freeSketch: false,
       generateStartFrames: true,
     });
 
@@ -100,6 +101,7 @@ describe('sequences.create persists the chosen settings', () => {
       title: 'Normal',
       styleId,
       generationStopAt: 'images',
+      freeSketch: false,
     });
     expect(created.generateStartFrames).toBe(false);
   });
@@ -115,6 +117,7 @@ describe('sequences.create persists the chosen settings', () => {
       videoModel: 'minimax_h3_max',
       musicModel: 'elevenlabs_music',
       generationStopAt: 'music',
+      freeSketch: false,
       generateStartFrames: false,
     });
 
@@ -143,6 +146,7 @@ describe('sequences.update persists continue generation flags', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'Stopped after references',
       styleId,
       generateStartFrames: false,
@@ -173,6 +177,7 @@ describe('sequences.create slugs', () => {
           title: 'The Chase',
           styleId,
           generationStopAt: 'images',
+          freeSketch: false,
         })
       )
     );

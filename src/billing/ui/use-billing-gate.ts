@@ -19,6 +19,7 @@ type BillingGateStatus = {
   balance: number;
   hasAutoTopUp: boolean;
   stripeEnabled: boolean;
+  freeSequencesLeft: number;
 };
 
 export function useBillingGateQuery() {
@@ -69,6 +70,8 @@ export function useBillingGate() {
     hasCredits: data?.hasCredits ?? true,
     hasAutoTopUp: data?.hasAutoTopUp ?? false,
     stripeEnabled: data?.stripeEnabled ?? true,
+    // Free sketches still to start (#2390); 0 for a funded organization.
+    freeSequencesLeft: data?.freeSequencesLeft ?? 0,
     // Opens the globally-mounted gate dialog (#1099)
     showGate: openBillingGate,
     isLoading: query.isLoading,

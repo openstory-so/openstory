@@ -203,6 +203,9 @@ export const sequences = snakeCase.table(
     // the trigger like `resolution`.
     draftMotion: integer({ mode: 'boolean' }).default(false).notNull(),
 
+    // A free sketch (#2390): first run paid by the platform; downloads wait for funds.
+    freeSketch: integer({ mode: 'boolean' }).default(false).notNull(),
+
     // Film length the user asked for, in seconds (#1593). NULL = auto: as
     // long as the script needs. Only Enhance (and the rail chip afterwards)
     // writes this; Generate without Enhance leaves NULL. Generation never
