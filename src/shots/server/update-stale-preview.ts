@@ -17,14 +17,16 @@ type FalPricingMap = Record<string, EffectiveFalPricing>;
 import {
   DEFAULT_IMAGE_MODEL,
   safeAudioModel,
-  safeImageToVideoModel,
   safeTextToImageModel,
+  supportsDraftMode,
 } from '@/models/models';
+import { resolveVideoModel } from '@/models/resolve-asset-models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
 import { estimateLipsyncCost } from '@/motion/lipsync';
-import type { UpdateStalePlan } from './update-stale-plan';
+import { targetRendersDraft, type UpdateStalePlan } from './update-stale-plan';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 
 export type UpdateStalePreview = {
@@ -45,6 +47,17 @@ export type UpdateStalePreview = {
    * signal for a component — never invent a number.
    */
   costByLevel: Record<UpdateStaleDepth, Microdollars | null>;
+  /**
+   * The draft switch for the re-rendered clips (#2424). `selected` is each
+   * clip's default (a draft stays a draft); 'mixed' when they differ. Null
+   * when no clip can render as an Ark draft. `costByLevel.video` is the
+   * default's cost.
+   */
+  videoDraft: {
+    selected: boolean | 'mixed';
+    draftCost: Microdollars | null;
+    finalCost: Microdollars | null;
+  } | null;
 };
 
 /** Fallback clip length for video pricing when the plan carries none. */
@@ -65,7 +78,9 @@ const addMaybe = (
 export function buildUpdateStalePreview(
   plan: UpdateStalePlan,
   pricing: FalPricingMap,
-  musicModel: string | null
+  musicModel: string | null,
+  /** Seedance submits to Ark for this organization (`seedanceRunsOnArk`). */
+  onArk: boolean
 ): UpdateStalePreview {
   const visual = plan.targets.filter((t) => t.regenVisual);
   const motion = plan.targets.filter((t) => t.regenMotion);
@@ -102,7 +117,6 @@ export function buildUpdateStalePreview(
           { pricing }
         )
       : ZERO_MICROS;
-  const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
   // Dialogue is recorded once per SCENE before the renders (#1657), so it is
   // priced per scene: the whole conversation, on the earliest depth that needs
   // it — dialogue when a shot in the scene re-records, else video, whose
@@ -116,23 +130,45 @@ export function buildUpdateStalePreview(
       : 'video';
     speechChars[level] += ttsCharacterCount(job.voiced);
   }
-  const videosCost = sum(
-    videos.map((t) =>
-      t.lipsyncVideo
-        ? estimateLipsyncCost(
-            (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000
-          )
-        : estimateVideoCost(
-            videoModel,
-            (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-            {
-              pricing,
-              resolution: plan.sequence.resolution,
-              referenceOnly: !t.usesStartFrame,
-            }
-          )
-    )
-  );
+  // Each clip's model and draft default, as the run resolves them.
+  const clips = videos.map((t) => {
+    const model =
+      plan.renderOptions?.videoModels?.[0] ??
+      resolveVideoModel({
+        selectedVersionModel: t.motionRender.selectedModel,
+        sequenceModel: plan.sequence.videoModel,
+      });
+    const draftable = onArk && !t.lipsyncVideo && supportsDraftMode(model);
+    return { t, model, draftable, drafts: targetRendersDraft(plan, t) };
+  });
+  // `draft` undefined = each clip's own default.
+  const videosCost = (draft: boolean | undefined) =>
+    sum(
+      clips.map(({ t, model, draftable, drafts }) =>
+        t.lipsyncVideo
+          ? estimateLipsyncCost(
+              (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000
+            )
+          : estimateVideoCost(
+              model,
+              (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
+              {
+                pricing,
+                resolution:
+                  draftable && (draft ?? drafts)
+                    ? DRAFT_RESOLUTION
+                    : plan.sequence.resolution,
+                referenceOnly: !t.usesStartFrame,
+              }
+            )
+      )
+    );
+  const videoLevelCost = (draft: boolean | undefined) =>
+    speechChars.video > 0
+      ? addMaybe(videosCost(draft), estimateTtsCost(speechChars.video))
+      : videosCost(draft);
+  const draftable = clips.filter((c) => c.draftable);
+  const draftDefaults = new Set(draftable.map((c) => c.drafts));
   const musicCost = music
     ? addMaybe(
         music.regenPrompt ? estimateLLMCost(1) : ZERO_MICROS,
@@ -164,11 +200,17 @@ export function buildUpdateStalePreview(
         speechChars.dialogue > 0
           ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
-      video:
-        speechChars.video > 0
-          ? addMaybe(videosCost, estimateTtsCost(speechChars.video))
-          : videosCost,
+      video: videoLevelCost(undefined),
       music: musicCost,
     },
+    videoDraft:
+      draftable.length > 0
+        ? {
+            selected:
+              draftDefaults.size > 1 ? 'mixed' : draftDefaults.has(true),
+            draftCost: videoLevelCost(true),
+            finalCost: videoLevelCost(false),
+          }
+        : null,
   };
 }

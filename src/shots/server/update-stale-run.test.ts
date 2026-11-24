@@ -16,7 +16,13 @@ vi.doMock('@/platform/server/workflow/run-outcome', () => ({
   getWorkflowRunOutcome,
 }));
 
-const { launchUpdateStale, findRunningUpdateStale } =
+const seedanceRunsOnArk = vi.fn();
+vi.doMock('@/motion/server/motion-generation', () => ({ seedanceRunsOnArk }));
+vi.doMock('@/platform/server/db/scoped-workflow', () => ({
+  toWorkflowScopedDb: () => ({ credentials: {} }),
+}));
+
+const { launchUpdateStale, findRunningUpdateStale, prepareUpdateStale } =
   await import('./update-stale-run');
 
 const sequenceId = '01J00000000000000000000SEQ';
@@ -80,5 +86,20 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     history.mockResolvedValue([]);
     expect(await findRunningUpdateStale(sequenceId)).toBeNull();
     expect(getWorkflowRunOutcome).not.toHaveBeenCalled();
+  });
+});
+
+describe('Update all drafts are Ark-only (#2424)', () => {
+  it('refuses a draft override when Seedance is not on Ark', async () => {
+    seedanceRunsOnArk.mockResolvedValue(false);
+    await expect(
+      prepareUpdateStale({
+        scopedDb: asStub({}),
+        userId: 'u',
+        sequence: asStub({ id: sequenceId, status: 'completed' }),
+        depth: 'video',
+        draftMotion: true,
+      })
+    ).rejects.toThrow('Drafts need the BytePlus route');
   });
 });

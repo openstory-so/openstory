@@ -28,6 +28,7 @@ const target = (o: object) =>
     regenVideo: false,
     durationMs: 4000,
     imageModel: 'seedream_v5',
+    motionRender: { selectedModel: null },
     ...o,
   });
 
@@ -57,7 +58,8 @@ describe('buildUpdateStalePreview', () => {
         target({ shotId: 'b', regenMotion: true, regenVideo: true }),
       ]),
       {},
-      null
+      null,
+      false
     );
     expect(preview.visualPromptShotIds).toEqual(['a']);
     expect(preview.motionPromptShotIds).toEqual(['b']);
@@ -88,7 +90,8 @@ describe('buildUpdateStalePreview', () => {
     const preview = buildUpdateStalePreview(
       plan(targets, null, { scenes: [{ voiced }], maxDurationSeconds: 15 }),
       {},
-      null
+      null,
+      false
     );
     // Two renders, ONE recording of the scene's whole conversation — priced
     // on the dialogue step, not folded into video.
@@ -98,7 +101,8 @@ describe('buildUpdateStalePreview', () => {
     );
     expect(preview.costByLevel.video).toBe(1_000_000);
     expect(
-      buildUpdateStalePreview(plan(targets), {}, null).costByLevel.dialogue
+      buildUpdateStalePreview(plan(targets), {}, null, false).costByLevel
+        .dialogue
     ).toBe(0);
   });
 
@@ -127,7 +131,8 @@ describe('buildUpdateStalePreview', () => {
         }
       ),
       {},
-      null
+      null,
+      false
     );
     expect(preview.costByLevel.dialogue).toBe(
       estimateTtsCost(ttsCharacterCount(sceneA))
@@ -151,7 +156,8 @@ describe('buildUpdateStalePreview', () => {
         target({ shotId: 'b', regenVideo: true, durationMs: 5000 }),
       ]),
       {},
-      null
+      null,
+      false
     );
     expect(preview.lipsyncShotIds).toEqual(['a']);
     expect(preview.videoShotIds).toEqual(['a', 'b']);
@@ -164,7 +170,8 @@ describe('buildUpdateStalePreview', () => {
     const preview = buildUpdateStalePreview(
       plan([target({ shotId: 'a', regenImage: true })]),
       {},
-      null
+      null,
+      false
     );
     expect(preview.costByLevel.prompts).toBe(0);
     expect(preview.costByLevel.images).toBeNull();
@@ -182,7 +189,8 @@ describe('buildUpdateStalePreview', () => {
         durationSeconds: 30,
       }),
       {},
-      'cassetteai'
+      'cassetteai',
+      false
     );
     expect(preview.musicPrompt).toBe(true);
     expect(preview.musicTrack).toBe(true);
@@ -212,7 +220,8 @@ describe('buildUpdateStalePreview sheet reuse (#2017)', () => {
         },
       }),
       {},
-      null
+      null,
+      false
     );
     expect(estimateImageCost).toHaveBeenCalledWith(
       'nano_banana_2',
@@ -221,5 +230,66 @@ describe('buildUpdateStalePreview sheet reuse (#2017)', () => {
       expect.anything()
     );
     expect(preview.costByLevel.images).toBe(micros(40_000));
+  });
+});
+
+describe('buildUpdateStalePreview draft switch (#2424)', () => {
+  const clip = (shotId: string, staleVideoDraft?: boolean) =>
+    target({
+      shotId,
+      regenVideo: true,
+      motionRender: { selectedModel: 'seedance_v2_5' },
+      ...(staleVideoDraft ? { staleVideoDraft } : {}),
+    });
+  const draftPlan = (draftMotion: boolean, targets = [clip('a')]) =>
+    asStub<never>({
+      aspectRatio: '16:9',
+      sequence: {
+        videoModel: 'seedance_v2_5',
+        resolution: '1080p',
+        draftMotion,
+      },
+      targets,
+      music: null,
+      dialogueSpeech: null,
+      skipped: [],
+      promptContext: null,
+    });
+  const priceByResolution = () =>
+    estimateVideoCost.mockImplementation(
+      (_model: string, _s: number, o: { resolution: string }) =>
+        micros(o.resolution === '480p' ? 100_000 : 900_000)
+    );
+
+  it('offers drafts on Ark and prices both choices', () => {
+    priceByResolution();
+    const preview = buildUpdateStalePreview(draftPlan(true), {}, null, true);
+    expect(preview.videoDraft).toEqual({
+      selected: true,
+      draftCost: 100_000,
+      finalCost: 900_000,
+    });
+    expect(preview.costByLevel.video).toBe(100_000);
+  });
+
+  it('keeps a final a final beside a stale draft', () => {
+    priceByResolution();
+    const preview = buildUpdateStalePreview(
+      draftPlan(false, [clip('a', true), clip('b')]),
+      {},
+      null,
+      true
+    );
+    expect(preview.videoDraft).toEqual({
+      selected: 'mixed',
+      draftCost: 200_000,
+      finalCost: 1_800_000,
+    });
+    expect(preview.costByLevel.video).toBe(1_000_000);
+  });
+
+  it('offers no switch off Ark', () => {
+    const preview = buildUpdateStalePreview(draftPlan(true), {}, null, false);
+    expect(preview.videoDraft).toBeNull();
   });
 });
