@@ -96,6 +96,8 @@ import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-s
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import type { Stamped } from '@/shots/input-hash';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MotionRenderShot } from '@/motion/server/build-motion-render';
 import type { ShotImageRefs } from './shot-image-input';
 import { pendingVoiceId } from './pending-voices';
@@ -954,7 +956,7 @@ type ShotVideoState = {
   hasVideo: boolean;
   selectedVersionId: string | null;
   selectedModel: string | null;
-  /** The selected clip is an Ark draft (#1756). */
+  /** The selected clip is an Ark draft and Seedance still runs on Ark (#1756, #2424). */
   selectedDraft: boolean;
   alreadyStale: boolean;
   generating: boolean;
@@ -982,6 +984,10 @@ async function loadVideoStateByShot(
     allShots
   );
 
+  // A draft re-renders as a draft only while Ark can take it; off Ark it is a final.
+  const onArk =
+    assembled.some((s) => s.selectedVersion?.draftTaskId) &&
+    (await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials));
   const byShot = new Map<string, ShotVideoState>();
   for (const segment of assembled) {
     const generating = versions.some(
@@ -992,7 +998,7 @@ async function loadVideoStateByShot(
         hasVideo: segment.selectedVersion !== null,
         selectedVersionId: segment.selectedVersion?.id ?? null,
         selectedModel: segment.selectedVersion?.model ?? null,
-        selectedDraft: Boolean(segment.selectedVersion?.draftTaskId),
+        selectedDraft: onArk && Boolean(segment.selectedVersion?.draftTaskId),
         alreadyStale: segment.stale,
         generating,
         drift: segment.drift ?? (segment.stale ? 'picture' : 'current'),
