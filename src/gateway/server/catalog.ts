@@ -19,7 +19,8 @@ const SCHEMA_TTL_MS = 30 * 60 * 1000;
 
 const modelRecordSchema = z.object({
   rawId: z.string(),
-  displayName: z.string(),
+  // Null on some BytePlus records.
+  displayName: z.string().nullable(),
   activity: z.string().nullable(),
   schemaEndpointId: z.string().nullable(),
   // A summary in the list, the full card on the model: parsed where it is used.
@@ -103,7 +104,7 @@ export async function getGatewayModel(
   return {
     provider,
     id: record.rawId,
-    name: record.displayName,
+    name: record.displayName ?? record.rawId,
     kind,
     endpointId,
     card: card.data,
@@ -121,7 +122,14 @@ export async function listGatewayModels(): Promise<GatewayModelSummary[]> {
       return body.models.flatMap((record): GatewayModelSummary[] => {
         const kind = kindOf(provider, record);
         if (!kind || !record.schemaEndpointId || !record.pricing) return [];
-        return [{ provider, id: record.rawId, name: record.displayName, kind }];
+        return [
+          {
+            provider,
+            id: record.rawId,
+            name: record.displayName ?? record.rawId,
+            kind,
+          },
+        ];
       });
     })
   );

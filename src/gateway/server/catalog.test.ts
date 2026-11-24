@@ -221,3 +221,31 @@ describe('listGatewayModels', () => {
     ]);
   });
 });
+
+describe('a record with no display name', () => {
+  it('is listed under its id: some BytePlus records carry none', async () => {
+    pages = {
+      '/v1/models?provider=fal': { models: [] },
+      '/v1/models?provider=gemini': { models: [] },
+      '/v1/models?provider=grok': { models: [] },
+      '/v1/models?provider=byteplus': {
+        models: [
+          record({
+            rawId: 'seedream-5-0-lite',
+            displayName: null,
+            activity: 'image',
+            schemaEndpointId: 'images/generations',
+          }),
+        ],
+      },
+    };
+    expect(await listGatewayModels()).toEqual([
+      {
+        provider: 'byteplus',
+        id: 'seedream-5-0-lite',
+        name: 'seedream-5-0-lite',
+        kind: 'image',
+      },
+    ]);
+  });
+});
