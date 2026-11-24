@@ -91,6 +91,7 @@ describe('sequences.create model defaults', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'omitted',
       styleId,
     });
@@ -103,6 +104,7 @@ describe('sequences.create model defaults', () => {
     const methods = createSequencesMethods(db, organizationId, userId);
     const created = await methods.create({
       generationStopAt: 'images',
+      freeSketch: false,
       title: 'explicit',
       styleId,
       analysisModel: 'anthropic/claude-sonnet-4.6',

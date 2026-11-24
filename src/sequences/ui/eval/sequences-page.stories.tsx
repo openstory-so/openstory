@@ -64,6 +64,7 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,
+  freeSketch: false,
   targetDurationSeconds: null,
   suggestedLocationIds: null,
 };

@@ -41,5 +41,6 @@ export async function createBlankSequence(
     imageModel: data.imageModel,
     videoModel: data.videoModel,
     generationStopAt: 'script',
+    freeSketch: false,
   });
 }

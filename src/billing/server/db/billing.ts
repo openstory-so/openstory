@@ -44,7 +44,17 @@ import {
 } from '@/billing/gift-redeem';
 import { ValidationError } from '@/platform/errors';
 import { getBillingChannel } from '@/platform/realtime';
-import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  isNull,
+  lt,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 import { generateId } from '@/platform/id';
 import { giftTokenRedemptions, giftTokens } from '@/platform/server/db/schema';
 
@@ -1644,8 +1654,40 @@ export function createBillingMethods(
       amountUsd: microsToUsd(amountMicros),
     };
   }
+  /** Take one of `limit` free sketch slots (#2390); false when none is left. */
+  async function claimFreeSequence(limit: number): Promise<boolean> {
+    await read.getBillingSettings();
+    const claimed = await db
+      .update(organizationBillingSettings)
+      .set({
+        freeSequencesUsed: sql`${organizationBillingSettings.freeSequencesUsed} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(organizationBillingSettings.organizationId, organizationId),
+          lt(organizationBillingSettings.freeSequencesUsed, limit)
+        )
+      )
+      .returning({ id: organizationBillingSettings.organizationId });
+    return claimed.length > 0;
+  }
+
+  /** Give a slot back when the create that claimed it threw before triggering. */
+  async function releaseFreeSequence(): Promise<void> {
+    await db
+      .update(organizationBillingSettings)
+      .set({
+        freeSequencesUsed: sql`max(${organizationBillingSettings.freeSequencesUsed} - 1, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(organizationBillingSettings.organizationId, organizationId));
+  }
+
   return {
     ...read,
+    claimFreeSequence,
+    releaseFreeSequence,
     addCredits,
     saveStripeCustomerId,
     clearAutoTopUpFailure,

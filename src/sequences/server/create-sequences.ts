@@ -33,6 +33,13 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
+import {
+  FREE_ANALYSIS_MODEL,
+  FREE_IMAGE_MODEL,
+  FREE_SEQUENCE_LIMIT,
+  freeSketchRefusal,
+} from '@/billing/free-sketch';
+import { freeSequencesLeft } from '@/billing/server/free-sketch';
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -94,6 +101,27 @@ export const createSequences = createServerOnlyFn(
     // override was vestigial — writes always went through the scoped db anyway.)
     const organizationId = context.organizationId;
 
+    // Free sketch (#2390): an unfunded organization with a slot left runs on our models, unheld.
+    const free =
+      data.stopAt !== 'script' &&
+      (await freeSequencesLeft(context.scopedDb)) > 0;
+    if (free) {
+      const refusal = freeSketchRefusal({
+        stopAt: data.stopAt,
+        generateStartFrames: data.generateStartFrames ?? false,
+        script: data.script,
+      });
+      if (refusal) throw new ValidationError(refusal);
+    }
+    const input: CreateSequenceInput = free
+      ? {
+          ...data,
+          analysisModels: [FREE_ANALYSIS_MODEL],
+          imageModel: undefined,
+          imageModels: [FREE_IMAGE_MODEL],
+        }
+      : data;
+
     const {
       script,
       styleId,
@@ -118,7 +146,7 @@ export const createSequences = createServerOnlyFn(
       castCharacterIds,
       elementUploads,
       sourceSequenceId,
-    } = data;
+    } = input;
 
     // Anthropic geo-blocks some countries and our LLM calls egress from the
     // Cloudflare colo nearest the user (#1259) — never persist an Anthropic
@@ -301,15 +329,21 @@ export const createSequences = createServerOnlyFn(
     const created = await Promise.all(
       analysisModels.map(async (modelId) => {
         const sequenceId = generateId();
-        const reservationId = allowsUnfundedGeneration(stopAt)
-          ? undefined
-          : await reserveRunCredits(context.scopedDb, envelopeCost, {
-              providers: ['fal', 'openrouter'],
-              errorMessage: 'Insufficient credits to generate storyboard',
-              sequenceId,
-            });
+        const freeSketch =
+          free &&
+          (await context.scopedDb.billing.claimFreeSequence(
+            FREE_SEQUENCE_LIMIT
+          ));
+        const reservationId =
+          allowsUnfundedGeneration(stopAt) || freeSketch
+            ? undefined
+            : await reserveRunCredits(context.scopedDb, envelopeCost, {
+                providers: ['fal', 'openrouter'],
+                errorMessage: 'Insufficient credits to generate storyboard',
+                sequenceId,
+              });
 
-        return releaseReservationOnThrow(
+        const run = releaseReservationOnThrow(
           context.scopedDb,
           reservationId,
           async () => {
@@ -339,6 +373,7 @@ export const createSequences = createServerOnlyFn(
               videoModel: primaryVideoModel,
               musicModel: primaryAudioModel,
               generationStopAt: stopAt,
+              freeSketch,
               generateStartFrames,
               generateVoices,
               targetDurationSeconds,
@@ -413,6 +448,13 @@ export const createSequences = createServerOnlyFn(
             return { sequence, workflowRunId };
           }
         );
+        if (!freeSketch) return run;
+        try {
+          return await run;
+        } catch (error) {
+          await context.scopedDb.billing.releaseFreeSequence();
+          throw error;
+        }
       })
     );
 

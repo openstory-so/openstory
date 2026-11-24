@@ -7,6 +7,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { isStripeEnabled } from './constants';
 import { microsToUsd } from './money';
+import { freeSequencesLeft } from './server/free-sketch';
 
 /**
  * Check billing gate status: balance, BYOK keys, and auto-top-up
@@ -27,6 +28,7 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
       openRouterKeyInvalid,
       falKeyInvalid,
       billingSettings,
+      freeLeft,
     ] = await Promise.all([
       scopedDb.billing.getAvailable(),
       scopedDb.apiKeys.hasUsableKey('fal'),
@@ -34,6 +36,7 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
       scopedDb.apiKeys.hasInvalidKey('openrouter'),
       scopedDb.apiKeys.hasInvalidKey('fal'),
       scopedDb.billing.getBillingSettings(),
+      freeSequencesLeft(scopedDb),
     ]);
 
     return {
@@ -51,5 +54,7 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
       // being false: this one is a problem the customer has to fix.
       autoTopUpFailed: !!billingSettings.autoTopUpFailedAt,
       stripeEnabled: isStripeEnabled(),
+      // Free sketches still to start (#2390); 0 once the organization has funds.
+      freeSequencesLeft: freeLeft,
     };
   });

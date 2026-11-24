@@ -329,6 +329,11 @@ changing the area, and update it in the same PR.**
   assistant-only tool, add an MCP tool. Only a delete
   pauses the run for the user; a spend starts at once and shows on the page. Page
   context is read off the router, never registered by a page.
+- **Free sketches (#2390)** — `docs/architecture/free-sketches.md`. An
+  unfunded organization (`isUnfunded`) gets three sequences up to dialogue on
+  our models, unheld. Decided only in `createSequences`; the slot count is on
+  `organization_billing_settings`, never counted from sequence rows. Downloads
+  of a `freeSketch` sequence wait for funds in `listSequenceAssets`.
 - **Sequence asset download (#2209)** — `docs/architecture/asset-download.md`.
   The manifest is the product (`GET /api/v1/sequences/$id/assets`, MCP
   `list_sequence_assets`). Default scope is the current cut; `scope=history`

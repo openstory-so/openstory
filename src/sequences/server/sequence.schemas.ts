@@ -103,6 +103,8 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     selectedMusicPromptVersionId: true,
     pendingPromoteMusicVariantId: true,
     generationStopAt: true,
+    // Decided by the server from the organization's funds (#2390).
+    freeSketch: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
