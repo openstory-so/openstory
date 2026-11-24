@@ -6,6 +6,7 @@ import { InButtonCost } from '@/billing/ui/action-cost';
 import {
   FREE_SCRIPT_MAX_CHARS,
   FREE_SEQUENCE_LIMIT,
+  freeSketchRefusal,
 } from '@/billing/free-sketch';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import {
@@ -1007,10 +1008,21 @@ export const ScriptView: FC<{
     },
   });
   const { needsBillingSetup, showGate, freeSequencesLeft } = useBillingGate();
-  // The server refuses a free run it cannot take, with the reason (#2390).
-  const freeSketch = freeSequencesLeft > 0;
-  const runNeedsFunds = (runUntil: GenerationStage) =>
-    needsBillingSetup && !freeSketch && !allowsUnfundedGeneration(runUntil);
+  // Same terms the server checks in createSequences (#2390).
+  const isFreeRun = (run: {
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
+  }) =>
+    freeSequencesLeft > 0 &&
+    freeSketchRefusal({ ...run, script: script ?? baseScript ?? '' }) === null;
+  const freeSketch = isFreeRun({ stopAt, generateStartFrames });
+  const runNeedsFunds = (run: {
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
+  }) =>
+    needsBillingSetup &&
+    !isFreeRun(run) &&
+    !allowsUnfundedGeneration(run.stopAt);
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
   // value) so the LLM call only fires on an explicit trigger — Recommend in
@@ -1079,7 +1091,7 @@ export const ScriptView: FC<{
     > = genSettings
   ) => {
     const { stopAt: runUntil, generateStartFrames, videoModels } = run;
-    if (runNeedsFunds(runUntil)) {
+    if (runNeedsFunds({ stopAt: runUntil, generateStartFrames })) {
       showGate();
       return;
     }
@@ -1142,7 +1154,7 @@ export const ScriptView: FC<{
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
     // Generate (the credit gate still runs on confirm).
-    if (savedSettings.rememberStopAt && !runNeedsFunds(stopAt)) {
+    if (savedSettings.rememberStopAt && !runNeedsFunds(genSettings)) {
       executeRegeneration();
       return;
     }

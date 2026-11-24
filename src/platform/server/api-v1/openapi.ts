@@ -703,6 +703,9 @@ export function buildOpenApiDocument(): JsonObject {
               },
             },
             '401': errorResponse('Missing or invalid API key.'),
+            '402': errorResponse(
+              'A free sketch: add credits or a key to download it.'
+            ),
             '403': errorResponse('No organization associated with the key.'),
             '404': errorResponse('No such sequence for this key.'),
           },

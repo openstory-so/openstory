@@ -43,7 +43,12 @@ through the usual credit gate: that is where the account is asked to pay.
 
 `listSequenceAssets` refuses a free sketch with a 402 while the organization
 is unfunded. The asset page, `GET /api/v1/sequences/$id/assets`, MCP
-`list_sequence_assets` and `openstory pull` all read through it.
+`list_sequence_assets` and `openstory pull` all read through it. It is a
+nudge, not a lock: the media stays on its `/r2/…` urls, which the theatre and
+the MCP `get_*` tools still hand out.
+
+The composer asks `freeSketchRefusal` too, so a run off the free terms opens
+the billing gate instead of failing on the server.
 
 ## Not done
 
