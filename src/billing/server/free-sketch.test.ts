@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBillingMethods } from '@/billing/server/db/billing';
 import { createApiKeysReadMethods } from '@/models/server/db/api-keys';
-import { FREE_SEQUENCE_LIMIT, freeSketchRefusal } from '@/billing/free-sketch';
+import {
+  FREE_ANALYSIS_MODEL,
+  FREE_IMAGE_MODEL,
+  FREE_SEQUENCE_LIMIT,
+  freeSketchRefusal,
+  isFreeSketchRetry,
+} from '@/billing/free-sketch';
 import { micros } from '@/billing/money';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
@@ -75,5 +81,26 @@ describe('free sketches (#2390)', () => {
     expect(freeSketchRefusal({ ...ok, script: 'x'.repeat(3001) })).toMatch(
       /3,000/
     );
+  });
+
+  it('retries free only on the free terms', () => {
+    const sketch = {
+      freeSketch: true,
+      generateStartFrames: false,
+      script: 'INT. ROOM',
+      analysisModel: FREE_ANALYSIS_MODEL,
+      imageModel: FREE_IMAGE_MODEL,
+    };
+    expect(isFreeSketchRetry(sketch, 'dialogue')).toBe(true);
+    expect(isFreeSketchRetry(sketch, 'motion')).toBe(false);
+    expect(
+      isFreeSketchRetry({ ...sketch, freeSketch: false }, 'dialogue')
+    ).toBe(false);
+    expect(
+      isFreeSketchRetry({ ...sketch, imageModel: 'nano_banana_2' }, 'dialogue')
+    ).toBe(false);
+    expect(
+      isFreeSketchRetry({ ...sketch, script: 'x'.repeat(3001) }, 'dialogue')
+    ).toBe(false);
   });
 });

@@ -12,7 +12,7 @@ import { type GenerationStage, stageIndex } from '@/sequences/pipeline';
 
 export const FREE_SEQUENCE_LIMIT = 3;
 export const FREE_SCRIPT_MAX_CHARS = 3000;
-export const FREE_STOP_AT: GenerationStage = 'dialogue';
+const FREE_STOP_AT: GenerationStage = 'dialogue';
 export const FREE_ANALYSIS_MODEL = TURBO_DEFAULT_ANALYSIS;
 export const FREE_IMAGE_MODEL = TURBO_DEFAULT_IMAGE;
 
@@ -32,4 +32,27 @@ export function freeSketchRefusal(run: {
     return `Free sketches take a script up to ${FREE_SCRIPT_MAX_CHARS.toLocaleString('en')} characters. Shorten it or add credits.`;
   }
   return null;
+}
+
+/** A failed free sketch retries free only while it is still on the free terms. */
+export function isFreeSketchRetry(
+  sequence: {
+    freeSketch: boolean;
+    generateStartFrames: boolean;
+    script: string | null;
+    analysisModel: string;
+    imageModel: string;
+  },
+  stopAt: GenerationStage
+): boolean {
+  return (
+    sequence.freeSketch &&
+    sequence.analysisModel === FREE_ANALYSIS_MODEL &&
+    sequence.imageModel === FREE_IMAGE_MODEL &&
+    freeSketchRefusal({
+      stopAt,
+      generateStartFrames: sequence.generateStartFrames,
+      script: sequence.script ?? '',
+    }) === null
+  );
 }

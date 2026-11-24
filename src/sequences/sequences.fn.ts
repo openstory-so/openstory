@@ -35,10 +35,9 @@ import {
   allowsUnfundedGeneration,
   flagsFromStopAt,
   generationStageSchema,
-  includesStage,
   resolveStopAt,
 } from './pipeline';
-import { FREE_STOP_AT } from '@/billing/free-sketch';
+import { isFreeSketchRetry } from '@/billing/free-sketch';
 import { planWork } from './generation-plan';
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import {
@@ -402,8 +401,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
     });
     // A free sketch's retry stays free (#2390).
     const reservationId =
-      allowsUnfundedGeneration(stopAt) ||
-      (sequence.freeSketch && includesStage(FREE_STOP_AT, stopAt))
+      allowsUnfundedGeneration(stopAt) || isFreeSketchRetry(sequence, stopAt)
         ? undefined
         : await reserveRunCredits(
             context.scopedDb,
