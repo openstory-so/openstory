@@ -343,6 +343,8 @@ export const createSequences = createServerOnlyFn(
                 sequenceId,
               });
 
+        // A slot goes back only if no free-sketch row was written.
+        let rowWritten = false;
         const run = releaseReservationOnThrow(
           context.scopedDb,
           reservationId,
@@ -381,6 +383,7 @@ export const createSequences = createServerOnlyFn(
                 ? suggestedLocationIds
                 : undefined,
             });
+            rowWritten = true;
 
             // Organization characters the script references (#2050) are cast
             // before the trigger, so the launcher's cast snapshot has them.
@@ -452,7 +455,7 @@ export const createSequences = createServerOnlyFn(
         try {
           return await run;
         } catch (error) {
-          await context.scopedDb.billing.releaseFreeSequence();
+          if (!rowWritten) await context.scopedDb.billing.releaseFreeSequence();
           throw error;
         }
       })

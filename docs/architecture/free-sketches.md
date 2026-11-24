@@ -15,8 +15,8 @@ for new sequences.
 The count lives on `organization_billing_settings.free_sequences_used`, not on
 the sequences, so a hard delete does not give a slot back. `claimFreeSequence`
 is one guarded `UPDATE … WHERE free_sequences_used < 3`, so two racing creates
-cannot both take the last slot. A create that throws before its trigger gives
-the slot back (`releaseFreeSequence`). A failed run does not.
+cannot both take the last slot. A create that throws before the sequence row is
+written gives the slot back (`releaseFreeSequence`). A failed run does not.
 
 ## What a free sketch runs
 
