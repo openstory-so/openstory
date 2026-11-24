@@ -147,6 +147,7 @@ const {
   claimTargets,
   findTargetMissingStartFrameMode,
   siblingPrompts,
+  targetRendersDraft,
 } = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
 type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
@@ -913,5 +914,29 @@ describe('saved sibling direction snapshots', () => {
       visual: [{ shotId: 'sibling', text: 'Close-up of the listener' }],
       motion: [{ shotId: 'sibling', text: 'Listener turns toward camera' }],
     });
+  });
+});
+
+describe('targetRendersDraft (#2424)', () => {
+  const plan = (draftMotion: boolean, draftOverride?: boolean) =>
+    asStub<Parameters<typeof targetRendersDraft>[0]>({
+      sequence: { draftMotion },
+      ...(draftOverride === undefined ? {} : { draftOverride }),
+    });
+  const draftClip = { staleVideoDraft: true as const };
+  const finalClip = {};
+
+  it('re-renders a stale draft as a draft and leaves a final a final', () => {
+    expect(targetRendersDraft(plan(false), draftClip)).toBe(true);
+    expect(targetRendersDraft(plan(false), finalClip)).toBe(false);
+  });
+
+  it('drafts every clip in a Draft first sequence', () => {
+    expect(targetRendersDraft(plan(true), finalClip)).toBe(true);
+  });
+
+  it('lets the dialog override every clip', () => {
+    expect(targetRendersDraft(plan(true, false), draftClip)).toBe(false);
+    expect(targetRendersDraft(plan(false, true), finalClip)).toBe(true);
   });
 });

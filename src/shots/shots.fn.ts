@@ -21,6 +21,8 @@ import {
 } from '@/shots/server/update-stale-preview';
 import { toShotView, pendingUpscaleUrlFromVersion } from './shot-view';
 import { getVideoDownloadUrl } from '@/motion/server/video-storage';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import { loadShotDialogueResolver } from '@/shots/server/shot-dialogue';
 import { sectionLineTiming } from '@/shots/shot-dialogue';
@@ -658,6 +660,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
         sceneId: ulidSchema.optional(),
         shotId: ulidSchema.optional(),
         depth: z.enum(UPDATE_STALE_DEPTHS).optional(),
+        draftMotion: z.boolean().optional(),
       })
     )
   )
@@ -670,6 +673,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
       depth: data.depth ?? DEFAULT_UPDATE_STALE_DEPTH,
       sceneId: data.sceneId,
       shotId: data.shotId,
+      draftMotion: data.draftMotion,
     });
     if (creditFloorMicros > 0) {
       await requireCredits(scopedDb, creditFloorMicros, {
@@ -781,6 +785,7 @@ export const getUpdateStalePreviewFn = createServerFn({ method: 'GET' })
     return buildUpdateStalePreview(
       plan,
       await getEffectiveFalPricing(),
-      sequence.musicModel
+      sequence.musicModel,
+      await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials)
     );
   });

@@ -96,6 +96,8 @@ import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-s
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import type { Stamped } from '@/shots/input-hash';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MotionRenderShot } from '@/motion/server/build-motion-render';
 import type { ShotImageRefs } from './shot-image-input';
 import { pendingVoiceId } from './pending-voices';
@@ -195,6 +197,8 @@ export type PlanTarget = {
    * the same shape.
    */
   lipsyncVideo?: boolean;
+  /** The clip being replaced is an Ark draft (#2424); omitted when false. */
+  staleVideoDraft?: boolean;
   /**
    * A continue (#1818) renders the shot's FIRST video too; Update all never
    * does, so the render stands down when the selection is gone.
@@ -408,6 +412,8 @@ export function siblingPrompts(
 
 export type UpdateStalePlan = {
   renderOptions?: PlanRenderOptions;
+  /** The dialog's draft switch for every clip (#2424); absent, each clip decides. */
+  draftOverride?: boolean;
   aspectRatio: AspectRatio;
   resolution: Resolution;
   sequence: PlanSequence;
@@ -527,6 +533,8 @@ export async function planUpdateAll(args: {
   userId: string;
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
+  /** Render every clip as an Ark draft or not; absent, {@link targetRendersDraft} decides per clip. */
+  draftMotion?: boolean;
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
   const [generationPlan, allShots] = await Promise.all([
@@ -560,6 +568,9 @@ export async function planUpdateAll(args: {
   );
   return {
     ...plan,
+    ...(args.draftMotion === undefined
+      ? {}
+      : { draftOverride: args.draftMotion }),
     skipped: [
       ...plan.skipped,
       ...[...unchecked].map((id) => ({
@@ -568,6 +579,17 @@ export async function planUpdateAll(args: {
       })),
     ],
   };
+}
+
+/** A clip drafts on the run's override, else in a draft-mode sequence or when it replaces a draft (#2424). */
+export function targetRendersDraft(
+  plan: Pick<UpdateStalePlan, 'sequence' | 'draftOverride'>,
+  target: Pick<PlanTarget, 'staleVideoDraft'>
+): boolean {
+  return (
+    plan.draftOverride ??
+    (plan.sequence.draftMotion || target.staleVideoDraft === true)
+  );
 }
 
 const SHOT_UNIT_KINDS = new Set<PlanUnitKind>([
@@ -934,6 +956,8 @@ type ShotVideoState = {
   hasVideo: boolean;
   selectedVersionId: string | null;
   selectedModel: string | null;
+  /** The selected clip is an Ark draft and Seedance still runs on Ark (#1756, #2424). */
+  selectedDraft: boolean;
   alreadyStale: boolean;
   generating: boolean;
   /** Absent on a segment assembled before drift existed: stale means picture. */
@@ -960,6 +984,10 @@ async function loadVideoStateByShot(
     allShots
   );
 
+  // A draft re-renders as a draft only while Ark can take it; off Ark it is a final.
+  const onArk =
+    assembled.some((s) => s.selectedVersion?.draftTaskId) &&
+    (await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials));
   const byShot = new Map<string, ShotVideoState>();
   for (const segment of assembled) {
     const generating = versions.some(
@@ -970,6 +998,7 @@ async function loadVideoStateByShot(
         hasVideo: segment.selectedVersion !== null,
         selectedVersionId: segment.selectedVersion?.id ?? null,
         selectedModel: segment.selectedVersion?.model ?? null,
+        selectedDraft: onArk && Boolean(segment.selectedVersion?.draftTaskId),
         alreadyStale: segment.stale,
         generating,
         drift: segment.drift ?? (segment.stale ? 'picture' : 'current'),
@@ -1185,6 +1214,9 @@ async function decideShotTarget(args: {
       imageModel,
       regenVideo: flags.regenVideo,
       ...(lipsyncVideo ? { lipsyncVideo: true as const } : {}),
+      ...(flags.regenVideo && videoState?.selectedDraft
+        ? { staleVideoDraft: true as const }
+        : {}),
       createsVideo: flags.regenVideo && !videoState?.hasVideo,
       staleVideoVersionId: flags.regenVideo
         ? (videoState?.selectedVersionId ?? null)

@@ -118,6 +118,7 @@ describe('previewLevels', () => {
     musicPrompt: true,
     musicTrack: false,
     reusedSheets: 0,
+    videoDraft: null,
     costByLevel: {
       prompts: null,
       images: null,

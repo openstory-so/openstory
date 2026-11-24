@@ -90,15 +90,26 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
       sceneId?: string;
       shotId?: string;
       depth?: UpdateStaleDepth;
+      draftMotion?: boolean;
     }) => updateStaleShotsFn({ data: { sequenceId, ...vars } }),
   });
   const { mutate: triggerMutate, isPending: triggerPending } = trigger;
 
   const run = useCallback(
-    (vars: { sceneId?: string; shotId?: string; depth?: UpdateStaleDepth }) => {
+    (vars: {
+      sceneId?: string;
+      shotId?: string;
+      depth?: UpdateStaleDepth;
+      draftMotion?: boolean;
+    }) => {
       if (triggerPending || runId) return;
       triggerMutate(
-        { sceneId: vars.sceneId, shotId: vars.shotId, depth: vars.depth },
+        {
+          sceneId: vars.sceneId,
+          shotId: vars.shotId,
+          depth: vars.depth,
+          draftMotion: vars.draftMotion,
+        },
         {
           onSuccess: ({ workflowRunId }) => setRunId(workflowRunId),
           onError: (error) => {

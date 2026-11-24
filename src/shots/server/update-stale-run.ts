@@ -16,6 +16,8 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ValidationError } from '@/platform/errors';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
@@ -77,11 +79,22 @@ export async function prepareUpdateStale(args: {
   shotIds?: readonly string[];
   /** The live plan, when the caller already computed it (agent plans). */
   generationPlan?: readonly PlanUnit[];
+  /** The dialog's draft switch for every clip; absent, each clip decides. */
+  draftMotion?: boolean;
 }): Promise<{ plan: UpdateStalePlan; creditFloorMicros: Microdollars }> {
   const { scopedDb, sequence, depth } = args;
   if (sequence.status === 'processing') {
     throw new ValidationError(
       'This sequence is still generating — wait for the run to finish before updating out-of-date shots.'
+    );
+  }
+  // Same refusal as the inspector: a draft is Ark-only (#1756).
+  if (
+    args.draftMotion === true &&
+    !(await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials))
+  ) {
+    throw new ValidationError(
+      'Drafts need the BytePlus route, but Seedance is routed to fal for this organization — update without drafts'
     );
   }
   const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
@@ -104,6 +117,7 @@ export async function prepareUpdateStale(args: {
     depth,
     userId: args.userId,
     generationPlan: args.generationPlan,
+    draftMotion: args.draftMotion,
   });
   return { plan, creditFloorMicros };
 }

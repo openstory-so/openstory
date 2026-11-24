@@ -522,18 +522,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // and reports what it did.
   const updateStaleShots = useUpdateStaleShots({ sequenceId });
   const handleUpdateAll = useCallback(
-    (depth: UpdateStaleDepth) => {
+    (depth: UpdateStaleDepth, draftMotion: boolean | undefined) => {
       if (!shot?.id) return;
       if (falNeedsBillingSetup) {
         showFalGate();
         return;
       }
-      updateStaleShots.run({ shotId: shot.id, depth });
+      updateStaleShots.run({ shotId: shot.id, depth, draftMotion });
     },
     [shot?.id, falNeedsBillingSetup, showFalGate, updateStaleShots]
   );
   const handleScopeUpdateAll = useCallback(
-    (depth: UpdateStaleDepth) => {
+    (depth: UpdateStaleDepth, draftMotion: boolean | undefined) => {
       if (!scopeShots || !scopeStaleness) return;
       if (falNeedsBillingSetup) {
         showFalGate();
@@ -543,6 +543,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         // Undefined at sequence scope → the workflow covers the whole sequence.
         sceneId: scriptSceneId,
         depth,
+        draftMotion,
       });
     },
     [

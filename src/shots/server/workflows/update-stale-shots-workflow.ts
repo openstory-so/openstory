@@ -115,6 +115,7 @@ import {
 import {
   claimTargets,
   findTargetMissingStartFrameMode,
+  targetRendersDraft,
   type MusicPlan,
   type PlanTarget,
   type ShotClaims,
@@ -1311,7 +1312,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             duration,
             aspectRatio: plan.aspectRatio,
             resolution: plan.resolution,
-            draft: plan.sequence.draftMotion,
+            draft: targetRendersDraft(plan, target),
             sceneTitle: target.motionRender.sceneTitle,
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,
