@@ -16,12 +16,12 @@ import {
 import type { GatewayTransport } from '@/gateway/server/adapter';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import {
-  gatewayErrorCode,
+  finishGatewayRun,
   type GatewayRun,
   type GatewayStore,
   type GatewayStored,
   pollGatewayRun,
-  settleGatewayRun,
+  releaseGatewayRun,
   startGatewayRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
@@ -45,7 +45,7 @@ const handleSchema = z.object({
     estimateMicros: z.number().transform(micros),
     platformFeeBps: z.number(),
     oauthClientId: z.string().nullable(),
-    reservationId: z.string().optional(),
+    reservationId: z.string(),
   }),
   providerJobId: z.string(),
 });
@@ -67,30 +67,13 @@ export function inProcessGateway(params: {
   const credentials = platformOnlyCredentials(scopedDb);
 
   const finish = async (run: GatewayRun, stored: GatewayStored) => {
-    const via = GATEWAY_VIA[run.provider];
-    // Before the charge, so a charged job always has its outputs.
-    await scopedDb.gatewayJobs.recordOutputs(run.jobId, {
-      outputs: stored.outputs,
-      via,
-    });
-    await settleGatewayRun(
+    await finishGatewayRun(
       scopedDb,
       run,
       stored,
       `gateway:${run.jobId}:settle`
     );
     return { kind: 'done' as const, outputs: stored.outputs };
-  };
-
-  /** Ends the job failed and lets its hold go. */
-  const release = async (run: GatewayRun, error: string) => {
-    await scopedDb.gatewayJobs.markFailed(run.jobId, {
-      code: gatewayErrorCode(error),
-      message: error,
-    });
-    if (run.reservationId) {
-      await scopedDb.billing.zeroReservation(run.reservationId);
-    }
   };
 
   return {
@@ -127,18 +110,18 @@ export function inProcessGateway(params: {
         }
         // Started but never stamped: the provider may have it, so it is failed rather than sent again.
         const error = 'The previous attempt may have started this job';
-        await release(run, error);
+        await releaseGatewayRun(scopedDb, run, error);
         throw new NonRetryableError(error);
       }
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
-        reservationId: run.reservationId ?? null,
+        reservationId: run.reservationId,
         workflowRunId: params.runId,
       });
       await scopedDb.gatewayJobs.markRunning(run.jobId);
       const started = await startGatewayRun(run, credentials, store).catch(
         async (error: unknown) => {
           if (error instanceof NonRetryableError) {
-            await release(run, error.message);
+            await releaseGatewayRun(scopedDb, run, error.message);
           }
           throw error;
         }
@@ -155,12 +138,7 @@ export function inProcessGateway(params: {
     },
 
     poll: async (handle: string) => {
-      const parsed = handleSchema.parse(JSON.parse(handle));
-      const { providerJobId } = parsed;
-      const run: GatewayRun = {
-        ...parsed.run,
-        reservationId: parsed.run.reservationId,
-      };
+      const { run, providerJobId } = handleSchema.parse(JSON.parse(handle));
       const polled = await pollGatewayRun(
         run,
         providerJobId,
@@ -169,7 +147,7 @@ export function inProcessGateway(params: {
       );
       if (polled.kind === 'pending') return polled;
       if (polled.kind === 'failed') {
-        await release(run, polled.error);
+        await releaseGatewayRun(scopedDb, run, polled.error);
         return polled;
       }
       return finish(run, polled.stored);
