@@ -777,7 +777,9 @@ over `inProcessGateway`; anything else goes direct as before.
   it.
 - Proof (2026-11-26, `bun dev`): one Studio Grok still through
   `StudioGenerationWorkflow`. One hold of $0.06, one `credit_usage` of $0.06
-  (`gateway:<job>:settle`), no other debit, output in R2.
+  (`gateway:<job>:settle`), no other debit, output in R2. Repeated with
+  the route read from the stored snapshot (after `bun
+  scripts/refresh-fal-pricing.ts`): the same, once.
 
 Routed today: Studio images, shot image and variant regenerations, character
 and location sheet regenerations. Stay direct:
