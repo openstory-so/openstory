@@ -98,6 +98,7 @@ const VIDEO: GatewayModel = {
 };
 const BODY = { prompt: 'Mara wipes her hands on a rag in the engine room' };
 
+const START_BALANCE = 100_000_000;
 const organizationId = generateId();
 const userId = generateId();
 const store = vi.fn(async (_media: unknown, index: number) => ({
@@ -128,10 +129,16 @@ async function chargesFor(jobId: string) {
     .select()
     .from(transactions)
     .where(eq(transactions.organizationId, organizationId));
+  const [wallet] = await db
+    .select()
+    .from(credits)
+    .where(eq(credits.organizationId, organizationId));
   return {
     debits: debits.size,
     linesMicros: lines.reduce((sum, line) => sum + line.amountMicros, 0),
     usageRows: usage.filter((row) => debits.has(row.id)).length,
+    // A stray debit outside the settle shows here.
+    balanceDrop: START_BALANCE - (wallet?.balance ?? 0),
   };
 }
 
@@ -152,7 +159,7 @@ beforeAll(async () => {
   await db
     .insert(organization)
     .values({ id: organizationId, name: 'T', slug: 't' });
-  await db.insert(credits).values({ organizationId, balance: 100_000_000 });
+  await db.insert(credits).values({ organizationId, balance: START_BALANCE });
 });
 
 afterAll(async () => {
@@ -163,6 +170,10 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await db.delete(chargeLines);
   await db.delete(gatewayJobs);
+  await db
+    .update(credits)
+    .set({ balance: START_BALANCE })
+    .where(eq(credits.organizationId, organizationId));
 });
 
 const answered: GatewayStart = {
@@ -179,7 +190,7 @@ describe('the openstory adapter, in-process', () => {
     const result = await generateImage({
       threadId: 'thread-1',
       adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-1:image')),
-      prompt: BODY.prompt,
+      prompt: '',
       modelOptions: BODY,
     });
     expect(result.images).toEqual([{ url: '/r2/out-0.png' }]);
@@ -194,6 +205,7 @@ describe('the openstory adapter, in-process', () => {
       debits: 1,
       linesMicros: 20_000,
       usageRows: 1,
+      balanceDrop: 20_000,
     });
   });
 
@@ -203,7 +215,7 @@ describe('the openstory adapter, in-process', () => {
       await generateImage({
         threadId: 'thread-1',
         adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-2:image')),
-        prompt: BODY.prompt,
+        prompt: '',
         modelOptions: BODY,
       });
     }
@@ -214,6 +226,7 @@ describe('the openstory adapter, in-process', () => {
       debits: 1,
       linesMicros: 20_000,
       usageRows: 1,
+      balanceDrop: 20_000,
     });
     const holds = await db
       .select()
@@ -236,7 +249,7 @@ describe('the openstory adapter, in-process', () => {
     const { jobId } = await generateVideo({
       threadId: 'thread-1',
       adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-3:submit')),
-      prompt: BODY.prompt,
+      prompt: '',
       modelOptions: BODY,
     });
     const pollStep = () =>
@@ -249,14 +262,20 @@ describe('the openstory adapter, in-process', () => {
       status: 'completed',
       url: '/r2/out-0.png',
     });
-    // A replayed poll after the charge does not charge again.
-    await pollStep();
+    // A poll retried after the charge answers from the row: same URL, no second store.
+    expect(await pollStep()).toMatchObject({
+      status: 'completed',
+      url: '/r2/out-0.png',
+    });
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(store).toHaveBeenCalledTimes(1);
     const job = await onlyJob(VIDEO.id);
     expect(job).toMatchObject({ status: 'succeeded', providerJobId: 'xai-1' });
     expect(await chargesFor(job.id)).toEqual({
       debits: 1,
       linesMicros: 20_000,
       usageRows: 1,
+      balanceDrop: 20_000,
     });
   });
 
@@ -274,7 +293,7 @@ describe('the openstory adapter, in-process', () => {
       generateVideo({
         threadId: 'thread-1',
         adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
-        prompt: BODY.prompt,
+        prompt: '',
         modelOptions: BODY,
       });
     const first = await submitStep();
@@ -291,6 +310,7 @@ describe('the openstory adapter, in-process', () => {
       debits: 1,
       linesMicros: 20_000,
       usageRows: 1,
+      balanceDrop: 20_000,
     });
   });
 
@@ -300,7 +320,7 @@ describe('the openstory adapter, in-process', () => {
       generateVideo({
         threadId: 'thread-1',
         adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-10:submit')),
-        prompt: BODY.prompt,
+        prompt: '',
         modelOptions: BODY,
       });
     await submitStep();
@@ -320,13 +340,33 @@ describe('the openstory adapter, in-process', () => {
     expect(hold?.remainingAmount).toBe(0);
   });
 
+  it('refuses a second job on one transport', async () => {
+    start.mockResolvedValue(answered);
+    const adapter = openstoryImage(IMAGE.id, transport(IMAGE, 'run-11:image'));
+    await generateImage({
+      threadId: 'thread-1',
+      adapter,
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await expect(
+      generateImage({
+        threadId: 'thread-1',
+        adapter,
+        prompt: '',
+        modelOptions: BODY,
+      })
+    ).rejects.toThrow('build one per call');
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it('lets the hold go when the provider fails the job', async () => {
     start.mockResolvedValue({ jobId: 'xai-2' });
     poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
     const { jobId } = await generateVideo({
       threadId: 'thread-1',
       adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-4:submit')),
-      prompt: BODY.prompt,
+      prompt: '',
       modelOptions: BODY,
     });
     const status = await getVideoJobStatus({
@@ -356,7 +396,7 @@ describe('the openstory adapter, in-process', () => {
     const result = await generateAudio({
       threadId: 'thread-1',
       adapter: openstoryAudio(audio.id, transport(audio, 'run-7:audio')),
-      prompt: BODY.prompt,
+      prompt: '',
       modelOptions: BODY,
     });
     expect(result.audio).toEqual({
@@ -373,7 +413,7 @@ describe('the openstory adapter, in-process', () => {
     await generateImage({
       threadId: 'thread-1',
       adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-5:image')),
-      prompt: BODY.prompt,
+      prompt: '',
       modelOptions: { prompt: 'data:image/png;base64,AAAA' },
     });
     expect((await onlyJob(IMAGE.id)).status).toBe('succeeded');
@@ -384,7 +424,7 @@ describe('the openstory adapter, in-process', () => {
       generateImage({
         threadId: 'thread-1',
         adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-6:image')),
-        prompt: BODY.prompt,
+        prompt: '',
         size: '1024x1024',
         modelOptions: BODY,
       })

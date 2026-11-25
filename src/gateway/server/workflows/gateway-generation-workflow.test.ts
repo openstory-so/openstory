@@ -86,7 +86,7 @@ const runScopedDb: {
   organizationId: 'org-1',
   billing: { zeroReservation },
   gatewayJobs: {
-    markRunning: vi.fn(async () => undefined),
+    markRunning: vi.fn(async () => true),
     markFailed: runMarkFailed,
   },
   provenance: {},
@@ -151,7 +151,7 @@ function makeStep(opts: { retry?: boolean } = {}): ProbeStep {
 
 function makeScopedDb() {
   const gatewayJobs = {
-    markRunning: vi.fn(async () => undefined),
+    markRunning: vi.fn(async () => true),
     stampProviderJob: vi.fn(async () => undefined),
     recordOutputs: vi.fn(async (_id: string, _result: unknown) => {
       order.push(`${currentStep}:recordOutputs`);

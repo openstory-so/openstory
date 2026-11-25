@@ -533,17 +533,29 @@ today and the HTTP transport (#2438) is the other.
   card are never fetched mid-run), records the caller's run id on the job
   (the stale-job sweep reads it), starts, and for an answer at once stores
   and settles. A queued job's id is a handle carrying the held run and the
-  provider's job id, so a poll step reads no row. The poll that sees the job
-  finish stores it through the caller's `store`, records the outputs and
-  settles; a failed job is marked failed and its hold zeroed. A job whose
-  caller died is ended by the sweep.
+  provider's job id. The poll that sees the job finish stores it through the
+  caller's `store` and finishes it (`finishGatewayRun`); a failed job is
+  released (`releaseGatewayRun`). A poll first reads its own job by id
+  (`scopedDb.claims.gatewayJobs.getById`): a job that already ended answers
+  from the row, so a retried poll never stores a second copy or charges
+  again. A job whose caller died is ended by the sweep.
+- **The video job id** is the whole held run as JSON, so a poll step needs
+  nothing else. That is fine in-process; the HTTP transport (#2438) must
+  hand out an opaque id instead.
+- **The body is `modelOptions`.** TanStack's `prompt` is required by its
+  types and ignored here; pass `''`. `size`, `duration` and
+  `numberOfImages` are refused: put them in the body.
 - **Replays.** A held job that already exists is never started twice: a
   succeeded one returns its stored outputs, a failed one its error, a running
   one resumes polling its stamped provider job, and a running one with no
   stamp (the provider may have it) is failed and its hold let go. Only a
-  queued job starts.
+  queued job starts, and only the attempt whose `markRunning` flipped the
+  row. So a transient start error (a dropped connection) fails the job
+  closed on the retry rather than risk sending it twice.
 - **Idempotency.** The caller passes a replay-stable key per call (say
-  `${instanceId}:${stepName}`). A retried step finds the same job and the
+  `${instanceId}:${stepName}`) and builds one transport per call: a
+  transport runs one job, and a second `submit` on it throws rather than
+  answer with the first job. A retried step finds the same job and the
   same hold (`gateway:<jobId>`), and the settle key is `gateway:<jobId>:settle`,
   so a generation is charged once however often a step runs.
 - **Images and audio** submit and poll to the end inside one call. **Video**
@@ -562,9 +574,11 @@ symbol, and `submitGatewayJob` always passes the request, so the public
 endpoint can never skip the checks. `inProcessGateway` requires the symbol
 as a named argument; nothing defaults it. With it the gateway checks no URL
 and refuses no inline part, so the caller owns `requireUploadRights` for
-every URL and every inline part it sends. Only `submit-job.ts` and
-`adapter/in-process.ts` may name it (`upload-rights-checked.test.ts`); a new
-caller is added there on purpose, and no route or MCP tool may be.
+every URL and every inline part it sends. `upload-rights-checked.test.ts`
+resolves every value import, re-export and dynamic import of `submit-job.ts`
+and fails unless the file reaching the symbol is on its allowlist, and fails
+if an allowlisted file passes it on. `in-process.ts` only takes its type; a
+new caller is added there on purpose, and no route or MCP tool may be.
 
 ### Billing handover
 
@@ -572,7 +586,8 @@ A call through the adapter is held by `holdGatewayJob` and charged by
 `settleGatewayRun`, never by `deductWorkflowCredits`, `requireCredits` or
 `reserveRunCredits`; the hold is `billing.createReservation` with no own-key
 skip. `adapter/in-process.test.ts` fails if a generation is charged twice
-(a retried step, a replayed poll) or zero times.
+(a retried step, a replayed poll) or zero times, or if the wallet drops by
+anything but the charge.
 
 ## Not in this stack
 

@@ -1,33 +1,74 @@
-/** `UPLOAD_RIGHTS_CHECKED` skips the likeness check, so only these in-process callers may name it; no route or MCP tool can. */
+/**
+ * `UPLOAD_RIGHTS_CHECKED` skips the likeness check, so only these in-process
+ * callers may reach it; no route or MCP tool can. Every value import and
+ * re-export (alias, relative, namespace, dynamic) is resolved to the file it
+ * lands on, as `db-access-allowlist.test.ts` does.
+ */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '..', '..', '..');
-const ALLOWED = [
-  // Defines it and compares against it.
-  'src/gateway/server/submit-job.ts',
-  // The in-process transport: its caller ran `requireUploadRights` before the run.
-  'src/gateway/server/adapter/in-process.ts',
-];
+const DEFINED_IN = 'src/gateway/server/submit-job';
+// In-process callers that ran `requireUploadRights` before the run; `in-process.ts` only takes the type.
+const ALLOWED: readonly string[] = [];
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) yield* walk(path);
-    else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name))
+    else if (
+      /\.tsx?$/.test(entry.name) &&
+      !/\.(test|spec|stories)\./.test(path)
+    )
       yield path;
   }
 }
 
+/** `import … from`, `export … from` and `import(…)`, with what they name. */
+const FROM_RE =
+  /^(?:import|export)\s+(?!type\s)([\s\S]*?)\s+from\s+['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/gm;
+
+function resolves(file: string, spec: string): boolean {
+  const target = spec.startsWith('.')
+    ? relative(ROOT, resolve(file, '..', spec))
+    : spec.replace(/^@\//, 'src/');
+  return target.replace(/\.ts$/, '') === DEFINED_IN;
+}
+
+/** Whether the names reach the symbol: by name, by namespace, or all of it. */
+function reaches(names: string): boolean {
+  const values = names.replace(/\btype\s+\w+(\s+as\s+\w+)?/g, '');
+  return /\bUPLOAD_RIGHTS_CHECKED\b|\*/.test(values);
+}
+
+const files = [...walk(join(ROOT, 'src'))];
+
 describe('UPLOAD_RIGHTS_CHECKED', () => {
-  it('is named only by the allowlisted in-process files', () => {
-    const naming = [...walk(join(ROOT, 'src'))]
+  it('is reached only by the allowlisted in-process files', () => {
+    const reaching = files
       .filter((file) =>
-        readFileSync(file, 'utf8').includes('UPLOAD_RIGHTS_CHECKED')
+        [...readFileSync(file, 'utf8').matchAll(FROM_RE)].some(
+          ([, names, spec, dynamicSpec]) =>
+            dynamicSpec !== undefined
+              ? resolves(file, dynamicSpec)
+              : spec !== undefined &&
+                resolves(file, spec) &&
+                reaches(names ?? '')
+        )
       )
       .map((file) => relative(ROOT, file))
       .sort();
-    expect(naming).toEqual([...ALLOWED].sort());
+    expect(reaching).toEqual([...ALLOWED].sort());
+  });
+
+  it('is never passed on by an allowlisted file', () => {
+    for (const file of ALLOWED) {
+      const text = readFileSync(join(ROOT, file), 'utf8');
+      expect(text).not.toMatch(/export\s*\{[^}]*\bUPLOAD_RIGHTS_CHECKED\b/);
+      expect(text).not.toMatch(
+        /export\s+(const|let|var)\s+\w+\s*=\s*UPLOAD_RIGHTS_CHECKED\b/
+      );
+    }
   });
 });

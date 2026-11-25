@@ -56,7 +56,7 @@ export function inProcessGateway(params: {
   model: GatewayModel;
   /** The caller's run, so the stale-job sweep can end a job whose run died. */
   runId: string;
-  /** Replay-stable per call, e.g. `${instanceId}:${stepName}`: a retried step reuses the job and its hold. */
+  /** Replay-stable, e.g. `${instanceId}:${stepName}`: a retried step reuses the job and its hold. One transport, one job. */
   idempotencyKey: string;
   /** Called inside the step that received the media (#1645). */
   store: GatewayStore;
@@ -76,8 +76,16 @@ export function inProcessGateway(params: {
     return { kind: 'done' as const, outputs: stored.outputs };
   };
 
+  let submitted = false;
   return {
     submit: async (body: GatewayJobInput) => {
+      // One key is one job: a second submit would answer with the first job.
+      if (submitted) {
+        throw new NonRetryableError(
+          'An in-process transport runs one job: build one per call'
+        );
+      }
+      submitted = true;
       let run: GatewayRun;
       let job: Awaited<ReturnType<typeof holdGatewayJob>>['job'];
       try {
@@ -117,7 +125,9 @@ export function inProcessGateway(params: {
         reservationId: run.reservationId,
         workflowRunId: params.runId,
       });
-      await scopedDb.gatewayJobs.markRunning(run.jobId);
+      if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {
+        throw new Error('Another attempt is starting this job');
+      }
       const started = await startGatewayRun(run, credentials, store).catch(
         async (error: unknown) => {
           if (error instanceof NonRetryableError) {
@@ -139,6 +149,17 @@ export function inProcessGateway(params: {
 
     poll: async (handle: string) => {
       const { run, providerJobId } = handleSchema.parse(JSON.parse(handle));
+      // A retried poll whose job already ended answers from the row: no second store, no second charge.
+      const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
+      if (job?.status === 'succeeded') {
+        return { kind: 'done' as const, outputs: job.outputs ?? [] };
+      }
+      if (job?.status === 'failed') {
+        return {
+          kind: 'failed' as const,
+          error: job.error?.message ?? 'Generation failed',
+        };
+      }
       const polled = await pollGatewayRun(
         run,
         providerJobId,
