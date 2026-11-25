@@ -49,7 +49,7 @@ function failure(run: () => unknown): string | null {
 }
 
 /** A typical call: the card's own first example, split into its request fields and its usage levers. */
-export function typicalCall(card: RateCard): {
+function typicalCall(card: RateCard): {
   request: Record<string, JsonValue>;
   usage: Record<string, unknown>;
 } {
