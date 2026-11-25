@@ -14,6 +14,7 @@ export const recordedModelSchema = z.object({
   /** Null where modelschemas has no such model. */
   record: z
     .object({
+      rawId: z.string(),
       activity: z.string().nullable(),
       schemaEndpointId: z.string().nullable(),
       pricing: z.unknown(),
@@ -28,6 +29,8 @@ export type Coverage = {
   provider: GatewayProvider;
   id: string;
   found: boolean;
+  /** The id modelschemas answers under; the snapshot keeps only a model answering under its own. */
+  answersAs: string;
   schema: boolean;
   card: boolean;
   /** Why the card cannot hold a typical request, or null. */
@@ -66,7 +69,13 @@ export function typicalCall(card: RateCard): {
 export function modelCoverage(model: RecordedModel): Coverage {
   const { provider, id, record, schema } = model;
   const parsed = rateCardSchema.safeParse(record?.pricing);
-  const base = { provider, id, found: record !== null, schema };
+  const base = {
+    provider,
+    id,
+    found: record !== null,
+    answersAs: record?.rawId ?? id,
+    schema,
+  };
   if (!parsed.success) {
     const reason = record ? 'no rate card' : 'not on modelschemas';
     return { ...base, card: false, hold: reason, charge: reason };
@@ -84,6 +93,9 @@ export function modelCoverage(model: RecordedModel): Coverage {
 /** The first thing that stops the gateway serving this model, or null. */
 export function coverageGap(coverage: Coverage): string | null {
   if (!coverage.found) return 'not on modelschemas';
+  if (coverage.answersAs !== coverage.id) {
+    return `modelschemas answers as ${coverage.answersAs}`;
+  }
   if (!coverage.schema) return 'request schema does not load';
   return coverage.hold ?? coverage.charge;
 }
