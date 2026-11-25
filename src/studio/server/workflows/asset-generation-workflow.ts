@@ -21,6 +21,7 @@ import {
   openstoryAudio,
   openstoryImage,
   openstoryVideo,
+  openstoryVideoStatus,
 } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import { type GatewayStore, storeGatewayResult } from '@/gateway/server/phases';
@@ -98,31 +99,40 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
       event.payload;
     const model = route.via === 'openstory' ? route.model.id : route.endpointId;
 
-    /** A transport for one step; its store collects what that step wrote, so the step returns it. */
-    const transport = (stored: GatewayJobOutput[]): GatewayTransport => {
-      const store: GatewayStore = async (media, index) => {
-        const output = await storeGatewayOutput({
-          media,
-          kind: activity,
-          organizationId,
-          folder: `assets/${assetId}`,
-          index,
-        });
-        stored.push(output);
-        return output;
-      };
-      return route.via === 'openstory'
+    const store: GatewayStore = (media, index) =>
+      storeGatewayOutput({
+        media,
+        kind: activity,
+        organizationId,
+        folder: `assets/${assetId}`,
+        index,
+      });
+    const gateway: GatewayTransport =
+      route.via === 'openstory'
         ? inProcessGateway({
             scopedDb,
             model: route.model,
             runId: event.instanceId,
-            // The click held under this key: the run finds that job and its hold.
-            idempotencyKey: `asset:${assetId}`,
             store,
             uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
           })
         : directFal(scopedDb, route.endpointId, store);
-    };
+    // The click held under this key: the run finds that job and its hold.
+    const call = { idempotencyKey: `asset:${assetId}` };
+
+    /** Collects the outputs a step's calls answered with, stored now or by an earlier attempt. */
+    const collecting = (sink: GatewayJobOutput[]): GatewayTransport => ({
+      submit: async (body, key) => {
+        const submitted = await gateway.submit(body, key);
+        if (submitted.kind === 'done') sink.push(...submitted.outputs);
+        return submitted;
+      },
+      poll: async (handle) => {
+        const polled = await gateway.poll(handle);
+        if (polled.kind === 'done') sink.push(...polled.outputs);
+        return polled;
+      },
+    });
 
     await step.do('set-running', async () => {
       await scopedDb.generatedAssets.markRunning(assetId);
@@ -133,7 +143,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
       const submitted = await step.do('submit', async () => {
         const stored: GatewayJobOutput[] = [];
         const job = await generateVideo({
-          adapter: openstoryVideo(model, transport(stored)),
+          adapter: openstoryVideo(model, collecting(stored), call),
           prompt: '',
           modelOptions: input,
           threadId: event.instanceId,
@@ -152,7 +162,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
           while (Date.now() < deadline) {
             const stored: GatewayJobOutput[] = [];
             const status = await getVideoJobStatus({
-              adapter: openstoryVideo(model, transport(stored)),
+              adapter: openstoryVideoStatus(model, collecting(stored)),
               jobId: submitted.jobId,
             });
             if (status.status === 'failed') {
@@ -181,12 +191,12 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         };
         if (activity === 'image') {
           await generateImage({
-            adapter: openstoryImage(model, transport(stored)),
+            adapter: openstoryImage(model, collecting(stored), call),
             ...options,
           });
         } else {
           await generateAudio({
-            adapter: openstoryAudio(model, transport(stored)),
+            adapter: openstoryAudio(model, collecting(stored), call),
             ...options,
           });
         }
