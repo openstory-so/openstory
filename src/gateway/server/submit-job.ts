@@ -53,11 +53,15 @@ export type GatewaySubmitContext = {
 
 export type GatewaySubmitResult = { job: GatewayJob; replay: boolean };
 
-/** How a body's media is checked: against the request that sent it. */
-export type GatewayRights = {
-  scopedDb: ScopedDb;
-  request: LikenessRequestContext;
-};
+/** An in-process caller's word that it ran `requireUploadRights` on every URL; JSON cannot carry it. */
+export const UPLOAD_RIGHTS_CHECKED: unique symbol = Symbol(
+  'upload rights checked'
+);
+
+/** How a body's media is checked: here against the request, or already by an in-process caller. */
+export type GatewayRights =
+  | { scopedDb: ScopedDb; request: LikenessRequestContext }
+  | typeof UPLOAD_RIGHTS_CHECKED;
 
 /** What the hold writes: met by `ScopedDb` at a trigger and by `WorkflowScopedDb` in a step. */
 export type GatewayHoldDb = Pick<
@@ -274,11 +278,13 @@ export async function holdGatewayJob(
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
   });
-  await requireCheckedUploadRights(
-    withPlatformLlmKey(rights.scopedDb),
-    gatedUrls(input),
-    rights.request
-  );
+  if (rights !== UPLOAD_RIGHTS_CHECKED) {
+    await requireCheckedUploadRights(
+      withPlatformLlmKey(rights.scopedDb),
+      gatedUrls(input),
+      rights.request
+    );
+  }
 
   let estimate: Microdollars;
   try {

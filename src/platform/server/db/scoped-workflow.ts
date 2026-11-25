@@ -134,6 +134,8 @@ type WorkflowClaims = {
    * section id). Its range and recording never change after it is written.
    */
   shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSectionById'>;
+  /** This run's own gateway job, so a retried poll answers from it rather than storing and charging again. */
+  gatewayJobs: Pick<ScopedDb['gatewayJobs'], 'getById'>;
 };
 
 /**

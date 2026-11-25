@@ -122,7 +122,9 @@ describe('gateway jobs rows', () => {
       reservationId: 'res-1',
       workflowRunId: 'run-1',
     });
-    await own.markRunning(job.id);
+    // Only the attempt that flips the row may start the provider.
+    expect(await own.markRunning(job.id)).toBe(true);
+    expect(await own.markRunning(job.id)).toBe(false);
     await own.stampProviderJob(job.id, { via: 'xai', providerJobId: 'p-1' });
     const outputs = [
       { url: '/r2/a.png', path: 'a.png', contentType: 'image/png' },

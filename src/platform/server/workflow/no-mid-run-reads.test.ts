@@ -34,6 +34,8 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
+  // Runs gateway phases inside a caller's step.
+  'src/gateway/server/adapter/in-process.ts',
   // A workflow-step helper, not a workflow: dialogue speech spends the
   // ElevenLabs key inside the step it drives (#1651, #1657).
   'src/motion/server/generate-dialogue-speech.ts',
@@ -358,6 +360,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'videoVariants.getById',
       bucket: 'CLAIM-BY-ID',
       why: 'The pending-promote claim, read back to confirm THIS run owns it before clearing it.',
+    },
+  ],
+  'in-process.ts': [
+    {
+      read: 'gatewayJobs.getById',
+      bucket: 'CLAIM-BY-ID',
+      why: "This call's own gateway job, by the id in its handle: a retried poll answers from it rather than storing and charging again.",
     },
   ],
   'llm-call-helper.ts': [

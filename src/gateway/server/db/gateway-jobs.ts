@@ -190,8 +190,9 @@ export function createGatewayJobsMethods(
         .where(own(id));
     },
 
-    markRunning: async (id: string): Promise<void> => {
-      await db
+    /** True when this call flipped the row, so only one attempt starts the provider. */
+    markRunning: async (id: string): Promise<boolean> => {
+      const flipped = await db
         .update(gatewayJobs)
         .set({
           status: 'running',
@@ -201,7 +202,9 @@ export function createGatewayJobsMethods(
         })
         .where(
           and(own(id), RUN_MAY_WRITE, sql`${gatewayJobs.status} <> 'running'`)
-        );
+        )
+        .returning({ id: gatewayJobs.id });
+      return flipped.length > 0;
     },
 
     /** The provider's id for a queued job: a record, the run polls its own submission. */

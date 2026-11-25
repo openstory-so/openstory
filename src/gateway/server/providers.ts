@@ -25,7 +25,7 @@ import {
   type GatewayProvider,
 } from '@/gateway/schema';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
-import { fal } from '@fal-ai/client';
+import { createFalClient } from '@fal-ai/client';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
@@ -137,7 +137,7 @@ function imagesFromData(body: JsonObject): GatewayMedia[] {
 const falDriver: Driver = {
   configured: () => resolvePlatformOptionalKey('fal') !== undefined,
   start: async (target, body, credentials) => {
-    await configureFal(credentials);
+    const fal = await falClient(credentials);
     try {
       const { request_id } = await fal.queue.submit(target.modelId, {
         input: body,
@@ -153,7 +153,7 @@ const falDriver: Driver = {
     }
   },
   poll: async (target, jobId, credentials) => {
-    await configureFal(credentials);
+    const fal = await falClient(credentials);
     const status = await fal.queue.status(target.modelId, {
       requestId: jobId,
       logs: false,
@@ -193,9 +193,10 @@ function falUsage(data: JsonValue): JsonObject | null {
   return { megapixels: pixels / 1_000_000 };
 }
 
-async function configureFal(credentials: GatewayCredentials): Promise<void> {
+/** A client per call: a shared `fal.config` would let concurrent calls send each other's key. */
+async function falClient(credentials: GatewayCredentials) {
   const { key } = await credentials.resolveKey('fal');
-  fal.config({
+  return createFalClient({
     credentials: key,
     fetch: createDeadlineFetch(FAL_REQUEST_TIMEOUT_MS, 'Gateway request'),
   });

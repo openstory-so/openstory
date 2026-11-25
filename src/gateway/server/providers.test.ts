@@ -31,10 +31,19 @@ const falQueue = {
   status: vi.fn(),
   result: vi.fn(),
 };
-const falConfig = vi.fn();
-vi.doMock('@fal-ai/client', () => ({
-  fal: { config: falConfig, queue: falQueue },
+/** The key each submit went out with. */
+const submittedWith: string[] = [];
+const createFalClient = vi.fn((config: { credentials: string }) => ({
+  queue: {
+    submit: async (...args: unknown[]) => {
+      submittedWith.push(config.credentials);
+      return falQueue.submit(...args);
+    },
+    status: falQueue.status,
+    result: falQueue.result,
+  },
 }));
+vi.doMock('@fal-ai/client', () => ({ createFalClient }));
 
 const fetchMock =
   vi.fn<(input: string | Request, init?: RequestInit) => Promise<Response>>();
@@ -493,12 +502,35 @@ describe('fal driver', () => {
     expect(await GATEWAY_DRIVERS.fal.start(target, body, credentials)).toEqual({
       jobId: 'fal-1',
     });
-    expect(falConfig).toHaveBeenCalledWith(
+    expect(createFalClient).toHaveBeenCalledWith(
       expect.objectContaining({ credentials: 'fal-key' })
     );
     expect(falQueue.submit).toHaveBeenCalledWith('fal-ai/flux/schnell', {
       input: body,
     });
+  });
+
+  it('sends each call with its own key when two starts interleave', async () => {
+    submittedWith.length = 0;
+    falQueue.submit.mockResolvedValue({ request_id: 'fal-x' });
+    const keyed = (key: string, delayMs: number) =>
+      asStub<GatewayCredentials>({
+        organizationId: key,
+        userId: 'u1',
+        resolveKey: async () => {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          return { key, source: 'organization' };
+        },
+      });
+    // The slower key resolves last, as a shared client would leave it configured for both.
+    await Promise.all([
+      GATEWAY_DRIVERS.fal.start(target, body, keyed('own-key', 20)),
+      GATEWAY_DRIVERS.fal.start(target, body, keyed('platform-key', 0)),
+    ]);
+    expect([...submittedWith].sort()).toEqual(['own-key', 'platform-key']);
+    expect(
+      createFalClient.mock.calls.map(([config]) => config.credentials)
+    ).toEqual(['platform-key', 'own-key']);
   });
 
   it('does not retry a 422', async () => {
