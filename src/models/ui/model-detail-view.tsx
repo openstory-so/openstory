@@ -334,7 +334,14 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
               </p>
             </div>
           ) : activeAsset ? (
-            <AssetResult asset={activeAsset} />
+            <div className="flex flex-col gap-2">
+              <AssetResult asset={activeAsset} />
+              {activeAsset.charged ? (
+                <p className="text-sm text-muted-foreground tabular-nums">
+                  Charged {activeAsset.charged}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed">
               <p className="text-sm text-muted-foreground">

@@ -610,7 +610,8 @@ route once, at the click, and puts it on the payload:
 - **`openstory`** (every provider, no own fal key): `holdGatewayJob` with
   the request's likeness check, under the key `asset:<assetId>`. The
   `generated_assets` row is stamped `provider: 'openstory'` and
-  `gatewayJobId`; the charge is that job's. `AssetGenerationWorkflow` runs
+  `gatewayJobId`; the charge is that job's, shown under the run once it
+  settles (`getGeneratedAssetWithCharge`). `AssetGenerationWorkflow` runs
   the adapter over `inProcessGateway` with the same key, so the run finds
   the click's job and hold rather than making new ones.
 - **`fal`** (the organization has a usable fal key): today's direct path,

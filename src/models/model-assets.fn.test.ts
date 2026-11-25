@@ -13,6 +13,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
@@ -54,8 +55,11 @@ vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: { grok: { configured: () => true } },
 }));
 
-const { createGeneratedAsset, validateAssetInput } =
-  await import('@/models/server/generated-assets');
+const {
+  createGeneratedAsset,
+  getGeneratedAssetWithCharge,
+  validateAssetInput,
+} = await import('@/models/server/generated-assets');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
 /** A realistic fal input schema slice (flux-style). */
@@ -230,6 +234,28 @@ describe('createGeneratedAsset', () => {
       }),
       { deduplicationId: `asset-${result.id}` }
     );
+  });
+
+  it('shows the charge on the run once its gateway job settles', async () => {
+    const scopedDb = scoped(false);
+    const result = await createGeneratedAsset(
+      scopedDb,
+      grokData({ prompt: 'Mara wipes her hands on a rag' }),
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    expect(
+      (await getGeneratedAssetWithCharge(scopedDb, result.id))?.charged
+    ).toBeNull();
+    const [job] = await db.select().from(gatewayJobs);
+    if (!job) throw new Error('no job');
+    await db
+      .update(gatewayJobs)
+      .set({ status: 'succeeded', costMicros: 19_845 })
+      .where(eq(gatewayJobs.id, job.id));
+    expect(
+      (await getGeneratedAssetWithCharge(scopedDb, result.id))?.charged
+    ).toBe('$0.02');
   });
 
   it('runs an own fal key directly: no gateway job, no hold', async () => {

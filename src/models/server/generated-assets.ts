@@ -1,6 +1,7 @@
 /** The Models page create flow (#458, #2433): the gateway holds it on platform keys, or an own fal key runs it unbilled. */
 
 import type { CreateGeneratedAssetData } from '@/models/model-assets.fn';
+import { micros, microsToDisplayUsd } from '@/billing/money';
 import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
@@ -161,4 +162,21 @@ export async function createGeneratedAsset(
   }
 
   return { ok: true, id: row.id, workflowRunId };
+}
+
+/** A run with what its gateway job charged; `charged` is null for an own-key run or one not yet settled. */
+export async function getGeneratedAssetWithCharge(
+  scopedDb: ScopedDb,
+  id: string
+) {
+  const asset = await scopedDb.generatedAssets.getById(id);
+  if (!asset) return null;
+  const job = asset.gatewayJobId
+    ? await scopedDb.gatewayJobs.getById(asset.gatewayJobId)
+    : null;
+  const charged =
+    job?.status === 'succeeded' && job.costMicros !== null
+      ? microsToDisplayUsd(micros(job.costMicros))
+      : null;
+  return { ...asset, charged };
 }

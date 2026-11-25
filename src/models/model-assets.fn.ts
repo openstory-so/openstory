@@ -6,7 +6,10 @@ import {
   GENERATED_ASSET_ACTIVITIES,
   type JsonValue,
 } from '@/platform/server/db/schema';
-import { createGeneratedAsset } from '@/models/server/generated-assets';
+import {
+  createGeneratedAsset,
+  getGeneratedAssetWithCharge,
+} from '@/models/server/generated-assets';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
@@ -94,7 +97,7 @@ export const getGeneratedAssetFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(getGeneratedAssetInputSchema))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();
-    const asset = await context.scopedDb.generatedAssets.getById(data.id);
+    const asset = await getGeneratedAssetWithCharge(context.scopedDb, data.id);
     if (!asset) {
       throw new Error('Generated asset not found');
     }
