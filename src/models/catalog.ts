@@ -28,6 +28,7 @@ import type {
   JsonValue,
 } from '@/platform/server/db/schema';
 import { getEnv } from '#env';
+import type { GatewayProvider } from '@/gateway/schema';
 import { OpenStoryError } from '@/platform/errors';
 import { groupModelsIntoFamilies, type ModelFamily } from './model-families';
 
@@ -118,6 +119,9 @@ export type CatalogFamilyList = {
 };
 
 export type ModelDetail = {
+  provider: GatewayProvider;
+  /** Why it cannot run on OpenStory credits, or null. */
+  unavailable: string | null;
   model: CatalogModel;
   inputSchema: JsonSchema;
   /** Output schemas are missing for some endpoints. */
@@ -272,10 +276,19 @@ function parseModelsResponse(body: string): ApiModel[] {
 
 function parseSchemaResponse(body: string, endpointId: string): JsonSchema {
   const parsed: JsonValue = JSON.parse(body);
-  const schema =
+  return toJsonSchema(
     parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed.schema
-      : undefined;
+      : undefined,
+    endpointId
+  );
+}
+
+/** A schema object from modelschemas, or a 502 when it is not an object. */
+export function toJsonSchema(
+  schema: JsonValue | undefined,
+  endpointId: string
+): JsonSchema {
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
     throw new CatalogApiError(
       `modelschemas returned a non-object schema for '${endpointId}'`,
@@ -426,7 +439,7 @@ async function fetchSchema(
 export async function getModelDetail(
   endpointId: string,
   activity: CatalogActivity
-): Promise<ModelDetail> {
+): Promise<Omit<ModelDetail, 'provider' | 'unavailable'>> {
   const metadataSearch = new URLSearchParams({
     provider: 'fal',
     activity,

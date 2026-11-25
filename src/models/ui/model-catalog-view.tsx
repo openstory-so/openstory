@@ -15,9 +15,17 @@ import {
 } from '@/ui/shadcn/input-group';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
-import { listCatalogModelFamiliesFn } from '@/models/model-catalog.fn';
+import {
+  listCatalogModelFamiliesFn,
+  listProviderModelsFn,
+} from '@/models/model-catalog.fn';
 import { CATALOG_ACTIVITIES, type CatalogActivity } from '@/models/catalog';
-import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
+import type { GatewayProvider } from '@/gateway/schema';
+import {
+  useSuspenseInfiniteQuery,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { Boxes, Search, X } from 'lucide-react';
 import type { ChangeEvent, FC, FormEvent } from 'react';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -160,6 +168,65 @@ const ModelResults: FC<{
   );
 };
 
+const PROVIDER_LABELS: Record<GatewayProvider, string> = {
+  fal: 'fal',
+  grok: 'Grok',
+  byteplus: 'BytePlus',
+  gemini: 'Gemini',
+};
+
+/** Grok, BytePlus and Gemini models; one the gateway cannot run says why. */
+const ProviderModels: FC<{
+  activity: CatalogActivity | undefined;
+  q: string | undefined;
+}> = ({ activity, q }) => {
+  const { data } = useSuspenseQuery({
+    queryKey: ['provider-models'],
+    queryFn: () => listProviderModelsFn(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const needle = q?.toLowerCase();
+  const models = data.filter(
+    (model) =>
+      (!activity || model.kind === activity) &&
+      (!needle ||
+        model.name.toLowerCase().includes(needle) ||
+        model.id.toLowerCase().includes(needle))
+  );
+  if (models.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-2 text-sm">
+      {models.map((model) => (
+        <li
+          key={`${model.provider}:${model.id}`}
+          className="flex flex-wrap items-baseline gap-2"
+        >
+          <span className="text-muted-foreground">
+            {PROVIDER_LABELS[model.provider]}
+          </span>
+          {model.unavailable ? (
+            <>
+              <span>{model.name}</span>
+              <span className="text-muted-foreground">
+                Unavailable: {model.unavailable}
+              </span>
+            </>
+          ) : (
+            <Link
+              to="/models/$"
+              params={{ _splat: model.id }}
+              search={{ activity: model.kind, provider: model.provider }}
+              className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {model.name}
+            </Link>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 /**
  * The browse experience for the Models catalog page: debounced search
  * (Enter commits immediately) and activity pills over an infinite-scrolling
@@ -254,6 +321,9 @@ export const ModelCatalogView: FC<ModelCatalogViewProps> = ({
         </ToggleGroup>
       </div>
 
+      <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+        <ProviderModels activity={activity} q={q} />
+      </Suspense>
       <Suspense fallback={<GridSkeleton />}>
         <ModelResults activity={activity} q={q} />
       </Suspense>

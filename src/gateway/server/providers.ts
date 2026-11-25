@@ -1,7 +1,10 @@
 /** One driver per provider: sends the caller's body as it is and reads the media and usage back. */
 
 import { getEnv } from '#env';
-import { extractFalErrorMessage } from '@/models/fal-error';
+import {
+  extractFalErrorMessage,
+  isFalValidationError,
+} from '@/models/fal-error';
 import { getArkApiKey, getArkBaseUrl } from '@/models/server/byteplus-config';
 import { resolvePlatformOptionalKey } from '@/models/server/db/api-keys';
 import {
@@ -9,10 +12,6 @@ import {
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
 import type { JsonValue } from '@/platform/server/db/schema';
-import {
-  extractAssetOutputs,
-  isFalValidationError,
-} from '@/studio/server/workflows/asset-generation-workflow';
 import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
 import {
   getSeedSpeechApiKey,
@@ -34,6 +33,72 @@ const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 const jsonObject = z.record(z.string(), z.json());
 type JsonObject = z.infer<typeof jsonObject>;
+
+/** One provider-hosted output file found in a fal queue result. */
+type AssetOutputRef = {
+  url: string;
+  /** fal file objects carry `content_type`; null when only a bare URL. */
+  contentType: string | null;
+};
+
+/** A fal file object (`{ url, content_type, … }`) or a bare URL string. */
+function toOutputRef(value: JsonValue): AssetOutputRef | null {
+  if (typeof value === 'string') {
+    return value.startsWith('http') ? { url: value, contentType: null } : null;
+  }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const url = value.url;
+    if (typeof url !== 'string') return null;
+    const contentType = value.content_type;
+    return {
+      url,
+      contentType: typeof contentType === 'string' ? contentType : null,
+    };
+  }
+  return null;
+}
+
+/** Result fields that carry media files across fal endpoints. */
+const OUTPUT_FIELDS = [
+  'images',
+  'image',
+  'videos',
+  'video',
+  'audios',
+  'audio',
+  'audio_file',
+  'outputs',
+  'output',
+] as const;
+
+/**
+ * Scan a fal queue result for output media files. fal output schemas vary per
+ * endpoint but converge on a handful of field names holding either a file
+ * object (`{ url, content_type }`), a bare URL string, or an array of either
+ * — collect them all, in field order. Deduped by URL: endpoints that populate
+ * both a singular and plural field (`video` + `output`) with the same file
+ * would otherwise upload it twice.
+ */
+export function extractAssetOutputs(data: JsonValue): AssetOutputRef[] {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return [];
+  }
+  const refs: AssetOutputRef[] = [];
+  const seen = new Set<string>();
+  for (const field of OUTPUT_FIELDS) {
+    const value = data[field];
+    if (value === undefined) continue;
+    const candidates = Array.isArray(value) ? value : [value];
+    for (const candidate of candidates) {
+      const ref = toOutputRef(candidate);
+      if (ref && !seen.has(ref.url)) {
+        seen.add(ref.url);
+        refs.push(ref);
+      }
+    }
+  }
+  return refs;
+}
 
 export type GatewayMedia =
   | { url: string; contentType: string | null }

@@ -1,50 +1,46 @@
 /**
- * Tests for the generated-asset create flow (#458).
- *
- * `createGeneratedAsset` is the trust + billing boundary, so the ordering is
- * what we pin: live-schema validation FIRST (a rejected input must never
- * reach `requireCredits`), the credit gate SECOND (a broke organization leaves no
- * row), then row insert → workflow trigger → run-id persistence.
- *
- * Uses the house vi.doMock + dynamic-import pattern: `#db-client` is a real
- * migrated in-memory D1 (`src/platform/server/db/test-d1.ts`), the modelschemas fetch / credit gate /
- * workflow trigger are recorded fakes.
+ * The Models page create flow (#458, #2433): a platform-key run is held by
+ * the gateway and linked to its job; an own fal key runs unbilled; a refusal
+ * leaves no row and no hold.
  */
 
 import {
+  afterAll,
   beforeAll,
   beforeEach,
   describe,
   expect,
   it,
   vi,
-  afterAll,
 } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
+  creditReservations,
+  credits,
+  gatewayJobs,
   generatedAssets,
   organization,
   user,
   type GeneratedAssetInput,
 } from '@/platform/server/db/schema';
 import type { ModelInputJsonSchema } from '@/models/server/schema-fetch';
+import type { GatewayModel } from '@/gateway/server/catalog';
+import { rateCardSchema } from '@modelschemas/rate-card/schema';
 
 let db: Database;
 let closeDb: () => Promise<void>;
 
 const mockFetchModelInputSchema = vi.fn();
-const mockRequireCredits = vi.fn();
 const mockTriggerWorkflow = vi.fn();
 const mockRequireGenerationAllowed = vi.fn();
+const mockGetGatewayModel = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/models/server/schema-fetch', () => ({
   fetchModelInputSchema: mockFetchModelInputSchema,
-}));
-vi.doMock('@/billing/server/preflight', () => ({
-  requireCredits: mockRequireCredits,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
@@ -52,11 +48,18 @@ vi.doMock('@/platform/server/workflow/client', () => ({
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: mockRequireGenerationAllowed,
 }));
+vi.doMock('@/gateway/server/catalog', () => ({
+  getGatewayModel: mockGetGatewayModel,
+}));
+vi.doMock('@/gateway/server/providers', () => ({
+  GATEWAY_DRIVERS: { grok: { configured: () => true } },
+}));
 
-// Dynamic imports so the mocks apply (static imports would be hoisted above
-// vi.doMock and bypass them).
-const { createGeneratedAsset, validateAssetInput } =
-  await import('@/models/server/generated-assets');
+const {
+  createGeneratedAsset,
+  getGeneratedAssetWithCharge,
+  validateAssetInput,
+} = await import('@/models/server/generated-assets');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
 /** A realistic fal input schema slice (flux-style). */
@@ -69,8 +72,34 @@ const FLUX_SCHEMA: ModelInputJsonSchema = {
   required: ['prompt'],
 };
 
+// $0.02 an image.
+const GROK: GatewayModel = {
+  provider: 'grok',
+  id: 'grok-imagine-image',
+  name: 'Grok Imagine',
+  kind: 'image',
+  endpointId: 'v1/images/generations',
+  card: rateCardSchema.parse({
+    inputs: {},
+    tables: {},
+    price: 0.02,
+    examples: [],
+    source: {
+      url: 'https://docs.example.com/pricing',
+      hash: 'a'.repeat(64),
+      extractedAt: '2026-11-01T00:00:00.000Z',
+    },
+  }),
+  inputSchema: {
+    type: 'object',
+    properties: { model: { type: 'string' }, prompt: { type: 'string' } },
+    required: ['prompt'],
+  },
+};
+
 const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
+const REQUEST = { ipAddress: null, userAgent: null };
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -78,21 +107,43 @@ beforeAll(async () => {
   await db
     .insert(organization)
     .values([{ id: ORGANIZATION_ID, name: 'T', slug: 't' }]);
+  await db
+    .insert(credits)
+    .values({ organizationId: ORGANIZATION_ID, balance: 100_000_000 });
 });
 
 afterAll(() => closeDb());
 
 beforeEach(async () => {
   await db.delete(generatedAssets);
+  await db.delete(creditReservations);
+  await db.delete(gatewayJobs);
   vi.clearAllMocks();
   mockFetchModelInputSchema.mockResolvedValue(FLUX_SCHEMA);
-  mockRequireCredits.mockResolvedValue(undefined);
   mockTriggerWorkflow.mockResolvedValue('wf-run-1');
   mockRequireGenerationAllowed.mockResolvedValue(undefined);
+  mockGetGatewayModel.mockResolvedValue(GROK);
 });
 
-function createData(input: GeneratedAssetInput) {
+function scoped(ownFalKey: boolean) {
+  const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+  vi.spyOn(scopedDb.apiKeys, 'hasUsableKey').mockResolvedValue(ownFalKey);
+  return scopedDb;
+}
+
+function grokData(input: GeneratedAssetInput) {
   return {
+    provider: 'grok' as const,
+    endpointId: GROK.id,
+    activity: 'image' as const,
+    modelName: GROK.name,
+    input,
+  };
+}
+
+function falData(input: GeneratedAssetInput) {
+  return {
+    provider: 'fal' as const,
     endpointId: 'fal-ai/flux-1/dev',
     activity: 'image' as const,
     modelName: 'FLUX.1 [dev]',
@@ -153,112 +204,182 @@ describe('validateAssetInput', () => {
 });
 
 describe('createGeneratedAsset', () => {
-  it('rejects a restricted account BEFORE the credit gate, leaving no row', async () => {
-    const { AccountRestrictedError } = await import('@/platform/errors');
-    mockRequireGenerationAllowed.mockRejectedValue(
-      new AccountRestrictedError('paused')
-    );
-    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
-
-    await expect(
-      createGeneratedAsset(scopedDb, createData({ prompt: 'ok' }))
-    ).rejects.toBeInstanceOf(AccountRestrictedError);
-
-    expect(mockRequireCredits).not.toHaveBeenCalled();
-    const rows = await db.select().from(generatedAssets);
-    expect(rows).toHaveLength(0);
-  });
-
-  it('rejects invalid input BEFORE the credit gate, leaving no row', async () => {
-    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
-
+  it('holds a platform-key run on the gateway and links the row to its job', async () => {
     const result = await createGeneratedAsset(
-      scopedDb,
-      createData({ num_images: 2 })
+      scoped(false),
+      grokData({ prompt: 'Mara wipes her hands on a rag' }),
+      REQUEST
     );
+    if (!result.ok) throw new Error('refused');
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.issues.some((i) => i.path === 'prompt')).toBe(true);
-    }
-    expect(mockRequireCredits).not.toHaveBeenCalled();
-    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
-    expect(await db.select().from(generatedAssets)).toEqual([]);
-  });
-
-  it('stops at the credit gate without inserting a row', async () => {
-    mockRequireCredits.mockRejectedValueOnce(
-      new Error('Insufficient credits for image generation')
-    );
-    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
-
-    await expect(
-      createGeneratedAsset(scopedDb, createData({ prompt: 'a red fox' }))
-    ).rejects.toThrow('Insufficient credits');
-
-    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
-    expect(await db.select().from(generatedAssets)).toEqual([]);
-  });
-
-  it('happy path: reserves the row, triggers /asset, stores the run id', async () => {
-    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
-
-    const result = await createGeneratedAsset(
-      scopedDb,
-      createData({ prompt: 'a red fox', num_images: 2 })
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.workflowRunId).toBe('wf-run-1');
-
-    // Validation used the SERVER-fetched schema, not a client-sent one.
-    expect(mockFetchModelInputSchema).toHaveBeenCalledWith(
-      'fal-ai/flux-1/dev',
-      'image'
-    );
-
-    const rows = await db.select().from(generatedAssets);
-    expect(rows).toHaveLength(1);
-    const row = rows[0];
-    expect(row?.id).toBe(result.id);
-    expect(row?.organizationId).toBe(ORGANIZATION_ID);
-    expect(row?.userId).toBe(USER_ID);
-    expect(row?.provider).toBe('fal');
-    expect(row?.status).toBe('queued');
-    expect(row?.input).toEqual({ prompt: 'a red fox', num_images: 2 });
-    expect(row?.workflowRunId).toBe('wf-run-1');
-
+    const [job] = await db.select().from(gatewayJobs);
+    expect(job?.idempotencyKey).toBe(`asset:${result.id}`);
+    expect(job?.workflowRunId).toBe('wf-run-1');
+    const [row] = await db.select().from(generatedAssets);
+    expect(row).toMatchObject({
+      provider: 'openstory',
+      gatewayJobId: job?.id,
+      workflowRunId: 'wf-run-1',
+    });
+    // Held once, at the card price.
+    const holds = await db.select().from(creditReservations);
+    expect(holds.map((hold) => hold.remainingAmount)).toEqual([
+      expect.any(Number),
+    ]);
     expect(mockTriggerWorkflow).toHaveBeenCalledWith(
       '/asset',
-      {
-        userId: USER_ID,
-        organizationId: ORGANIZATION_ID,
+      expect.objectContaining({
         assetId: result.id,
-        endpointId: 'fal-ai/flux-1/dev',
-        activity: 'image',
-        input: { prompt: 'a red fox', num_images: 2 },
-      },
+        // The model's kind, whatever the client said.
+        activity: GROK.kind,
+        route: {
+          via: 'openstory',
+          model: GROK,
+          hold: { jobId: job?.id, reservationId: holds[0]?.id },
+        },
+      }),
       { deduplicationId: `asset-${result.id}` }
     );
   });
 
-  it('marks the row failed (and rethrows) when the workflow trigger throws', async () => {
-    mockTriggerWorkflow.mockRejectedValueOnce(new Error('binding exploded'));
-    const scopedDb = createScopedDb(ORGANIZATION_ID, USER_ID);
+  it('shows the charge on the run once its gateway job settles', async () => {
+    const scopedDb = scoped(false);
+    const result = await createGeneratedAsset(
+      scopedDb,
+      grokData({ prompt: 'Mara wipes her hands on a rag' }),
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    expect(
+      (await getGeneratedAssetWithCharge(scopedDb, result.id))?.charged
+    ).toBeNull();
+    const [job] = await db.select().from(gatewayJobs);
+    if (!job) throw new Error('no job');
+    await db
+      .update(gatewayJobs)
+      .set({ status: 'succeeded', costMicros: 19_845 })
+      .where(eq(gatewayJobs.id, job.id));
+    expect(
+      (await getGeneratedAssetWithCharge(scopedDb, result.id))?.charged
+    ).toBe('$0.02');
+  });
 
+  it('runs an own fal key directly: no gateway job, no hold', async () => {
+    const result = await createGeneratedAsset(
+      scoped(true),
+      falData({ prompt: 'a red fox' }),
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+
+    expect(mockGetGatewayModel).not.toHaveBeenCalled();
+    expect(mockFetchModelInputSchema).toHaveBeenCalledWith(
+      'fal-ai/flux-1/dev',
+      'image'
+    );
+    expect(await db.select().from(gatewayJobs)).toEqual([]);
+    expect(await db.select().from(creditReservations)).toEqual([]);
+    const [row] = await db.select().from(generatedAssets);
+    expect(row).toMatchObject({ provider: 'fal', gatewayJobId: null });
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/asset',
+      expect.objectContaining({
+        route: { via: 'fal', endpointId: 'fal-ai/flux-1/dev' },
+      }),
+      { deduplicationId: `asset-${result.id}` }
+    );
+  });
+
+  it("returns the hold's validation issues and leaves no row, job or hold", async () => {
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({ caption: 'no prompt' }),
+      REQUEST
+    );
+    expect(result.ok).toBe(false);
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+    expect(await db.select().from(gatewayJobs)).toEqual([]);
+    expect(await db.select().from(creditReservations)).toEqual([]);
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('refuses for credits at the click with a 402, leaving no row', async () => {
+    const { InsufficientCreditsError } = await import('@/platform/errors');
+    await db
+      .update(credits)
+      .set({ balance: 0 })
+      .where(eq(credits.organizationId, ORGANIZATION_ID));
+    try {
+      const error = await createGeneratedAsset(
+        scoped(false),
+        grokData({ prompt: 'Mara wipes her hands on a rag' }),
+        REQUEST
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InsufficientCreditsError);
+      expect(error).toMatchObject({ statusCode: 402 });
+      expect(await db.select().from(generatedAssets)).toEqual([]);
+      expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+    } finally {
+      await db
+        .update(credits)
+        .set({ balance: 100_000_000 })
+        .where(eq(credits.organizationId, ORGANIZATION_ID));
+    }
+  });
+
+  it('runs the model kind, not the activity the client sent', async () => {
+    const result = await createGeneratedAsset(
+      scoped(false),
+      { ...grokData({ prompt: 'Mara signs the log' }), activity: 'video' },
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    const [row] = await db.select().from(generatedAssets);
+    expect(row?.activity).toBe(GROK.kind);
+  });
+
+  it('returns inline media on an own key as a form issue, leaving no row', async () => {
+    const result = await createGeneratedAsset(
+      scoped(true),
+      falData({ prompt: 'ok', image_url: 'data:image/png;base64,AAAA' }),
+      REQUEST
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      issues: [{ path: '', message: 'Send media as a URL, not inline data' }],
+    });
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('refuses a restricted account with an own key, leaving no row', async () => {
+    const { AccountRestrictedError } = await import('@/platform/errors');
+    mockRequireGenerationAllowed.mockRejectedValue(
+      new AccountRestrictedError('paused')
+    );
     await expect(
-      createGeneratedAsset(scopedDb, createData({ prompt: 'a red fox' }))
+      createGeneratedAsset(scoped(true), falData({ prompt: 'ok' }), REQUEST)
+    ).rejects.toBeInstanceOf(AccountRestrictedError);
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('fails the row and the job and lets the hold go when the trigger throws', async () => {
+    mockTriggerWorkflow.mockRejectedValueOnce(new Error('binding exploded'));
+    await expect(
+      createGeneratedAsset(
+        scoped(false),
+        grokData({ prompt: 'a red fox' }),
+        REQUEST
+      )
     ).rejects.toThrow('binding exploded');
 
-    // Without this the row would sit 'queued' forever with no workflowRunId
-    // — invisible to the verified reconciler pass.
-    const rows = await db.select().from(generatedAssets);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe('failed');
-    expect(rows[0]?.error).toBe(
+    const [row] = await db.select().from(generatedAssets);
+    expect(row?.status).toBe('failed');
+    expect(row?.error).toBe(
       "This image couldn't start. You weren't charged. Try again."
     );
-    expect(rows[0]?.workflowRunId).toBeNull();
+    const [job] = await db.select().from(gatewayJobs);
+    expect(job?.status).toBe('failed');
+    const [hold] = await db.select().from(creditReservations);
+    expect(hold?.remainingAmount).toBe(0);
   });
 });

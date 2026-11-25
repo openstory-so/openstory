@@ -2,6 +2,14 @@
 
 The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or ElevenLabs (`elevenlabs.md`). The rules that hold for every via are in `AGENTS.md` → Media vias.
 
+## The `openstory` via (#2433)
+
+`openstory` is the gateway: a product call held and charged by a gateway job
+(`docs/architecture/model-gateway.md` § The openstory adapter). The product
+row records `openstory`; the gateway job underneath records the provider's
+own via, and its poll follows that stamp. Only the Models page uses it so
+far; an organization's own key keeps the direct path.
+
 ## Prompt length (#1754)
 
 **Prompts are never truncated.** What the user wrote is what goes out, on every via and both media kinds. Everything downstream — the studio DB row's `input` JSON, the `gen_ai.input.messages` on OTel/PostHog, and the compliance `promptSha256` in `src/platform/server/compliance/provenance.ts` — therefore describes the prompt the provider actually received.

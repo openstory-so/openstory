@@ -1,28 +1,21 @@
-/**
- * Generated-asset create flow (#458 — direct model access; #1257: moved out of
- * `functions/model-assets.ts`).
- *
- * The create path is the trust boundary: it re-fetches the endpoint's input
- * JSON Schema SERVER-SIDE (never trusting a client-sent schema), validates the
- * input against it, gates credits, reserves the row, and hands off to
- * `AssetGenerationWorkflow`.
- *
- * Lives outside `src/functions/` because the Start compiler keeps a server fn
- * file's exported helpers in the CLIENT bundle — as `functions/` exports these
- * dragged the workflow client and compliance gate (→ #db-client → drizzle)
- * into every dev page load. The serverFn handler references this only inside
- * its body, which the compiler strips.
- */
+/** The Models page create flow (#458, #2433): the gateway holds it on platform keys, or an own fal key runs it unbilled. */
 
 import type { CreateGeneratedAssetData } from '@/models/model-assets.fn';
-import { usdToMicros, type Microdollars } from '@/billing/money';
-import { requireCredits } from '@/billing/server/preflight';
+import { micros, microsToDisplayUsd } from '@/billing/money';
+import { releaseReservationOnThrow } from '@/billing/server/preflight';
+import type { LikenessRequestContext } from '@/cast/server/upload-rights';
+import { requireCheckedUploadRights } from '@/cast/server/upload-check';
+import { ValidationError } from '@/platform/errors';
+import { generateId } from '@/platform/id';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   GeneratedAssetActivity,
   GeneratedAssetInput,
 } from '@/platform/server/db/schema';
+import { getGatewayModel } from '@/gateway/server/catalog';
+import { gatedUrls, holdGatewayJob } from '@/gateway/server/submit-job';
+import { GATEWAY_ERROR_MESSAGES } from '@/gateway/schema';
 import {
   fetchModelInputSchema,
   type ModelInputJsonSchema,
@@ -36,24 +29,8 @@ import { z } from 'zod';
 const logger = getLogger(['openstory', 'functions', 'model-assets']);
 
 /**
- * Conservative flat pre-flight estimates per activity, used ONLY to gate
- * affordability in `requireCredits` (BYOK fal keys skip the gate entirely).
- * fal pricing is unavailable per-model for arbitrary endpoints and the raw
- * queue API reports no `unitsBilled`, so completed runs currently charge
- * NOTHING (`costMicros` stays null) — real charging is a follow-up PR.
- */
-const ASSET_COST_ESTIMATES: Record<GeneratedAssetActivity, Microdollars> = {
-  image: usdToMicros(0.1),
-  video: usdToMicros(1),
-  audio: usdToMicros(0.25),
-};
-
-/**
- * Validate a user-submitted endpoint input against the endpoint's live input
- * JSON Schema via zod v4's `z.fromJSONSchema`. Returns the flattened issue
- * list on failure so the UI can surface per-field messages. Throws when the
- * schema itself can't be converted — an input we cannot validate must not
- * reach the credit gate or the provider.
+ * Validate an input against the model's input JSON Schema. Issues come back
+ * per field for the form; a schema that cannot be converted throws.
  */
 export function validateAssetInput(
   schema: ModelInputJsonSchema,
@@ -61,8 +38,7 @@ export function validateAssetInput(
 ):
   | { success: true }
   | { success: false; issues: Array<{ path: string; message: string }> } {
-  const zodSchema = z.fromJSONSchema(schema);
-  const parsed = zodSchema.safeParse(input);
+  const parsed = z.fromJSONSchema(schema).safeParse(input);
   if (parsed.success) return { success: true };
   return {
     success: false,
@@ -73,90 +49,151 @@ export function validateAssetInput(
   };
 }
 
-/**
- * Discriminated create result: validation failures are DATA, not thrown —
- * server-fn errors serialize to bare message strings, which would force the
- * client to re-parse per-field issues out of prose. `ok: false` carries the
- * typed issue list straight to `<SchemaForm errors>`.
- */
+/** Validation failures are data, so the form gets typed per-field issues. */
 export type CreateGeneratedAssetResult =
   | { ok: true; id: string; workflowRunId: string }
   | { ok: false; issues: Array<{ path: string; message: string }> };
 
-/**
- * The create flow, separated from the server-fn shell so tests can drive it
- * with a mocked `#db-client` / `triggerWorkflow` (vi.doMock + dynamic import).
- * Order matters: schema validation MUST precede `requireCredits`, which MUST
- * precede the row insert — a rejected input costs nothing and leaves no row.
- */
+const issuesSchema = z.object({
+  issues: z.array(z.object({ path: z.string(), message: z.string() })),
+});
+
+/** Order: the hold (which checks the body, account and media) or the own key's checks, the row, the run. A refusal leaves no row. */
 export async function createGeneratedAsset(
   scopedDb: ScopedDb,
-  data: CreateGeneratedAssetData
+  data: CreateGeneratedAssetData,
+  request: LikenessRequestContext
 ): Promise<CreateGeneratedAssetResult> {
-  const inputSchema = await fetchModelInputSchema(
-    data.endpointId,
-    data.activity
-  );
-  const validation = validateAssetInput(inputSchema, data.input);
-  if (!validation.success) {
-    return { ok: false, issues: validation.issues };
+  const assetId = generateId();
+  let route: AssetGenerationWorkflowInput['route'];
+  let activity: GeneratedAssetActivity;
+  try {
+    // Own keys stay on today's direct path, unbilled (#2439 moves them).
+    if (
+      data.provider === 'fal' &&
+      (await scopedDb.apiKeys.hasUsableKey('fal'))
+    ) {
+      const validation = validateAssetInput(
+        await fetchModelInputSchema(data.endpointId, data.activity),
+        data.input
+      );
+      if (!validation.success) return { ok: false, issues: validation.issues };
+      await requireGenerationAllowed({
+        userId: scopedDb.userId,
+        organizationId: scopedDb.organizationId,
+      });
+      await requireCheckedUploadRights(
+        scopedDb,
+        gatedUrls(data.input),
+        request
+      );
+      route = { via: 'fal', endpointId: data.endpointId };
+      activity = data.activity;
+    } else {
+      const model = await getGatewayModel(data.provider, data.endpointId);
+      const held = await holdGatewayJob(model, data.input, {
+        scopedDb,
+        rights: { scopedDb, request },
+        idempotencyKey: `asset:${assetId}`,
+        oauthClientId: null,
+      });
+      route = {
+        via: 'openstory',
+        model,
+        hold: { jobId: held.job.id, reservationId: held.run.reservationId },
+      };
+      // The model's kind, never the client's word, picks the call and the bucket.
+      activity = model.kind;
+    }
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    const parsed = issuesSchema.safeParse(error.details);
+    return {
+      ok: false,
+      issues: parsed.success
+        ? parsed.data.issues
+        : [{ path: '', message: error.message }],
+    };
   }
-
-  // Enforcement gate beside the credit gate (#1180).
-  await requireGenerationAllowed({
-    userId: scopedDb.userId,
-    organizationId: scopedDb.organizationId,
-  });
-
-  await requireCredits(scopedDb, ASSET_COST_ESTIMATES[data.activity], {
-    errorMessage: `Insufficient credits for ${data.activity} generation`,
-  });
+  const hold = route.via === 'openstory' ? route.hold : null;
 
   const row = await scopedDb.generatedAssets.insert({
-    provider: 'fal',
+    id: assetId,
+    provider: route.via,
     endpointId: data.endpointId,
-    activity: data.activity,
+    activity,
     modelName: data.modelName,
     input: data.input,
     status: 'queued',
+    gatewayJobId: hold?.jobId ?? null,
   });
 
   const workflowInput: AssetGenerationWorkflowInput = {
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
     assetId: row.id,
-    endpointId: data.endpointId,
-    activity: data.activity,
+    activity,
     input: data.input,
+    route,
   };
 
-  let workflowRunId: string;
-  try {
-    workflowRunId = await triggerWorkflow('/asset', workflowInput, {
-      deduplicationId: `asset-${row.id}`,
-    });
-  } catch (error) {
-    // No workflow ever ran, so nothing else will flip this row — without
-    // this it would sit 'queued' forever (and with no workflowRunId, the
-    // cron reconciler couldn't verify it either).
-    await scopedDb.generatedAssets.markFailed(
-      row.id,
-      generationCouldNotStartMessage(data.activity)
-    );
-    throw error;
-  }
+  const workflowRunId = await releaseReservationOnThrow(
+    scopedDb,
+    hold?.reservationId,
+    async () => {
+      try {
+        return await triggerWorkflow('/asset', workflowInput, {
+          deduplicationId: `asset-${row.id}`,
+        });
+      } catch (error) {
+        // No run will flip these rows, so they fail here.
+        await scopedDb.generatedAssets.markFailed(
+          row.id,
+          generationCouldNotStartMessage(activity)
+        );
+        if (hold) {
+          await scopedDb.gatewayJobs.markFailed(hold.jobId, {
+            code: 'NOT_STARTED',
+            message: GATEWAY_ERROR_MESSAGES.NOT_STARTED,
+          });
+        }
+        throw error;
+      }
+    }
+  );
 
   try {
     await scopedDb.generatedAssets.setWorkflowRunId(row.id, workflowRunId);
+    if (hold) {
+      // The sweep ends the job if this run dies without a word.
+      await scopedDb.gatewayJobs.attachRun(hold.jobId, {
+        reservationId: hold.reservationId,
+        workflowRunId,
+      });
+    }
   } catch (error) {
-    // The workflow IS running at this point — failing the request would
-    // read as "run failed" and invite a duplicate paid run. The workflow
-    // itself flips the row to a terminal status regardless.
-    logger.error(
-      `Failed to persist workflowRunId ${workflowRunId} for asset ${row.id}`,
-      { data: error instanceof Error ? error.message : error }
-    );
+    // The run is going: failing the request would invite a second paid run.
+    logger.error(`Failed to record run ${workflowRunId} on asset ${row.id}`, {
+      err: error,
+    });
   }
 
   return { ok: true, id: row.id, workflowRunId };
+}
+
+/** A run with what its gateway job charged; `charged` is null for an own-key run or one not yet settled. */
+export async function getGeneratedAssetWithCharge(
+  scopedDb: ScopedDb,
+  id: string
+) {
+  const asset = await scopedDb.generatedAssets.getById(id);
+  if (!asset) return null;
+  const job = asset.gatewayJobId
+    ? await scopedDb.gatewayJobs.getById(asset.gatewayJobId)
+    : null;
+  const charged =
+    job?.status === 'succeeded' && job.costMicros !== null
+      ? microsToDisplayUsd(micros(job.costMicros))
+      : null;
+  return { ...asset, charged };
 }

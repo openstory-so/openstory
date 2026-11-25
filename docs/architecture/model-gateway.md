@@ -589,7 +589,8 @@ and refuses no inline part, so the caller owns `requireUploadRights` for
 every URL and every inline part it sends. `upload-rights-checked.test.ts`
 resolves every value import, re-export and dynamic import of `submit-job.ts`
 and fails unless the file reaching the symbol is on its allowlist, and fails
-if an allowlisted file passes it on. `in-process.ts` only takes its type; a
+if an allowlisted file passes it on. `in-process.ts` only takes its type;
+the Models page run (`asset-generation-workflow.ts`) is the one caller. A
 new caller is added there on purpose, and no route or MCP tool may be.
 
 ### Billing handover
@@ -600,6 +601,54 @@ A call through the adapter is held by `holdGatewayJob` and charged by
 skip. `adapter/in-process.test.ts` fails if a generation is charged twice
 (a retried step, a replayed poll) or zero times, or if the wallet drops by
 anything but the charge.
+
+### The Models page
+
+`createGeneratedAsset` (`src/models/server/generated-assets.ts`) picks the
+route once, at the click, and puts it on the payload:
+
+- **`openstory`** (every provider, no own fal key): `holdGatewayJob` with
+  the request's likeness check, under the key `asset:<assetId>`. The
+  `generated_assets` row is stamped `provider: 'openstory'` and
+  `gatewayJobId`; the charge is that job's, shown under the run once it
+  settles (`getGeneratedAssetWithCharge`). `AssetGenerationWorkflow` runs
+  the adapter over `inProcessGateway` with the same key, so the run finds
+  the click's job and hold rather than making new ones.
+- **`fal`** (the organization has a usable fal key): today's direct path,
+  unbilled. Schema check, account check and likeness check at the click, no
+  hold, no gateway job. The run uses the fal driver with the organization's
+  key and fails rather than spend the platform's.
+
+The page lists Grok, BytePlus and Gemini models beside fal. A model the
+gateway cannot run is shown with the reason: no request schema, no price, or
+a usage lever with no estimate (`unholdableReason`, "No price yet for this
+model", until #2432). A fal model the gateway cannot hold still runs on an
+own fal key; the detail page reads `hasFalKey` from the billing gate query
+and, without one, shows the model unavailable rather than fail at the click.
+A run's kind is the model's (`model.kind`), never the client's `activity`,
+and a failed run lets the click's hold go (`releaseGatewayRun` in
+`onFailure`).
+
+The model list carries a price summary, not the card, so the list marks only
+a model with no schema or no price; the detail page reads the card and says
+when it has no price yet.
+
+Run on `bun dev` (2026-11-26) through `createGeneratedAssetFn` with a
+session, one each:
+
+| Model                                            | Hold     | Charge   | Output    |
+| ------------------------------------------------ | -------- | -------- | --------- |
+| `grok-imagine-image`                             | $0.02    | $0.02    | JPEG, 200 |
+| `seedance-1-0-pro-fast-251015` (480p, 16:9, 2 s) | $0.01985 | $0.01985 | MP4, 200  |
+
+One gateway job, one hold and one debit each; the lines summed to the debit.
+`fal-ai/flux/schnell` was refused at the click with the card's reason and
+`gemini-3.1-flash-lite-image` as an unknown model (TanStack/schemas#755).
+
+`AssetGenerationWorkflow` is kept, not deleted as #2433 planned: it is the
+adapter's first product caller and the own-key path needs a run too.
+`extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
+bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
 ## Not in this stack
 

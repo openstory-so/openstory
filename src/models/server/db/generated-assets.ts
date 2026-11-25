@@ -10,7 +10,7 @@
  * (workflow picked it up) → `completed` (outputs uploaded to R2) / `failed`.
  */
 
-import type { MediaVia } from '@/models/via';
+import type { ProductVia } from '@/models/via';
 import type { Database } from '@/platform/server/db/client';
 import {
   generatedAssets,
@@ -155,7 +155,7 @@ export function createGeneratedAssetsMethods(
         // Required, never defaulted: the row is inserted as 'fal' before any
         // via is resolved, so a completion that omits it leaves a BytePlus /
         // xAI / Google render labelled fal (#1681).
-        provider: MediaVia;
+        provider: ProductVia;
         /** The Ark task id when the clip rendered as a draft (#1756). */
         draftTaskId?: string;
       }
@@ -185,7 +185,7 @@ export function createGeneratedAssetsMethods(
     markFailed: async (
       id: string,
       error: string,
-      provider?: MediaVia
+      provider?: ProductVia
     ): Promise<void> => {
       const updated = await db
         .update(generatedAssets)

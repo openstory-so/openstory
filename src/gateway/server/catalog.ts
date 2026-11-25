@@ -1,7 +1,11 @@
 /** What the gateway serves: modelschemas models that have a request schema and a rate card. */
 
 import { fetchCatalogJson, CatalogApiError } from '@/models/catalog';
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import {
+  NotFoundError,
+  OpenStoryError,
+  ValidationError,
+} from '@/platform/errors';
 import type { JsonValue } from '@/platform/server/db/schema';
 import {
   BYTEPLUS_ENDPOINTS,
@@ -110,6 +114,63 @@ export async function getGatewayModel(
     card: card.data,
     inputSchema: schema.schema,
   };
+}
+
+/** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */
+export function unholdableReason(card: RateCard): string | null {
+  const unpriced = Object.values(card.inputs).some(
+    (input) =>
+      input.bound === 'usage' && !(input.kind === 'number' && input.estimate)
+  );
+  return unpriced ? 'No price yet for this model' : null;
+}
+
+/** Why the gateway cannot run this model, or null; a refusal is the reason, an outage throws. */
+export async function gatewayUnavailable(
+  provider: GatewayProvider,
+  id: string
+): Promise<string | null> {
+  try {
+    return unholdableReason((await getGatewayModel(provider, id)).card);
+  } catch (error) {
+    if (error instanceof OpenStoryError && error.statusCode < 500) {
+      return error.message;
+    }
+    throw error;
+  }
+}
+
+export type GatewayModelListing = GatewayModelSummary & {
+  /** Why the gateway cannot run it, or null. */
+  unavailable: string | null;
+};
+
+/** Every image, video and audio model of one provider, with why it cannot run when the list shows it. */
+export async function listProviderModels(
+  provider: GatewayProvider
+): Promise<GatewayModelListing[]> {
+  const body = z
+    .object({ models: z.array(modelRecordSchema) })
+    .parse(await getJson(`/v1/models?provider=${provider}`, MODEL_TTL_MS));
+  return body.models.flatMap((record): GatewayModelListing[] => {
+    const kind = kindOf(provider, record);
+    if (!kind) return [];
+    // The list carries a price summary, not the card: the detail page says whether the card can be held.
+    const unavailable = !record.schemaEndpointId
+      ? 'This model has no request schema'
+      : !record.pricing
+        ? 'This model has no price'
+        : null;
+    return [
+      {
+        provider,
+        id: record.rawId,
+        name: record.displayName ?? record.rawId,
+        kind,
+        unavailable,
+      },
+    ];
+  });
 }
 
 /** Every priced image, video and audio model on the gateway's providers. */

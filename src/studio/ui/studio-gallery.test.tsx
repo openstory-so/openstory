@@ -15,6 +15,7 @@ function asset(input: GeneratedAsset['input']): GeneratedAsset {
     organizationId: 'organization',
     userId: 'user',
     provider: 'fal',
+    gatewayJobId: null,
     endpointId: 'fal-ai/example',
     modelName: 'Seedance 2.5',
     source: 'studio',

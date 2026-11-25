@@ -49,7 +49,7 @@ const fetchMock =
   vi.fn<(input: string | Request, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', fetchMock);
 
-const { GATEWAY_DRIVERS } = await import('./providers');
+const { GATEWAY_DRIVERS, extractAssetOutputs } = await import('./providers');
 
 const credentials = asStub<GatewayCredentials>({
   organizationId: 'org-1',
@@ -715,6 +715,72 @@ describe('E2E_TEST with a base URL override', () => {
     expect([(await sentAt(0)).url, (await sentAt(1)).url]).toEqual([
       'http://localhost:4010/ark/api/v3/contents/generations/tasks',
       'http://localhost:4010/gemini/v1beta/models/gemini-3-flash-image:generateContent',
+    ]);
+  });
+});
+
+describe('extractAssetOutputs', () => {
+  it('collects file objects from an images array (multi-output)', () => {
+    const refs = extractAssetOutputs({
+      images: [
+        { url: 'https://fal.media/a.png', content_type: 'image/png' },
+        { url: 'https://fal.media/b.png', content_type: 'image/png' },
+      ],
+      seed: 42,
+    });
+    expect(refs).toEqual([
+      { url: 'https://fal.media/a.png', contentType: 'image/png' },
+      { url: 'https://fal.media/b.png', contentType: 'image/png' },
+    ]);
+  });
+
+  it('collects a single video file object', () => {
+    const refs = extractAssetOutputs({
+      video: { url: 'https://fal.media/clip.mp4', content_type: 'video/mp4' },
+    });
+    expect(refs).toEqual([
+      { url: 'https://fal.media/clip.mp4', contentType: 'video/mp4' },
+    ]);
+  });
+
+  it('accepts a bare URL string and reports no content type', () => {
+    const refs = extractAssetOutputs({ audio: 'https://fal.media/track.mp3' });
+    expect(refs).toEqual([
+      { url: 'https://fal.media/track.mp3', contentType: null },
+    ]);
+  });
+
+  it('falls through to the generic output field', () => {
+    const refs = extractAssetOutputs({
+      output: { url: 'https://fal.media/asset.bin' },
+    });
+    expect(refs).toEqual([
+      { url: 'https://fal.media/asset.bin', contentType: null },
+    ]);
+  });
+
+  it('ignores non-URL strings and objects without a url', () => {
+    const refs = extractAssetOutputs({
+      image: 'base64-not-a-url',
+      output: { path: 'no-url-here' },
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it('returns empty for results with no known media fields', () => {
+    expect(extractAssetOutputs({ text: 'hello' })).toEqual([]);
+    expect(extractAssetOutputs(null)).toEqual([]);
+    expect(extractAssetOutputs('flat string')).toEqual([]);
+    expect(extractAssetOutputs([{ url: 'https://x/y.png' }])).toEqual([]);
+  });
+
+  it('dedupes the same file surfaced under two fields (video + output)', () => {
+    const refs = extractAssetOutputs({
+      video: { url: 'https://fal.media/clip.mp4', content_type: 'video/mp4' },
+      output: { url: 'https://fal.media/clip.mp4' },
+    });
+    expect(refs).toEqual([
+      { url: 'https://fal.media/clip.mp4', contentType: 'video/mp4' },
     ]);
   });
 });

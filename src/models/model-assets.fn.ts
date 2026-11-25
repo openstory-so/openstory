@@ -1,22 +1,18 @@
-/**
- * Generated Asset Server Functions (#458 — direct model access).
- *
- * Create/list/get for `generated_assets`: flat, organization-scoped runs of arbitrary
- * fal endpoints picked from the live modelschemas catalog. The create path is
- * the trust boundary: it re-fetches the endpoint's input JSON Schema
- * SERVER-SIDE (never trusting a client-sent schema), validates the input
- * against it, gates credits, reserves the row, and hands off to
- * `AssetGenerationWorkflow` — see `@/models/server/generated-assets` (#1257).
- */
+/** Create, list and get `generated_assets`, the Models page runs (#458, #2433); see `@/models/server/generated-assets`. */
 
+import { GATEWAY_PROVIDERS } from '@/gateway/schema';
 import { assertModelsEnabled } from '@/platform/flags';
 import {
   GENERATED_ASSET_ACTIVITIES,
   type JsonValue,
 } from '@/platform/server/db/schema';
-import { createGeneratedAsset } from '@/models/server/generated-assets';
+import {
+  createGeneratedAsset,
+  getGeneratedAssetWithCharge,
+} from '@/models/server/generated-assets';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
+import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
@@ -37,7 +33,8 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 );
 
 const createGeneratedAssetInputSchema = z.object({
-  /** fal endpoint id, e.g. `fal-ai/flux-1/dev`. */
+  provider: z.enum(GATEWAY_PROVIDERS),
+  /** fal endpoint id (`fal-ai/flux-1/dev`), or the provider's model id. */
   endpointId: z.string().min(1).max(200),
   activity: z.enum(GENERATED_ASSET_ACTIVITIES),
   /** Catalog display name, stored for listing. */
@@ -57,7 +54,11 @@ export const createGeneratedAssetFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(createGeneratedAssetInputSchema))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();
-    return createGeneratedAsset(context.scopedDb, data);
+    const request = getRequest();
+    return createGeneratedAsset(context.scopedDb, data, {
+      ipAddress: request.headers.get('cf-connecting-ip'),
+      userAgent: request.headers.get('user-agent'),
+    });
   });
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,7 @@ export const getGeneratedAssetFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(getGeneratedAssetInputSchema))
   .handler(async ({ context, data }) => {
     assertModelsEnabled();
-    const asset = await context.scopedDb.generatedAssets.getById(data.id);
+    const asset = await getGeneratedAssetWithCharge(context.scopedDb, data.id);
     if (!asset) {
       throw new Error('Generated asset not found');
     }

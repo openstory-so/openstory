@@ -2,6 +2,7 @@
  * Payload and result types for the Cloudflare Workflows entrypoints.
  */
 
+import type { GatewayModel } from '@/gateway/server/catalog';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
@@ -1857,19 +1858,27 @@ export interface ReplaceElementWorkflowResult {
 }
 
 /**
- * Asset generation workflow input (#458 — direct model access). Everything the
- * run needs is resolved by `createGeneratedAssetFn` and passed here: the
- * workflow only WRITES the `generated_assets` row (plus the house exception of
- * BYOK key resolution via `scopedDb.apiKeys`).
+ * A Models page run (#458, #2433). Snapshotted by `createGeneratedAsset`: the
+ * run reads no row and fetches no schema.
  */
 export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
-  /** The reserved `generated_assets` row this run fills in. */
+  /** The `generated_assets` row this run fills in. */
   assetId: string;
-  /** fal endpoint id, e.g. `fal-ai/flux-1/dev`. */
-  endpointId: string;
   activity: GeneratedAssetActivity;
-  /** Schema-validated endpoint input, forwarded verbatim to fal. */
+  /** The provider's own body, validated at the click, sent as it is. */
   input: GeneratedAssetInput;
+  /**
+   * `openstory`: through the gateway on platform keys, held at the click
+   * under `asset:<assetId>`. `fal`: the organization's own fal key, unbilled.
+   */
+  route:
+    | {
+        via: 'openstory';
+        model: GatewayModel;
+        /** The click's job and hold, so a failed run lets the hold go. */
+        hold: { jobId: string; reservationId: string };
+      }
+    | { via: 'fal'; endpointId: string };
 }
 
 /**

@@ -17,7 +17,7 @@
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
-import type { MediaVia } from '@/models/via';
+import type { ProductVia } from '@/models/via';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { organization } from './organization';
@@ -85,7 +85,7 @@ export const generatedAssets = snakeCase.table(
     // `fal-ai/flux-1/dev`) that pricing aliases key on, whatever via served
     // it; the via's own model id lives on `content_provenance.model`.
     // `modelName` is the catalog display name.
-    provider: text({ length: 50 }).$type<MediaVia>().notNull(),
+    provider: text({ length: 50 }).$type<ProductVia>().notNull(),
     endpointId: text({ length: 200 }).notNull(),
     activity: text({ length: 20 }).$type<GeneratedAssetActivity>().notNull(),
     modelName: text({ length: 200 }).notNull(),
@@ -102,6 +102,8 @@ export const generatedAssets = snakeCase.table(
     outputs: text({ mode: 'json' }).$type<GeneratedAssetOutput[]>(),
     error: text(),
     workflowRunId: text(),
+    // The gateway job a platform-key run went through (#2433); its charge is the run's. Null on own-key runs and older rows.
+    gatewayJobId: text(),
     costMicros: integer(),
     // The Ark task id when this clip was rendered as a draft (#1756): the
     // handle "Render at quality" renders the 1080p final from, valid seven

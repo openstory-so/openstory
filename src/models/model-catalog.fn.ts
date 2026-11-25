@@ -7,9 +7,21 @@
  * getPublicStylesFn) — running a model is what's gated, not browsing.
  */
 import { assertModelsEnabled } from '@/platform/flags';
+import { GATEWAY_PROVIDERS } from '@/gateway/schema';
 import {
+  gatewayUnavailable,
+  getGatewayModel,
+  listProviderModels,
+  unholdableReason,
+} from '@/gateway/server/catalog';
+import { OpenStoryError } from '@/platform/errors';
+import {
+  CatalogApiError,
   CATALOG_ACTIVITIES,
+  type CatalogActivity,
   getModelDetail,
+  type ModelDetail,
+  toJsonSchema,
   getModelFamily,
   getModelFamilyByPath,
   listCatalogModelFamilies,
@@ -69,18 +81,64 @@ export const getModelFamilyByPathFn = createServerFn({ method: 'GET' })
   });
 
 const getModelDetailInputSchema = z.object({
-  /** fal endpoint id, e.g. `fal-ai/flux-1/dev`. */
+  provider: z.enum(GATEWAY_PROVIDERS),
+  /** fal endpoint id (`fal-ai/flux-1/dev`), or the provider's model id. */
   endpointId: z.string().trim().min(1).max(200),
   activity: z.enum(CATALOG_ACTIVITIES),
 });
 
+/** Another provider's model from the gateway catalog; a refusal reads as "no schema" with its reason. */
+async function gatewayModelDetail(
+  provider: Exclude<ModelDetail['provider'], 'fal'>,
+  id: string,
+  activity: CatalogActivity
+): Promise<ModelDetail> {
+  const model = await getGatewayModel(provider, id).catch((error: unknown) => {
+    if (error instanceof OpenStoryError && error.statusCode < 500) {
+      throw new CatalogApiError(error.message, 404, 'unknown_schema');
+    }
+    throw error;
+  });
+  if (model.kind !== activity) {
+    throw new CatalogApiError(`Not a ${activity} model`, 404, 'unknown_schema');
+  }
+  return {
+    provider,
+    unavailable: unholdableReason(model.card),
+    model: { endpointId: model.id, displayName: model.name, activity },
+    inputSchema: toJsonSchema(model.inputSchema, model.id),
+    outputSchema: null,
+  };
+}
+
 /**
- * Model metadata + input JSON Schema (+ output schema when published).
- * @returns `{ model, inputSchema, outputSchema }`
+ * Model metadata + input JSON Schema (+ output schema when published), and
+ * why the gateway cannot run it on OpenStory credits.
  */
 export const getModelDetailFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(getModelDetailInputSchema))
-  .handler(async ({ data }) => {
+  .handler(async ({ data }): Promise<ModelDetail> => {
     assertModelsEnabled();
-    return getModelDetail(data.endpointId, data.activity);
+    const { provider, endpointId, activity } = data;
+    if (provider !== 'fal') {
+      return gatewayModelDetail(provider, endpointId, activity);
+    }
+    const [detail, unavailable] = await Promise.all([
+      getModelDetail(endpointId, activity),
+      gatewayUnavailable('fal', endpointId),
+    ]);
+    return { ...detail, provider, unavailable };
   });
+
+/** Grok, BytePlus and Gemini models, each with why it cannot run when it cannot. */
+export const listProviderModelsFn = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    assertModelsEnabled();
+    const lists = await Promise.all(
+      GATEWAY_PROVIDERS.filter((provider) => provider !== 'fal').map(
+        listProviderModels
+      )
+    );
+    return lists.flat();
+  }
+);

@@ -1,192 +1,166 @@
-/**
- * Behavioural tests for the asset generation workflow (#458).
- *
- * The fal call itself is exercised end-to-end elsewhere; here we pin the two
- * seams the workflow owns: extracting output files from an arbitrary fal
- * queue result (shapes vary per endpoint), and the row status transitions on
- * completion/failure (`generated_assets` is the only DB surface this
- * workflow writes).
- */
+/** AssetGenerationWorkflow: the own-key route never spends the platform key, and a failed gateway run lets its hold go. */
 
-import { describe, expect, it } from 'vitest';
-import type { GeneratedAssetOutput } from '@/platform/server/db/schema';
-import {
-  extractAssetOutputs,
-  isFalValidationError,
-  outputExtension,
-  persistAssetCompletion,
-  persistAssetFailure,
-  type AssetPersistScopedDb,
-} from './asset-generation-workflow';
+import { describe, expect, it, vi } from 'vitest';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type { AssetGenerationWorkflowInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
+import { NonRetryableError } from 'cloudflare:workflows';
 
-describe('extractAssetOutputs', () => {
-  it('collects file objects from an images array (multi-output)', () => {
-    const refs = extractAssetOutputs({
-      images: [
-        { url: 'https://fal.media/a.png', content_type: 'image/png' },
-        { url: 'https://fal.media/b.png', content_type: 'image/png' },
-      ],
-      seed: 42,
-    });
-    expect(refs).toEqual([
-      { url: 'https://fal.media/a.png', contentType: 'image/png' },
-      { url: 'https://fal.media/b.png', contentType: 'image/png' },
-    ]);
-  });
+const falStart = vi.fn();
+const falPoll = vi.fn();
+vi.doMock('#db-client', () => ({ getDb: vi.fn() }));
+vi.doMock('@/gateway/server/providers', () => ({
+  GATEWAY_DRIVERS: { fal: { start: falStart, poll: falPoll } },
+}));
+vi.doMock('@/gateway/server/storage', () => ({
+  storeGatewayOutput: vi.fn(async () => ({
+    url: '/r2/a.png',
+    path: 'a.png',
+    contentType: 'image/png',
+  })),
+}));
+vi.doMock('@/platform/server/compliance/provenance', () => ({
+  extractPromptForProvenance: () => null,
+  recordProvenance: vi.fn(async () => 'prov-1'),
+}));
+const releaseGatewayRun = vi.fn(async () => undefined);
+vi.doMock('@/gateway/server/phases', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/gateway/server/phases')>()),
+  releaseGatewayRun,
+}));
 
-  it('collects a single video file object', () => {
-    const refs = extractAssetOutputs({
-      video: { url: 'https://fal.media/clip.mp4', content_type: 'video/mp4' },
-    });
-    expect(refs).toEqual([
-      { url: 'https://fal.media/clip.mp4', contentType: 'video/mp4' },
-    ]);
-  });
+const { AssetGenerationWorkflow } = await import('./asset-generation-workflow');
 
-  it('accepts a bare URL string and reports no content type', () => {
-    const refs = extractAssetOutputs({ audio: 'https://fal.media/track.mp3' });
-    expect(refs).toEqual([
-      { url: 'https://fal.media/track.mp3', contentType: null },
-    ]);
-  });
+type Event = Readonly<WorkflowEvent<AssetGenerationWorkflowInput>>;
 
-  it('falls through to the generic output field', () => {
-    const refs = extractAssetOutputs({
-      output: { url: 'https://fal.media/asset.bin' },
-    });
-    expect(refs).toEqual([
-      { url: 'https://fal.media/asset.bin', contentType: null },
-    ]);
-  });
-
-  it('ignores non-URL strings and objects without a url', () => {
-    const refs = extractAssetOutputs({
-      image: 'base64-not-a-url',
-      output: { path: 'no-url-here' },
-    });
-    expect(refs).toEqual([]);
-  });
-
-  it('returns empty for results with no known media fields', () => {
-    expect(extractAssetOutputs({ text: 'hello' })).toEqual([]);
-    expect(extractAssetOutputs(null)).toEqual([]);
-    expect(extractAssetOutputs('flat string')).toEqual([]);
-    expect(extractAssetOutputs([{ url: 'https://x/y.png' }])).toEqual([]);
-  });
-
-  it('dedupes the same file surfaced under two fields (video + output)', () => {
-    const refs = extractAssetOutputs({
-      video: { url: 'https://fal.media/clip.mp4', content_type: 'video/mp4' },
-      output: { url: 'https://fal.media/clip.mp4' },
-    });
-    expect(refs).toEqual([
-      { url: 'https://fal.media/clip.mp4', contentType: 'video/mp4' },
-    ]);
-  });
-});
-
-describe('isFalValidationError', () => {
-  it('matches an Error carrying status 422', () => {
-    const error = Object.assign(new Error('Unprocessable Entity'), {
-      status: 422,
-    });
-    expect(isFalValidationError(error)).toBe(true);
-  });
-
-  it('rejects other statuses and non-errors', () => {
-    expect(
-      isFalValidationError(
-        Object.assign(new Error('rate limited'), { status: 429 })
-      )
-    ).toBe(false);
-    expect(isFalValidationError(new Error('no status'))).toBe(false);
-    expect(isFalValidationError({ status: 422 })).toBe(false);
-  });
-});
-
-describe('outputExtension', () => {
-  it('prefers the URL extension when present', () => {
-    expect(outputExtension('https://fal.media/a.PNG', 'video/mp4')).toBe('png');
-  });
-
-  it('derives from content type for extension-less URLs', () => {
-    expect(outputExtension('https://fal.media/v3/files/abc', 'video/mp4')).toBe(
-      'mp4'
-    );
-    expect(
-      outputExtension('https://fal.media/x', 'audio/mpeg; charset=binary')
-    ).toBe('mp3');
-  });
-
-  it('falls back to bin when neither source knows', () => {
-    expect(outputExtension('https://fal.media/x', null)).toBe('bin');
-    expect(outputExtension('https://fal.media/x', 'application/mystery')).toBe(
-      'bin'
-    );
-  });
-});
-
-type CompletedCall = {
-  id: string;
-  fields: { outputs: GeneratedAssetOutput[]; costMicros?: number | null };
-};
-type FailedCall = { id: string; error: string };
-
-function buildScopedDbSpy(): {
-  scopedDb: AssetPersistScopedDb;
-  running: string[];
-  completed: CompletedCall[];
-  failed: FailedCall[];
-} {
-  const running: string[] = [];
-  const completed: CompletedCall[] = [];
-  const failed: FailedCall[] = [];
-  const scopedDb: AssetPersistScopedDb = {
-    generatedAssets: {
-      markRunning: async (id) => {
-        running.push(id);
-      },
-      markCompleted: async (id, fields) => {
-        completed.push({ id, fields });
-      },
-      markFailed: async (id, error) => {
-        failed.push({ id, error });
-      },
-    },
-  };
-  return { scopedDb, running, completed, failed };
+class Probe extends AssetGenerationWorkflow {
+  runBody(event: Event, step: WorkflowStep, scopedDb: WorkflowScopedDb) {
+    return this.runImpl(event, step, scopedDb);
+  }
+  fail(event: Event, scopedDb: WorkflowScopedDb) {
+    return this.onFailure({ event, error: 'boom', scopedDb });
+  }
 }
 
-describe('persistAssetCompletion / persistAssetFailure', () => {
-  it('completes the row with its uploaded outputs and a null cost (no charging yet)', async () => {
-    const { scopedDb, completed, failed } = buildScopedDbSpy();
-    const outputs: GeneratedAssetOutput[] = [
-      {
-        url: '/r2/thumbnails/teams/t/assets/a/output-0.png',
-        contentType: 'image/png',
-      },
-    ];
+function makeWorkflow(): Probe {
+  type Ctor = ConstructorParameters<typeof Probe>;
+  return new Probe(asStub<Ctor[0]>(undefined), asStub<Ctor[1]>({}));
+}
 
-    await persistAssetCompletion({ scopedDb, assetId: 'asset-1', outputs });
+const step = asStub<WorkflowStep>({
+  do: async (_name: string, fn: () => Promise<unknown>) => fn(),
+  sleep: async () => {},
+});
 
-    expect(completed).toEqual([
-      { id: 'asset-1', fields: { outputs, costMicros: null, provider: 'fal' } },
-    ]);
-    expect(failed).toEqual([]);
+function event(route: AssetGenerationWorkflowInput['route']): Event {
+  return {
+    payload: {
+      userId: 'u1',
+      organizationId: 'org-1',
+      assetId: 'asset-1',
+      activity: 'image',
+      input: { prompt: 'Mara signs the log' },
+      route,
+    },
+    instanceId: 'run-1',
+    workflowName: 'asset',
+    timestamp: new Date(0),
+  };
+}
+
+function scopedDb(keySource: 'organization' | 'platform') {
+  return asStub<WorkflowScopedDb>({
+    organizationId: 'org-1',
+    userId: 'u1',
+    generatedAssets: {
+      markRunning: async () => undefined,
+      markCompleted: async () => undefined,
+      markFailed: async () => undefined,
+    },
+    provenance: {},
+    credentials: {
+      resolveKey: async () => ({ key: 'k', source: keySource }),
+      resolveOptionalKey: async () => null,
+    },
+  });
+}
+
+describe('AssetGenerationWorkflow', () => {
+  it('refuses to run an own-key route on the platform key', async () => {
+    falStart.mockImplementation(
+      async (
+        _target: unknown,
+        _body: unknown,
+        credentials: { resolveKey: (provider: 'fal') => Promise<unknown> }
+      ) => credentials.resolveKey('fal')
+    );
+    await expect(
+      makeWorkflow().runBody(
+        event({ via: 'fal', endpointId: 'fal-ai/flux-1/dev' }),
+        step,
+        scopedDb('platform')
+      )
+    ).rejects.toThrow(NonRetryableError);
+    // The driver resolves the key before it sends, so nothing reached fal.
+    await expect(falStart.mock.results[0]?.value).rejects.toThrow(
+      'Your own fal key is no longer usable'
+    );
   });
 
-  it('fails the row with the sanitized error message', async () => {
-    const { scopedDb, completed, failed } = buildScopedDbSpy();
-
-    await persistAssetFailure({
-      scopedDb,
-      assetId: 'asset-2',
-      error: 'Model run failed: NSFW content detected',
+  it('starts one fal job on the own-key route when a poll throws and its step retries', async () => {
+    falStart.mockReset().mockResolvedValue({ jobId: 'req-1' });
+    falPoll
+      .mockReset()
+      .mockRejectedValueOnce(new Error('fal 503'))
+      .mockResolvedValueOnce({
+        status: 'done',
+        result: {
+          media: [{ url: 'https://fal.media/a.png', contentType: 'image/png' }],
+          usage: null,
+          requestId: 'req-1',
+        },
+      });
+    // A step that throws runs again, as Workflows retries it.
+    const retrying = asStub<WorkflowStep>({
+      do: async (_name: string, fn: () => Promise<unknown>) => {
+        try {
+          return await fn();
+        } catch (error) {
+          if (error instanceof NonRetryableError) throw error;
+          return fn();
+        }
+      },
+      sleep: async () => {},
     });
-
-    expect(failed).toEqual([
-      { id: 'asset-2', error: 'Model run failed: NSFW content detected' },
+    const result = await makeWorkflow().runBody(
+      event({ via: 'fal', endpointId: 'fal-ai/flux-1/dev' }),
+      retrying,
+      scopedDb('organization')
+    );
+    expect(falStart).toHaveBeenCalledTimes(1);
+    expect(falPoll).toHaveBeenCalledTimes(2);
+    expect(result.outputs).toEqual([
+      { url: '/r2/a.png', contentType: 'image/png' },
     ]);
-    expect(completed).toEqual([]);
+  });
+
+  it('lets the click hold go when a gateway run fails', async () => {
+    const hold = { jobId: 'job-1', reservationId: 'res-1' };
+    const db = scopedDb('platform');
+    await makeWorkflow().fail(
+      event({
+        via: 'openstory',
+        model: asStub<
+          Extract<
+            AssetGenerationWorkflowInput['route'],
+            { via: 'openstory' }
+          >['model']
+        >({}),
+        hold,
+      }),
+      db
+    );
+    expect(releaseGatewayRun).toHaveBeenCalledWith(db, hold, 'boom');
   });
 });

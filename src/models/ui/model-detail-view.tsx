@@ -8,6 +8,7 @@
  * live schema — its per-field messages flow back into `<SchemaForm errors>`.
  */
 
+import { useBillingGateQuery } from '@/billing/ui/use-billing-gate';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ACTIVITY_ICONS, ACTIVITY_LABELS, categoryLabel } from './model-card';
 import { AssetResult } from '@/ui/schema-form/asset-result';
@@ -38,6 +39,7 @@ import {
 import { getModelDetailFn, getModelFamilyFn } from '@/models/model-catalog.fn';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import type { GeneratedAsset } from '@/platform/server/db/schema';
+import type { GatewayProvider } from '@/gateway/schema';
 import {
   CATALOG_ACTIVITIES,
   type CatalogActivity,
@@ -78,24 +80,29 @@ function isNoSchemaError(error: unknown): boolean {
 
 /**
  * Fetch the model detail; without an `activity` search param each catalog
- * activity is tried in turn (a deep link may omit it). Returns null when no
- * activity has a schema for this endpoint — the friendly no-schema state.
+ * activity is tried in turn (a deep link may omit it). Returns why there is
+ * no schema when no activity has one — the friendly no-schema state.
  */
 async function fetchModelDetail(
+  provider: GatewayProvider,
   endpointId: string,
   activity: CatalogActivity | undefined
-): Promise<ModelDetail | null> {
+): Promise<ModelDetail | { noSchema: string }> {
   const candidates = activity ? [activity] : [...CATALOG_ACTIVITIES];
+  let noSchema = `We couldn't find a parameter schema for “${endpointId}”. It may be new, renamed, or not runnable directly.`;
   for (const candidate of candidates) {
     try {
       return await getModelDetailFn({
-        data: { endpointId, activity: candidate },
+        data: { provider, endpointId, activity: candidate },
       });
     } catch (error) {
       if (!isNoSchemaError(error)) throw error;
+      // Another provider's refusal says why (no price, no schema).
+      if (provider !== 'fal' && error instanceof Error)
+        noSchema = error.message;
     }
   }
-  return null;
+  return { noSchema };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,31 +146,35 @@ const DetailSkeleton: FC = () => (
   </div>
 );
 
-export const ModelDetailView: FC<{
+type DetailProps = {
+  provider: GatewayProvider;
   endpointId: string;
   activity: CatalogActivity | undefined;
-}> = ({ endpointId, activity }) => (
+};
+
+export const ModelDetailView: FC<DetailProps> = (props) => (
   <Suspense fallback={<DetailSkeleton />}>
-    <ModelDetailContent endpointId={endpointId} activity={activity} />
+    <ModelDetailContent {...props} />
   </Suspense>
 );
 
-const ModelDetailContent: FC<{
-  endpointId: string;
-  activity: CatalogActivity | undefined;
-}> = ({ endpointId, activity }) => {
+const ModelDetailContent: FC<DetailProps> = ({
+  provider,
+  endpointId,
+  activity,
+}) => {
   const { data: detail } = useSuspenseQuery({
-    queryKey: ['model-detail', endpointId, activity ?? 'auto'],
-    queryFn: () => fetchModelDetail(endpointId, activity),
+    queryKey: ['model-detail', provider, endpointId, activity ?? 'auto'],
+    queryFn: () => fetchModelDetail(provider, endpointId, activity),
     staleTime: 30 * 60 * 1000,
   });
 
-  if (!detail) {
+  if ('noSchema' in detail) {
     return (
       <EmptyState
         icon={<SearchX className="h-12 w-12" />}
-        title="No schema available"
-        description={`We couldn't find a parameter schema for “${endpointId}”. It may be new, renamed, or not runnable directly.`}
+        title="Unavailable"
+        description={detail.noSchema}
       />
     );
   }
@@ -172,7 +183,11 @@ const ModelDetailContent: FC<{
 };
 
 const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
-  const { model, inputSchema } = detail;
+  const { model, inputSchema, provider, unavailable } = detail;
+  // An own fal key can still run a model the gateway cannot hold.
+  const { data: gate } = useBillingGateQuery();
+  const ownFalKey = provider === 'fal' && gate?.hasFalKey === true;
+  const blocked = unavailable !== null && !ownFalKey;
   const queryClient = useQueryClient();
   const { requireAuth, isAuthenticated } = useAuthGate();
 
@@ -185,6 +200,7 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
     mutationFn: (input: Record<string, JsonValue>) =>
       createGeneratedAssetFn({
         data: {
+          provider,
           endpointId: model.endpointId,
           activity: model.activity,
           modelName: model.displayName,
@@ -256,17 +272,32 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-          <VariantSwitcher model={model} />
-          <a
-            href={`https://fal.ai/models/${model.endpointId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            View on fal.ai
-            <ExternalLink aria-hidden="true" className="size-3.5" />
-          </a>
+          {provider === 'fal' ? (
+            <>
+              <VariantSwitcher model={model} />
+              <a
+                href={`https://fal.ai/models/${model.endpointId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                View on fal.ai
+                <ExternalLink aria-hidden="true" className="size-3.5" />
+              </a>
+            </>
+          ) : (
+            <code className="font-mono text-xs">{model.endpointId}</code>
+          )}
         </div>
+        {unavailable && (
+          <p className="text-sm text-muted-foreground">
+            {ownFalKey
+              ? `Runs on your own fal key: ${unavailable}`
+              : provider === 'fal'
+                ? `Unavailable without your own fal key: ${unavailable}`
+                : `Unavailable: ${unavailable}`}
+          </p>
+        )}
       </header>
 
       <div className="grid gap-10 lg:grid-cols-2">
@@ -289,7 +320,7 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
             )}
             <Button
               type="submit"
-              disabled={runMutation.isPending}
+              disabled={runMutation.isPending || blocked}
               className="w-fit"
             >
               <Sparkles aria-hidden="true" />
@@ -308,7 +339,14 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
               </p>
             </div>
           ) : activeAsset ? (
-            <AssetResult asset={activeAsset} />
+            <div className="flex flex-col gap-2">
+              <AssetResult asset={activeAsset} />
+              {activeAsset.charged ? (
+                <p className="text-sm text-muted-foreground tabular-nums">
+                  Charged {activeAsset.charged}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed">
               <p className="text-sm text-muted-foreground">

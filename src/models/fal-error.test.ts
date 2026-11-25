@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractFalErrorMessage } from './fal-error';
+import { extractFalErrorMessage, isFalValidationError } from './fal-error';
 
 function withBody(body: unknown, status = 422): Error {
   const err = new Error('Unprocessable Entity') as Error & {
@@ -79,5 +79,24 @@ describe('extractFalErrorMessage', () => {
 
   it('stringifies non-Error inputs', () => {
     expect(extractFalErrorMessage('just a string')).toBe('just a string');
+  });
+});
+
+describe('isFalValidationError', () => {
+  it('matches an Error carrying status 422', () => {
+    const error = Object.assign(new Error('Unprocessable Entity'), {
+      status: 422,
+    });
+    expect(isFalValidationError(error)).toBe(true);
+  });
+
+  it('rejects other statuses and non-errors', () => {
+    expect(
+      isFalValidationError(
+        Object.assign(new Error('rate limited'), { status: 429 })
+      )
+    ).toBe(false);
+    expect(isFalValidationError(new Error('no status'))).toBe(false);
+    expect(isFalValidationError({ status: 422 })).toBe(false);
   });
 });

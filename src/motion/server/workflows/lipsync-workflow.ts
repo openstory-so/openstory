@@ -22,9 +22,11 @@ import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
-import { extractFalErrorMessage } from '@/models/fal-error';
+import {
+  extractFalErrorMessage,
+  isFalValidationError,
+} from '@/models/fal-error';
 import { isValidImageToVideoModel } from '@/models/models';
-import { isFalValidationError } from '@/studio/server/workflows/asset-generation-workflow';
 import {
   LIPSYNC_FAL_ENDPOINT,
   LIPSYNC_MODEL_ID,
