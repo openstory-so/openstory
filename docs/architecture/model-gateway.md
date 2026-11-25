@@ -215,9 +215,9 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    (#1645). A queued job (fal, Grok and BytePlus video) has its provider id
    stamped on the row, then is polled in batches; the batch that sees it
    finish stores the media. Bytes never cross a `step.do`.
-3. **Tail (PR 2):** `record-provenance` (`gateway_job`), `record-outputs`,
-   then `settle`, which prices the card with the usage, charges and marks the
-   job succeeded in one step. Nothing runs after it.
+3. **Tail (PR 2):** `record-provenance` (`gateway_job`), then `settle`,
+   which records the outputs, prices the card with the usage, charges and
+   marks the job succeeded in one step. Nothing runs after it.
 4. **Failure:** `onFailure` marks a live row `failed` with
    `{ code, message }` (`CONTENT_REJECTED` for a content refusal, else
    `GENERATION_FAILED`; `NOT_STARTED` is written by the submit when the
@@ -263,8 +263,10 @@ content flag or after Ark's InternalServiceError.
 The `Idempotency-Key` header (≤ 255 characters) is unique per organization
 on `gateway_jobs`. The key binds the job; the job binds the rest: the
 reservation key is `gateway:<jobId>` and the trigger's `deduplicationId` is
-`gateway-<jobId>`. A replay returns the first job whatever the path or body
-says, and still counts against the rate limit. A key whose first submit was
+`gateway-<jobId>`. A replay returns the first job only when the provider,
+model and body match it (field order aside); a different request under a
+used key is a 409 (`requireSameRequest`, at the replay check and in
+`holdGatewayJob`). A replay still counts against the rate limit. A key whose first submit was
 refused before the hold (credits, a bad upload) is free again. A key whose
 trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 
@@ -355,8 +357,8 @@ reads `{ totalMicros: 0, lines: [] }`; the shortfall is reported.
 
 ### A charged job never reads failed
 
-- The run records provenance and then the outputs (`record-outputs`) before
-  the charge. The `settle` step charges and marks the job succeeded; a retry
+- The run records provenance, then the `settle` step records the outputs
+  before the charge (`finishGatewayRun`), charges and marks the job succeeded; a retry
   replays the charge and writes the success again. Nothing runs after it.
 - `markFailed` first promotes a job that has charge lines and outputs to
   `succeeded`, at what its lines sum to, and only otherwise marks it failed.
@@ -469,6 +471,53 @@ Refused at submit, as they should be until #2432 or upstream:
 - `fal-ai/flux/schnell`: `megapixels` is a usage lever with no estimate.
 - `gemini-3.1-flash-lite-image`: `404 Unknown model`, the schema link
   (TanStack/schemas#755).
+
+## The `openstory` adapter (#2433)
+
+### Spike: how a TanStack AI adapter carries a provider's body
+
+Read against `@tanstack/ai` 1.4: `ImageAdapter.generateImages`,
+`AudioAdapter.generateAudio` and `VideoAdapter.createVideoJob` /
+`getVideoStatus` / `getVideo`, and how `@tanstack/ai-fal`, `-grok`, `-gemini`
+and `-byteplus` fill them. Each provider adapter builds its provider's body
+from `prompt`, `size`, `duration`, `numberOfImages` and `modelOptions`.
+
+**Decision.** One `openstory` adapter per kind. `modelOptions` is the
+provider's own body, built by the product's existing builders, and is sent
+as it is. The video shape maps onto a gateway job one to one:
+`createVideoJob` is the hold and the start, `getVideoStatus` is one poll,
+`getVideo` returns the stored URL. The product already calls
+`generateVideo` in one step and `getVideoJobStatus` in its poll steps, so a
+call site changes its adapter and nothing else.
+
+**What does not fit:**
+
+- `prompt`, `size`, `duration` and `numberOfImages` are TanStack's own
+  normalised fields. The gateway never builds a body, so the adapter refuses
+  `size`, `duration` and `numberOfImages`, and never writes `prompt` onto
+  the body; the prompt lives in the body under the provider's own name.
+- `getVideo` returns a URL. The gateway hands the media to the caller's
+  `store` in the poll that saw the job finish (#1645), so `getVideo` returns
+  that stored URL; there is no provider URL to fetch twice.
+- A TanStack job id is one string. The in-process job id carries the
+  gateway job id, the provider's job id and the hold, so a poll reads no row.
+- Rate cards, holds and usage have no place in the adapter interfaces; the
+  adapter returns `usage` only as TanStack's `TokenUsage` where it already
+  matches, and the charge stays on the gateway job.
+
+### Phases
+
+The run of a held job is functions a caller runs in its own steps
+(`src/gateway/server/phases.ts`): `startGatewayRun`, `pollGatewayRun`
+(one poll), `settleGatewayRun`, `finishGatewayRun` (outputs, then the
+charge: the one place that order lives) and `releaseGatewayRun` (zero the
+hold, then `markFailed`, for a run that failed). The hold is `holdGatewayJob`
+(`submit-job.ts`), given the resolved model: the platform key, the body, the account, every
+URL, the price, the row and the reservation, returning the `GatewayRun`
+snapshot. `submitGatewayJob` is the public caller (replay, hold, trigger);
+`GatewayGenerationWorkflow` runs the phases in its steps; `record-outputs`
+folded into `settle`, so a replay re-records the same outputs. Each phase stores media through a `GatewayStore` the caller
+passes, inside the step that received it.
 
 ## Not in this stack
 

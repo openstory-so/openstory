@@ -5,15 +5,18 @@
  */
 
 import type { Microdollars } from '@/billing/money';
-import {
-  releaseReservationOnThrow,
-  reserveRunCredits,
-} from '@/billing/server/preflight';
+import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { OpenStoryError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  InsufficientCreditsError,
+  OpenStoryError,
+  ValidationError,
+} from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -31,6 +34,7 @@ import {
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
+import type { GatewayRun } from '@/gateway/server/phases';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -48,6 +52,24 @@ export type GatewaySubmitContext = {
 };
 
 export type GatewaySubmitResult = { job: GatewayJob; replay: boolean };
+
+/** How a body's media is checked: against the request that sent it. */
+export type GatewayRights = {
+  scopedDb: ScopedDb;
+  request: LikenessRequestContext;
+};
+
+/** What the hold writes: met by `ScopedDb` at a trigger and by `WorkflowScopedDb` in a step. */
+export type GatewayHoldDb = Pick<
+  WorkflowScopedDb,
+  'organizationId' | 'userId'
+> & {
+  gatewayJobs: Pick<
+    WorkflowScopedDb['gatewayJobs'],
+    'create' | 'deleteUnstarted'
+  >;
+  billing: Pick<WorkflowScopedDb['billing'], 'createReservation'>;
+};
 
 /** The `Idempotency-Key` header, trimmed; refused past 255 characters. */
 export function readIdempotencyKey(headers: Headers): string | null {
@@ -87,6 +109,37 @@ function isObject(
  * price honest: a `model` that differs from the path, a field the schema
  * does not name, and more than one output the card does not price.
  */
+/** Keys sorted, so a replay that only reorders fields is the same request. */
+function canonical(value: JsonValue): string {
+  return JSON.stringify(value, (_key, inner: JsonValue) =>
+    isObject(inner)
+      ? Object.fromEntries(
+          Object.entries(inner).sort(([a], [b]) => a.localeCompare(b))
+        )
+      : inner
+  );
+}
+
+/** Refuses a replayed key that carries a different request; `model` is the path's, so it is left out. */
+function requireSameRequest(
+  job: GatewayJob,
+  via: GatewayJob['via'],
+  modelId: string,
+  body: GatewayJobInput
+): void {
+  const { model: _stored, ...stored } = job.input;
+  const { model: _sent, ...sent } = body;
+  if (
+    job.via !== via ||
+    job.modelKey !== modelId ||
+    canonical(stored) !== canonical(sent)
+  ) {
+    throw new ConflictError(
+      'This idempotency key was already used for a different request'
+    );
+  }
+}
+
 function validatedBody(
   model: GatewayModel,
   raw: GatewayJobInput
@@ -191,23 +244,22 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
-export async function submitGatewayJob(
-  request: {
-    provider: GatewayProvider;
-    modelId: string;
-    body: GatewayJobInput;
-  },
-  ctx: GatewaySubmitContext
-): Promise<GatewaySubmitResult> {
-  const { scopedDb } = ctx;
-  if (ctx.idempotencyKey) {
-    const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
-      ctx.idempotencyKey
-    );
-    if (existing) return { job: existing, replay: true };
+/**
+ * Validate and hold: the platform key, the body, the account, the media,
+ * the price, the row and the reservation. A refused request leaves no row and
+ * no hold. A replayed idempotency key returns its job and the same hold.
+ */
+export async function holdGatewayJob(
+  model: GatewayModel,
+  body: GatewayJobInput,
+  ctx: {
+    scopedDb: GatewayHoldDb;
+    rights: GatewayRights;
+    idempotencyKey: string | null;
+    oauthClientId: string | null;
   }
-
-  const model = await getGatewayModel(request.provider, request.modelId);
+): Promise<{ job: GatewayJob; created: boolean; run: GatewayRun }> {
+  const { scopedDb, rights } = ctx;
   // Before the hold: a run with no key would fail after taking the caller's money.
   if (!GATEWAY_DRIVERS[model.provider].configured(model.endpointId)) {
     throw new OpenStoryError(
@@ -216,17 +268,16 @@ export async function submitGatewayJob(
       503
     );
   }
-  const input = validatedBody(model, request.body);
-  const media = gatedUrls(input);
+  const input = validatedBody(model, body);
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
   });
   await requireCheckedUploadRights(
-    withPlatformLlmKey(scopedDb),
-    media,
-    ctx.request
+    withPlatformLlmKey(rights.scopedDb),
+    gatedUrls(input),
+    rights.request
   );
 
   let estimate: Microdollars;
@@ -255,35 +306,76 @@ export async function submitGatewayJob(
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
   });
-  if (!created) return { job, replay: true };
-
-  // Platform keys only, so no BYOK skip: `providers: []` always holds.
-  let reservationId: string | undefined;
-  try {
-    reservationId = await reserveRunCredits(scopedDb, hold, {
-      providers: [],
-      idempotencyKey: `gateway:${job.id}`,
-      errorMessage: 'Insufficient credits for this model',
-    });
-  } catch (error) {
-    await scopedDb.gatewayJobs.deleteUnstarted(job.id);
-    throw error;
+  if (!created) {
+    requireSameRequest(job, GATEWAY_VIA[model.provider], model.id, input);
   }
 
+  // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
+  const reserved = await scopedDb.billing.createReservation(hold, {
+    idempotencyKey: `gateway:${job.id}`,
+  });
+  if (!reserved.ok) {
+    if (created) await scopedDb.gatewayJobs.deleteUnstarted(job.id);
+    throw new InsufficientCreditsError('Insufficient credits for this model');
+  }
+  return {
+    job,
+    created,
+    run: {
+      jobId: job.id,
+      provider: model.provider,
+      kind: model.kind,
+      target: { modelId: model.id, endpointId: model.endpointId },
+      card: model.card,
+      input,
+      estimateMicros: estimate,
+      platformFeeBps,
+      oauthClientId: ctx.oauthClientId,
+      reservationId: reserved.reservationId,
+    },
+  };
+}
+
+/** The public submit: replay, hold, then the run on `GatewayGenerationWorkflow`. */
+export async function submitGatewayJob(
+  request: {
+    provider: GatewayProvider;
+    modelId: string;
+    body: GatewayJobInput;
+  },
+  ctx: GatewaySubmitContext
+): Promise<GatewaySubmitResult> {
+  const { scopedDb } = ctx;
+  if (ctx.idempotencyKey) {
+    const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
+      ctx.idempotencyKey
+    );
+    if (existing) {
+      requireSameRequest(
+        existing,
+        GATEWAY_VIA[request.provider],
+        request.modelId,
+        request.body
+      );
+      return { job: existing, replay: true };
+    }
+  }
+
+  const model = await getGatewayModel(request.provider, request.modelId);
+  const { job, created, run } = await holdGatewayJob(model, request.body, {
+    scopedDb,
+    rights: { scopedDb, request: ctx.request },
+    idempotencyKey: ctx.idempotencyKey,
+    oauthClientId: ctx.oauthClientId,
+  });
+  if (!created) return { job, replay: true };
+  const { reservationId } = run;
+
   const payload: GatewayGenerationWorkflowInput = {
+    ...run,
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
-    reservationId,
     ownsReservation: true,
-    jobId: job.id,
-    provider: model.provider,
-    kind: model.kind,
-    target: { modelId: model.id, endpointId: model.endpointId },
-    card: model.card,
-    input,
-    estimateMicros: estimate,
-    platformFeeBps,
-    oauthClientId: ctx.oauthClientId,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
@@ -305,7 +397,7 @@ export async function submitGatewayJob(
 
   try {
     await scopedDb.gatewayJobs.attachRun(job.id, {
-      reservationId: reservationId ?? null,
+      reservationId,
       workflowRunId,
     });
   } catch (error) {
