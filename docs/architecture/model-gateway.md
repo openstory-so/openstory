@@ -413,8 +413,9 @@ known.
   image" (1,120 tokens); the card prices the same (`price.test.ts`).
 - **fal** results carry no usage. The driver reports `megapixels`, the sum of
   `width × height / 1,000,000` over the result's `images`, never fal's billed
-  units; a result with no image sizes reports no usage. fal rounds nothing
-  here: the card gets the exact figure.
+  units; a result with any image that has no size reports no usage. The
+  request is still refused at submit until the card can hold it (#2432):
+  this usage prices only the charge.
 
 ### Blocked upstream
 

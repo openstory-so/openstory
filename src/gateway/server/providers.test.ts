@@ -573,6 +573,20 @@ describe('fal driver', () => {
     expect(poll).toMatchObject({ status: 'done', result: { usage: null } });
   });
 
+  it('reports no usage when one image of several has no size', async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
+    falQueue.result.mockResolvedValueOnce({
+      data: {
+        images: [
+          { url: 'https://fal.media/a.jpg', width: 1024, height: 768 },
+          { url: 'https://fal.media/b.jpg' },
+        ],
+      },
+    });
+    const poll = await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials);
+    expect(poll).toMatchObject({ status: 'done', result: { usage: null } });
+  });
+
   it("fails with the provider's reason when the result rejects", async () => {
     falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
     falQueue.result.mockRejectedValueOnce(new Error('NSFW content detected'));
