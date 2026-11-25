@@ -58,7 +58,7 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
 const { inProcessGateway } = await import('./in-process');
 const { openstoryAudio, openstoryImage, openstoryVideo } =
   await import('./index');
-const { UPLOAD_RIGHTS_CHECKED } = await import('../submit-job');
+const submitJob = await import('../submit-job');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
   await import('@/platform/server/db/scoped-workflow');
@@ -113,7 +113,7 @@ function transport(model: GatewayModel, idempotencyKey: string) {
     runId: 'image_run-1',
     idempotencyKey,
     store,
-    uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+    uploadRightsChecked: submitJob.UPLOAD_RIGHTS_CHECKED,
   });
 }
 
@@ -177,6 +177,7 @@ describe('the openstory adapter, in-process', () => {
   it('charges one image exactly once, at the card price', async () => {
     start.mockResolvedValue(answered);
     const result = await generateImage({
+      threadId: 'thread-1',
       adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-1:image')),
       prompt: BODY.prompt,
       modelOptions: BODY,
@@ -200,6 +201,7 @@ describe('the openstory adapter, in-process', () => {
     start.mockResolvedValue(answered);
     for (let attempt = 0; attempt < 2; attempt++) {
       await generateImage({
+        threadId: 'thread-1',
         adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-2:image')),
         prompt: BODY.prompt,
         modelOptions: BODY,
@@ -232,6 +234,7 @@ describe('the openstory adapter, in-process', () => {
     });
     // Each step builds its own adapter; the job id carries what a poll needs.
     const { jobId } = await generateVideo({
+      threadId: 'thread-1',
       adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-3:submit')),
       prompt: BODY.prompt,
       modelOptions: BODY,
@@ -269,6 +272,7 @@ describe('the openstory adapter, in-process', () => {
     });
     const submitStep = () =>
       generateVideo({
+        threadId: 'thread-1',
         adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
         prompt: BODY.prompt,
         modelOptions: BODY,
@@ -294,6 +298,7 @@ describe('the openstory adapter, in-process', () => {
     start.mockResolvedValue({ jobId: 'xai-10' });
     const submitStep = () =>
       generateVideo({
+        threadId: 'thread-1',
         adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-10:submit')),
         prompt: BODY.prompt,
         modelOptions: BODY,
@@ -319,6 +324,7 @@ describe('the openstory adapter, in-process', () => {
     start.mockResolvedValue({ jobId: 'xai-2' });
     poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
     const { jobId } = await generateVideo({
+      threadId: 'thread-1',
       adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-4:submit')),
       prompt: BODY.prompt,
       modelOptions: BODY,
@@ -348,6 +354,7 @@ describe('the openstory adapter, in-process', () => {
     });
     const audio: GatewayModel = { ...IMAGE, id: 'grok-audio', kind: 'audio' };
     const result = await generateAudio({
+      threadId: 'thread-1',
       adapter: openstoryAudio(audio.id, transport(audio, 'run-7:audio')),
       prompt: BODY.prompt,
       modelOptions: BODY,
@@ -364,6 +371,7 @@ describe('the openstory adapter, in-process', () => {
   it('accepts inline media from a trusted caller', async () => {
     start.mockResolvedValue(answered);
     await generateImage({
+      threadId: 'thread-1',
       adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-5:image')),
       prompt: BODY.prompt,
       modelOptions: { prompt: 'data:image/png;base64,AAAA' },
@@ -374,6 +382,7 @@ describe('the openstory adapter, in-process', () => {
   it('refuses TanStack fields the gateway does not build a body from', async () => {
     await expect(
       generateImage({
+        threadId: 'thread-1',
         adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-6:image')),
         prompt: BODY.prompt,
         size: '1024x1024',

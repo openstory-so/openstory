@@ -158,7 +158,7 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
     model: string,
     private readonly transport: GatewayTransport
   ) {
-    super(model);
+    super(undefined, model);
   }
 
   async createVideoJob(
@@ -195,11 +195,11 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
     return { jobId, url };
   }
 
-  availableDurations(): DurationOptions<number> {
+  override availableDurations(): DurationOptions<number> {
     return { kind: 'none' };
   }
 
-  snapDuration(): undefined {
+  override snapDuration(): undefined {
     return undefined;
   }
 }

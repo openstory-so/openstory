@@ -155,7 +155,12 @@ export function inProcessGateway(params: {
     },
 
     poll: async (handle: string) => {
-      const { run, providerJobId } = handleSchema.parse(JSON.parse(handle));
+      const parsed = handleSchema.parse(JSON.parse(handle));
+      const { providerJobId } = parsed;
+      const run: GatewayRun = {
+        ...parsed.run,
+        reservationId: parsed.run.reservationId,
+      };
       const polled = await pollGatewayRun(
         run,
         providerJobId,

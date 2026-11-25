@@ -27,7 +27,7 @@ describe('UPLOAD_RIGHTS_CHECKED', () => {
         readFileSync(file, 'utf8').includes('UPLOAD_RIGHTS_CHECKED')
       )
       .map((file) => relative(ROOT, file))
-      .toSorted();
-    expect(naming).toEqual(ALLOWED.toSorted());
+      .sort();
+    expect(naming).toEqual([...ALLOWED].sort());
   });
 });

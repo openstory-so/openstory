@@ -527,7 +527,7 @@ describe('fal driver', () => {
       GATEWAY_DRIVERS.fal.start(target, body, keyed('own-key', 20)),
       GATEWAY_DRIVERS.fal.start(target, body, keyed('platform-key', 0)),
     ]);
-    expect(submittedWith.toSorted()).toEqual(['own-key', 'platform-key']);
+    expect([...submittedWith].sort()).toEqual(['own-key', 'platform-key']);
     expect(
       createFalClient.mock.calls.map(([config]) => config.credentials)
     ).toEqual(['platform-key', 'own-key']);
