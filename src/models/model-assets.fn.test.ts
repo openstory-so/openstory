@@ -49,7 +49,7 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: mockRequireGenerationAllowed,
 }));
 vi.doMock('@/gateway/server/catalog', () => ({
-  getBrowsableGatewayModel: mockGetGatewayModel,
+  getGatewayModel: mockGetGatewayModel,
 }));
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: { grok: { configured: () => true } },

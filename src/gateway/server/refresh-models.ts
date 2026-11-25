@@ -50,9 +50,15 @@ export async function refreshGatewayModels(
     summary.dropped++;
     logger.warn('dropped from the gateway snapshot', { provider, id, reason });
   };
-  for (const stale of await listStoredGatewayModels(db)) {
-    if (!wanted.has(`${stale.provider}/${stale.id}`)) {
-      await drop(stale.provider, stale.id, 'not a product model');
+  for (const row of await listStoredGatewayModels(db)) {
+    if (!row.model || !wanted.has(`${row.provider}/${row.modelId}`)) {
+      await drop(
+        row.provider,
+        row.modelId,
+        row.model
+          ? 'not a product model'
+          : 'row does not parse as its own model'
+      );
     }
   }
   const now = new Date();

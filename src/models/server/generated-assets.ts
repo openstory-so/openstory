@@ -13,7 +13,7 @@ import type {
   GeneratedAssetActivity,
   GeneratedAssetInput,
 } from '@/platform/server/db/schema';
-import { getBrowsableGatewayModel } from '@/gateway/server/catalog';
+import { getGatewayModel } from '@/gateway/server/catalog';
 import { gatedUrls, holdGatewayJob } from '@/gateway/server/submit-job';
 import { GATEWAY_ERROR_MESSAGES } from '@/gateway/schema';
 import {
@@ -90,10 +90,7 @@ export async function createGeneratedAsset(
       route = { via: 'fal', endpointId: data.endpointId };
       activity = data.activity;
     } else {
-      const model = await getBrowsableGatewayModel(
-        data.provider,
-        data.endpointId
-      );
+      const model = await getGatewayModel(data.provider, data.endpointId);
       const held = await holdGatewayJob(model, data.input, {
         scopedDb,
         rights: { scopedDb, request },

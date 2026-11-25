@@ -23,6 +23,19 @@ const storedModelSchema = z.object({
   inputSchema: z.record(z.string(), z.json()),
 }) satisfies z.ZodType<GatewayModel>;
 
+function soundModel(row: {
+  provider: GatewayProvider;
+  modelId: string;
+  model: unknown;
+}): GatewayModel | null {
+  const parsed = storedModelSchema.safeParse(row.model);
+  return parsed.success &&
+    parsed.data.id === row.modelId &&
+    parsed.data.provider === row.provider
+    ? parsed.data
+    : null;
+}
+
 /** The stored model, or null when there is none or it no longer parses. */
 export async function getStoredGatewayModel(
   db: PricingRefreshDb,
@@ -39,21 +52,28 @@ export async function getStoredGatewayModel(
       )
     )
     .limit(1);
-  const parsed = storedModelSchema.safeParse(row?.model);
-  return parsed.success ? parsed.data : null;
+  return row ? soundModel({ provider, modelId, model: row.model }) : null;
 }
 
-/** Every stored model that still parses. */
+export type StoredGatewayModelRow = {
+  provider: GatewayProvider;
+  modelId: string;
+  /** Null when the row no longer parses or names another model than its key. */
+  model: GatewayModel | null;
+};
+
+/** Every row by its own key, with the model only where it is sound. */
 export async function listStoredGatewayModels(
   db: PricingRefreshDb
-): Promise<GatewayModel[]> {
+): Promise<StoredGatewayModelRow[]> {
   const rows = await db
-    .select({ model: gatewayModels.model })
+    .select({
+      provider: gatewayModels.provider,
+      modelId: gatewayModels.modelId,
+      model: gatewayModels.model,
+    })
     .from(gatewayModels);
-  return rows.flatMap((row) => {
-    const parsed = storedModelSchema.safeParse(row.model);
-    return parsed.success ? [parsed.data] : [];
-  });
+  return rows.map((row) => ({ ...row, model: soundModel(row) }));
 }
 
 /** Keyed by the model's own id, so an alias never gets a row of its own. */

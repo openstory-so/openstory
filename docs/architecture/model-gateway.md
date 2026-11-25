@@ -177,8 +177,7 @@ POST /api/v1/gateway/grok/grok-imagine-video-1.5
 ### Models
 
 Every model modelschemas lists for the four providers that has an activity
-(`image`, `video`, `audio`), a request schema and a rate card. Since #2432,
-only the product's own models (§ The stored snapshot).
+(`image`, `video`, `audio`), a request schema and a rate card.
 
 Not served, and why:
 
@@ -659,22 +658,20 @@ The gateway reads a model, its request schema and its rate card from
 `gateway_models` (`src/platform/server/db/schema/gateway-models.ts`), never
 from modelschemas on a request.
 
-- `getGatewayModel` answers from the stored row only. A model not stored is
-  `404 Unknown model`; a request never asks modelschemas and never writes a
-  row, so a caller cannot grow the table by inventing ids. A modelschemas
-  outage stops nothing the snapshot holds (`catalog.test.ts`, "serves a
-  stored model with modelschemas unreachable").
-- **The gateway serves the product's models.** The snapshot holds exactly
-  `productGatewayModels()` (`src/gateway/product-models.ts`), and
-  `GET /api/v1/gateway/models` lists the snapshot. Serving another model is
-  adding it there.
-- The Models page browses every modelschemas model, so it reads one the
-  snapshot lacks live (`getBrowsableGatewayModel`), through the catalog's
-  bounded TTL cache as the fal detail page always has, and keeps nothing.
+- **Product models are served from the snapshot; anything else is a live
+  read and fails when modelschemas is down.** `getGatewayModel` answers from
+  the stored row; on a miss it reads modelschemas through the catalog's
+  bounded TTL cache, writes nothing, and refuses an answer under another id
+  than the one asked for. Only the scheduled refresh writes rows, so a caller
+  cannot grow the table by inventing ids (`catalog.test.ts`).
+- The snapshot holds exactly `productGatewayModels()`
+  (`src/gateway/product-models.ts`). `GET /api/v1/gateway/models` and the
+  Models page lists still read modelschemas' lists.
 - `refreshGatewayModels` (`src/gateway/server/refresh-models.ts`) re-reads
   every product model under a 5 minute budget. Rows are keyed by the model's
   own id: one modelschemas answers under another id is dropped, as is a model
-  it refuses and a row no longer in the product list. An outage, a rate limit
+  it refuses, a row no longer in the product list, and a row whose key is not
+  its model's id or that no longer parses (cleanup goes by the row's key). An outage, a rate limit
   or the budget keeps the stored row; a run that could read nothing throws.
 - It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
   pricing refresh and in its own `try`, so a failure or the budget never
@@ -689,8 +686,8 @@ from modelschemas on a request.
   unit, with a required price; a gateway model is keyed by provider and model
   id and carries a schema. One row is the whole `GatewayModel`, parsed on
   read, so a row an older deploy wrote is checked, not trusted.
-- The Models page lists still read modelschemas: an outage hides those
-  lists, not generation.
+- The lists read modelschemas: an outage hides them, and stops generation
+  for every model outside the snapshot.
 
 ## Not in this stack
 

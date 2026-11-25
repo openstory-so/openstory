@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { gatewayModels } from '@/platform/server/db/schema';
 import { createTestDb } from '@/platform/server/db/test-d1';
+import { asStub } from '@/test/as-stub';
 
 const SOURCE = {
   url: 'https://docs.example.com/pricing',
@@ -45,7 +46,6 @@ vi.doMock('@/gateway/product-models', () => ({
 
 const {
   fetchGatewayModel,
-  getBrowsableGatewayModel,
   getGatewayModel,
   listGatewayModels,
   listProviderModels,
@@ -78,17 +78,19 @@ const VIDEO_PAGES = {
 };
 
 describe('the stored snapshot', () => {
-  it('is written only by the refresh: a request neither asks modelschemas nor stores', async () => {
+  it('serves a non-product model live and writes no row', async () => {
     pages = VIDEO_PAGES;
+    expect(await getGatewayModel('grok', 'grok-imagine-video')).toMatchObject({
+      id: 'grok-imagine-video',
+    });
+    expect(await db.select().from(gatewayModels)).toEqual([]);
+  });
+
+  it('refuses a live answer under another id', async () => {
+    pages = { ...VIDEO_PAGES, '/v1/models/grok/grok-video-alias': record({}) };
     await expect(
-      getGatewayModel('grok', 'grok-imagine-video')
+      getGatewayModel('grok', 'grok-video-alias')
     ).rejects.toBeInstanceOf(NotFoundError);
-    // The Models page reads it live and keeps nothing.
-    await getBrowsableGatewayModel('grok', 'grok-imagine-video');
-    await expect(
-      getGatewayModel('grok', 'grok-invented-alias')
-    ).rejects.toBeInstanceOf(NotFoundError);
-    expect(fetchCatalogJson).toHaveBeenCalledTimes(2);
     expect(await db.select().from(gatewayModels)).toEqual([]);
   });
 
@@ -103,14 +105,6 @@ describe('the stored snapshot', () => {
       id: 'grok-imagine-video',
       kind: 'video',
     });
-    expect(await listGatewayModels()).toEqual([
-      {
-        provider: 'grok',
-        id: 'grok-imagine-video',
-        name: 'Grok Imagine Video',
-        kind: 'video',
-      },
-    ]);
     expect(fetchCatalogJson).not.toHaveBeenCalled();
     fetchCatalogJson.mockReset();
   });
@@ -152,6 +146,26 @@ describe('the stored snapshot', () => {
     fetchCatalogJson.mockReset();
     const rows = await db.select().from(gatewayModels);
     expect(rows.map((row) => row.modelId)).toEqual(['grok-imagine-image']);
+  });
+
+  it('drops a row keyed by an alias and a row that no longer parses', async () => {
+    pages = VIDEO_PAGES;
+    products = [{ provider: 'grok', id: 'grok-imagine-video' }];
+    await refreshGatewayModels();
+    const [row] = await db.select().from(gatewayModels);
+    if (!row) throw new Error('no row');
+    await db.insert(gatewayModels).values([
+      { ...row, modelId: 'grok-video-alias' },
+      { ...row, modelId: 'grok-broken', model: asStub<typeof row.model>({}) },
+    ]);
+    expect(
+      await getGatewayModel('grok', 'grok-video-alias').catch(() => null)
+    ).toBeNull();
+    fetchCatalogJson.mockClear();
+
+    await refreshGatewayModels();
+    const rows = await db.select().from(gatewayModels);
+    expect(rows.map((r) => r.modelId)).toEqual(['grok-imagine-video']);
   });
 
   it('stops asking modelschemas when its time budget runs out', async () => {
@@ -304,6 +318,106 @@ describe('listProviderModels', () => {
         name: 'Grok Imagine Video',
         kind: 'image',
         unavailable: 'This model has no price',
+      },
+    ]);
+  });
+});
+
+describe('listGatewayModels', () => {
+  it('lists priced media models and drops the rest', async () => {
+    pages = {
+      '/v1/models?provider=fal': {
+        models: [
+          record({ rawId: 'fal-ai/ferry/video', displayName: 'Ferry Video' }),
+          record({ rawId: 'fal-ai/unpriced', pricing: null }),
+        ],
+      },
+      '/v1/models?provider=byteplus': {
+        models: [
+          record({
+            rawId: 'seedream-5',
+            displayName: 'Seedream 5',
+            activity: 'image',
+            schemaEndpointId: 'images/generations',
+          }),
+          record({
+            rawId: 'seed-audio-1.0',
+            displayName: 'Seed Audio',
+            activity: 'audio',
+            schemaEndpointId: 'tts/create',
+          }),
+          // Text out, and no driver for the endpoint.
+          record({
+            rawId: 'seed-asr',
+            activity: 'audio',
+            schemaEndpointId: 'auc/bigmodel/recognize/flash',
+          }),
+          record({ rawId: 'hitem3d', activity: null, schemaEndpointId: null }),
+        ],
+      },
+      '/v1/models?provider=gemini': {
+        models: [
+          record({ rawId: 'gemini-chat', activity: 'chat' }),
+          record({ rawId: 'gemini-nothing', activity: null }),
+          record({ rawId: 'gemini-no-endpoint', schemaEndpointId: null }),
+        ],
+      },
+      '/v1/models?provider=grok': {
+        models: [record({ activity: 'audio', displayName: 'Grok Voice' })],
+      },
+    };
+    expect(await listGatewayModels()).toEqual([
+      {
+        provider: 'fal',
+        id: 'fal-ai/ferry/video',
+        name: 'Ferry Video',
+        kind: 'video',
+      },
+      {
+        provider: 'byteplus',
+        id: 'seedream-5',
+        name: 'Seedream 5',
+        kind: 'image',
+      },
+      {
+        provider: 'byteplus',
+        id: 'seed-audio-1.0',
+        name: 'Seed Audio',
+        kind: 'audio',
+      },
+      {
+        provider: 'grok',
+        id: 'grok-imagine-video',
+        name: 'Grok Voice',
+        kind: 'audio',
+      },
+    ]);
+  });
+});
+
+describe('a record with no display name', () => {
+  it('is listed under its id: some BytePlus records carry none', async () => {
+    pages = {
+      '/v1/models?provider=fal': { models: [] },
+      '/v1/models?provider=gemini': { models: [] },
+      '/v1/models?provider=grok': { models: [] },
+      '/v1/models?provider=byteplus': {
+        models: [
+          record({
+            rawId: 'seedream-5-0-lite',
+            displayName: null,
+            activity: 'image',
+            schemaEndpointId: 'images/generations',
+          }),
+        ],
+      },
+    };
+    expect(await listGatewayModels()).toEqual([
+      {
+        provider: 'byteplus',
+        id: 'seedream-5-0-lite',
+        name: 'seedream-5-0-lite',
+        kind: 'image',
       },
     ]);
   });

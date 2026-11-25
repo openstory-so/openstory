@@ -289,8 +289,8 @@ describe('refreshFalPricing', () => {
         Promise.resolve(
           [...(opts.cards ?? new Map<string, unknown>())].map(([id, card]) => ({
             provider: 'fal',
-            id,
-            card,
+            modelId: id,
+            model: { provider: 'fal', id, card },
           }))
         ),
     }));

@@ -10,6 +10,7 @@ import {
 import type { JsonValue } from '@/platform/server/db/schema';
 import {
   BYTEPLUS_ENDPOINTS,
+  GATEWAY_PROVIDERS,
   GATEWAY_JOB_KINDS,
   type GatewayJobKind,
   type GatewayProvider,
@@ -17,10 +18,7 @@ import {
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import { z } from 'zod';
-import {
-  getStoredGatewayModel,
-  listStoredGatewayModels,
-} from '@/gateway/server/db/gateway-models';
+import { getStoredGatewayModel } from '@/gateway/server/db/gateway-models';
 
 const MODEL_TTL_MS = 5 * 60 * 1000;
 const SCHEMA_TTL_MS = 30 * 60 * 1000;
@@ -120,29 +118,22 @@ export async function fetchGatewayModel(
   };
 }
 
-/** The stored model: the gateway serves only what the daily refresh stored, and never asks modelschemas on a request. */
+/**
+ * Product models are served from the snapshot; anything else is a live read
+ * through the catalog's bounded TTL cache, writes nothing, and fails when
+ * modelschemas is down. A live answer under another id is refused.
+ */
 export async function getGatewayModel(
   provider: GatewayProvider,
   id: string
 ): Promise<GatewayModel> {
   const stored = await getStoredGatewayModel(getDb(), provider, id);
-  if (!stored) throw new NotFoundError('Unknown model');
-  return stored;
-}
-
-/**
- * The Models page browses every modelschemas model: the stored one, else read
- * live through the catalog's bounded TTL cache, as the fal detail page always
- * has. Nothing is written.
- */
-export async function getBrowsableGatewayModel(
-  provider: GatewayProvider,
-  id: string
-): Promise<GatewayModel> {
-  return (
-    (await getStoredGatewayModel(getDb(), provider, id)) ??
-    fetchGatewayModel(provider, id)
-  );
+  if (stored) return stored;
+  const model = await fetchGatewayModel(provider, id);
+  if (model.id !== id) {
+    throw new NotFoundError(`Unknown model; did you mean ${model.id}?`);
+  }
+  return model;
 }
 
 /** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */
@@ -160,9 +151,7 @@ export async function gatewayUnavailable(
   id: string
 ): Promise<string | null> {
   try {
-    return unholdableReason(
-      (await getBrowsableGatewayModel(provider, id)).card
-    );
+    return unholdableReason((await getGatewayModel(provider, id)).card);
   } catch (error) {
     if (error instanceof OpenStoryError && error.statusCode < 500) {
       return error.message;
@@ -204,13 +193,26 @@ export async function listProviderModels(
   });
 }
 
-/** Every model the gateway serves: the stored snapshot. */
+/** Every priced image, video and audio model on the gateway's providers. */
 export async function listGatewayModels(): Promise<GatewayModelSummary[]> {
-  const models = await listStoredGatewayModels(getDb());
-  return models.map(({ provider, id, name, kind }) => ({
-    provider,
-    id,
-    name,
-    kind,
-  }));
+  const lists = await Promise.all(
+    GATEWAY_PROVIDERS.map(async (provider) => {
+      const body = z
+        .object({ models: z.array(modelRecordSchema) })
+        .parse(await getJson(`/v1/models?provider=${provider}`, MODEL_TTL_MS));
+      return body.models.flatMap((record): GatewayModelSummary[] => {
+        const kind = kindOf(provider, record);
+        if (!kind || !record.schemaEndpointId || !record.pricing) return [];
+        return [
+          {
+            provider,
+            id: record.rawId,
+            name: record.displayName ?? record.rawId,
+            kind,
+          },
+        ];
+      });
+    })
+  );
+  return lists.flat();
 }

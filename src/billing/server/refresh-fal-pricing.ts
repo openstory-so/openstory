@@ -594,9 +594,9 @@ export async function refreshFalPricing(
   );
   // The gateway snapshot's cards; a miss keeps yesterday's card on the row.
   const storedModels = new Map(
-    (await listStoredGatewayModels(db))
-      .filter((model) => model.provider === 'fal')
-      .map((model) => [model.id, model])
+    (await listStoredGatewayModels(db)).flatMap(({ provider, model }) =>
+      provider === 'fal' && model ? [[model.id, model] as const] : []
+    )
   );
   const storedCardByEndpoint = new Map(
     existing.flatMap((row) =>
