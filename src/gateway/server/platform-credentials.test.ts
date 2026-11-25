@@ -12,10 +12,12 @@ const env: Record<string, string | undefined> = {
   GEMINI_API_KEY: 'platform-gemini',
   XAI_API_KEY: '',
   OPENROUTER_KEY: 'platform-openrouter',
+  ARK_API_KEY: 'platform-ark',
 };
 vi.doMock('#env', () => ({ getEnv: () => env }));
 
-const { platformOnlyCredentials } = await import('./platform-credentials');
+const { hasPlatformKey, platformOnlyCredentials } =
+  await import('./platform-credentials');
 
 describe('platformOnlyCredentials', () => {
   const credentials = platformOnlyCredentials({
@@ -49,6 +51,19 @@ describe('platformOnlyCredentials', () => {
       'resolveOptionalKey',
       'userId',
     ]);
+  });
+});
+
+describe('hasPlatformKey', () => {
+  it("asks for the key the model's driver spends", () => {
+    expect(hasPlatformKey('fal', 'fal-ai/flux/schnell')).toBe(true);
+    expect(
+      hasPlatformKey('gemini', 'v1beta/models/{modelsId}:generateContent')
+    ).toBe(true);
+    expect(hasPlatformKey('grok', 'v1/images/generations')).toBe(false);
+    expect(hasPlatformKey('byteplus', 'images/generations')).toBe(true);
+    // Seed Audio is BytePlus on its own key, which is not set here.
+    expect(hasPlatformKey('byteplus', 'tts/create')).toBe(false);
   });
 });
 

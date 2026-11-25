@@ -1,6 +1,6 @@
 /**
  * `POST /api/v1/gateway/{provider}/{model}` (docs/architecture/model-gateway.md).
- * Order: replay, model, schema, compliance, upload rights, price, row, hold,
+ * Order: replay, model, platform key, schema, compliance, upload rights, price, row, hold,
  * trigger. A refused request leaves no row and no hold.
  */
 
@@ -11,7 +11,7 @@ import {
 } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { ValidationError } from '@/platform/errors';
+import { OpenStoryError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
@@ -23,12 +23,16 @@ import {
 } from '@/gateway/charge-lines';
 import {
   BYTEPLUS_ENDPOINTS,
+  GATEWAY_ERROR_MESSAGES,
   GATEWAY_VIA,
   type GatewayJobInput,
   type GatewayProvider,
 } from '@/gateway/schema';
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
-import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
+import {
+  hasPlatformKey,
+  withPlatformLlmKey,
+} from '@/gateway/server/platform-credentials';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -206,6 +210,14 @@ export async function submitGatewayJob(
   }
 
   const model = await getGatewayModel(request.provider, request.modelId);
+  // Before the hold: a run with no key would fail after taking the caller's money.
+  if (!hasPlatformKey(model.provider, model.endpointId)) {
+    throw new OpenStoryError(
+      'This provider is not configured on this server',
+      'PROVIDER_NOT_CONFIGURED',
+      503
+    );
+  }
   const input = validatedBody(model, request.body);
   const media = gatedUrls(input);
 
@@ -286,8 +298,7 @@ export async function submitGatewayJob(
       } catch (error) {
         await scopedDb.gatewayJobs.markFailed(job.id, {
           code: 'NOT_STARTED',
-          message:
-            'The job could not be started. Send it again with a new Idempotency-Key.',
+          message: GATEWAY_ERROR_MESSAGES.NOT_STARTED,
         });
         throw error;
       }

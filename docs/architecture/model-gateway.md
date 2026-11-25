@@ -281,8 +281,6 @@ trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 
 ### Not yet (PR 1)
 
-- No reconcile sweep for a job left `running` when both the run and its
-  `onFailure` die; the hold expires on its own TTL.
 - No estimate endpoint; the hold is not shown before submit.
 - The provider's own result object is not returned, only the stored media.
 - `MODELSCHEMAS_API_KEY` must be set in production: the anonymous limit is
@@ -423,6 +421,25 @@ known.
   names `v1beta/models/{modelsId}:generateContent` under `image`; modelschemas
   files that schema under `chat`, so its `_links.schema` is a 404 and
   `getGatewayModel` refuses. Not worked around by reading the chat schema.
+
+### Hardening
+
+- **Public error messages.** The job document answers a fixed message per
+  code (`GATEWAY_ERROR_MESSAGES`), never the stored text. The row and the
+  logs keep the provider's own text.
+- **Missing platform key.** The submit refuses with
+  `503 PROVIDER_NOT_CONFIGURED` right after the model lookup, before the
+  body checks and the hold, when the key the driver spends is not set
+  (`hasPlatformKey`: `FAL_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
+  `ARK_API_KEY`, or the Seed Speech key for `tts/create`).
+- **Stuck jobs.** The existing 5-minute cron (`*/5`, the reconcile branch of
+  `scheduled()`) also runs `reconcileGatewayJobs`: a `queued` or `running`
+  job with a run id, untouched for 5 minutes, whose run the engine reports
+  over (errored, terminated, gone or complete) is ended through `markFailed`,
+  so a charged job still ends `succeeded`. A run still in flight, or one the
+  engine cannot read, is left for the next pass. The hold is not released
+  here; it expires on its TTL. A job whose run id was never recorded
+  (`attachRun` failed and the run died) is not swept.
 
 ## Not in this stack
 

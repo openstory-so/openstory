@@ -19,6 +19,7 @@ import {
   withHtmlAccept,
 } from '@/platform/server/agent/discovery';
 import { reconcileAllStuckJobs } from '@/platform/server/cron/reconcile-all';
+import { reconcileGatewayJobs } from '@/gateway/server/reconcile-gateway-jobs';
 import {
   FAL_PRICING_CRON,
   refreshFalPricing,
@@ -261,6 +262,11 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     ctx.waitUntil(
       reconcileAllStuckJobs().catch((error) => {
         logger.error('reconcileAllStuckJobs failed:', { err: error });
+      })
+    );
+    ctx.waitUntil(
+      reconcileGatewayJobs().catch((error) => {
+        logger.error('reconcileGatewayJobs failed:', { err: error });
       })
     );
   },

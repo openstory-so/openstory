@@ -27,6 +27,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   or,
   sql,
 } from 'drizzle-orm';
@@ -47,6 +48,35 @@ const RUN_MAY_WRITE = or(
     sql`json_extract(${gatewayJobs.error}, '$.code') = 'NOT_STARTED'`
   )
 );
+
+/** Live jobs with a run, untouched since `before`: the cron sweep's input, across organizations. */
+export async function listStaleGatewayJobs(
+  db: Database,
+  before: Date,
+  limit: number
+): Promise<
+  { id: string; organizationId: string; userId: string; runId: string }[]
+> {
+  const rows = await db
+    .select({
+      id: gatewayJobs.id,
+      organizationId: gatewayJobs.organizationId,
+      userId: gatewayJobs.userId,
+      runId: gatewayJobs.workflowRunId,
+    })
+    .from(gatewayJobs)
+    .where(
+      and(
+        inArray(gatewayJobs.status, LIVE),
+        isNotNull(gatewayJobs.workflowRunId),
+        lt(gatewayJobs.updatedAt, before)
+      )
+    )
+    .limit(limit);
+  return rows.flatMap((row) =>
+    row.runId ? [{ ...row, runId: row.runId }] : []
+  );
+}
 
 export function createGatewayJobsMethods(
   db: Database,
