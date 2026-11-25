@@ -39,6 +39,9 @@ export const ELEVENLABS_TTS_ENDPOINT = 'elevenlabs-tts';
 /** Billing id for Voice Design (`POST /v1/text-to-voice/design`). */
 export const ELEVENLABS_VOICE_DESIGN_ENDPOINT = 'elevenlabs-voice-design';
 
+/** The Voice Design model. */
+export const ELEVENLABS_VOICE_DESIGN_MODEL = 'eleven_ttv_v3';
+
 /**
  * Billing id for native ElevenLabs Music (`music_v2_5` via `elevenlabsAudio`).
  * Distinct from the retired fal proxy `fal-ai/elevenlabs/music`.

@@ -14,13 +14,14 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import type {
+  GatewayJobData,
   GatewayJobError,
   GatewayJobInput,
   GatewayJobKind,
   GatewayJobOutput,
   GatewayJobStatus,
+  GatewayVia,
 } from '@/gateway/schema';
-import type { MediaVia } from '@/models/via';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { organization } from './organization';
@@ -46,9 +47,11 @@ export const gatewayJobs = snakeCase.table(
       .default('queued')
       .notNull(),
     // The provider the job runs on, set at submit.
-    via: text({ length: 50 }).$type<MediaVia>(),
+    via: text({ length: 50 }).$type<GatewayVia>(),
     providerJobId: text(),
     outputs: text({ mode: 'json' }).$type<GatewayJobOutput[]>(),
+    // The answer's JSON beside the media; null when the provider sent only media.
+    data: text({ mode: 'json' }).$type<GatewayJobData>(),
     error: text({ mode: 'json' }).$type<GatewayJobError>(),
     costMicros: integer(),
     reservationId: text(),

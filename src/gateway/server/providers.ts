@@ -8,6 +8,12 @@ import {
 import { getArkApiKey, getArkBaseUrl } from '@/models/server/byteplus-config';
 import { resolvePlatformOptionalKey } from '@/models/server/db/api-keys';
 import {
+  getElevenLabsBaseUrl,
+  isElevenLabsConfigured,
+  retryOnRateLimit,
+} from '@/models/server/elevenlabs-config';
+import { bytesToBase64 } from '@/platform/base64';
+import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
@@ -109,6 +115,8 @@ export type GatewayRunResult = {
   media: GatewayMedia[];
   usage: JsonObject | null;
   requestId: string | null;
+  /** The answer's small JSON beside the media, such as ElevenLabs' alignment or preview voice ids. */
+  data?: JsonObject;
 };
 
 export type GatewayStart = { jobId: string } | { result: GatewayRunResult };
@@ -136,32 +144,43 @@ type Driver = {
   ) => Promise<GatewayPoll>;
 };
 
+type ProviderRequest = {
+  method: 'GET' | 'POST';
+  headers: Record<string, string>;
+  body?: unknown;
+};
+
 /** A 4xx is the provider's answer to this body, so it is not retried; 408 and 429 are. */
 async function callJson(
   url: string,
-  init: {
-    method: 'GET' | 'POST';
-    headers: Record<string, string>;
-    body?: unknown;
-  }
+  init: ProviderRequest
 ): Promise<JsonObject> {
+  const response = await callProvider(url, init);
+  return jsonObject.parse(await response.json());
+}
+
+async function callProvider(
+  url: string,
+  init: ProviderRequest
+): Promise<Response> {
   const response = await fetch(url, {
     method: init.method,
     headers: { 'content-type': 'application/json', ...init.headers },
     ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const text = await response.text();
-  if (!response.ok) {
-    const message = `Provider refused the request (${response.status}): ${text.slice(0, 500)}`;
-    const final =
-      response.status >= 400 &&
-      response.status < 500 &&
-      response.status !== 408 &&
-      response.status !== 429;
-    throw final ? new NonRetryableError(message) : new Error(message);
-  }
-  return jsonObject.parse(JSON.parse(text));
+  if (response.ok) return response;
+  const message = `Provider refused the request (${response.status}): ${(await response.text()).slice(0, 500)}`;
+  const final =
+    response.status >= 400 &&
+    response.status < 500 &&
+    response.status !== 408 &&
+    response.status !== 429;
+  // `statusCode` and `rawResponse` as the SDKs carry them, for `retryOnRateLimit`.
+  throw Object.assign(
+    final ? new NonRetryableError(message) : new Error(message),
+    { statusCode: response.status, rawResponse: response }
+  );
 }
 
 /** E2E stays on the mocks: a laptop key must not bill a replay. */
@@ -523,9 +542,73 @@ const geminiDriver: Driver = {
   },
 };
 
+/** ElevenLabs' JSON answers carry audio as base64 beside small fields: the audio becomes media, the rest `data`. */
+function elevenLabsResult(answer: JsonObject): GatewayRunResult {
+  const { audio_base64, previews, ...rest } = answer;
+  const media: GatewayMedia[] = [];
+  const data: JsonObject = { ...rest };
+  if (typeof audio_base64 === 'string') {
+    media.push({ base64: audio_base64, contentType: 'audio/mpeg' });
+  }
+  if (Array.isArray(previews)) {
+    data.previews = previews.map((item) => {
+      const { audio_base_64, ...preview } = recordOrNull(item) ?? {};
+      if (typeof audio_base_64 === 'string') {
+        media.push({
+          base64: audio_base_64,
+          contentType: text(preview.media_type) ?? 'audio/mpeg',
+        });
+      }
+      return preview;
+    });
+  }
+  return { media, usage: null, requestId: null, data };
+}
+
+/** Platform key only: a designed voice lives in the account that made it. */
+const elevenLabsDriver: Driver = {
+  configured: () => isElevenLabsConfigured(),
+  start: async (target, body, credentials) => {
+    const { key } = await credentials.resolveKey('elevenlabs');
+    const url = `${getElevenLabsBaseUrl() ?? 'https://api.elevenlabs.io'}/${target.endpointId}`;
+    // A 429 is the account's concurrency cap and never ran, so it is resent here.
+    const response = await retryOnRateLimit(() =>
+      callProvider(url, {
+        method: 'POST',
+        headers: { 'xi-api-key': key },
+        body,
+      })
+    );
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.startsWith('audio/')) {
+      return {
+        result: {
+          media: [
+            {
+              base64: bytesToBase64(
+                new Uint8Array(await response.arrayBuffer())
+              ),
+              contentType,
+            },
+          ],
+          usage: null,
+          requestId: response.headers.get('request-id'),
+        },
+      };
+    }
+    return {
+      result: elevenLabsResult(jsonObject.parse(await response.json())),
+    };
+  },
+  poll: async () => {
+    throw new NonRetryableError('ElevenLabs jobs answer at once');
+  },
+};
+
 export const GATEWAY_DRIVERS: Readonly<Record<GatewayProvider, Driver>> = {
   fal: falDriver,
   grok: grokDriver,
   byteplus: bytePlusDriver,
   gemini: geminiDriver,
+  elevenlabs: elevenLabsDriver,
 };

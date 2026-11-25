@@ -46,6 +46,7 @@ const OWN_KEY: Readonly<Record<GatewayProvider, ApiKeyProvider | null>> = {
   byteplus: null,
   gemini: 'google',
   grok: 'xai',
+  elevenlabs: null,
 };
 
 type RouteScopedDb = {

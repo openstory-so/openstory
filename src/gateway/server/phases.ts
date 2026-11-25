@@ -11,6 +11,7 @@ import { getLogger } from '@/platform/logger';
 import {
   GATEWAY_VIA,
   type GatewayErrorCode,
+  type GatewayJobData,
   type GatewayJobInput,
   type GatewayJobKind,
   type GatewayJobOutput,
@@ -68,6 +69,8 @@ export type GatewayStored = {
   /** JSON text: a recursive JSON type fails the step's Serializable check. */
   usageJson: string | null;
   requestId: string | null;
+  /** The answer's JSON beside the media, as text for the same reason. */
+  dataJson?: string;
 };
 
 export type GatewayStarted =
@@ -103,6 +106,7 @@ export async function storeGatewayResult(
     outputs,
     usageJson: result.usage ? JSON.stringify(result.usage) : null,
     requestId: result.requestId,
+    ...(result.data && { dataJson: JSON.stringify(result.data) }),
   };
 }
 
@@ -210,6 +214,13 @@ export async function settleGatewayRun(
   });
 }
 
+const dataSchema = z.record(z.string(), z.json());
+
+/** The answer's JSON a run stored, or null when the provider sent only media. */
+export function storedData(stored: GatewayStored): GatewayJobData | null {
+  return stored.dataJson ? dataSchema.parse(JSON.parse(stored.dataJson)) : null;
+}
+
 /** Records the outputs, then charges: a charged job always has its outputs. */
 export async function finishGatewayRun(
   scopedDb: WorkflowScopedDb,
@@ -220,6 +231,7 @@ export async function finishGatewayRun(
   await scopedDb.gatewayJobs.recordOutputs(run.jobId, {
     outputs: stored.outputs,
     via: GATEWAY_VIA[run.provider],
+    data: storedData(stored),
   });
   return settleGatewayRun(scopedDb, run, stored, idempotencyKey);
 }

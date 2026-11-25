@@ -23,7 +23,11 @@ import {
   loadElevenLabsAudio,
   retryOnRateLimit,
 } from '@/models/server/elevenlabs-config';
-import type { Microdollars } from '@/billing/money';
+import { type Microdollars, ZERO_MICROS } from '@/billing/money';
+import {
+  runElevenLabsOnGateway,
+  type ElevenLabsGatewayCall,
+} from '@/audio/server/elevenlabs-gateway';
 import { generateId } from '@/platform/id';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
@@ -42,6 +46,8 @@ const logger = getLogger(['openstory', 'audio', 'music-generation']);
 
 export type GenerateMusicOptions = {
   credentials?: CredentialScopedDb;
+  /** ElevenLabs Music routed to the gateway at the trigger; null keeps today's direct call. */
+  gateway: ElevenLabsGatewayCall | null;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
   /** Style/mood prompt for the music (e.g., "tense orchestral, dark atmosphere") */
@@ -226,6 +232,9 @@ async function callElevenLabsAudio(
     promptLength: options.prompt.length,
     duration: billedDuration,
   });
+  if (options.gateway) {
+    return gatewayMusic(options.gateway, options, modelConfig, billedDuration);
+  }
 
   const apiKeyInfo = options.credentials
     ? await options.credentials.resolveKey('elevenlabs')
@@ -290,6 +299,37 @@ async function callElevenLabsAudio(
       billedUnit: 'minutes',
       duration: billedDuration,
       cost: estimateMusicCost(billedDuration),
+      generatedAt: new Date().toISOString(),
+      usedOwnKey: false,
+    },
+  };
+}
+
+/** The gateway holds and charges, so the caller books nothing. */
+async function gatewayMusic(
+  call: ElevenLabsGatewayCall,
+  options: GenerateMusicOptions,
+  modelConfig: AudioModelConfig,
+  billedDuration: number
+): Promise<MusicResult> {
+  const { outputs } = await runElevenLabsOnGateway(call, {
+    model_id: call.model.id,
+    prompt: options.prompt,
+    music_length_ms: Math.round(billedDuration * 1000),
+    force_instrumental: options.instrumental ?? true,
+  });
+  const [output] = outputs;
+  if (!output) throw new Error('The gateway stored no music');
+  return {
+    success: true,
+    audioUrl: output.url,
+    storagePath: output.path,
+    metadata: {
+      model: call.model.id,
+      vendor: modelConfig.vendor,
+      endpointId: ELEVENLABS_MUSIC_ENDPOINT,
+      duration: billedDuration,
+      cost: ZERO_MICROS,
       generatedAt: new Date().toISOString(),
       usedOwnKey: false,
     },

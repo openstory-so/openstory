@@ -13,12 +13,13 @@ import {
   gatewayJobs,
   type GatewayJob,
 } from '@/platform/server/db/schema';
-import type { MediaVia } from '@/models/via';
 import type {
+  GatewayJobData,
   GatewayJobError,
   GatewayJobInput,
   GatewayJobKind,
   GatewayJobOutput,
+  GatewayVia,
 } from '@/gateway/schema';
 import {
   and,
@@ -149,7 +150,7 @@ export function createGatewayJobsMethods(
       kind: GatewayJobKind;
       /** The provider's own model id. */
       modelKey: string;
-      via: MediaVia;
+      via: GatewayVia;
       input: GatewayJobInput;
       idempotencyKey: string | null;
       oauthClientId: string | null;
@@ -210,7 +211,7 @@ export function createGatewayJobsMethods(
     /** The provider's id for a queued job: a record, the run polls its own submission. */
     stampProviderJob: async (
       id: string,
-      stamp: { via: MediaVia; providerJobId: string }
+      stamp: { via: GatewayVia; providerJobId: string }
     ): Promise<void> => {
       await db
         .update(gatewayJobs)
@@ -221,7 +222,11 @@ export function createGatewayJobsMethods(
     /** The stored results, before the charge, so a charged job always has them. */
     recordOutputs: async (
       id: string,
-      result: { outputs: GatewayJobOutput[]; via: MediaVia }
+      result: {
+        outputs: GatewayJobOutput[];
+        via: GatewayVia;
+        data: GatewayJobData | null;
+      }
     ): Promise<void> => {
       await db
         .update(gatewayJobs)
@@ -231,7 +236,11 @@ export function createGatewayJobsMethods(
 
     markSucceeded: async (
       id: string,
-      result: { outputs: GatewayJobOutput[]; costMicros: number; via: MediaVia }
+      result: {
+        outputs: GatewayJobOutput[];
+        costMicros: number;
+        via: GatewayVia;
+      }
     ): Promise<void> => {
       const now = new Date();
       await db.batch([

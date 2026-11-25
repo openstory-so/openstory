@@ -1,0 +1,1 @@
+ALTER TABLE `gateway_jobs` ADD `data` text;

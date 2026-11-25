@@ -18,6 +18,11 @@ import {
 } from '@/models/models';
 import { LIPSYNC_FAL_ENDPOINT } from '@/motion/lipsync';
 import { SEED_AUDIO_MODEL } from '@/cast/seed-voice';
+import {
+  ELEVENLABS_MUSIC_MODEL,
+  ELEVENLABS_VOICE_DESIGN_MODEL,
+} from '@/billing/elevenlabs-pricing';
+import { DIALOGUE_STS_MODEL, DIALOGUE_TTS_MODEL } from '@/motion/dialogue-tts';
 import { typedEntries } from '@/platform/typed-object';
 
 export type ProductGatewayModel = {
@@ -39,6 +44,12 @@ export function productGatewayModels(): ProductGatewayModel[] {
     gemini: [
       ...imageKeys.map(nativeGeminiImageModel),
       NATIVE_GEMINI_VIDEO_MODEL,
+    ],
+    elevenlabs: [
+      ELEVENLABS_MUSIC_MODEL,
+      ELEVENLABS_VOICE_DESIGN_MODEL,
+      DIALOGUE_TTS_MODEL,
+      DIALOGUE_STS_MODEL,
     ],
   };
   return typedEntries(ids).flatMap(([provider, list]) =>

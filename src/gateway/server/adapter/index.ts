@@ -4,7 +4,11 @@
  * as it is; the transport holds, runs, stores and charges.
  */
 
-import type { GatewayJobInput, GatewayJobOutput } from '@/gateway/schema';
+import type {
+  GatewayJobData,
+  GatewayJobInput,
+  GatewayJobOutput,
+} from '@/gateway/schema';
 import type {
   AudioGenerationOptions,
   AudioGenerationResult,
@@ -24,15 +28,20 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
-type GatewaySubmitted =
-  | { kind: 'queued'; handle: string }
-  // `jobId`: the gateway job that charged it; null on a transport that holds no job (an own key).
-  | { kind: 'done'; jobId: string | null; outputs: GatewayJobOutput[] };
+/** A finished job; `jobId` is the gateway job that charged it (null on an own-key transport); `data` is the provider's JSON beside the files. */
+type GatewayDone = {
+  kind: 'done';
+  jobId: string | null;
+  outputs: GatewayJobOutput[];
+  data?: GatewayJobData | null;
+};
+
+type GatewaySubmitted = { kind: 'queued'; handle: string } | GatewayDone;
 
 type GatewayPollResult =
   | { kind: 'pending' }
   | { kind: 'failed'; error: string }
-  | { kind: 'done'; outputs: GatewayJobOutput[] };
+  | GatewayDone;
 
 /** One poll; the poll that sees the job finish stores and charges it. */
 export type GatewayPoller = {
@@ -95,18 +104,18 @@ function bodyOf(options: {
 }
 
 /** Submit and poll until done, in this call: images and audio answer in seconds. */
-async function runToEnd(
+export async function runGatewayToEnd(
   transport: GatewayTransport,
   call: GatewayCall,
   body: GatewayJobInput,
-  signal: AbortSignal | undefined
-): Promise<GatewayJobOutput[]> {
+  signal?: AbortSignal
+): Promise<GatewayDone> {
   const submitted = await transport.submit(body, call.idempotencyKey);
-  if (submitted.kind === 'done') return submitted.outputs;
+  if (submitted.kind === 'done') return submitted;
   for (;;) {
     signal?.throwIfAborted();
     const polled = await transport.poll(submitted.handle);
-    if (polled.kind === 'done') return polled.outputs;
+    if (polled.kind === 'done') return polled;
     if (polled.kind === 'failed') throw new NonRetryableError(polled.error);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
@@ -126,7 +135,7 @@ class OpenstoryImageAdapter extends BaseImageAdapter<string, GatewayJobInput> {
     options: ImageGenerationOptions<GatewayJobInput>
   ): Promise<ImageGenerationResult> {
     options.logger.request('openstory.generateImages', { model: this.model });
-    const outputs = await runToEnd(
+    const { outputs } = await runGatewayToEnd(
       this.transport,
       this.call,
       bodyOf(options),
@@ -154,7 +163,7 @@ class OpenstoryAudioAdapter extends BaseAudioAdapter<string, GatewayJobInput> {
     options: AudioGenerationOptions<GatewayJobInput>
   ): Promise<AudioGenerationResult> {
     options.logger.request('openstory.generateAudio', { model: this.model });
-    const outputs = await runToEnd(
+    const { outputs } = await runGatewayToEnd(
       this.transport,
       this.call,
       bodyOf(options),

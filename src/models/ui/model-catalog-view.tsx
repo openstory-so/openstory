@@ -173,6 +173,7 @@ const PROVIDER_LABELS: Record<GatewayProvider, string> = {
   grok: 'Grok',
   byteplus: 'BytePlus',
   gemini: 'Gemini',
+  elevenlabs: 'ElevenLabs',
 };
 
 /** Grok, BytePlus and Gemini models; one the gateway cannot run says why. */

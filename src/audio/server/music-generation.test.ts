@@ -54,7 +54,7 @@ describe('generateMusic native ElevenLabs', () => {
   it('refuses the native path when no platform key is configured', async () => {
     env.ELEVENLABS_API_KEY = undefined;
     await expect(
-      generateMusic({ prompt: 'lo-fi beat', duration: 30 })
+      generateMusic({ prompt: 'lo-fi beat', duration: 30, gateway: null })
     ).rejects.toThrow(/ELEVENLABS_API_KEY/);
     expect(generateAudio).not.toHaveBeenCalled();
   });
@@ -71,6 +71,7 @@ describe('generateMusic native ElevenLabs', () => {
     });
 
     const result = await generateMusic({
+      gateway: null,
       prompt: 'lo-fi beat',
       duration: 61,
       organizationId: 'team_1',

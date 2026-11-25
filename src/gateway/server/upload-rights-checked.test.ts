@@ -20,6 +20,8 @@ const ALLOWED: readonly string[] = [
   'src/motion/server/video-job.ts',
   // Seed takes: the organization's Seed voice clips (made from text) and the user's own in-app mic take.
   'src/cast/server/voice/seed-audio.ts',
+  // ElevenLabs Music: a text prompt, no upload.
+  'src/audio/server/elevenlabs-gateway.ts',
 ];
 
 function* walk(dir: string): Generator<string> {

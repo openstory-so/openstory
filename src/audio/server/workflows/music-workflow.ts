@@ -102,6 +102,8 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
 
     const audioResult = await step.do('generate-music', async () => {
       const result = await generateMusic({
+        // Routed once gatewayRoutes reaches this run (#2436).
+        gateway: null,
         prompt,
         tags,
         duration,

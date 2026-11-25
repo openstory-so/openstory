@@ -25,6 +25,7 @@ import {
   pollGatewayRun,
   releaseGatewayRun,
   startGatewayRun,
+  storedData,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import {
@@ -70,7 +71,11 @@ async function finish(
   stored: GatewayStored
 ) {
   await finishGatewayRun(scopedDb, run, stored, `gateway:${run.jobId}:settle`);
-  return { kind: 'done' as const, outputs: stored.outputs };
+  return {
+    kind: 'done' as const,
+    outputs: stored.outputs,
+    data: storedData(stored),
+  };
 }
 
 /** Polls a handle `submit` gave out. Needs no model, key or rights: a poll step builds only this. */
@@ -87,7 +92,11 @@ export function inProcessPoller(params: {
       // A retried poll whose job already ended answers from the row: no second store, no second charge.
       const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
       if (job?.status === 'succeeded') {
-        return { kind: 'done' as const, outputs: storedOutputs(job) };
+        return {
+          kind: 'done' as const,
+          outputs: storedOutputs(job),
+          data: job.data,
+        };
       }
       if (job?.status === 'failed') {
         return {
@@ -172,6 +181,7 @@ export function inProcessGateway(params: {
           kind: 'done' as const,
           jobId: job.id,
           outputs: storedOutputs(job),
+          data: job.data,
         };
       }
       if (job.status === 'failed') {
