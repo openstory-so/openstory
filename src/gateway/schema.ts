@@ -61,4 +61,14 @@ export const GATEWAY_ERROR_CODES = [
 ] as const;
 export type GatewayErrorCode = (typeof GATEWAY_ERROR_CODES)[number];
 
+/** What a caller reads for each code; the provider's own text stays in the logs and the row. */
+export const GATEWAY_ERROR_MESSAGES: Readonly<
+  Record<GatewayErrorCode, string>
+> = {
+  CONTENT_REJECTED: 'The provider refused the content of this request.',
+  GENERATION_FAILED: 'The provider could not complete this job.',
+  NOT_STARTED:
+    'The job could not be started. Send it again with a new Idempotency-Key.',
+};
+
 export type GatewayJobError = { code: GatewayErrorCode; message: string };

@@ -636,6 +636,31 @@ describe.each(NATIVE)('%s driver errors', (provider) => {
   });
 });
 
+describe('configured', () => {
+  it('asks for the key each driver spends, and its E2E gate', () => {
+    env = { FAL_KEY: 'k', XAI_API_KEY: 'k', GEMINI_API_KEY: 'k' };
+    expect(GATEWAY_DRIVERS.fal.configured('fal-ai/flux/schnell')).toBe(true);
+    expect(GATEWAY_DRIVERS.grok.configured('v1/images/generations')).toBe(true);
+    expect(GATEWAY_DRIVERS.byteplus.configured('images/generations')).toBe(
+      true
+    );
+    // Seed Audio is on its own key.
+    seedConfigured = false;
+    expect(GATEWAY_DRIVERS.byteplus.configured('tts/create')).toBe(false);
+    arkKey = undefined;
+    expect(GATEWAY_DRIVERS.byteplus.configured('images/generations')).toBe(
+      false
+    );
+    env = { XAI_API_KEY: 'k', GEMINI_API_KEY: 'k', E2E_TEST: 'true' };
+    expect(GATEWAY_DRIVERS.fal.configured('fal-ai/flux/schnell')).toBe(false);
+    // Under E2E a native driver is off without its base URL, as at run time.
+    expect(GATEWAY_DRIVERS.grok.configured('v1/images/generations')).toBe(
+      false
+    );
+    expect(GATEWAY_DRIVERS.gemini.configured('x')).toBe(false);
+  });
+});
+
 describe('E2E_TEST with a base URL override', () => {
   it('sends BytePlus and Google to the mock', async () => {
     env = { E2E_TEST: 'true', GEMINI_BASE_URL: 'http://localhost:4010/gemini' };

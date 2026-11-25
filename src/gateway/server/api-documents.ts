@@ -16,6 +16,7 @@ import type { GatewayJob } from '@/platform/server/db/schema';
 import { toShareableUrl } from '@/platform/server/storage/buckets';
 import {
   GATEWAY_ERROR_CODES,
+  GATEWAY_ERROR_MESSAGES,
   GATEWAY_JOB_KINDS,
   GATEWAY_JOB_STATUSES,
   GATEWAY_PROVIDERS,
@@ -154,7 +155,13 @@ export function gatewayJobDocument(
           contentType: output.contentType,
         })
       ),
-      error: job.error ?? null,
+      // A closed set: the provider's raw text never reaches the caller.
+      error: job.error
+        ? {
+            code: job.error.code,
+            message: GATEWAY_ERROR_MESSAGES[job.error.code],
+          }
+        : null,
       charge:
         job.status === 'succeeded' && job.costMicros !== null
           ? {

@@ -3,6 +3,7 @@
 import { getEnv } from '#env';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { getArkApiKey, getArkBaseUrl } from '@/models/server/byteplus-config';
+import { resolvePlatformOptionalKey } from '@/models/server/db/api-keys';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
@@ -56,6 +57,8 @@ export type GatewayPoll =
 export type GatewayTarget = { modelId: string; endpointId: string };
 
 type Driver = {
+  /** Whether this driver can run the endpoint on this server; asked at submit, before the hold. */
+  configured: (endpointId: string) => boolean;
   start: (
     target: GatewayTarget,
     body: GatewayJobInput,
@@ -96,9 +99,13 @@ async function callJson(
   return jsonObject.parse(JSON.parse(text));
 }
 
+/** E2E stays on the mocks: a laptop key must not bill a replay. */
+function nativeOn(baseUrl: string | undefined): boolean {
+  return getEnv().E2E_TEST !== 'true' || Boolean(baseUrl);
+}
+
 function requireNative(baseUrl: string | undefined, name: string): void {
-  // E2E stays on the mocks: a laptop key must not bill a replay.
-  if (getEnv().E2E_TEST === 'true' && !baseUrl) {
+  if (!nativeOn(baseUrl)) {
     throw new NonRetryableError(`${name} is off under E2E_TEST`);
   }
 }
@@ -128,6 +135,7 @@ function imagesFromData(body: JsonObject): GatewayMedia[] {
 }
 
 const falDriver: Driver = {
+  configured: () => resolvePlatformOptionalKey('fal') !== undefined,
   start: async (target, body, credentials) => {
     await configureFal(credentials);
     try {
@@ -209,6 +217,9 @@ async function grokCall(
 }
 
 const grokDriver: Driver = {
+  configured: () =>
+    nativeOn(getEnv().XAI_BASE_URL) &&
+    resolvePlatformOptionalKey('xai') !== undefined,
   start: async (target, body, credentials) => {
     // modelschemas names the endpoint with its version: `v1/videos/generations`.
     const answer = await grokCall(
@@ -314,6 +325,11 @@ async function seedSpeech(body: GatewayJobInput): Promise<GatewayStart> {
 }
 
 const bytePlusDriver: Driver = {
+  // Seed Audio is not on Ark: its own key.
+  configured: (endpointId) =>
+    endpointId === BYTEPLUS_ENDPOINTS.speech
+      ? isSeedSpeechConfigured()
+      : nativeOn(getArkBaseUrl()) && Boolean(getArkApiKey()),
   start: async (target, body) => {
     if (target.endpointId === BYTEPLUS_ENDPOINTS.speech) {
       return seedSpeech(body);
@@ -387,6 +403,9 @@ const geminiAnswer = z.object({
 });
 
 const geminiDriver: Driver = {
+  configured: () =>
+    nativeOn(getEnv().GEMINI_BASE_URL) &&
+    resolvePlatformOptionalKey('google') !== undefined,
   start: async (target, body, credentials) => {
     const override = getEnv().GEMINI_BASE_URL;
     requireNative(override, 'Google');

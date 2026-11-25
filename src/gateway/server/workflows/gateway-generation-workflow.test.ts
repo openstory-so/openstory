@@ -74,7 +74,7 @@ vi.doMock('@/platform/server/compliance/provenance', () => ({
 
 // For the full `run()`: the base class builds its own scoped db.
 const zeroReservation = vi.fn(async (_reservationId: string) => undefined);
-const runMarkFailed = vi.fn(async () => undefined);
+const runMarkFailed = vi.fn(async () => true);
 type GatewayJobsMethods = ReturnType<typeof createGatewayJobsMethods>;
 type BillingMethods = ReturnType<typeof createBillingMethods>;
 const runScopedDb: {

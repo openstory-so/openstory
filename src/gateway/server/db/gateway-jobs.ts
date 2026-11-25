@@ -22,11 +22,13 @@ import type {
 } from '@/gateway/schema';
 import {
   and,
+  asc,
   eq,
   exists,
   inArray,
   isNotNull,
   isNull,
+  lt,
   or,
   sql,
 } from 'drizzle-orm';
@@ -47,6 +49,43 @@ const RUN_MAY_WRITE = or(
     sql`json_extract(${gatewayJobs.error}, '$.code') = 'NOT_STARTED'`
   )
 );
+
+/** Live jobs with a run, untouched since `before`, oldest first: the cron sweep's input, across organizations. */
+export async function listStaleGatewayJobs(
+  db: Database,
+  before: Date,
+  limit: number
+): Promise<
+  {
+    id: string;
+    organizationId: string;
+    userId: string;
+    runId: string;
+    reservationId: string | null;
+  }[]
+> {
+  const rows = await db
+    .select({
+      id: gatewayJobs.id,
+      organizationId: gatewayJobs.organizationId,
+      userId: gatewayJobs.userId,
+      runId: gatewayJobs.workflowRunId,
+      reservationId: gatewayJobs.reservationId,
+    })
+    .from(gatewayJobs)
+    .where(
+      and(
+        inArray(gatewayJobs.status, LIVE),
+        isNotNull(gatewayJobs.workflowRunId),
+        lt(gatewayJobs.updatedAt, before)
+      )
+    )
+    .orderBy(asc(gatewayJobs.updatedAt))
+    .limit(limit);
+  return rows.flatMap((row) =>
+    row.runId ? [{ ...row, runId: row.runId }] : []
+  );
+}
 
 export function createGatewayJobsMethods(
   db: Database,
@@ -216,10 +255,14 @@ export function createGatewayJobsMethods(
     /**
      * Fails a job, unless it was charged: a job with charge lines and stored
      * outputs ends `succeeded` at what its lines sum to, whatever failed after.
+     * True when it changed the row.
      */
-    markFailed: async (id: string, error: GatewayJobError): Promise<void> => {
+    markFailed: async (
+      id: string,
+      error: GatewayJobError
+    ): Promise<boolean> => {
       const now = new Date();
-      await db.batch([
+      const [promoted, failed] = await db.batch([
         db
           .update(gatewayJobs)
           .set({
@@ -236,7 +279,8 @@ export function createGatewayJobsMethods(
               isNotNull(gatewayJobs.outputs),
               hasLines(id)
             )
-          ),
+          )
+          .returning({ id: gatewayJobs.id }),
         db
           .update(gatewayJobs)
           .set({
@@ -245,8 +289,10 @@ export function createGatewayJobsMethods(
             updatedAt: now,
             completedAt: now,
           })
-          .where(and(own(id), RUN_MAY_WRITE)),
+          .where(and(own(id), RUN_MAY_WRITE))
+          .returning({ id: gatewayJobs.id }),
       ]);
+      return promoted.length + failed.length > 0;
     },
   };
 }

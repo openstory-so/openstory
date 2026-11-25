@@ -281,8 +281,6 @@ trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 
 ### Not yet (PR 1)
 
-- No reconcile sweep for a job left `running` when both the run and its
-  `onFailure` die; the hold expires on its own TTL.
 - No estimate endpoint; the hold is not shown before submit.
 - The provider's own result object is not returned, only the stored media.
 - `MODELSCHEMAS_API_KEY` must be set in production: the anonymous limit is
@@ -423,6 +421,54 @@ known.
   names `v1beta/models/{modelsId}:generateContent` under `image`; modelschemas
   files that schema under `chat`, so its `_links.schema` is a 404 and
   `getGatewayModel` refuses. Not worked around by reading the chat schema.
+
+### Hardening
+
+- **Public error messages.** The job document answers a fixed message per
+  code (`GATEWAY_ERROR_MESSAGES`), never the stored text. The row and the
+  logs keep the provider's own text.
+- **Missing platform key.** The submit refuses with
+  `503 PROVIDER_NOT_CONFIGURED` right after the model lookup, before the
+  body checks and the hold, when the driver says it cannot run the endpoint
+  (`configured` on each driver in `GATEWAY_DRIVERS`). It is the same check the
+  run makes: the platform key (`FAL_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
+  `ARK_API_KEY`, or the Seed Speech key for `tts/create`) and, for the native
+  drivers, the E2E gate.
+- **Stuck jobs.** The existing 5-minute cron (`*/5`, the reconcile branch of
+  `scheduled()`) also runs `reconcileGatewayJobs`. It takes `queued` or
+  `running` jobs with a run id, untouched for 5 minutes, oldest first (100 a
+  pass). Each one whose run the engine reports over (errored, terminated, gone
+  or complete) is ended as its `onFailure` would have: `markFailed` (a charged
+  job still ends `succeeded`), then its hold zeroed, and a warning logged. A
+  run still in flight, or one the engine cannot read, is left for the next
+  pass. A job whose run id was never recorded (`attachRun` failed and the run
+  died) is not swept.
+
+### Real jobs (2026-11-26)
+
+One HTTP job per provider on `bun dev` with an `osk_` key: submit, `GET
+/api/v1/gateway/jobs/$id?wait`, then the hold, the lines against the debit
+and the R2 output read back.
+
+| Model                                            | Hold     | Charge    | Output    |
+| ------------------------------------------------ | -------- | --------- | --------- |
+| `grok-imagine-image`                             | $0.02    | $0.02     | JPEG, 200 |
+| `grok-imagine-video-1.5-lite` (2 s)              | $0.04    | $0.04     | MP4, 200  |
+| `seed-audio-1.0`                                 | $0.30    | $0.0152   | WAV, 200  |
+| `seedance-1-0-pro-fast-251015` (480p, 16:9, 2 s) | $0.01944 | $0.019845 | MP4, 200  |
+
+The lines summed to the debit on every job. Seedance charged 2% above its hold
+(Ark's `completion_tokens` beat the card's estimate); the capture grew the
+hold. Seedance holds only when the body carries `ratio`, `duration` and
+`resolution`, the card's estimate inputs; without `ratio` it is refused.
+
+Refused at submit, as they should be until #2432 or upstream:
+
+- `seedream-5-0-lite-260128`: `generated_images` is a usage lever with no
+  estimate.
+- `fal-ai/flux/schnell`: `megapixels` is a usage lever with no estimate.
+- `gemini-3.1-flash-lite-image`: `404 Unknown model`, the schema link
+  (TanStack/schemas#755).
 
 ## Not in this stack
 

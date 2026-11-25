@@ -180,6 +180,17 @@ const requireCheckedUploadRights = vi.fn(
 );
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
+const configured = vi.fn((_endpointId: string) => true);
+const realProviders = await import('@/gateway/server/providers');
+vi.doMock('@/gateway/server/providers', () => ({
+  ...realProviders,
+  GATEWAY_DRIVERS: Object.fromEntries(
+    Object.entries(realProviders.GATEWAY_DRIVERS).map(([provider, driver]) => [
+      provider,
+      { ...driver, configured },
+    ])
+  ),
+}));
 vi.doMock('@/gateway/server/catalog', () => ({ getGatewayModel }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/cast/server/upload-check', () => ({ requireCheckedUploadRights }));
@@ -501,6 +512,16 @@ describe('submitGatewayJob', () => {
     // Cleared, the same body runs.
     const { replay } = await submitGatewayJob(submit, ctx(scopedDb));
     expect(replay).toBe(false);
+  });
+
+  it('refuses a provider with no platform key before the hold, as a 503', async () => {
+    configured.mockReturnValueOnce(false);
+    const error = await refused(VIDEO);
+    expect(error).toMatchObject({
+      code: 'PROVIDER_NOT_CONFIGURED',
+      statusCode: 503,
+    });
+    expect(configured).toHaveBeenCalledWith('v1/videos/generations');
   });
 
   it('refuses a request the card cannot price, with no row and no hold', async () => {

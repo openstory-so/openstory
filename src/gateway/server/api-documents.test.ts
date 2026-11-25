@@ -60,4 +60,24 @@ describe('gatewayJobDocument', () => {
       lines: [{ kind: 'provider_cost', amountMicros: 5 }],
     });
   });
+
+  it("gives a failed job's code a fixed message, never the provider's text", () => {
+    const failed = gatewayJobDocument(
+      {
+        ...job,
+        status: 'failed',
+        error: {
+          code: 'GENERATION_FAILED',
+          message:
+            'Provider refused the request (401): {"error":"Incorrect API key sk-…"}',
+        },
+      },
+      [],
+      'https://openstory.test'
+    );
+    expect(failed.error).toEqual({
+      code: 'GENERATION_FAILED',
+      message: 'The provider could not complete this job.',
+    });
+  });
 });
