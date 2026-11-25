@@ -752,10 +752,16 @@ bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
 ## Product stills on the gateway (#2434)
 
+Only Grok stills with no reference images go through the gateway today.
+
 The trigger decides the route and puts it on the payload as
 `gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`):
 one `resolveGatewayRoute` per Grok image model, so a run that falls back to
-another Grok model mid-run still has its answer. A run triggered before
+another Grok model mid-run still has its answer. It reads the stored
+snapshot only (`getSnapshotGatewayModel`): a miss is direct, and a
+modelschemas outage cannot stop a trigger. The run reads its route only
+through `gatewayRunRoute`, the snapshot plus the pure body check, so a step
+retry takes the same route. A run triggered before
 #2434 has no routes and stays direct. `generateImageWithProvider` is the one
 place the route is applied (`gatewayImageRequest`): an `openstory` route plus
 a body the endpoint takes (`gatewayCannotRun`) runs the `openstory` adapter
@@ -776,8 +782,9 @@ over `inProcessGateway`; anything else goes direct as before.
 Routed today: Studio images, shot image and variant regenerations, character
 and location sheet regenerations. Stay direct:
 
-- Stills with reference images (Grok's `v1/images/generations` takes none),
-  upscales (an edit), sheet portraits that edit, posters (fal).
+- Grok stills with reference images: modelschemas has no `v1/images/edits`
+  for Grok ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)).
+- Upscales (an edit), sheet portraits that edit, posters (fal).
 - fal Flux and Seedream: the cards have a usage lever with no estimate
   (#2432). Gemini images: TanStack/schemas#755.
 - Runs from the sequence pipeline (storyboard, continue, update stale, smart
