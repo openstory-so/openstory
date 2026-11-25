@@ -30,6 +30,7 @@ import {
 } from '@/platform/server/db/schema';
 import {
   AttestationRequiredError,
+  ConflictError,
   InsufficientCreditsError,
   NotFoundError,
   ValidationError,
@@ -585,6 +586,42 @@ describe('submitGatewayJob', () => {
     expect(again.created).toBe(false);
     expect(again.job.id).toBe(first.job.id);
     expect(again.run.reservationId).toBe(first.run.reservationId);
+  });
+
+  it('refuses a replayed Idempotency-Key that carries a different request', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    await submitGatewayJob(VIDEO, ctx(scopedDb, 'retry-2'));
+    const reordered = { duration: BODY.duration, prompt: BODY.prompt };
+    expect(
+      (
+        await submitGatewayJob(
+          { ...VIDEO, body: reordered },
+          ctx(scopedDb, 'retry-2')
+        )
+      ).replay
+    ).toBe(true);
+    const error = await submitGatewayJob(
+      { ...VIDEO, body: { ...BODY, duration: 6 } },
+      ctx(scopedDb, 'retry-2')
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(triggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a held key reused for a different body', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel(VIDEO.provider, VIDEO.modelId);
+    const hold = (body: GatewayJobInput) =>
+      holdGatewayJob(model, body, {
+        scopedDb,
+        rights: { scopedDb, request },
+        idempotencyKey: 'hold-2',
+        oauthClientId: null,
+      });
+    await hold(BODY);
+    await expect(hold({ ...BODY, prompt: 'Another shot' })).rejects.toThrow(
+      'different request'
+    );
   });
 
   it('refuses for credits with a 402 and leaves no job behind', async () => {

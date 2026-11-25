@@ -9,6 +9,7 @@ import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
 import {
+  ConflictError,
   InsufficientCreditsError,
   OpenStoryError,
   ValidationError,
@@ -108,6 +109,37 @@ function isObject(
  * price honest: a `model` that differs from the path, a field the schema
  * does not name, and more than one output the card does not price.
  */
+/** Keys sorted, so a replay that only reorders fields is the same request. */
+function canonical(value: JsonValue): string {
+  return JSON.stringify(value, (_key, inner: JsonValue) =>
+    isObject(inner)
+      ? Object.fromEntries(
+          Object.entries(inner).sort(([a], [b]) => a.localeCompare(b))
+        )
+      : inner
+  );
+}
+
+/** Refuses a replayed key that carries a different request; `model` is the path's, so it is left out. */
+function requireSameRequest(
+  job: GatewayJob,
+  via: GatewayJob['via'],
+  modelId: string,
+  body: GatewayJobInput
+): void {
+  const { model: _stored, ...stored } = job.input;
+  const { model: _sent, ...sent } = body;
+  if (
+    job.via !== via ||
+    job.modelKey !== modelId ||
+    canonical(stored) !== canonical(sent)
+  ) {
+    throw new ConflictError(
+      'This idempotency key was already used for a different request'
+    );
+  }
+}
+
 function validatedBody(
   model: GatewayModel,
   raw: GatewayJobInput
@@ -274,6 +306,9 @@ export async function holdGatewayJob(
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
   });
+  if (!created) {
+    requireSameRequest(job, GATEWAY_VIA[model.provider], model.id, input);
+  }
 
   // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
   const reserved = await scopedDb.billing.createReservation(hold, {
@@ -315,7 +350,15 @@ export async function submitGatewayJob(
     const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
       ctx.idempotencyKey
     );
-    if (existing) return { job: existing, replay: true };
+    if (existing) {
+      requireSameRequest(
+        existing,
+        GATEWAY_VIA[request.provider],
+        request.modelId,
+        request.body
+      );
+      return { job: existing, replay: true };
+    }
   }
 
   const model = await getGatewayModel(request.provider, request.modelId);

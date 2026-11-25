@@ -263,8 +263,10 @@ content flag or after Ark's InternalServiceError.
 The `Idempotency-Key` header (≤ 255 characters) is unique per organization
 on `gateway_jobs`. The key binds the job; the job binds the rest: the
 reservation key is `gateway:<jobId>` and the trigger's `deduplicationId` is
-`gateway-<jobId>`. A replay returns the first job whatever the path or body
-says, and still counts against the rate limit. A key whose first submit was
+`gateway-<jobId>`. A replay returns the first job only when the provider,
+model and body match it (field order aside); a different request under a
+used key is a 409 (`requireSameRequest`, at the replay check and in
+`holdGatewayJob`). A replay still counts against the rate limit. A key whose first submit was
 refused before the hold (credits, a bad upload) is free again. A key whose
 trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 
