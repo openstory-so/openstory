@@ -11,7 +11,10 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(__dirname, '..', '..', '..');
 const DEFINED_IN = 'src/gateway/server/submit-job';
 // In-process callers that ran `requireUploadRights` before the run; `in-process.ts` only takes the type.
-const ALLOWED: readonly string[] = [];
+const ALLOWED: readonly string[] = [
+  // The Models page run: `createGeneratedAsset` checked every URL when it held at the click.
+  'src/studio/server/workflows/asset-generation-workflow.ts',
+];
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

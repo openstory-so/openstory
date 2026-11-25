@@ -589,7 +589,8 @@ and refuses no inline part, so the caller owns `requireUploadRights` for
 every URL and every inline part it sends. `upload-rights-checked.test.ts`
 resolves every value import, re-export and dynamic import of `submit-job.ts`
 and fails unless the file reaching the symbol is on its allowlist, and fails
-if an allowlisted file passes it on. `in-process.ts` only takes its type; a
+if an allowlisted file passes it on. `in-process.ts` only takes its type;
+the Models page run (`asset-generation-workflow.ts`) is the one caller. A
 new caller is added there on purpose, and no route or MCP tool may be.
 
 ### Billing handover
