@@ -601,6 +601,32 @@ skip. `adapter/in-process.test.ts` fails if a generation is charged twice
 (a retried step, a replayed poll) or zero times, or if the wallet drops by
 anything but the charge.
 
+### The Models page
+
+`createGeneratedAsset` (`src/models/server/generated-assets.ts`) picks the
+route once, at the click, and puts it on the payload:
+
+- **`openstory`** (every provider, no own fal key): `holdGatewayJob` with
+  the request's likeness check, under the key `asset:<assetId>`. The
+  `generated_assets` row is stamped `provider: 'openstory'` and
+  `gatewayJobId`; the charge is that job's. `AssetGenerationWorkflow` runs
+  the adapter over `inProcessGateway` with the same key, so the run finds
+  the click's job and hold rather than making new ones.
+- **`fal`** (the organization has a usable fal key): today's direct path,
+  unbilled. Schema check, account check and likeness check at the click, no
+  hold, no gateway job. The run uses the fal driver with the organization's
+  key and fails rather than spend the platform's.
+
+The page lists Grok, BytePlus and Gemini models beside fal. A model the
+gateway cannot run is shown with the reason: no request schema, no price, or
+a usage lever with no estimate (`unholdableReason`, until #2432). A fal model
+the gateway cannot hold still runs on an own fal key.
+
+`AssetGenerationWorkflow` is kept, not deleted as #2433 planned: it is the
+adapter's first product caller and the own-key path needs a run too.
+`extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
+bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

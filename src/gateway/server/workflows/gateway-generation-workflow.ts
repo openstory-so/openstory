@@ -50,7 +50,13 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
     const credentials = platformOnlyCredentials(event.payload);
     const via = GATEWAY_VIA[provider];
     const store: GatewayStore = (media, index) =>
-      storeGatewayOutput({ media, kind, organizationId, jobId, index });
+      storeGatewayOutput({
+        media,
+        kind,
+        organizationId,
+        folder: `gateway/${jobId}`,
+        index,
+      });
 
     await step.do('set-running', async () => {
       await scopedDb.gatewayJobs.markRunning(jobId);

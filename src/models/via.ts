@@ -10,6 +10,12 @@
  */
 export type MediaVia = 'fal' | 'xai' | 'byteplus' | 'google';
 
+/**
+ * Where a product run went: a provider's own via, or `openstory`, the
+ * gateway (#2433), whose own job is stamped with the provider's via.
+ */
+export type ProductVia = MediaVia | 'openstory';
+
 export function assertMediaVia(via: string): MediaVia {
   switch (via) {
     case 'fal':

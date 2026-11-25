@@ -1,0 +1,1 @@
+ALTER TABLE `generated_assets` ADD `gateway_job_id` text;

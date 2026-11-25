@@ -85,7 +85,7 @@ export function gatewayErrorCode(message: string): GatewayErrorCode {
 
 const usageSchema = z.record(z.string(), z.unknown());
 
-async function storeAll(
+export async function storeGatewayResult(
   result: GatewayRunResult,
   store: GatewayStore
 ): Promise<GatewayStored> {
@@ -116,7 +116,7 @@ export async function startGatewayRun(
   );
   return 'jobId' in start
     ? { providerJobId: start.jobId }
-    : { stored: await storeAll(start.result, store) };
+    : { stored: await storeGatewayResult(start.result, store) };
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */
@@ -133,7 +133,10 @@ export async function pollGatewayRun(
   );
   if (poll.status === 'failed') return { kind: 'failed', error: poll.error };
   if (poll.status === 'pending') return { kind: 'pending' };
-  return { kind: 'stored', stored: await storeAll(poll.result, store) };
+  return {
+    kind: 'stored',
+    stored: await storeGatewayResult(poll.result, store),
+  };
 }
 
 /** Prices the card with the reported usage, charges the lines against the hold and marks the job succeeded. */

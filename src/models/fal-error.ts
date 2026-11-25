@@ -56,3 +56,11 @@ export function extractFalErrorMessage(error: unknown): string {
 
   return error.message;
 }
+
+/**
+ * fal returns 422 for a payload the endpoint itself rejected — deterministic
+ * for a given input, so the workflow must not burn CF retries on it.
+ */
+export function isFalValidationError(error: unknown): boolean {
+  return error instanceof Error && 'status' in error && error.status === 422;
+}

@@ -333,14 +333,14 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
         media: { base64: BASE64, contentType: 'image/png' },
         kind: 'video',
         organizationId: 'org-1',
-        jobId: 'job-1',
+        folder: 'gateway/job-1',
         index: 0,
       },
       {
         media: { url: 'https://imgen.example.com/b.png', contentType: null },
         kind: 'video',
         organizationId: 'org-1',
-        jobId: 'job-1',
+        folder: 'gateway/job-1',
         index: 1,
       },
     ]);
