@@ -21,6 +21,10 @@ export function isGatewayProvider(value: string): value is GatewayProvider {
 /** A gateway job's via: a media via, or ElevenLabs, which the product calls outside `MediaVia`. */
 export type GatewayVia = MediaVia | 'elevenlabs';
 
+/** modelschemas providers whose chat cards price the product's LLM calls (#2437). */
+export const TEXT_GATEWAY_PROVIDERS = ['openrouter', 'grok', 'gemini'] as const;
+export type TextGatewayProvider = (typeof TEXT_GATEWAY_PROVIDERS)[number];
+
 /** The via each provider's jobs are stamped with. */
 export const GATEWAY_VIA: Readonly<Record<GatewayProvider, GatewayVia>> = {
   fal: 'fal',

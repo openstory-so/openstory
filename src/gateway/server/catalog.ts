@@ -14,6 +14,7 @@ import {
   GATEWAY_JOB_KINDS,
   type GatewayJobKind,
   type GatewayProvider,
+  type TextGatewayProvider,
 } from '@/gateway/schema';
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
@@ -115,6 +116,42 @@ export async function fetchGatewayModel(
     endpointId,
     card: card.data,
     inputSchema: schema.schema,
+  };
+}
+
+/** A chat model: its card prices the product's LLM calls (#2437); the body is the route adapter's, so no schema. */
+export type GatewayTextModel = Omit<
+  GatewayModel,
+  'provider' | 'kind' | 'inputSchema'
+> & {
+  provider: TextGatewayProvider;
+  kind: 'text';
+};
+
+/** The chat model from modelschemas, or a refusal: one with no card is not priced. */
+export async function fetchTextModel(
+  provider: TextGatewayProvider,
+  id: string
+): Promise<GatewayTextModel> {
+  const record = modelRecordSchema.parse(
+    await getJson(
+      `/v1/models/${provider}/${encodeURIComponent(id)}`,
+      MODEL_TTL_MS
+    )
+  );
+  const endpointId = record.schemaEndpointId;
+  if (record.activity !== 'chat' || !endpointId) {
+    throw new ValidationError('This model is not a chat model');
+  }
+  const card = rateCardSchema.safeParse(record.pricing);
+  if (!card.success) throw new ValidationError('This model has no price');
+  return {
+    provider,
+    id: record.rawId,
+    name: record.displayName ?? record.rawId,
+    kind: 'text',
+    endpointId,
+    card: card.data,
   };
 }
 

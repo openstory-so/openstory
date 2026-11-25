@@ -3,16 +3,20 @@
 import {
   ELEVENLABS_GATEWAY_MODELS,
   type GatewayProvider,
+  type TextGatewayProvider,
 } from '@/gateway/schema';
 import { getFalEndpointIds } from '@/models/fal-endpoints';
 import {
   nativeGeminiImageModel,
+  nativeGeminiTextModel,
   NATIVE_GEMINI_VIDEO_MODEL,
 } from '@/models/gemini-native';
 import {
   nativeGrokImageModel,
+  nativeGrokTextModel,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/models/grok-native';
+import { SCRIPT_ANALYSIS_MODELS } from '@/models/models.config';
 import {
   getBytePlusImageModelId,
   getBytePlusVideoModelId,
@@ -49,4 +53,22 @@ export function productGatewayModels(): ProductGatewayModel[] {
   return typedEntries(ids).flatMap(([provider, list]) =>
     [...new Set(list)].flatMap((id) => (id ? [{ provider, id }] : []))
   );
+}
+
+export type ProductTextModel = {
+  readonly provider: TextGatewayProvider;
+  readonly id: string;
+};
+
+/** Every text card a platform-key LLM call can be priced from: OpenRouter's, and xAI's or Google's for a native route. */
+export function productTextModels(): ProductTextModel[] {
+  return SCRIPT_ANALYSIS_MODELS.flatMap(({ id }) => {
+    const grok = nativeGrokTextModel(id);
+    const gemini = nativeGeminiTextModel(id);
+    return [
+      { provider: 'openrouter' as const, id },
+      ...(grok ? [{ provider: 'grok' as const, id: grok }] : []),
+      ...(gemini ? [{ provider: 'gemini' as const, id: gemini }] : []),
+    ];
+  });
 }

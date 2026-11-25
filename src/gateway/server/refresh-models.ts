@@ -2,8 +2,11 @@
 
 import { getDb } from '#db-client';
 import type { PricingRefreshDb } from '@/billing/server/refresh-fal-pricing';
-import { productGatewayModels } from '@/gateway/product-models';
-import { fetchGatewayModel } from '@/gateway/server/catalog';
+import {
+  productGatewayModels,
+  productTextModels,
+} from '@/gateway/product-models';
+import { fetchGatewayModel, fetchTextModel } from '@/gateway/server/catalog';
 import {
   deleteStoredGatewayModel,
   listStoredGatewayModels,
@@ -40,7 +43,16 @@ export async function refreshGatewayModels(
     );
   }
   const deadline = Date.now() + budgetMs;
-  const products = productGatewayModels();
+  const products = [
+    ...productGatewayModels().map((m) => ({
+      ...m,
+      read: () => fetchGatewayModel(m.provider, m.id),
+    })),
+    ...productTextModels().map((m) => ({
+      ...m,
+      read: () => fetchTextModel(m.provider, m.id),
+    })),
+  ];
   const wanted = new Set(products.map((m) => `${m.provider}/${m.id}`));
   const summary: GatewayModelsRefreshSummary = {
     stored: 0,
@@ -68,13 +80,13 @@ export async function refreshGatewayModels(
     }
   }
   const now = new Date();
-  for (const { provider, id } of products) {
+  for (const { provider, id, read } of products) {
     if (Date.now() > deadline) {
       summary.failed++;
       continue;
     }
     try {
-      const model = await fetchGatewayModel(provider, id);
+      const model = await read();
       if (model.id !== id) {
         throw new Error(`modelschemas answers as ${model.id}`);
       }

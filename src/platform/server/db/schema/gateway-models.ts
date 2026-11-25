@@ -4,17 +4,21 @@
  * refreshed daily; a submit reads it and never waits on modelschemas.
  */
 
-import type { GatewayModel } from '@/gateway/server/catalog';
-import type { GatewayProvider } from '@/gateway/schema';
+import type { GatewayModel, GatewayTextModel } from '@/gateway/server/catalog';
+import type { GatewayProvider, TextGatewayProvider } from '@/gateway/schema';
 import { integer, primaryKey, snakeCase, text } from 'drizzle-orm/sqlite-core';
 
 export const gatewayModels = snakeCase.table(
   'gateway_models',
   {
-    provider: text({ length: 20 }).$type<GatewayProvider>().notNull(),
+    provider: text({ length: 20 })
+      .$type<GatewayProvider | TextGatewayProvider>()
+      .notNull(),
     /** The id the model is asked for by, as in `/gateway/{provider}/{model}`. */
     modelId: text({ length: 200 }).notNull(),
-    model: text({ mode: 'json' }).$type<GatewayModel>().notNull(),
+    model: text({ mode: 'json' })
+      .$type<GatewayModel | GatewayTextModel>()
+      .notNull(),
     fetchedAt: integer({ mode: 'timestamp' }).notNull(),
   },
   (table) => [primaryKey({ columns: [table.provider, table.modelId] })]
