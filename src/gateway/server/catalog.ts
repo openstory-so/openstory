@@ -136,6 +136,14 @@ export async function getGatewayModel(
   return model;
 }
 
+/** The stored snapshot only: no modelschemas read, so an outage cannot stop a trigger. */
+export function getSnapshotGatewayModel(
+  provider: GatewayProvider,
+  id: string
+): Promise<GatewayModel | null> {
+  return getStoredGatewayModel(getDb(), provider, id);
+}
+
 /** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */
 export function unholdableReason(card: RateCard): string | null {
   const unpriced = Object.values(card.inputs).some(

@@ -3,6 +3,7 @@
  */
 
 import type { GatewayModel } from '@/gateway/server/catalog';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
@@ -101,6 +102,8 @@ export interface UserWorkflowContext {
    * still zero explicitly.
    */
   ownsReservation?: boolean;
+  /** Optional only because a payload persisted before #2434 has none; read it through `gatewayRunRoute`. */
+  gatewayRoutes?: GatewayRoutes;
 }
 
 export interface SequenceWorkflowContext extends UserWorkflowContext {
