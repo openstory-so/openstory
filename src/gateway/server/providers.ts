@@ -247,15 +247,22 @@ const falImages = z.object({
   images: z.array(z.object({ width: z.number(), height: z.number() })).min(1),
 });
 
-/** fal's result carries no usage: per-megapixel cards read the result's own image sizes. */
+const falVideo = z.object({
+  video: z.object({ duration: z.number().positive() }),
+});
+
+/** fal's result carries no usage: cards read the result's own image sizes or video length. */
 function falUsage(data: JsonValue): JsonObject | null {
-  const parsed = falImages.safeParse(data);
-  if (!parsed.success) return null;
-  const pixels = parsed.data.images.reduce(
-    (sum, image) => sum + image.width * image.height,
-    0
-  );
-  return { megapixels: pixels / 1_000_000 };
+  const images = falImages.safeParse(data);
+  if (images.success) {
+    const pixels = images.data.images.reduce(
+      (sum, image) => sum + image.width * image.height,
+      0
+    );
+    return { megapixels: pixels / 1_000_000 };
+  }
+  const video = falVideo.safeParse(data);
+  return video.success ? { duration: video.data.video.duration } : null;
 }
 
 /** A client per call: a shared `fal.config` would let concurrent calls send each other's key. */

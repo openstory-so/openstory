@@ -594,7 +594,25 @@ describe('fal driver', () => {
     });
   });
 
-  it('reports no usage when the result carries no image sizes', async () => {
+  it('reports the length of a video result as duration', async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
+    falQueue.result.mockResolvedValueOnce({
+      data: {
+        video: {
+          url: 'https://fal.media/v.mp4',
+          content_type: 'video/mp4',
+          duration: 6.041667,
+        },
+      },
+    });
+    const poll = await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials);
+    expect(poll).toMatchObject({
+      status: 'done',
+      result: { usage: { duration: 6.041667 } },
+    });
+  });
+
+  it('reports no usage when the result carries no image sizes or video length', async () => {
     falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
     falQueue.result.mockResolvedValueOnce({
       data: {
