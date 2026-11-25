@@ -9,7 +9,6 @@ import {
   listStoredGatewayModels,
   storeGatewayModel,
 } from '@/gateway/server/db/gateway-models';
-import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cron', 'gateway-models']);
@@ -24,10 +23,10 @@ export type GatewayModelsRefreshSummary = {
 };
 
 /**
- * Re-reads every product model; the snapshot holds those and nothing else. A
- * model modelschemas refuses, or answers under another id, is dropped; an
- * outage, a rate limit or the time budget keeps the stored copy. A run that
- * could read nothing throws.
+ * Re-reads every product model; the snapshot holds those and nothing else.
+ * Only a row no longer a product model, or no longer parsing, is dropped: a
+ * refusal, an answer under another id, an outage or the time budget keeps the
+ * stored copy and counts as failed. A run that could read nothing throws.
  */
 export async function refreshGatewayModels(
   db: PricingRefreshDb = getDb(),
@@ -70,18 +69,13 @@ export async function refreshGatewayModels(
     try {
       const model = await fetchGatewayModel(provider, id);
       if (model.id !== id) {
-        await drop(provider, id, `modelschemas answers as ${model.id}`);
-        continue;
+        throw new Error(`modelschemas answers as ${model.id}`);
       }
       await storeGatewayModel(db, model, now);
       summary.stored++;
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
-        await drop(provider, id, error.message);
-        continue;
-      }
       summary.failed++;
-      logger.warn('modelschemas fetch failed; keeping the stored model', {
+      logger.error('gateway model not refreshed; keeping the stored model', {
         provider,
         id,
         err: error,

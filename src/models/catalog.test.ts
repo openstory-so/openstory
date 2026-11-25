@@ -467,3 +467,28 @@ describe('upstream shape guards', () => {
     ).rejects.toBeInstanceOf(CatalogApiError);
   });
 });
+
+describe('fetchCatalogJson', () => {
+  it('gives up on a request modelschemas never answers after 30 seconds', async () => {
+    const { fetchCatalogJson } = await importCatalog();
+    const timeout = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(
+        AbortSignal.abort(new DOMException('timed out', 'TimeoutError'))
+      );
+    mockFetch.mockImplementation(
+      (input, init) =>
+        new Promise((_, reject) => {
+          const signal = input instanceof Request ? input.signal : init?.signal;
+          if (signal?.aborted) reject(signal.reason);
+          signal?.addEventListener('abort', () => reject(signal.reason));
+        })
+    );
+
+    await expect(fetchCatalogJson('/v1/models', 1000)).rejects.toThrow(
+      'timed out'
+    );
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    timeout.mockRestore();
+  });
+});

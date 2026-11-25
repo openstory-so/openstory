@@ -668,20 +668,25 @@ from modelschemas on a request.
   (`src/gateway/product-models.ts`). `GET /api/v1/gateway/models` and the
   Models page lists still read modelschemas' lists.
 - `refreshGatewayModels` (`src/gateway/server/refresh-models.ts`) re-reads
-  every product model under a 5 minute budget. Rows are keyed by the model's
-  own id: one modelschemas answers under another id is dropped, as is a model
-  it refuses, a row no longer in the product list, and a row whose key is not
-  its model's id or that no longer parses (cleanup goes by the row's key). An outage, a rate limit
-  or the budget keeps the stored row; a run that could read nothing throws.
+  every product model under a 5 minute budget, each request cut off at 30
+  seconds (`fetchCatalogJson`). Rows are keyed by the model's own id. Only a
+  row no longer in the product list, or whose key is not its model's id or
+  that no longer parses, is dropped (by the row's key). A refusal, an answer
+  under another id, an outage, a rate limit or the budget keeps the stored
+  row and logs an error, so a bad modelschemas deploy cannot empty the
+  snapshot; a run that could read nothing throws.
 - It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
   pricing refresh and in its own `try`, so a failure or the budget never
   stops fal pricing; no new cron expression. `bun scripts/refresh-fal-pricing.ts`
   runs both against local D1. Set `MODELSCHEMAS_API_KEY`: a refresh is two
   requests a model, past the anonymous 60 an hour.
 - The fal pricing refresh takes its cards from this snapshot
-  (`listStoredGatewayModels(db, 'fal')`); its own modelschemas fetcher
-  (`fetch-rate-cards.ts`) is gone. `model_pricing.rate_card` keeps the card it
-  had when the snapshot has none.
+  (`listStoredGatewayModels(db)`); its own modelschemas fetcher
+  (`fetch-rate-cards.ts`) is gone. A used fal endpoint the snapshot does not
+  hold (no request schema, or not a product model) keeps the card it had on
+  `model_pricing.rate_card`, and the refresh logs it as a warning. The card is
+  stored twice (`gateway_models.model.card` and `model_pricing.rate_card`)
+  until the estimate readers move to the snapshot (#2439).
 - Why a table of its own: a `model_pricing` row is a fal unit price keyed by
   unit, with a required price; a gateway model is keyed by provider and model
   id and carries a schema. One row is the whole `GatewayModel`, parsed on

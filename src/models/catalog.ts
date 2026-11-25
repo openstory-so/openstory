@@ -210,6 +210,9 @@ async function toCatalogApiError(response: Response): Promise<CatalogApiError> {
   return new CatalogApiError(message, response.status, code);
 }
 
+/** A hung modelschemas request must not hold the daily cron (#2432). */
+const CATALOG_FETCH_TIMEOUT_MS = 30_000;
+
 /**
  * GET a modelschemas path, serving from the TTL cache when fresh. Attaches
  * the optional `MODELSCHEMAS_API_KEY` (lifts the anonymous rate limit).
@@ -227,6 +230,7 @@ export async function fetchCatalogJson(
 
   const response = await fetch(`${MODELSCHEMAS_BASE_URL}${path}`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+    signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) throw await toCatalogApiError(response);
 

@@ -109,7 +109,7 @@ describe('the stored snapshot', () => {
     fetchCatalogJson.mockReset();
   });
 
-  it('holds product models only, under their own id, and keeps one modelschemas could not answer', async () => {
+  it('holds product models only, under their own id; a refusal or an alias answer stores nothing and fails', async () => {
     pages = {
       ...VIDEO_PAGES,
       '/v1/models/grok/grok-imagine-image': record({
@@ -131,8 +131,8 @@ describe('the stored snapshot', () => {
     ];
     expect(await refreshGatewayModels()).toEqual({
       stored: 2,
-      dropped: 2,
-      failed: 0,
+      dropped: 0,
+      failed: 2,
     });
 
     // No longer a product model: dropped on the next pass.
@@ -164,6 +164,19 @@ describe('the stored snapshot', () => {
     fetchCatalogJson.mockClear();
 
     await refreshGatewayModels();
+    const rows = await db.select().from(gatewayModels);
+    expect(rows.map((r) => r.modelId)).toEqual(['grok-imagine-video']);
+  });
+
+  it('keeps every row when modelschemas refuses every product model', async () => {
+    pages = VIDEO_PAGES;
+    products = [{ provider: 'grok', id: 'grok-imagine-video' }];
+    await refreshGatewayModels();
+    pages = {};
+
+    await expect(refreshGatewayModels()).rejects.toThrow(
+      'no model could be read (1 failed)'
+    );
     const rows = await db.select().from(gatewayModels);
     expect(rows.map((r) => r.modelId)).toEqual(['grok-imagine-video']);
   });

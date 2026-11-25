@@ -598,6 +598,17 @@ export async function refreshFalPricing(
       provider === 'fal' && model ? [[model.id, model] as const] : []
     )
   );
+  const unrefreshedCards = usedPrices
+    .map((p) => p.endpointId)
+    .filter((id) => !storedModels.has(id));
+  if (unrefreshedCards.length > 0) {
+    logger.warn(
+      'fal endpoints not in the gateway snapshot keep their stored rate card',
+      {
+        endpoints: unrefreshedCards,
+      }
+    );
+  }
   const storedCardByEndpoint = new Map(
     existing.flatMap((row) =>
       row.rateCard ? [[row.endpointId, row.rateCard] as const] : []
