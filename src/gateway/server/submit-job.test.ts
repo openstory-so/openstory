@@ -591,7 +591,7 @@ describe('submitGatewayJob', () => {
   it('refuses a replayed Idempotency-Key that carries a different request', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
     await submitGatewayJob(VIDEO, ctx(scopedDb, 'retry-2'));
-    const reordered = { duration: BODY.duration, prompt: BODY.prompt };
+    const reordered = { duration: 5, prompt: PROMPT };
     expect(
       (
         await submitGatewayJob(
