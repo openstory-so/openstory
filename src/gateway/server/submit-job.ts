@@ -214,6 +214,7 @@ const INLINE_KEYS = new Set([
 export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   if (typeof body === 'string') {
     // As a URL parser reads it: C0 controls and spaces at either end are dropped.
+    // oxlint-disable-next-line no-control-regex
     const trimmed = body.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '');
     // `data:<type>,<bytes>` and `blob:<url>`; a prompt that starts "Data: ..." is neither.
     if (/^data:[^\s,]*,/i.test(trimmed) || /^blob:\S/i.test(trimmed)) {
