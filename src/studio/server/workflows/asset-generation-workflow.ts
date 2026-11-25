@@ -143,36 +143,60 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     });
 
     let outputs: GatewayJobOutput[];
-    if (activity === 'video') {
+    // On the own-key route fal's request id is checkpointed before any poll, so a retried poll never starts a second job.
+    if (activity === 'video' || route.via === 'fal') {
       const submitted = await step.do('submit', async () => {
         const stored: GatewayJobOutput[] = [];
-        const job = await generateVideo({
-          adapter: openstoryVideo(model, collecting(stored), call),
-          prompt: '',
-          modelOptions: input,
-          threadId: event.instanceId,
-        });
-        return { jobId: job.jobId, stored };
+        if (activity === 'video') {
+          const job = await generateVideo({
+            adapter: openstoryVideo(model, collecting(stored), call),
+            prompt: '',
+            modelOptions: input,
+            threadId: event.instanceId,
+          });
+          return { jobId: job.jobId, stored };
+        }
+        const answer = await collecting(stored).submit(
+          input,
+          call.idempotencyKey
+        );
+        return {
+          jobId: answer.kind === 'queued' ? answer.handle : null,
+          stored,
+        };
       });
+      const { jobId } = submitted;
+      /** One poll: the outputs once it finished, null while it runs. */
+      const pollOnce = async (
+        handle: string
+      ): Promise<GatewayJobOutput[] | null> => {
+        const stored: GatewayJobOutput[] = [];
+        if (activity === 'video') {
+          const status = await getVideoJobStatus({
+            adapter: openstoryVideoStatus(model, collecting(stored)),
+            jobId: handle,
+          });
+          if (status.status === 'failed') {
+            throw new NonRetryableError(status.error ?? 'Generation failed');
+          }
+          return status.status === 'completed' ? stored : null;
+        }
+        const polled = await collecting(stored).poll(handle);
+        if (polled.kind === 'failed') throw new NonRetryableError(polled.error);
+        return polled.kind === 'done' ? stored : null;
+      };
       outputs = submitted.stored;
       for (
         let batch = 0;
-        batch < MAX_BATCHES && outputs.length === 0;
+        batch < MAX_BATCHES && outputs.length === 0 && jobId !== null;
         batch++
       ) {
         if (batch > 0) await step.sleep(`poll-wait-${batch}`, 1);
         outputs = await step.do(`poll-batch-${batch}`, async () => {
           const deadline = Date.now() + POLL_BATCH_DURATION_MS;
           while (Date.now() < deadline) {
-            const stored: GatewayJobOutput[] = [];
-            const status = await getVideoJobStatus({
-              adapter: openstoryVideoStatus(model, collecting(stored)),
-              jobId: submitted.jobId,
-            });
-            if (status.status === 'failed') {
-              throw new NonRetryableError(status.error ?? 'Generation failed');
-            }
-            if (status.status === 'completed') return stored;
+            const done = await pollOnce(jobId);
+            if (done) return done;
             await new Promise((resolve) =>
               setTimeout(resolve, POLL_INTERVAL_MS)
             );

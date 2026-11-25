@@ -8,9 +8,21 @@ import { asStub } from '@/test/as-stub';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const falStart = vi.fn();
+const falPoll = vi.fn();
 vi.doMock('#db-client', () => ({ getDb: vi.fn() }));
 vi.doMock('@/gateway/server/providers', () => ({
-  GATEWAY_DRIVERS: { fal: { start: falStart, poll: vi.fn() } },
+  GATEWAY_DRIVERS: { fal: { start: falStart, poll: falPoll } },
+}));
+vi.doMock('@/gateway/server/storage', () => ({
+  storeGatewayOutput: vi.fn(async () => ({
+    url: '/r2/a.png',
+    path: 'a.png',
+    contentType: 'image/png',
+  })),
+}));
+vi.doMock('@/platform/server/compliance/provenance', () => ({
+  extractPromptForProvenance: () => null,
+  recordProvenance: vi.fn(async () => 'prov-1'),
 }));
 const releaseGatewayRun = vi.fn(async () => undefined);
 vi.doMock('@/gateway/server/phases', async (importOriginal) => ({
@@ -63,8 +75,10 @@ function scopedDb(keySource: 'organization' | 'platform') {
     userId: 'u1',
     generatedAssets: {
       markRunning: async () => undefined,
+      markCompleted: async () => undefined,
       markFailed: async () => undefined,
     },
+    provenance: {},
     credentials: {
       resolveKey: async () => ({ key: 'k', source: keySource }),
       resolveOptionalKey: async () => null,
@@ -92,6 +106,43 @@ describe('AssetGenerationWorkflow', () => {
     await expect(falStart.mock.results[0]?.value).rejects.toThrow(
       'Your own fal key is no longer usable'
     );
+  });
+
+  it('starts one fal job on the own-key route when a poll throws and its step retries', async () => {
+    falStart.mockReset().mockResolvedValue({ jobId: 'req-1' });
+    falPoll
+      .mockReset()
+      .mockRejectedValueOnce(new Error('fal 503'))
+      .mockResolvedValueOnce({
+        status: 'done',
+        result: {
+          media: [{ url: 'https://fal.media/a.png', contentType: 'image/png' }],
+          usage: null,
+          requestId: 'req-1',
+        },
+      });
+    // A step that throws runs again, as Workflows retries it.
+    const retrying = asStub<WorkflowStep>({
+      do: async (_name: string, fn: () => Promise<unknown>) => {
+        try {
+          return await fn();
+        } catch (error) {
+          if (error instanceof NonRetryableError) throw error;
+          return fn();
+        }
+      },
+      sleep: async () => {},
+    });
+    const result = await makeWorkflow().runBody(
+      event({ via: 'fal', endpointId: 'fal-ai/flux-1/dev' }),
+      retrying,
+      scopedDb('organization')
+    );
+    expect(falStart).toHaveBeenCalledTimes(1);
+    expect(falPoll).toHaveBeenCalledTimes(2);
+    expect(result.outputs).toEqual([
+      { url: '/r2/a.png', contentType: 'image/png' },
+    ]);
   });
 
   it('lets the click hold go when a gateway run fails', async () => {
