@@ -257,6 +257,64 @@ describe('the openstory adapter, in-process', () => {
     });
   });
 
+  it('resumes a replayed submit on its stored provider job, never starting it twice', async () => {
+    start.mockResolvedValue({ jobId: 'xai-9' });
+    poll.mockResolvedValue({
+      status: 'done',
+      result: {
+        media: [{ url: 'https://vidgen.x.ai/a.mp4', contentType: 'video/mp4' }],
+        usage: null,
+        requestId: 'xai-9',
+      },
+    });
+    const submitStep = () =>
+      generateVideo({
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
+        prompt: BODY.prompt,
+        modelOptions: BODY,
+      });
+    const first = await submitStep();
+    // The submit step is retried after the provider took the job.
+    const replayed = await submitStep();
+    expect(start).toHaveBeenCalledTimes(1);
+    await getVideoJobStatus({
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
+      jobId: replayed.jobId,
+    });
+    expect(replayed.jobId).toBe(first.jobId);
+    const job = await onlyJob(VIDEO.id);
+    expect(await chargesFor(job.id)).toEqual({
+      debits: 1,
+      linesMicros: 20_000,
+      usageRows: 1,
+    });
+  });
+
+  it('fails rather than resend a job started but never stamped', async () => {
+    start.mockResolvedValue({ jobId: 'xai-10' });
+    const submitStep = () =>
+      generateVideo({
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-10:submit')),
+        prompt: BODY.prompt,
+        modelOptions: BODY,
+      });
+    await submitStep();
+    // As if the first attempt died between the provider's answer and the stamp.
+    await db
+      .update(gatewayJobs)
+      .set({ providerJobId: null })
+      .where(eq(gatewayJobs.modelKey, VIDEO.id));
+    await expect(submitStep()).rejects.toThrow('may have started');
+    expect(start).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(VIDEO.id);
+    expect(job.status).toBe('failed');
+    const [hold] = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    expect(hold?.remainingAmount).toBe(0);
+  });
+
   it('lets the hold go when the provider fails the job', async () => {
     start.mockResolvedValue({ jobId: 'xai-2' });
     poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });

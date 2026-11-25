@@ -537,6 +537,11 @@ today and the HTTP transport (#2438) is the other.
   finish stores it through the caller's `store`, records the outputs and
   settles; a failed job is marked failed and its hold zeroed. A job whose
   caller died is ended by the sweep.
+- **Replays.** A held job that already exists is never started twice: a
+  succeeded one returns its stored outputs, a failed one its error, a running
+  one resumes polling its stamped provider job, and a running one with no
+  stamp (the provider may have it) is failed and its hold let go. Only a
+  queued job starts.
 - **Idempotency.** The caller passes a replay-stable key per call (say
   `${instanceId}:${stepName}`). A retried step finds the same job and the
   same hold (`gateway:<jobId>`), and the settle key is `gateway:<jobId>:settle`,
@@ -554,7 +559,12 @@ runs those checks, or `UPLOAD_RIGHTS_CHECKED`, a unique symbol an in-process
 caller passes to say it ran `requireUploadRights` before the run (Gemini
 stills go inline by design, `geminiStillSource`). A JSON body cannot carry a
 symbol, and `submitGatewayJob` always passes the request, so the public
-endpoint can never skip the checks. `inProcessGateway` requires the symbol.
+endpoint can never skip the checks. `inProcessGateway` requires the symbol
+as a named argument; nothing defaults it. With it the gateway checks no URL
+and refuses no inline part, so the caller owns `requireUploadRights` for
+every URL and every inline part it sends. Only `submit-job.ts` and
+`adapter/in-process.ts` may name it (`upload-rights-checked.test.ts`); a new
+caller is added there on purpose, and no route or MCP tool may be.
 
 ### Billing handover
 

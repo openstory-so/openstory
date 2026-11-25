@@ -111,9 +111,24 @@ export function inProcessGateway(params: {
         }
         throw error;
       }
-      // A step retried after its job settled: hand back what was stored, never run it again.
-      if (job.status === 'succeeded' && job.outputs) {
-        return { kind: 'done' as const, outputs: job.outputs };
+      // A replayed job is never started twice: only a queued one starts here.
+      if (job.status === 'succeeded') {
+        return { kind: 'done' as const, outputs: job.outputs ?? [] };
+      }
+      if (job.status === 'failed') {
+        throw new NonRetryableError(job.error?.message ?? 'Generation failed');
+      }
+      if (job.status === 'running') {
+        if (job.providerJobId) {
+          return {
+            kind: 'queued' as const,
+            handle: JSON.stringify({ run, providerJobId: job.providerJobId }),
+          };
+        }
+        // Started but never stamped: the provider may have it, so it is failed rather than sent again.
+        const error = 'The previous attempt may have started this job';
+        await release(run, error);
+        throw new NonRetryableError(error);
       }
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
         reservationId: run.reservationId ?? null,
