@@ -16,7 +16,7 @@ import type {
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { z } from 'zod';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream, llmCostToDeduct } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { talentSubjectKindSchema } from '@/cast/subject-kind';
 
@@ -59,7 +59,8 @@ export type TalentVisionResult = TalentMediaAnalysis & {
   /** The model that actually answered — the region fallback may have run
    *  instead of {@link TALENT_VISION_MODEL}. Bill and log this one. */
   model: TextModel;
-  costMicros: Microdollars;
+  /** Null when the gateway already charged the call. */
+  costMicros: Microdollars | null;
   usedOwnKey: boolean;
 };
 
@@ -238,7 +239,7 @@ async function runTalentVision(input: {
   return {
     ...parsed,
     model,
-    costMicros: llmCostFromUsage(usage, model, via),
+    costMicros: llmCostToDeduct(usage, model, via),
     usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

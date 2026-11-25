@@ -10,6 +10,7 @@ import { estimateLLMCost } from '@/billing/cost-estimation';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import type { TextModel } from '@/models/models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import { chargedByGateway } from '@/gateway/server/text';
 import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import {
   deleteGeminiFile,
@@ -119,7 +120,7 @@ async function watchUploadedClip(
         `The clip was answered on ${model}, not ${WATCH_CLIP_MODEL}`
       );
     }
-    if (llmKey.source !== 'organization') {
+    if (llmKey.source !== 'organization' && !chargedByGateway(usage)) {
       const costMicros = llmCostFromUsage(usage, model, via);
       if (costMicros > 0) {
         await scopedDb.billing.deductCredits(costMicros, {

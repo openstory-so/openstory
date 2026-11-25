@@ -13,7 +13,7 @@
 
 import {
   callLLMStream,
-  llmCostFromUsage,
+  llmCostToDeduct,
   RECOMMENDED_MODELS,
 } from '@/models/server/llm-client';
 import { isValidImageToVideoModel } from './models';
@@ -148,7 +148,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       throw new Error('Shortened prompt is too short. Please try again.');
     }
 
-    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
+    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     return {
       originalPrompt: data.prompt,
@@ -255,7 +255,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
+    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     return { durationSeconds: clampDuration(response.durationSeconds) };
   });
@@ -504,7 +504,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
+    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     const recommendations = rankStyleRecommendations(
       result,

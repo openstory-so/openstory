@@ -11,6 +11,7 @@
  */
 
 import { getEnv } from '#env';
+import { openstoryText, type TextGateway } from '@/gateway/server/text';
 import {
   nativeGeminiTextModel,
   type NativeGeminiTextModel,
@@ -56,6 +57,8 @@ export type LlmKeyInfo = {
    * models `LLMTR_TEXT_MODELS` maps).
    */
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
+  /** Set on a platform key whose model the gateway can price: every provider call is held and charged (#2437). */
+  gateway?: TextGateway;
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -195,10 +198,23 @@ export function resolveNativeGeminiModel(
   return nativeGeminiTextModel(model);
 }
 
+/** The route's adapter, wrapped by the gateway when the key carries one; refuses a key resolved for another model. */
+export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
+  const adapter = createRouteAdapter(model, keyInfo);
+  const gateway = keyInfo?.gateway;
+  if (!gateway) return adapter;
+  if (gateway.registryId !== model) {
+    throw new Error(
+      `LLM key was resolved for '${gateway.registryId}', not '${model}'`
+    );
+  }
+  return openstoryText(adapter, gateway);
+}
+
 // Callers must say which API a key belongs to (`via`) — a bare string can't:
 // a fal key mistaken for an OpenRouter key gets Bearer auth against
 // openrouter.ai and 401s at runtime, invisibly to the compiler.
-export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
+function createRouteAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   const env = getEnv();
   const resolved = keyInfo ?? getPlatformLlmKey(model);
   const key = resolved?.key;

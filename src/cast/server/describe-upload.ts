@@ -12,6 +12,7 @@ import {
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
+import { chargedByGateway } from '@/gateway/server/text';
 import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
@@ -98,7 +99,7 @@ export async function describeUpload(opts: {
   const isCharacterSheet =
     opts.subject === 'character' ? parsed.isCharacterSheet : null;
 
-  if (llmKey.source !== 'organization') {
+  if (llmKey.source !== 'organization' && !chargedByGateway(usage)) {
     const costMicros = llmCostFromUsage(usage, model, via);
     if (costMicros > 0) {
       await scopedDb.billing.deductCredits(costMicros, {

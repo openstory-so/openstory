@@ -26,6 +26,7 @@ import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
 import { createBillingMethods } from '@/billing/server/db/billing';
+import { withTextGateway } from '@/gateway/server/text';
 import { createCharacterLooksMethods } from '@/cast/server/db/character-looks';
 import { createCharacterSheetVariantsMethods } from '@/cast/server/db/character-sheet-variants';
 import {
@@ -383,6 +384,7 @@ export async function getUserIdentity(
 export function createScopedDb(organizationId: string, userId: string) {
   const db = getDb();
   const reads = createProductionReadMethods(db, organizationId);
+  const billing = createBillingMethods(db, organizationId, userId);
 
   return {
     organizationId,
@@ -449,8 +451,13 @@ export function createScopedDb(organizationId: string, userId: string) {
     // nothing to scope. Policy lives in `@/models/server/byteplus-asset-pool`.
     bytePlusAssets: createBytePlusAssetsMethods(db),
 
-    billing: createBillingMethods(db, organizationId, userId),
-    apiKeys: createApiKeysMethods(db, organizationId, userId),
+    billing,
+    // A platform key's LLM call is held and charged by the gateway (#2437).
+    apiKeys: withTextGateway(createApiKeysMethods(db, organizationId, userId), {
+      db,
+      organizationId,
+      billing,
+    }),
     organizationManagement: createOrganizationManagementMethods(
       db,
       organizationId

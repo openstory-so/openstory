@@ -21,7 +21,7 @@ import {
   extractRunError,
   glmReasoningEffortForCall,
   isForcedGlmReasoningModel,
-  llmCostFromUsage,
+  llmCostToDeduct,
   openRouterProviderForModel,
   PROMPT_REASONING,
   regionRetriesFor,
@@ -390,7 +390,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
     name,
     async (): Promise<{
       jsonText: string;
-      costMicros: Microdollars;
+      costMicros: Microdollars | null;
       keySource: LlmKeySource;
     }> => {
       // Region-block fallback (#1259): workflows egress from the colo nearest
@@ -507,7 +507,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
               // CF's Rpc.Serializable constraint on the Zod-inferred shape.
               return {
                 jsonText: JSON.stringify(structuredObject),
-                costMicros: llmCostFromUsage(
+                costMicros: llmCostToDeduct(
                   usageCapture.get(),
                   model,
                   llmKeyInfo.via
@@ -595,7 +595,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
     `${name}-stream`,
     async (): Promise<{
       jsonText: string;
-      costMicros: Microdollars;
+      costMicros: Microdollars | null;
       keySource: LlmKeySource;
     }> => {
       // Region-block fallback (#1259) — see durableLLMCallCf. A geo-blocked
@@ -740,7 +740,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
               logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
               return {
                 jsonText: structuredJson,
-                costMicros: llmCostFromUsage(
+                costMicros: llmCostToDeduct(
                   usageCapture.get(),
                   model,
                   llmKeyInfo.via

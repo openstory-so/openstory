@@ -8,7 +8,10 @@
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { getEnv } from '#env';
-import { getPlatformLlmKey } from '@/models/server/create-adapter';
+import {
+  getPlatformLlmKey,
+  type LlmKeyInfo,
+} from '@/models/server/create-adapter';
 import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
@@ -73,9 +76,10 @@ export type ResolvedApiKey =
 // API for Grok models (issue #1167), 'google' = Google's own Gemini API for
 // Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
 // Completions, models per `LLMTR_TEXT_MODELS`).
-export type ResolvedLlmKey = ResolvedApiKey & {
-  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
-};
+export type ResolvedLlmKey = ResolvedApiKey &
+  Pick<LlmKeyInfo, 'gateway'> & {
+    via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
+  };
 
 // The cached shape of a `organization_api_keys` lookup. Holds the *encrypted* row
 // (ciphertext + invalid flag) only — never the decrypted key. `resolveKey`

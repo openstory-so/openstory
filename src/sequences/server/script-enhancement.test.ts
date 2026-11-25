@@ -21,6 +21,9 @@ vi.doMock('@/models/server/llm-client', () => ({
   ENHANCE_REASONING: 'low',
   RECOMMENDED_MODELS: { creative: 'x-ai/grok-4.7' },
   llmCostFromUsage: vi.fn(() => 0),
+  llmCostToDeduct: vi.fn(() => 0),
+  addCosts: (a: number | null, b: number | null) =>
+    a === null ? b : b === null ? a : a + b,
 }));
 
 const releaseGeminiFiles = vi.fn(async () => {});

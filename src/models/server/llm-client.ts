@@ -6,7 +6,12 @@
 import type { TextModel } from '@/models/models';
 import { getMaxOutputTokens } from '@/models/models.config';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
-import { usdToMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
+import {
+  addMicros,
+  usdToMicros,
+  ZERO_MICROS,
+  type Microdollars,
+} from '@/billing/money';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import {
@@ -55,25 +60,10 @@ import {
   isContentFilterFinish,
 } from '@/models/content-rejection';
 
+import { chargedByGateway, isTokenUsage } from '@/gateway/server/text';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'llm-client']);
-
-function isTokenUsage(value: unknown): value is TokenUsage {
-  if (!value || typeof value !== 'object') return false;
-  if (
-    !('promptTokens' in value) ||
-    !('completionTokens' in value) ||
-    !('totalTokens' in value)
-  ) {
-    return false;
-  }
-  return (
-    typeof value.promptTokens === 'number' &&
-    typeof value.completionTokens === 'number' &&
-    typeof value.totalTokens === 'number'
-  );
-}
 
 function usageHasCost(usage: TokenUsage | undefined): usage is TokenUsage & {
   cost: number;
@@ -192,6 +182,23 @@ export function llmCostFromUsage(
     metadata: { usage, via },
   });
   return ZERO_MICROS;
+}
+
+/** What a call site still deducts: null when the gateway already charged the call (#2437). */
+export function llmCostToDeduct(
+  usage: TokenUsage | undefined,
+  modelId: string,
+  via?: LlmKeyInfo['via']
+): Microdollars | null {
+  return chargedByGateway(usage) ? null : llmCostFromUsage(usage, modelId, via);
+}
+
+/** Two deductible costs summed; null only when the gateway charged both. */
+export function addCosts(
+  a: Microdollars | null,
+  b: Microdollars | null
+): Microdollars | null {
+  return a === null ? b : b === null ? a : addMicros(a, b);
 }
 
 export type StreamChunk<T = never> =

@@ -70,7 +70,8 @@ import {
 } from '@/cast/attached-cast';
 import {
   callLLMStream,
-  llmCostFromUsage,
+  addCosts,
+  llmCostToDeduct,
   PROMPT_REASONING,
 } from '@/models/server/llm-client';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
@@ -115,7 +116,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
-import { addMicros, type Microdollars, ZERO_MICROS } from '@/billing/money';
+import type { Microdollars } from '@/billing/money';
 import { parsePartialJSON, type TokenUsage } from '@tanstack/ai';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
@@ -314,8 +315,8 @@ type StreamResult = {
   title: string;
   /** Raw-script start offset per final scene (a true partition of the script). */
   offsets: number[];
-  /** Provider-reported cost for the LLM call(s), billed after reconciliation. */
-  llmCostMicros: Microdollars;
+  /** Provider-reported cost for the LLM call(s), billed after reconciliation; null when the gateway charged them. */
+  llmCostMicros: Microdollars | null;
   /**
    * Non-secret source of the key the streaming call actually used. Carried out
    * of the step so the (much later) deduction bills the same resolution
@@ -325,7 +326,7 @@ type StreamResult = {
 };
 
 type LlmStepBilling = {
-  llmCostMicros: Microdollars;
+  llmCostMicros: Microdollars | null;
   llmKeySource: 'organization' | 'platform';
 };
 
@@ -426,7 +427,7 @@ async function runStructuredCall<T extends object>({
   }
   return {
     ...parsed,
-    llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
+    llmCostMicros: llmCostToDeduct(usage, modelId, llmKeyInfo.via),
     llmKeySource: llmKeyInfo.source,
   };
 }
@@ -729,7 +730,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         let assembled = assembleScenes(script, parsedResult, sceneIdFor);
         let resolvedTitle = parsedResult.projectMetadata.title;
         let finalBoundaries = parsedResult.boundaries;
-        let llmCostMicros = llmCostFromUsage(
+        let llmCostMicros = llmCostToDeduct(
           firstPass.usage,
           SCENE_SPLIT_MODEL,
           llmKeyInfo.via
@@ -768,9 +769,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             { withEvents: false }
           );
           if (retryPass.parsed) {
-            llmCostMicros = addMicros(
+            llmCostMicros = addCosts(
               llmCostMicros,
-              llmCostFromUsage(
+              llmCostToDeduct(
                 retryPass.usage,
                 SCENE_SPLIT_MODEL,
                 llmKeyInfo.via
@@ -1098,9 +1099,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     }
     const scenesWithShots = shotListBatches.flatMap((batch) => batch.scenes);
     const shotListStep: LlmStepBilling = {
-      llmCostMicros: shotListBatches.reduce(
-        (sum, batch) => addMicros(sum, batch.llmCostMicros),
-        ZERO_MICROS
+      llmCostMicros: shotListBatches.reduce<Microdollars | null>(
+        (sum, batch) => addCosts(sum, batch.llmCostMicros),
+        null
       ),
       llmKeySource: shotListBatches[0]?.llmKeySource ?? 'platform',
     };

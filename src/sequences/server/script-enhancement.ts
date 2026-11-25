@@ -17,7 +17,8 @@ import type { EnhanceScriptInput } from '@/models/ai.fn';
 import {
   callLLMStream,
   ENHANCE_REASONING,
-  llmCostFromUsage,
+  addCosts,
+  llmCostToDeduct,
   RECOMMENDED_MODELS,
 } from '@/models/server/llm-client';
 import { isValidAnalysisModelId } from '@/models/models.config';
@@ -33,7 +34,7 @@ import {
 import { createUserPrompt } from '@/sequences/script-enhancer';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
-import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
+import type { Microdollars } from '@/billing/money';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
@@ -72,7 +73,8 @@ export async function prepareBilling(
   opts?: { allowUnfunded?: boolean }
 ): Promise<{
   llmKey: ResolvedLlmKey;
-  deduct?: (actualCost: Microdollars) => Promise<void>;
+  /** Null cost: the gateway already charged the call. */
+  deduct?: (actualCost: Microdollars | null) => Promise<void>;
 }> {
   const model =
     typeof metadata?.model === 'string' ? metadata.model : undefined;
@@ -91,6 +93,7 @@ export async function prepareBilling(
   return {
     llmKey,
     deduct: async (actualCost) => {
+      if (actualCost === null) return;
       if (actualCost > 0) {
         await scopedDb.billing.deductCredits(actualCost, {
           description,
@@ -231,7 +234,7 @@ export async function* streamScriptEnhancement(
   // Gate it out of E2E entirely (record + replay): live search results would
   // make the recorded OpenRouter request/response non-deterministic.
   const useWebSearch = getEnv().E2E_TEST !== 'true';
-  let totalCost: Microdollars = ZERO_MICROS;
+  let totalCost: Microdollars | null = null;
 
   async function* generate(turnMessages: ChatMessage[]) {
     for await (const chunk of callLLMStream({
@@ -267,9 +270,9 @@ export async function* streamScriptEnhancement(
     })) {
       if (chunk.done) {
         // A region block retries on another model (#1259); bill what answered.
-        totalCost = addMicros(
+        totalCost = addCosts(
           totalCost,
-          llmCostFromUsage(chunk.usage, chunk.model, chunk.via)
+          llmCostToDeduct(chunk.usage, chunk.model, chunk.via)
         );
         continue;
       }

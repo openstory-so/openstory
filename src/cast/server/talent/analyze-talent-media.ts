@@ -139,7 +139,7 @@ async function billTalentVision(
   result: TalentVisionResult,
   mediaCount: number
 ): Promise<void> {
-  if (result.usedOwnKey) return;
+  if (result.usedOwnKey || result.costMicros === null) return;
   if (result.costMicros > 0) {
     await input.scopedDb.billing.deductCredits(result.costMicros, {
       description: `Talent vision (${result.model})`,

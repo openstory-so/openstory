@@ -128,7 +128,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
       },
     });
 
-    if (!result.usedOwnKey) {
+    if (!result.usedOwnKey && result.costMicros !== null) {
       if (result.costMicros > 0) {
         await scopedDb.billing.deductCredits(result.costMicros, {
           description: `Element vision (${result.model})`,

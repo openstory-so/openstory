@@ -27,6 +27,7 @@ import { requireGenerationAllowed } from '@/platform/server/compliance/generatio
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { getRequestCountry } from '@/platform/server/request-country';
 import { createAdapter, type LlmKeyInfo } from '@/models/server/create-adapter';
+import { chargedByGateway } from '@/gateway/server/text';
 import { llmCostFromUsage } from '@/models/server/llm-client';
 import { generateId } from '@/platform/id';
 import { getLogger, toErrorPayload } from '@/platform/logger';
@@ -223,7 +224,7 @@ function billingMiddleware(
   const chargeKey = `assistant:${caller.organizationId}:${generateId()}`;
   let iteration = 0;
   const charge = async (usage: TokenUsage) => {
-    if (usedOwnKey) return;
+    if (usedOwnKey || chargedByGateway(usage)) return;
     iteration += 1;
     // Nothing reported means nothing was used (the model never answered).
     if (usage.totalTokens === 0) return;

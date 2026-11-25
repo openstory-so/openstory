@@ -38,7 +38,8 @@ const logger = getLogger(['openstory', 'billing', 'workflow-deduction']);
 type WorkflowDeductionOpts = {
   /** Scoped DB context for the organization. Skips deduction if undefined (e.g., anonymous workflows). */
   scopedDb: WorkflowScopedDb | undefined;
-  costMicros: Microdollars;
+  /** Null when the gateway already charged the call (#2437). */
+  costMicros: Microdollars | null;
   /** Set to true if the organization used their own API key for this generation */
   usedOwnKey: boolean;
   description: string;
@@ -95,7 +96,7 @@ export async function deductWorkflowCredits(
   if (!opts.scopedDb) return;
   const { scopedDb } = opts;
 
-  if (opts.usedOwnKey) return;
+  if (opts.usedOwnKey || opts.costMicros === null) return;
 
   if (opts.costMicros <= 0) {
     reportMissingBillingCost({

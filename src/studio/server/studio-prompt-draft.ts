@@ -15,7 +15,7 @@ import type { AIObservabilityMeta } from '@/platform/server/observability/ai-ote
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { StudioActivity, StudioReferenceKind } from '@/studio/schema';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream, llmCostToDeduct } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 
 export const STUDIO_DRAFT_MODEL = DEFAULT_VISION_MODEL;
@@ -50,7 +50,8 @@ type DraftStudioPromptResult = {
   /** The model that actually answered — the region fallback may have run
    *  instead of {@link STUDIO_DRAFT_MODEL}. Bill and log this one. */
   model: TextModel;
-  costMicros: Microdollars;
+  /** Null when the gateway already charged the call. */
+  costMicros: Microdollars | null;
   usedOwnKey: boolean;
 };
 
@@ -182,7 +183,7 @@ export async function draftStudioPrompt(
   return {
     prompt,
     model,
-    costMicros: llmCostFromUsage(usage, model, via),
+    costMicros: llmCostToDeduct(usage, model, via),
     usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

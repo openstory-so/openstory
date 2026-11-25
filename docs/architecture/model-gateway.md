@@ -1158,6 +1158,108 @@ run and the in-process transport (`claimAndStartGatewayRun` in
   provider id. fal's SDK errors carry `status`, not `statusCode`, so a fal
   submit error takes that last path.
 
+## Text (#2437)
+
+Every LLM call the product makes on a platform key is held and charged by
+the gateway from the model's modelschemas card. An organization's own key
+(OpenRouter, fal, xAI, Google, LLMTR) keeps today's direct path, unbilled
+by the gateway.
+
+### The route
+
+Decided once per call, where the key is decided: `resolveLlmKey`, wrapped by
+`withTextGateway` (`src/gateway/server/text.ts`) in `createScopedDb`, so the
+workflow `credentials.resolveLlmKey` hatch gets it too. A platform key whose
+model has a text card in the snapshot that prices `input_tokens` and
+`output_tokens` comes back with `gateway` set; anything else comes back
+without it and stays on today's path. `resolveNativeGrokModel` and
+`resolveNativeGeminiModel` still pick the provider, so the card is the
+provider's own: `openrouter/<id>`, `grok/<xAI id>`, `gemini/<Gemini id>`.
+The card is read from the snapshot in the step that spends it, like the key:
+it is a platform price, not a row the user writes. This is the text form of
+the routing rule; `resolveGatewayRoute` is for media, whose own-key rule is
+per provider, while text's is `resolveLlmKey`'s order.
+
+The snapshot holds a text card for every `SCRIPT_ANALYSIS_MODELS` id on
+OpenRouter, plus the native Grok and Gemini ids (`productTextModels`). A
+text row stores the card only: the body is the route adapter's, never
+validated against a schema, so the refresh asks modelschemas once per text
+model.
+
+Still on the direct path, platform key and all:
+
+| Call                                                                    | Why                                          |
+| ----------------------------------------------------------------------- | -------------------------------------------- |
+| OpenRouter through the platform fal key (no `OPENROUTER_KEY`)           | fal's OpenRouter proxy has no card           |
+| A call with no organization (anonymous workflow, `getPlatformLlmKey`)   | nobody to hold against                       |
+| The gateway submit's own likeness check (`withPlatformLlmKey`)          | the gateway's cost of taking a job           |
+| A model whose snapshot row is missing or whose card cannot price tokens | the routing rule; fails safe to today's path |
+
+### The adapter
+
+`createAdapter` builds the route's adapter as before and, when the key
+carries `gateway`, returns `openstoryText(adapter, gateway)`: a proxy whose
+`chatStream`, `structuredOutput` and `structuredOutputStream` each take a
+hold, delegate, and charge. Nothing it sends changes, so `chat()` keeps
+tools, structured output, web search, vision input, reasoning and durable
+streams, and the four provider protocols are not re-implemented. Each
+provider request (an agent-loop turn, a separate structured-output call) is
+one held and charged call. A key resolved for one model is refused for
+another (the #1358 mismatch), so a call is never priced on another card.
+
+The charged usage is marked (`providerUsageDetails.openstoryGatewayCharged`)
+and survives `chat()` into `onUsage`; every site that bills an LLM call
+itself skips it (`chargedByGateway`, `llmCostToDeduct` returning null,
+`deductWorkflowCredits` taking null), so no call is charged twice.
+
+### Money
+
+- **Hold before the first byte:** the card on `input_tokens` = the UTF-8
+  bytes of the system prompts, messages, tool names and descriptions and the
+  output schema (a token is at least a byte), with each image, audio, video
+  or document part at 4,096; and `output_tokens` = the request's maximum
+  output tokens (`maxTokens`, `max_tokens`, `max_output_tokens` or
+  `maxOutputTokens`), else `getMaxOutputTokens(model)`, which is what every
+  call site sends.
+- **Charge at the end:** the card on the usage the stream reported, mapped to
+  OpenAI Chat usage and through `normalizeUsage`, so cached, cache-write and
+  reasoning tokens are priced on their own levers. Never `llmCostFromUsage`,
+  never the provider's `cost`. A charge above the hold grows it while the
+  balance allows (`settleReservation`), else it is reported as skipped.
+- **Cut off part way** (abort, dropped connection, an error after content):
+  the card on the input bound and the characters streamed as output tokens,
+  at most the estimate held. A call that streamed nothing and reported no
+  usage (a refusal, a Google location refusal, a 4xx) is released and
+  charged nothing; the region re-run is a new call with its own hold.
+- One settle per call (key `text:<id>:settle`), lines as for any gateway
+  charge, then the hold zeroed. A retried workflow step that calls the
+  provider again is charged again: it ran again.
+
+**Needs sign-off:** the hold is large. Call sites send about half the
+context window as `max_tokens`, so a Sonnet 5.5 call holds about $1.28 of
+output before it starts, and an organization with less free balance than
+that cannot run it, though it would cost cents. Lowering what the call sites
+send, or one hold per workflow run drawn down by its calls, would fix it.
+
+### D1 per call (measured)
+
+Measured on the test D1 with the billing module's own logger: the hold is 3
+round trips (a replay read, the `credits` upsert, the reservation insert);
+the settle is 4 (a replay read, a reservation read, one atomic batch of four
+writes, a balance read and the charge line, a read of the lines); the
+release is 1. Plus the snapshot read in `resolveLlmKey`: **9 round trips,
+about 8 written statements per LLM call**, against the 1 to 3 of today's
+single deduction. A sequence's analysis makes tens of calls, so this is tens
+of D1 writes per sequence, well inside D1's limits; no per-run
+pre-authorisation was built.
+
+### No job row
+
+A text call writes no `gateway_jobs` row: it has nothing to poll, store or
+read back. Its record is the `credit_usage` transaction (provider, model,
+usage and estimate in its metadata) and its charge lines
+(`gateway_job_id` null).
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

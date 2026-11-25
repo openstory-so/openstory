@@ -125,7 +125,7 @@ export async function draftStudioPromptForOrganization(
     observability: { userId: scopedDb.userId, tags: ['studio', 'draft'] },
   });
 
-  if (!result.usedOwnKey) {
+  if (!result.usedOwnKey && result.costMicros !== null) {
     if (result.costMicros > 0) {
       await scopedDb.billing.deductCredits(result.costMicros, {
         description: `Studio prompt draft (${result.model})`,
