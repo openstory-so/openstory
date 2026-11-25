@@ -1,7 +1,9 @@
-/** The gateway catalog over a mocked modelschemas: what is runnable, and what is refused. */
+/** The gateway catalog over a mocked modelschemas and a test D1: what is runnable, what is refused, what is stored. */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundError, ValidationError } from '@/platform/errors';
+import { gatewayModels } from '@/platform/server/db/schema';
+import { createTestDb } from '@/platform/server/db/test-d1';
 
 const SOURCE = {
   url: 'https://docs.example.com/pricing',
@@ -33,7 +35,16 @@ const fetchCatalogJson = vi.fn(async (path: string, _ttlMs: number) => {
 });
 vi.doMock('@/models/catalog', () => ({ CatalogApiError, fetchCatalogJson }));
 
+const { db, close } = await createTestDb();
+vi.doMock('#db-client', () => ({ getDb: () => db }));
+
+let products: { provider: 'grok'; id: string }[] = [];
+vi.doMock('@/gateway/product-models', () => ({
+  productGatewayModels: () => products,
+}));
+
 const { getGatewayModel, listGatewayModels } = await import('./catalog');
+const { refreshGatewayModels } = await import('./refresh-models');
 
 function record(overrides: Record<string, unknown>) {
   return {
@@ -46,9 +57,69 @@ function record(overrides: Record<string, unknown>) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   pages = {};
+  products = [];
+  await db.delete(gatewayModels);
+});
+
+afterAll(() => close());
+
+const VIDEO_PAGES = {
+  '/v1/models/grok/grok-imagine-video': record({}),
+  '/v1/schemas/grok/video/v1/videos/generations?kind=input': { schema: SCHEMA },
+};
+
+describe('the stored snapshot', () => {
+  it('serves a stored model with modelschemas unreachable', async () => {
+    pages = VIDEO_PAGES;
+    const first = await getGatewayModel('grok', 'grok-imagine-video');
+    fetchCatalogJson.mockClear();
+    fetchCatalogJson.mockRejectedValue(new TypeError('fetch failed'));
+
+    expect(await getGatewayModel('grok', 'grok-imagine-video')).toEqual(first);
+    expect(fetchCatalogJson).not.toHaveBeenCalled();
+    fetchCatalogJson.mockReset();
+  });
+
+  it('refreshes product models, drops a refused one and keeps one modelschemas could not answer', async () => {
+    pages = VIDEO_PAGES;
+    await getGatewayModel('grok', 'grok-imagine-video');
+    pages = {
+      ...VIDEO_PAGES,
+      '/v1/models/grok/grok-imagine-image': record({
+        rawId: 'grok-imagine-image',
+        activity: 'image',
+        schemaEndpointId: 'v1/images/generations',
+      }),
+      '/v1/schemas/grok/image/v1/images/generations?kind=input': {
+        schema: SCHEMA,
+      },
+    };
+    products = [
+      { provider: 'grok', id: 'grok-imagine-image' },
+      { provider: 'grok', id: 'grok-gone' },
+    ];
+    expect(await refreshGatewayModels()).toEqual({
+      stored: 2,
+      dropped: 1,
+      failed: 0,
+    });
+
+    fetchCatalogJson.mockRejectedValue(
+      new CatalogApiError('rate limited', 429)
+    );
+    await expect(refreshGatewayModels()).rejects.toThrow(
+      'no model could be read'
+    );
+    fetchCatalogJson.mockReset();
+    const rows = await db.select().from(gatewayModels);
+    expect(rows.map((row) => row.modelId).sort()).toEqual([
+      'grok-imagine-image',
+      'grok-imagine-video',
+    ]);
+  });
 });
 
 describe('getGatewayModel', () => {

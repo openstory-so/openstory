@@ -20,6 +20,7 @@ import {
 } from '@/platform/server/agent/discovery';
 import { reconcileAllStuckJobs } from '@/platform/server/cron/reconcile-all';
 import { reconcileGatewayJobs } from '@/gateway/server/reconcile-gateway-jobs';
+import { refreshGatewayModels } from '@/gateway/server/refresh-models';
 import {
   FAL_PRICING_CRON,
   refreshFalPricing,
@@ -217,12 +218,21 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     return withDiscoveryLinkHeader(response, pathname);
   },
   scheduled(controller, _env, ctx) {
-    // Daily fal pricing refresh into the model_pricing table (#1069).
+    // Daily: the gateway's modelschemas snapshot, then fal pricing (#1069), which reads its cards.
     if (controller.cron === FAL_PRICING_CRON) {
       ctx.waitUntil(
-        refreshFalPricing().catch((error) => {
-          logger.error('refreshFalPricing failed:', { err: error });
-        })
+        (async () => {
+          try {
+            await refreshGatewayModels();
+          } catch (error) {
+            logger.error('refreshGatewayModels failed:', { err: error });
+          }
+          try {
+            await refreshFalPricing();
+          } catch (error) {
+            logger.error('refreshFalPricing failed:', { err: error });
+          }
+        })()
       );
       return;
     }

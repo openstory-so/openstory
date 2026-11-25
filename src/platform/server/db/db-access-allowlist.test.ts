@@ -24,6 +24,8 @@ const RAW_DB_ALLOWLIST = [
   'src/billing/server/reconcile-fal-billing.ts',
   'src/models/server/reconcile-byteplus-assets.ts',
   'src/gateway/server/reconcile-gateway-jobs.ts',
+  'src/gateway/server/catalog.ts',
+  'src/gateway/server/refresh-models.ts',
   'src/billing/server/refresh-fal-pricing.ts',
   'src/billing/server/fal-pricing-live.ts',
   'src/billing/server/seed-model-pricing.ts',

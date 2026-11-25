@@ -65,6 +65,7 @@ import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
 import { gatewayJobs } from './gateway-jobs';
+import { gatewayModels } from './gateway-models';
 import { chargeLines } from './charge-lines';
 import {
   assistantInterrupts,
@@ -335,6 +336,9 @@ export type { Stitch } from './stitches';
 export { gatewayJobs };
 export type { GatewayJob } from './gateway-jobs';
 
+// The gateway's stored modelschemas snapshot (docs/architecture/model-gateway.md)
+export { gatewayModels };
+
 // Charge lines: the parts of a settled charge (docs/architecture/model-gateway.md)
 export { chargeLines };
 export type { ChargeLine } from './charge-lines';
@@ -585,6 +589,7 @@ export const schema = {
   sequenceStyleVersions,
   stitches,
   gatewayJobs,
+  gatewayModels,
   chargeLines,
   assistantThreads,
   assistantMessages,

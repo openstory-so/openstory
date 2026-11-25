@@ -1,5 +1,6 @@
 /** What the gateway serves: modelschemas models that have a request schema and a rate card. */
 
+import { getDb } from '#db-client';
 import { fetchCatalogJson, CatalogApiError } from '@/models/catalog';
 import {
   NotFoundError,
@@ -17,6 +18,10 @@ import {
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import { z } from 'zod';
+import {
+  getStoredGatewayModel,
+  storeGatewayModel,
+} from '@/gateway/server/db/gateway-models';
 
 const MODEL_TTL_MS = 5 * 60 * 1000;
 const SCHEMA_TTL_MS = 30 * 60 * 1000;
@@ -76,8 +81,8 @@ async function getJson(path: string, ttlMs: number): Promise<unknown> {
   }
 }
 
-/** The model with its schema and card, or a refusal: a model with either missing is not runnable. */
-export async function getGatewayModel(
+/** The model from modelschemas, or a refusal: a model with no schema or no card is not runnable. */
+export async function fetchGatewayModel(
   provider: GatewayProvider,
   id: string
 ): Promise<GatewayModel> {
@@ -114,6 +119,19 @@ export async function getGatewayModel(
     card: card.data,
     inputSchema: schema.schema,
   };
+}
+
+/** The stored model; modelschemas is asked only for a model never stored, and the answer is kept. */
+export async function getGatewayModel(
+  provider: GatewayProvider,
+  id: string
+): Promise<GatewayModel> {
+  const db = getDb();
+  const stored = await getStoredGatewayModel(db, provider, id);
+  if (stored) return stored;
+  const model = await fetchGatewayModel(provider, id);
+  await storeGatewayModel(db, id, model, new Date());
+  return model;
 }
 
 /** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */

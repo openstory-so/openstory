@@ -1,6 +1,6 @@
 /**
- * Run the daily fal pricing refresh against a local D1, filling
- * `model_pricing` (Bun autoloads `.env.local`; use `--env-file=` to override):
+ * Run the daily gateway snapshot and fal pricing refresh against a local D1,
+ * filling `gateway_models` and `model_pricing` (Bun autoloads `.env.local`; use `--env-file=` to override):
  *
  *   bun scripts/refresh-fal-pricing.ts            # default env (bun dev)
  *   bun scripts/refresh-fal-pricing.ts --test     # [env.test] (Playwright)
@@ -11,6 +11,7 @@
  * Writes only the derived pricing cache; safe to re-run.
  */
 import { refreshFalPricing } from '@/billing/server/refresh-fal-pricing';
+import { refreshGatewayModels } from '@/gateway/server/refresh-models';
 import { drizzle } from 'drizzle-orm/d1';
 import { relations } from '@/platform/server/db/schema/relations';
 import { getLocalPlatformProxy } from './local-platform-proxy';
@@ -39,8 +40,11 @@ try {
     );
   }
 
+  const db = drizzle(binding, { relations });
+  // As the cron: the gateway snapshot first, since fal pricing reads its cards.
+  console.log('gateway_models', await refreshGatewayModels(db));
   const summary = await refreshFalPricing({
-    db: drizzle(binding, { relations }),
+    db,
     apiKey,
     billingKey,
   });

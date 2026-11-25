@@ -650,6 +650,38 @@ adapter's first product caller and the own-key path needs a run too.
 `extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
 bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
+## Every model can be priced (#2432)
+
+### The stored snapshot
+
+The gateway reads a model, its request schema and its rate card from
+`gateway_models` (`src/platform/server/db/schema/gateway-models.ts`), never
+from modelschemas on a request.
+
+- `getGatewayModel` answers from the stored row. Only a model never stored
+  is fetched (`fetchGatewayModel`), and the answer is stored; a refusal (no
+  schema, no card, unknown) is not. So a modelschemas outage stops no model
+  the snapshot holds (`catalog.test.ts`, "serves a stored model with
+  modelschemas unreachable").
+- `refreshGatewayModels` (`src/gateway/server/refresh-models.ts`) re-reads
+  every product model (`productGatewayModels`, `src/gateway/product-models.ts`)
+  and every stored row. A model modelschemas refuses is dropped; an outage or
+  a rate limit keeps the stored row; a run that could read nothing throws.
+- It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
+  pricing refresh, so no new cron expression. `bun scripts/refresh-fal-pricing.ts`
+  runs both against local D1. Set `MODELSCHEMAS_API_KEY`: a refresh is two
+  requests a model, past the anonymous 60 an hour.
+- The fal pricing refresh takes its cards from this snapshot
+  (`listStoredGatewayModels(db, 'fal')`); its own modelschemas fetcher
+  (`fetch-rate-cards.ts`) is gone. `model_pricing.rate_card` keeps the card it
+  had when the snapshot has none.
+- Why a table of its own: a `model_pricing` row is a fal unit price keyed by
+  unit, with a required price; a gateway model is keyed by provider and model
+  id and carries a schema. One row is the whole `GatewayModel`, parsed on
+  read, so a row an older deploy wrote is checked, not trusted.
+- The model lists (`GET /api/v1/gateway/models`, the Models page) still read
+  modelschemas: an outage hides the list, not generation.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

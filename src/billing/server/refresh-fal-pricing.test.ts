@@ -261,7 +261,7 @@ describe('refreshFalPricing', () => {
     modelsCatalog?: string[];
     /** Endpoints whose price fetch errored. */
     priceFailures?: string[];
-    /** Rate cards the modelschemas fetch returns, keyed by endpoint id. */
+    /** Cards in the gateway's stored snapshot, keyed by endpoint id. */
     cards?: Map<string, unknown>;
     /** Usage-API billed rates (the overlay source). */
     billed?: {
@@ -284,8 +284,15 @@ describe('refreshFalPricing', () => {
       getFalEndpointIds: () =>
         opts.used ?? opts.prices.map((p) => p.endpointId),
     }));
-    vi.doMock('./fetch-rate-cards', () => ({
-      fetchFalRateCards: () => Promise.resolve(opts.cards ?? new Map()),
+    vi.doMock('@/gateway/server/db/gateway-models', () => ({
+      listStoredGatewayModels: () =>
+        Promise.resolve(
+          new Map(
+            [...(opts.cards ?? new Map<string, unknown>())].map(
+              ([id, card]) => [id, { card }]
+            )
+          )
+        ),
     }));
     vi.doMock('./fal-pricing-fetch', () => ({
       fetchFalCatalogIds: () =>
@@ -334,7 +341,7 @@ describe('refreshFalPricing', () => {
     vi.resetAllMocks();
   });
 
-  test('stores a fetched rate card and keeps a stored card when the fetch misses', async () => {
+  test('stores the snapshot card and keeps a stored card when the snapshot has none', async () => {
     const stored = {
       inputs: {},
       tables: {},
