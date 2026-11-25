@@ -26,10 +26,14 @@ const runStates: Record<string, 'failed' | 'completed' | 'unknown' | null> = {
   'run-live': null,
   'run-blip': 'unknown',
 };
+const resolveRunState = vi.fn(async (runId: string) => {
+  if (runId === 'run-throws') throw new Error('engine unreachable');
+  return runStates[runId] ?? null;
+});
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/platform/server/workflow/reconcile', () => ({
   STALE_THRESHOLD_MS: 5 * 60 * 1000,
-  resolveRunState: vi.fn(async (runId: string) => runStates[runId] ?? null),
+  resolveRunState,
 }));
 const { reconcileGatewayJobs } = await import('./reconcile-gateway-jobs');
 
@@ -114,5 +118,16 @@ describe('reconcileGatewayJobs', () => {
     }
     // A second pass finds nothing left to change.
     expect(await reconcileGatewayJobs()).toBe(0);
+  });
+
+  it('keeps going past a row that throws', async () => {
+    const hour = 60 * 60 * 1000;
+    const broken = await runningJob('run-throws', 2 * hour);
+    const dead = await runningJob('run-dead', hour);
+
+    expect(await reconcileGatewayJobs()).toBe(1);
+    expect((await statusOf(broken.id))?.status).toBe('running');
+    expect((await statusOf(dead.id))?.status).toBe('failed');
+    expect(await heldOn(dead.reservationId)).toBe(0);
   });
 });

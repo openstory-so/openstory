@@ -18,7 +18,8 @@ const MAX_ROWS_PER_PASS = 100;
 
 /**
  * Ends each stale live job whose run is over, as its `onFailure` would have:
- * `markFailed` (a charged job stays succeeded), then the hold zeroed.
+ * the hold zeroed first (safe once the run is over; a later pass would skip a
+ * finished row), then `markFailed` (a charged job stays succeeded).
  * Returns how many jobs it changed.
  */
 export async function reconcileGatewayJobs(): Promise<number> {
@@ -30,26 +31,31 @@ export async function reconcileGatewayJobs(): Promise<number> {
   );
   let ended = 0;
   for (const job of stale) {
-    const state = await resolveRunState(job.runId);
-    if (state === null || state === 'unknown') continue;
-    const changed = await createGatewayJobsMethods(
-      db,
-      job.organizationId,
-      job.userId
-    ).markFailed(job.id, {
-      code: 'GENERATION_FAILED',
-      message: `Swept: the run is ${state} and wrote no outcome`,
-    });
-    if (!changed) continue;
-    if (job.reservationId) {
-      await createBillingMethods(
+    try {
+      const state = await resolveRunState(job.runId);
+      if (state === null || state === 'unknown') continue;
+      if (job.reservationId) {
+        await createBillingMethods(
+          db,
+          job.organizationId,
+          job.userId
+        ).zeroReservation(job.reservationId);
+      }
+      const changed = await createGatewayJobsMethods(
         db,
         job.organizationId,
         job.userId
-      ).zeroReservation(job.reservationId);
+      ).markFailed(job.id, {
+        code: 'GENERATION_FAILED',
+        message: `Swept: the run is ${state} and wrote no outcome`,
+      });
+      if (!changed) continue;
+      logger.warn(`Swept gateway job ${job.id}: its run is ${state}`);
+      ended++;
+    } catch (error) {
+      // One bad row must not abandon the pass.
+      logger.error(`Failed to sweep gateway job ${job.id}`, { err: error });
     }
-    logger.warn(`Swept gateway job ${job.id}: its run is ${state}`);
-    ended++;
   }
   return ended;
 }
