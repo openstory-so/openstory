@@ -7,6 +7,7 @@
  * await-child.ts.
  */
 
+import { SEED_PIPELINE_DIRECT } from '@/cast/server/voice/seed-audio';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { sheetStartedSummary } from '@/sequences/model-label';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -312,6 +313,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             voiceProvider: newVoiceProvider(),
             takes: SEED_VOICE_DEFAULT_TAKES,
             targetVersionId: claim.version.id,
+            seedSpeech: SEED_PIPELINE_DIRECT,
           };
           const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,

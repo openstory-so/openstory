@@ -180,6 +180,7 @@ function args(
     maxDurationSeconds: 15,
     stepPrefix: 'scene-0',
     workflowName: 'DialogueAudioWorkflow',
+    seedSpeech: { via: 'direct', reason: 'test' },
     ...overrides,
   };
 }

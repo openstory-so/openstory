@@ -45,7 +45,8 @@ import {
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
 import { SEED_AUDIO_MAX_REFERENCES } from '@/cast/server/voice/seed-audio';
 import { generateSeedDialogueSpeech } from '@/motion/server/generate-seed-dialogue-speech';
-import { platformSeedRecorder } from '@/cast/server/voice/seed-audio';
+import { seedRecorderFor } from '@/cast/server/voice/seed-audio';
+import type { GatewayRoute } from '@/gateway/server/route';
 import {
   generateDialogueSpeechCall,
   type DialogueSpeechCall,
@@ -98,6 +99,8 @@ export type GenerateDialogueSpeechArgs = {
   /** Durable step-name prefix — unique per conversation within a run. */
   stepPrefix: string;
   workflowName: string;
+  /** Where Seed takes go, from the run's payload. */
+  seedSpeech: GatewayRoute;
 };
 
 /** A call's record plus the section id minted for each shot it spoke. */
@@ -219,9 +222,10 @@ async function recordClaimed(
       const callLines = spoken.filter((line) =>
         call.shotIds.includes(line.shotId)
       );
+      const stepName = `${args.stepPrefix}-chunk-${call.index}${suffix}`;
       const result = await step.do(
-        `${args.stepPrefix}-chunk-${call.index}${suffix}`,
-        async (): Promise<SpeechCall> => {
+        stepName,
+        async (ctx): Promise<SpeechCall> => {
           const eleven =
             await args.scopedDb.credentials.resolveKey('elevenlabs');
           // A Seed voice is recorded by Seed, an ElevenLabs voice by
@@ -230,10 +234,12 @@ async function recordClaimed(
             (line) => voiceProviderOf(line.voiceId) === 'seed'
           )
             ? await generateSeedDialogueSpeech({
-                record: platformSeedRecorder(
-                  (await args.scopedDb.credentials.resolveKey('seed-speech'))
-                    .key
-                ),
+                record: await seedRecorderFor({
+                  route: args.seedSpeech,
+                  scopedDb: args.scopedDb,
+                  runId: args.workflowRunId,
+                  idempotencyKey: `${args.workflowRunId}:${stepName}:${ctx.attempt}`,
+                }),
                 elevenLabsKey: eleven.key,
                 organizationId: args.organizationId,
                 sequenceId: args.sequenceId,

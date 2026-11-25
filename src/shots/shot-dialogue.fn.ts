@@ -7,6 +7,7 @@
  * playing a different reading than the one marked current.
  */
 
+import { resolveSeedSpeechRoute } from '@/cast/server/voice/seed-audio';
 import { estimateDialogueTakeCost } from '@/billing/elevenlabs-pricing';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
@@ -301,6 +302,7 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
         base,
         minDurationSeconds,
         maxDurationSeconds,
+        seedSpeech: await resolveSeedSpeechRoute(scopedDb),
       };
       return {
         workflowRunId: await triggerWorkflow('/dialogue-take', input),

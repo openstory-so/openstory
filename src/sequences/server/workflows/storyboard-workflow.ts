@@ -1,4 +1,5 @@
 import { creditsShortStatusError } from '@/billing/credits-short';
+import { SEED_PIPELINE_DIRECT } from '@/cast/server/voice/seed-audio';
 import { microsToUsd } from '@/billing/money';
 import { freezeFreshGenerationPlan } from '@/sequences/server/freeze-fresh-generation-plan';
 import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
@@ -306,6 +307,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           freshRun: !input.plan,
           announcePhases: true,
           leftoverGrokShotIds: input.leftoverGrokShotIds,
+          seedSpeech: SEED_PIPELINE_DIRECT,
         },
         spawnStepName: 'spawn-continue',
         awaitStepName: 'await-continue',

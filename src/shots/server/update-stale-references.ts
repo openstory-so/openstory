@@ -48,7 +48,8 @@ export type PlanReferences = {
   locationSheets: Omit<LocationSheetWorkflowInput, 'referenceVersionId'>[];
   /** Null when no element reference is owed. */
   elementSheets: ElementSheetWorkflowInput | null;
-  voices: Omit<CharacterVoiceWorkflowInput, 'targetVersionId'>[];
+  /** Each run's `seedSpeech` comes from the update-stale run that spawns it. */
+  voices: Omit<CharacterVoiceWorkflowInput, 'targetVersionId' | 'seedSpeech'>[];
   /**
    * The wave's price at the click. Its children have no preflight of their
    * own, so the run checks the balance against this before it spawns them.
@@ -184,17 +185,24 @@ export async function buildPlanReferences(args: {
     getAnalysisModelById(sequence.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL;
   const voices = characters
     .filter((c) => voiceIds.has(c.id))
-    .map((character): Omit<CharacterVoiceWorkflowInput, 'targetVersionId'> => ({
-      userId,
-      organizationId: scopedDb.organizationId,
-      sequenceId: sequence.id,
-      characterDbId: character.id,
-      characterBible: characterToBible(character),
-      voiceDescription: character.voiceDescription ?? '',
-      analysisModelId,
-      voiceProvider: newVoiceProvider(),
-      takes: SEED_VOICE_DEFAULT_TAKES,
-    }));
+    .map(
+      (
+        character
+      ): Omit<
+        CharacterVoiceWorkflowInput,
+        'targetVersionId' | 'seedSpeech'
+      > => ({
+        userId,
+        organizationId: scopedDb.organizationId,
+        sequenceId: sequence.id,
+        characterDbId: character.id,
+        characterBible: characterToBible(character),
+        voiceDescription: character.voiceDescription ?? '',
+        analysisModelId,
+        voiceProvider: newVoiceProvider(),
+        takes: SEED_VOICE_DEFAULT_TAKES,
+      })
+    );
 
   const cost = {
     sheets: estimateReferenceSheetCost({

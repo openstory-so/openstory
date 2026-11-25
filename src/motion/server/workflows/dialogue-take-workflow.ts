@@ -13,7 +13,7 @@ import { dialogueFitBudget, sectionClip } from '@/motion/dialogue-tts';
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
 import { recordDialogueTake } from '@/motion/server/record-dialogue-take';
-import { platformSeedRecorder } from '@/cast/server/voice/seed-audio';
+import { seedRecorderFor } from '@/cast/server/voice/seed-audio';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { generateId } from '@/platform/id';
 import { getGenerationChannel } from '@/platform/realtime';
@@ -57,13 +57,16 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
     }
 
     try {
-      const take = await step.do('record-take', async () => {
+      const take = await step.do('record-take', async (ctx) => {
         const eleven = await scopedDb.credentials.resolveKey('elevenlabs');
         const seed =
           voiceProviderOf(input.line.voiceId) === 'seed'
-            ? platformSeedRecorder(
-                (await scopedDb.credentials.resolveKey('seed-speech')).key
-              )
+            ? await seedRecorderFor({
+                route: input.seedSpeech,
+                scopedDb,
+                runId: workflowRunId,
+                idempotencyKey: `${workflowRunId}:record-take:${ctx.attempt}`,
+              })
             : null;
         const made = await recordDialogueTake({
           elevenLabsKey: eleven.key,

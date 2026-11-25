@@ -1032,6 +1032,55 @@ Kept only for own keys and unholdable models: the direct submit branches in
 `pollVideoJob`, `videoCostFromUsage`, the motion and studio
 `deduct-credits` / `price-motion-generation` / `price-video-generation`
 steps, `recordFalUsageStep` for video, and `lipsyncFalClient`.
+## Audio on the gateway (#2436)
+
+### Coverage (read 2026-11-26)
+
+Every ElevenLabs model on modelschemas answers `pricing: null`
+(TanStack/schemas#120 closed, but no card is served), so no ElevenLabs call
+the product makes can be held. They stay on today's direct path, platform key
+only, unchanged. There is no `elevenlabs` gateway provider or driver and no
+JSON job result yet: nothing could use them until a card exists.
+
+| Product call               | modelschemas                                                                                                            | Schema | Card                       | Where it runs |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------- | ------------- |
+| Music                      | `elevenlabs/music_v1`, `v1/music`                                                                                       | yes    | no, TanStack/schemas#756   | direct        |
+| Voice design               | `elevenlabs/eleven_ttv_v3`, `v1/text-to-voice/design`                                                                   | yes    | no, TanStack/schemas#756   | direct        |
+| Save a designed voice      | no model, `v1/text-to-voice`                                                                                            | yes    | account state, not a model | direct        |
+| Dialogue                   | `elevenlabs/eleven_v3`, `v1/text-to-dialogue/with-timestamps`; the row names only text-to-speech (TanStack/schemas#757) | yes    | no, TanStack/schemas#756   | direct        |
+| Mic take, ElevenLabs voice | `elevenlabs/eleven_multilingual_sts_v2`; the row names text-to-speech, not `v1/speech-to-speech` (TanStack/schemas#757) | yes    | no, TanStack/schemas#756   | direct        |
+| Scribe                     | `elevenlabs/scribe_v2`, `v1/speech-to-text`; no row (TanStack/schemas#757)                                              | yes    | no, TanStack/schemas#756   | direct        |
+| Isolation                  | no model, `v1/audio-isolation` (TanStack/schemas#757)                                                                   | yes    | no, TanStack/schemas#756   | direct        |
+| Seed Audio takes           | `byteplus/seed-audio-1.0`, `tts/create`                                                                                 | yes    | yes                        | gateway       |
+
+`seed-asr` has a card with no estimate (TanStack/schemas#672) but the product
+does not call it.
+
+### Seed takes
+
+A Seed take is recorded by a `SeedRecorder` (`seed-audio.ts`):
+`gatewaySeedRecorder` holds and charges each take through the in-process
+adapter, `platformSeedRecorder` calls Seed Speech on the platform key and the
+caller books `seed-audio` itself (`seedCharge`). The body is the same.
+
+- **One key per take.** `${runId}:${step}:${ctx.attempt}:${take}`: a step
+  retried after a crash reuses its take, but a take that failed the
+  transcription check is a new job, because the retake must be new audio.
+- **Every take is charged.** On the platform key only the kept take is
+  billed and the platform absorbs the rest; on the gateway every take that
+  answered is charged. Needs sign-off.
+- **The WAV is read back.** The gateway stores the take in R2 in the step
+  that recorded it; the caller reads it back to transcribe and cut it, so no
+  bytes cross a `step.do`.
+- **Cloning.** `references[]` with `audio_url` or `audio_data` is refused on
+  the public endpoint (the likeness check cannot hear whose voice a clip
+  is) and held for an in-process caller. `seed-audio.ts` is on the
+  `UPLOAD_RIGHTS_CHECKED` allowlist: its clips are the organization's Seed
+  voice clips, made from text, and a mic take is the user's own recording
+  made in the app.
+- Pacing stays on the BytePlus governor: the Seed Audio driver calls
+  `acquireSeedSpeechToken` before every call.
+- Scribe and isolation stay ElevenLabs ledger lines (`deductWorkflowCredits`).
 
 ## Not in this stack
 

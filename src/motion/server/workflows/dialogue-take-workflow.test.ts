@@ -86,6 +86,7 @@ const input: DialogueTakeWorkflowInput = {
   reservationId: 'res-1',
   ownsReservation: true,
   takeStorageKey: 'org-1/seq-1/dialogue-takes/take.wav',
+  seedSpeech: { via: 'direct', reason: 'test' },
   line: { index: 1, voiceId: 'voice-b', character: 'B', text: 'Hi', tone: '' },
   sourceKey: 'key-1',
   dialogueVersionId: 'dv-1',

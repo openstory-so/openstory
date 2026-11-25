@@ -4,6 +4,7 @@
  * current voice — the In use take stays until this husk promotes.
  */
 
+import { resolveSeedSpeechRoute } from './seed-audio';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { newVoiceProvider } from '@/models/server/seed-speech-config';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
@@ -75,6 +76,7 @@ export async function enqueueCharacterVoiceDesign(args: {
     voiceProvider: newVoiceProvider(),
     takes,
     targetVersionId: husk.id,
+    seedSpeech: await resolveSeedSpeechRoute(scopedDb),
   };
 
   let workflowRunId: string;

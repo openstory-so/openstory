@@ -4,6 +4,7 @@
  * (#1460).
  */
 
+import { resolveSeedSpeechRoute } from '@/cast/server/voice/seed-audio';
 import { z } from 'zod';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
@@ -159,6 +160,7 @@ export async function launchUpdateStale(input: {
       sequenceId: input.sequenceId,
       plan: input.plan,
       gatewayRoutes: await imageGatewayRoutes(input.scopedDb),
+      seedSpeech: await resolveSeedSpeechRoute(input.scopedDb),
     },
     { deduplicationId: input.runKey }
   );

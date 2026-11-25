@@ -147,6 +147,7 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
           reservationId: input.reservationId,
           stepPrefix,
           workflowName: 'DialogueAudioWorkflow',
+          seedSpeech: input.seedSpeech,
         });
         return { ...plan.kept, ...recorded };
       })

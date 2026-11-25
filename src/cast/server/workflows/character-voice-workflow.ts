@@ -32,7 +32,7 @@ import {
 } from '@/billing/seed-speech-pricing';
 import { newSeedVoiceId, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import { recordRangeRead } from '@/cast/server/voice/seed-voice';
-import { platformSeedRecorder } from '@/cast/server/voice/seed-audio';
+import { seedRecorderFor } from '@/cast/server/voice/seed-audio';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -372,15 +372,20 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           const read = await step.do(
             `seed-range-read-${take}`,
             SEED_READ_STEP,
-            async () => {
-              const [seed, eleven] = await Promise.all([
-                scopedDb.credentials.resolveKey('seed-speech'),
+            async (ctx) => {
+              const [record, eleven] = await Promise.all([
+                seedRecorderFor({
+                  route: input.seedSpeech,
+                  scopedDb,
+                  runId: event.instanceId,
+                  idempotencyKey: `${event.instanceId}:seed-range-read-${take}:${ctx.attempt}`,
+                }),
                 scopedDb.credentials.resolveKey('elevenlabs'),
               ]);
-              // ponytail: a take that fails the check is re-recorded by the
-              // step retry and not billed to the organization; the platform eats it.
+              // ponytail: a take that fails the check is re-recorded by the step
+              // retry; on the platform key the platform eats it, on the gateway it is charged.
               const made = await recordRangeRead({
-                record: platformSeedRecorder(seed.key),
+                record,
                 elevenLabsKey: eleven.key,
                 voiceId,
                 description: voiceDescription,

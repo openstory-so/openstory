@@ -27,7 +27,11 @@ import type { GatewayModel } from '@/gateway/server/catalog';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
-import { getSeedSpeechBaseUrl } from '@/models/server/seed-speech-config';
+import {
+  getSeedSpeechBaseUrl,
+  isSeedSpeechConfigured,
+} from '@/models/server/seed-speech-config';
+import { resolveGatewayRoute, type GatewayRoute } from '@/gateway/server/route';
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -103,7 +107,7 @@ type SeedResponse = {
 };
 
 /** The platform key, called here; the caller bills `billedSeconds`. */
-export function platformSeedRecorder(apiKey: string): SeedRecorder {
+function platformSeedRecorder(apiKey: string): SeedRecorder {
   return async (input) => {
     const body = JSON.stringify(input);
     for (let attempt = 0; ; attempt++) {
@@ -182,6 +186,42 @@ export function gatewaySeedRecorder(params: {
     honestDataSize(stored.bytes);
     return { wav: stored.bytes, billedSeconds: null };
   };
+}
+
+/** Pipeline-spawned runs are not routed yet: their root triggers snapshot this. */
+export const SEED_PIPELINE_DIRECT: GatewayRoute = {
+  via: 'direct',
+  reason: 'Pipeline runs are not routed to the gateway yet',
+};
+
+/** Where this run's Seed takes go, decided at its trigger (platform key only: no own-key outcome). */
+export async function resolveSeedSpeechRoute(
+  scopedDb: Parameters<typeof resolveGatewayRoute>[0]['scopedDb']
+): Promise<GatewayRoute> {
+  if (!isSeedSpeechConfigured()) {
+    return { via: 'direct', reason: 'Seed Speech is not configured' };
+  }
+  return resolveGatewayRoute({
+    scopedDb,
+    provider: 'byteplus',
+    modelId: SEED_AUDIO_MODEL,
+    body: { model: SEED_AUDIO_MODEL, text_prompt: '' },
+  });
+}
+
+/** The recorder for the route the run was given; `idempotencyKey` must hold the step's attempt. */
+export async function seedRecorderFor(params: {
+  route: GatewayRoute;
+  scopedDb: WorkflowScopedDb;
+  runId: string;
+  idempotencyKey: string;
+}): Promise<SeedRecorder> {
+  const { route, scopedDb } = params;
+  if (route.via === 'openstory') {
+    return gatewaySeedRecorder({ ...params, model: route.model });
+  }
+  const { key } = await scopedDb.credentials.resolveKey('seed-speech');
+  return platformSeedRecorder(key);
 }
 
 export type CheckedTake = SeedAudioResult & {
