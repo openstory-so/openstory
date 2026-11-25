@@ -20,10 +20,10 @@ const GENERATE_PATHS = [/^\/sequences\/?$/, /^\/scripts\/enhance\/?$/];
  * (root discovery, OpenAPI document, device-code login).
  */
 export function requiredOAuthScope(request: Request): OAuthApiScope | null {
-  const pathname = new URL(request.url).pathname;
+  // Read the whole path as the router matches it: case-insensitive, decoded, empty segments dropped.
+  const pathname = routerPath(new URL(request.url).pathname);
   if (!pathname.startsWith(API_V1_BASE)) return null;
-  // Read as the router matches: case-insensitive, decoded, empty segments dropped.
-  const relative = routerPath(pathname.slice(API_V1_BASE.length)) || '/';
+  const relative = pathname.slice(API_V1_BASE.length) || '/';
   const method = request.method.toUpperCase();
 
   if (

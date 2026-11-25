@@ -35,7 +35,11 @@ import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import type { GatewayRun } from '@/gateway/server/phases';
-import { priceGatewayJob } from '@/gateway/server/price';
+import {
+  COUNT_FIELDS,
+  nestedCount,
+  priceGatewayJob,
+} from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
 import { z } from 'zod';
@@ -90,17 +94,6 @@ const MODEL_IN_BODY: ReadonlySet<GatewayProvider> = new Set([
   'grok',
   'byteplus',
 ]);
-
-// ponytail: a name list, not the card. Drop it when every card prices its own count lever.
-const COUNT_FIELDS = [
-  'n',
-  'num_images',
-  'num_outputs',
-  'num_videos',
-  'number_of_images',
-  'sample_count',
-  'max_images',
-];
 
 function isObject(
   value: JsonValue | undefined
@@ -189,10 +182,11 @@ function validatedBody(
   }
 
   const priced = new Set(cardParams(model.card).request);
-  const unpriced = COUNT_FIELDS.find((field) => {
-    const count = body[field];
-    return typeof count === 'number' && count > 1 && !priced.has(field);
-  });
+  const unpriced =
+    COUNT_FIELDS.find((field) => {
+      const count = body[field];
+      return typeof count === 'number' && count > 1 && !priced.has(field);
+    }) ?? Object.values(body).map(nestedCount).find(Boolean);
   if (unpriced) {
     throw new ValidationError(
       `The rate card does not price \`${unpriced}\` above 1 for this model`
@@ -202,6 +196,8 @@ function validatedBody(
 }
 
 const INLINE = 'Send media as a URL, not inline data';
+// WHATWG special schemes: `https:host` and `https:/host` still parse as URLs.
+const FETCHED_SCHEMES = new Set(['http', 'https', 'ftp']);
 // Bare base64 with no `data:` prefix: Gemini's parts and Seed Audio's references.
 const INLINE_KEYS = new Set([
   'inlineData',
@@ -217,20 +213,33 @@ const INLINE_KEYS = new Set([
  */
 export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   if (typeof body === 'string') {
-    const trimmed = body.trim();
+    // As a URL parser reads it: C0 controls and spaces at either end are dropped.
+    const trimmed = body.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '');
     // `data:<type>,<bytes>` and `blob:<url>`; a prompt that starts "Data: ..." is neither.
     if (/^data:[^\s,]*,/i.test(trimmed) || /^blob:\S/i.test(trimmed)) {
       throw new ValidationError(INLINE);
     }
-    const scheme = /^([a-z][a-z0-9+.-]*):\/\//i
-      .exec(trimmed)?.[1]
-      ?.toLowerCase();
-    if (scheme !== undefined || trimmed.startsWith('//')) {
-      // Only http(s), exactly as sent: a provider may fetch what we did not check.
-      if ((scheme !== 'http' && scheme !== 'https') || trimmed !== body) {
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+    const urlLike =
+      /^[\\/]{2}/.test(trimmed) ||
+      (scheme !== null &&
+        (FETCHED_SCHEMES.has(scheme[1].toLowerCase()) ||
+          /^[\\/]{2}/.test(trimmed.slice(scheme[0].length))));
+    if (urlLike) {
+      // Only http(s), exactly as the parser writes it: a provider may fetch what we did not check.
+      let href: string | null = null;
+      try {
+        const url = new URL(body);
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+          href = url.href;
+        }
+      } catch {
+        // Not a URL at all: refused below.
+      }
+      if (href !== body || body.includes('\\')) {
         throw new ValidationError('Media URLs must be plain http(s) URLs');
       }
-      found.push(body);
+      found.push(href);
     } else if (trimmed.startsWith('/r2/')) {
       // Our own stored uploads are origin-relative; they are checked too.
       found.push(trimmed);

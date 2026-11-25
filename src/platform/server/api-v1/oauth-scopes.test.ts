@@ -83,6 +83,18 @@ describe('requiredOAuthScope', () => {
     );
   });
 
+  it('reads the /api/v1 prefix as the router matches it too', () => {
+    for (const path of [
+      '/API/v1/gateway/jobs',
+      '/api//v1/gateway/jobs',
+      '//api/v1/gateway/jobs',
+      '/%61pi/v1/gateway/jobs',
+      '/api/%76%31/gateway/jobs',
+    ]) {
+      expect(requiredOAuthScope(req('POST', path))).toBe('models:invoke');
+    }
+  });
+
   it('ignores non-v1 paths', () => {
     expect(requiredOAuthScope(req('GET', '/api/auth/session'))).toBeNull();
   });

@@ -17,7 +17,7 @@ import {
   type GatewayProvider,
 } from '@/gateway/schema';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
-import { priceGatewayJob } from '@/gateway/server/price';
+import { heldOutputs, priceGatewayJob } from '@/gateway/server/price';
 import {
   GATEWAY_DRIVERS,
   type GatewayMedia,
@@ -103,6 +103,20 @@ export async function storeGatewayResult(
   };
 }
 
+/** More outputs than the hold covers are neither stored nor charged. */
+function heldResult(
+  run: GatewayRun,
+  result: GatewayRunResult
+): GatewayRunResult {
+  const held = heldOutputs(run.input);
+  if (result.media.length > held) {
+    throw new NonRetryableError(
+      `The model returned ${result.media.length} outputs; the request held ${held}`
+    );
+  }
+  return result;
+}
+
 /** Sends the body. A provider that answers at once has its media stored here. */
 export async function startGatewayRun(
   run: GatewayRun,
@@ -116,7 +130,9 @@ export async function startGatewayRun(
   );
   return 'jobId' in start
     ? { providerJobId: start.jobId }
-    : { stored: await storeGatewayResult(start.result, store) };
+    : {
+        stored: await storeGatewayResult(heldResult(run, start.result), store),
+      };
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */
@@ -135,7 +151,7 @@ export async function pollGatewayRun(
   if (poll.status === 'pending') return { kind: 'pending' };
   return {
     kind: 'stored',
-    stored: await storeGatewayResult(poll.result, store),
+    stored: await storeGatewayResult(heldResult(run, poll.result), store),
   };
 }
 

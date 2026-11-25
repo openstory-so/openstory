@@ -10,6 +10,41 @@ import {
   type RateCard,
 } from '@modelschemas/rate-card/evaluator';
 
+// ponytail: a name list, not the card. Drop it when every card prices its own count lever.
+export const COUNT_FIELDS = [
+  'n',
+  'num_images',
+  'num_outputs',
+  'num_videos',
+  'number_of_images',
+  'sample_count',
+  'max_images',
+  'candidateCount',
+  'candidate_count',
+];
+
+/** A count field above 1 anywhere under `value`; no card prices a nested one. */
+export function nestedCount(value: unknown): string | undefined {
+  if (Array.isArray(value)) return value.map(nestedCount).find(Boolean);
+  if (value === null || typeof value !== 'object') return undefined;
+  for (const [key, inner] of Object.entries(value)) {
+    if (COUNT_FIELDS.includes(key) && typeof inner === 'number' && inner > 1) {
+      return key;
+    }
+    const found = nestedCount(inner);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** How many outputs the hold covers: the request's own count, else one. */
+export function heldOutputs(request: GatewayJobInput): number {
+  const counts = COUNT_FIELDS.map((field) => request[field]).filter(
+    (count): count is number => typeof count === 'number'
+  );
+  return Math.max(1, ...counts);
+}
+
 /** The card's own levers, picked by name out of a usage object that carries other counts too. */
 function namedLevers(
   card: RateCard,

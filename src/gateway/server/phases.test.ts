@@ -1,4 +1,4 @@
-/** settleGatewayRun when the card refuses the reported usage. */
+/** The run phases: more outputs than were held, and a card that refuses the usage. */
 
 import { describe, expect, it, vi } from 'vitest';
 import { micros } from '@/billing/money';
@@ -9,7 +9,13 @@ import { rateCardSchema } from '@modelschemas/rate-card/schema';
 const settleGatewayJob = vi.fn(async () => micros(0));
 vi.doMock('./settle', () => ({ settleGatewayJob }));
 
-const { settleGatewayRun } = await import('./phases');
+const start = vi.fn();
+vi.doMock('./providers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./providers')>()),
+  GATEWAY_DRIVERS: { grok: { start } },
+}));
+
+const { settleGatewayRun, startGatewayRun } = await import('./phases');
 
 // $10 a million output tokens, read off the usage.
 const PER_TOKEN = rateCardSchema.parse({
@@ -26,22 +32,41 @@ const PER_TOKEN = rateCardSchema.parse({
   },
 });
 
+const RUN = {
+  jobId: 'job-1',
+  provider: 'grok',
+  kind: 'image',
+  target: { modelId: 'grok-imagine-image', endpointId: 'v1/images' },
+  card: PER_TOKEN,
+  input: { prompt: 'Mara signs the ferry log' },
+  estimateMicros: micros(20_000),
+  platformFeeBps: 0,
+  oauthClientId: null,
+  reservationId: 'res-1',
+} as const;
+
+describe('startGatewayRun', () => {
+  it('stores nothing when the model returns more outputs than the request held', async () => {
+    const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
+    start.mockResolvedValue({
+      result: { media: [media, media, media], usage: null, requestId: null },
+    });
+    const store = vi.fn();
+    await expect(
+      startGatewayRun({ ...RUN, input: { ...RUN.input, n: 2 } }, {}, store)
+    ).rejects.toThrow('The model returned 3 outputs; the request held 2');
+    await expect(startGatewayRun(RUN, {}, store)).rejects.toThrow(
+      'the request held 1'
+    );
+    expect(store).not.toHaveBeenCalled();
+  });
+});
+
 describe('settleGatewayRun', () => {
   it('settles at zero cost, so the held estimate is charged, when the card cannot read the usage', async () => {
     await settleGatewayRun(
       asStub<WorkflowScopedDb>({}),
-      {
-        jobId: 'job-1',
-        provider: 'grok',
-        kind: 'image',
-        target: { modelId: 'grok-imagine-image', endpointId: 'v1/images' },
-        card: PER_TOKEN,
-        input: { prompt: 'Mara signs the ferry log' },
-        estimateMicros: micros(20_000),
-        platformFeeBps: 0,
-        oauthClientId: null,
-        reservationId: 'res-1',
-      },
+      RUN,
       { outputs: [], requestId: 'req-1', usageJson: '{"seconds":5}' },
       'run-1:gateway-settle'
     );

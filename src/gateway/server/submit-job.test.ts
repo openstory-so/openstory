@@ -125,6 +125,7 @@ const MODELS: Record<string, GatewayModel> = {
         prompt: { type: 'string' },
         duration: { type: 'number' },
         n: { type: 'number' },
+        options: { type: 'array' },
       },
       required: ['prompt', 'duration'],
     },
@@ -431,6 +432,18 @@ describe('submitGatewayJob', () => {
     ).resolves.toMatchObject({ replay: false });
   });
 
+  it('refuses a count the card does not price below the top level', async () => {
+    const error = await refused({
+      provider: 'grok',
+      modelId: 'grok-imagine-loose',
+      body: { ...BODY, options: [{ candidateCount: 4 }] },
+    });
+    expect(error).toMatchObject({
+      message:
+        'The rate card does not price `candidateCount` above 1 for this model',
+    });
+  });
+
   it('refuses a body the schema refuses, with no row and no hold', async () => {
     const error = await refused({
       ...VIDEO,
@@ -491,7 +504,7 @@ describe('submitGatewayJob', () => {
       content: [
         {
           type: 'image_url',
-          image_url: { url: 'HTTP://media.example.com/engine-room.png' },
+          image_url: { url: 'http://media.example.com/engine-room.png' },
         },
         { type: 'text', text: 'not a url: /r2/x.png' },
       ],
@@ -505,7 +518,7 @@ describe('submitGatewayJob', () => {
       expect.anything(),
       [
         'https://media.example.com/mara.png',
-        'HTTP://media.example.com/engine-room.png',
+        'http://media.example.com/engine-room.png',
       ],
       request
     );
@@ -738,6 +751,25 @@ describe('gatedUrls', () => {
       's3://bucket/1.png',
       'ftp://a.example/1.png',
       'file:///etc/passwd',
+    ]) {
+      expect(() => gatedUrls({ image: value })).toThrow(
+        'Media URLs must be plain http(s) URLs'
+      );
+    }
+  });
+
+  it('refuses every spelling a URL parser still reads as a fetchable URL', () => {
+    for (const value of [
+      'https:/a.example/1.png',
+      'https:a.example/1.png',
+      'HTTPS:a.example/1.png',
+      'https:\\\\a.example\\1.png',
+      '\\\\a.example/1.png',
+      '/\\a.example/1.png',
+      '\x01https://a.example/1.png',
+      'https://a.example/1.png\n',
+      'HTTPS://A.EXAMPLE/1.png',
+      'https://a.example',
     ]) {
       expect(() => gatedUrls({ image: value })).toThrow(
         'Media URLs must be plain http(s) URLs'
