@@ -17,31 +17,21 @@ import {
   BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
-import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
-import {
-  resolveGoogleKeyForNewCall,
-  resolveGoogleKeyForStampedJob,
-} from '@/models/server/google-key';
+import { resolveGoogleKeyForNewCall } from '@/models/server/google-key';
 import { withGoogleRegionFallback } from '@/models/google-region';
-import { billedFields } from '@/billing/billed-quantity';
-import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
 import {
-  geminiVideoCostFromUsage,
   geminiVideoDurationCost,
   isNativeGeminiVideoModel,
-  NATIVE_GEMINI_VIDEO_MODEL,
 } from '@/models/gemini-native';
 import {
-  grokVideoCost,
   grokVideoDurationCost,
   isNativeGrokVideoModel,
-  NATIVE_GROK_VIDEO_MODEL,
 } from '@/models/grok-native';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -56,13 +46,13 @@ import {
 } from '@/models/models';
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
-import { assertMediaVia, type MediaVia } from '@/models/via';
+import type { MediaVia, ProductVia } from '@/models/via';
+import type { GatewayProvider } from '@/gateway/schema';
 import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { getLogger } from '@/platform/logger';
 import { getPostHogClient } from '@/platform/server/observability/posthog-server';
-import { ZERO_MICROS, type Microdollars } from '@/billing/money';
+import type { Microdollars } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
@@ -75,14 +65,20 @@ import {
 } from '@/platform/server/storage/external-url';
 import { bindableReferences } from './build-reference-video-prompt';
 import { assertReferencesUsable } from '@/motion/reference-support';
-import { generateVideo, type TokenUsage } from '@tanstack/ai';
-import { getVideoJobStatus } from './video-job-status';
+import { generateVideo } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
-import { createGeminiVideo } from '@tanstack/ai-gemini';
-import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGeminiVideoRequest } from './build-gemini-video-request';
-import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
+import {
+  createNativeGeminiVideoAdapter,
+  createNativeGrokVideoAdapter,
+  resolveFalKey,
+  resolveOptionalFalKey,
+  resolveOptionalXaiKey,
+  sendVideoJob,
+  type VideoGatewayCall,
+  type VideoSend,
+} from './video-job';
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import {
   buildMotionRequest,
@@ -170,7 +166,7 @@ export type MotionJobSubmission = {
    * send a fal request id to xAI (or the reverse) if a key changed mid-run
    * (#1216). Vendor is `IMAGE_TO_VIDEO_MODELS[model].vendor`.
    */
-  via: MediaVia;
+  via: ProductVia;
   usedOwnKey: boolean;
   /**
    * AG-UI thread for this submission. `getVideoJobStatus` finishes the same
@@ -185,23 +181,6 @@ export type MotionJobSubmission = {
    */
   draftTaskId?: string;
 };
-
-async function resolveFalMotionKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey> {
-  if (credentials) return credentials.resolveKey('fal');
-  return { key: getEnv().FAL_KEY, source: 'platform' };
-}
-
-/** Undefined when the model isn't Grok or no xAI key exists — it then goes to
- *  fal as before (#1167). */
-async function resolveOptionalXaiKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('xai');
-  const platformKey = getEnv().XAI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
 
 /**
  * Can this model render a reference-only shot FOR THIS ORGANIZATION?
@@ -282,25 +261,6 @@ export async function seedanceRunsOnArk(
   return (await resolveMotionVia('seedance_v2_5', credentials)) === 'byteplus';
 }
 
-function createNativeMotionAdapter(apiKey: string) {
-  const env = getEnv();
-  return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
-    fetch: workersSafeFetch,
-    ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
-  });
-}
-
-function createNativeGeminiMotionAdapter(apiKey: string) {
-  const env = getEnv();
-  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
-    // GEMINI_BASE_URL is the aimock hook for the native Google path,
-    // mirroring XAI_BASE_URL above.
-    ...(env.GEMINI_BASE_URL && {
-      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
-    }),
-  });
-}
-
 async function inlineNativeReferenceImages(
   references: ReferenceImageDescription[] | undefined
 ): Promise<ReferenceImageDescription[]> {
@@ -313,19 +273,11 @@ async function inlineNativeReferenceImages(
   );
 }
 
-async function resolveOptionalFalKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('fal');
-  const platformKey = getEnv().FAL_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
-async function submitFalMotionJob(
+async function prepareFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel,
   threadId: string
-): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
+): Promise<{ send: VideoSend; usedOwnKey: boolean; endpointId: string }> {
   // A clip or voice line this model cannot use — it takes no reference of
   // that kind, or not one that long — is a refusal, not a degradation
   // (#1559). Describing it in the prompt instead would bill a clip that
@@ -354,7 +306,7 @@ async function submitFalMotionJob(
     'fal',
     options.referenceOnly ?? false
   );
-  const key = await resolveFalMotionKey(options.credentials);
+  const key = await resolveFalKey(options.credentials);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
   // for a fal-storage upload first (no-op in prod and e2e replay).
@@ -395,21 +347,21 @@ async function submitFalMotionJob(
     throw new Error('Truncated prompt is not a string');
   }
 
-  const job = await generateVideo({
-    adapter: falVideo(endpoint.endpointId, {
-      apiKey: key.key,
-      // The adapter writes `prompt` back onto the body. Kling rejects that
-      // field beside `multi_prompt`, so the queue fetch takes it off (#2271).
-      fetch: stripPackedKlingPrompt(workersSafeFetch),
-    }),
-    prompt: optimisedPrompt,
-    modelOptions,
-    threadId,
-    timeout: FAL_REQUEST_TIMEOUT_MS,
-    debug: false,
-  });
   return {
-    jobId: job.jobId,
+    send: (fetch = workersSafeFetch) =>
+      generateVideo({
+        adapter: falVideo(endpoint.endpointId, {
+          apiKey: key.key,
+          // The adapter writes `prompt` back onto the body. Kling rejects that
+          // field beside `multi_prompt`, so the queue fetch takes it off (#2271).
+          fetch: stripPackedKlingPrompt(fetch),
+        }),
+        prompt: optimisedPrompt,
+        modelOptions,
+        threadId,
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        debug: false,
+      }),
     usedOwnKey: key.source === 'organization',
     endpointId: endpoint.endpointId,
   };
@@ -430,6 +382,8 @@ export type SubmitMotionOptions = GenerateMotionOptions & {
   arkAssets: ArkAssetMap;
   /** See `BytePlusVideoRequestOptions.heldSeedanceEditSeconds` (#2036). */
   heldSeedanceEditSeconds: number | null;
+  /** The `openstory` via when the gateway can hold this body; null keeps it direct. */
+  gateway: VideoGatewayCall | null;
 };
 
 type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
@@ -644,8 +598,23 @@ async function submitMotionJobOnce(
 
   let jobId: string;
   let usedOwnKey: boolean;
-  let stampedVia: MediaVia = endpoint.via;
+  let stampedVia: ProductVia = endpoint.via;
   let stampedEndpointId = endpoint.endpointId;
+  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
+  const gateway =
+    draft || options.finalFromDraftTaskId ? null : options.gateway;
+  /** Direct, or the same body through the gateway when it can hold it. */
+  const send = async (provider: GatewayProvider, run: VideoSend) => {
+    const sent = await sendVideoJob({
+      provider,
+      modelId: stampedEndpointId,
+      threadId,
+      gateway,
+      send: run,
+    });
+    if (sent.via === 'openstory') stampedVia = 'openstory';
+    return sent;
+  };
 
   switch (endpoint.via) {
     case 'xai': {
@@ -669,20 +638,22 @@ async function submitMotionJobOnce(
         referenceImages,
         model: modelKey,
       });
-      const job = await generateVideo({
-        adapter: createNativeMotionAdapter(xaiKey.key),
-        prompt: input.prompt,
-        threadId,
-        duration: input.duration,
-        ...(input.size && { size: input.size }),
-        // Carries the pinned opening frame on a shot that has both a still
-        // and references — see `GROK_VIDEO_REFERENCE_CONFIG`.
-        ...(input.modelOptions && { modelOptions: input.modelOptions }),
-        timeout: FAL_REQUEST_TIMEOUT_MS,
-        debug: false,
-      });
+      const job = await send('grok', (fetch) =>
+        generateVideo({
+          adapter: createNativeGrokVideoAdapter(xaiKey.key, fetch),
+          prompt: input.prompt,
+          threadId,
+          duration: input.duration,
+          ...(input.size && { size: input.size }),
+          // Carries the pinned opening frame on a shot that has both a still
+          // and references — see `GROK_VIDEO_REFERENCE_CONFIG`.
+          ...(input.modelOptions && { modelOptions: input.modelOptions }),
+          timeout: FAL_REQUEST_TIMEOUT_MS,
+          debug: false,
+        })
+      );
       jobId = job.jobId;
-      usedOwnKey = xaiKey.source === 'organization';
+      usedOwnKey = job.via === 'direct' && xaiKey.source === 'organization';
       break;
     }
     case 'google': {
@@ -712,7 +683,7 @@ async function submitMotionJobOnce(
       // fields makes the adapter rebuild response_format without
       // delivery, and Google inlines the MP4 as a data: URL.
       const job = await generateVideo({
-        adapter: createNativeGeminiMotionAdapter(googleKey.key),
+        adapter: createNativeGeminiVideoAdapter(googleKey.key),
         prompt: input.prompt,
         threadId,
         modelOptions: input.modelOptions,
@@ -724,10 +695,11 @@ async function submitMotionJobOnce(
       break;
     }
     case 'fal': {
-      const fal = await submitFalMotionJob(options, modelKey, threadId);
-      jobId = fal.jobId;
-      usedOwnKey = fal.usedOwnKey;
+      const fal = await prepareFalMotionJob(options, modelKey, threadId);
       stampedEndpointId = fal.endpointId;
+      const job = await send('fal', fal.send);
+      jobId = job.jobId;
+      usedOwnKey = job.via === 'direct' && fal.usedOwnKey;
       break;
     }
     case 'byteplus': {
@@ -786,19 +758,24 @@ async function submitMotionJobOnce(
       );
       const createBytePlusVideo = await loadBytePlusVideo();
       try {
-        const job = await withBytePlusQuotaRetry('motion submit', () =>
-          generateVideo({
-            adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
-            prompt: request.prompt,
-            threadId,
-            size: request.size,
-            ...(request.duration !== undefined && {
-              duration: request.duration,
-            }),
-            modelOptions: request.modelOptions,
-            timeout: FAL_REQUEST_TIMEOUT_MS,
-            debug: false,
-          })
+        const job = await send('byteplus', (fetch = config.fetch) =>
+          withBytePlusQuotaRetry('motion submit', () =>
+            generateVideo({
+              adapter: createBytePlusVideo(endpoint.endpointId, apiKey, {
+                ...config,
+                fetch,
+              }),
+              prompt: request.prompt,
+              threadId,
+              size: request.size,
+              ...(request.duration !== undefined && {
+                duration: request.duration,
+              }),
+              modelOptions: request.modelOptions,
+              timeout: FAL_REQUEST_TIMEOUT_MS,
+              debug: false,
+            })
+          )
         );
         jobId = job.jobId;
         usedOwnKey = false;
@@ -824,226 +801,6 @@ async function submitMotionJobOnce(
     submittedAt: Date.now(),
     ...(draft && { draftTaskId: jobId }),
   };
-}
-
-/**
- * Check the status of a submitted motion job.
- * Designed to be called from individual workflow steps.
- *
- * `via` comes from the submission rather than being re-resolved: polling the
- * wrong API for a job id it never issued reads as a lost generation.
- * Defaults to `'fal'` so in-flight runs from before this field existed keep
- * polling fal — correct, since that is where they were submitted.
- */
-export async function pollMotionJob(
-  jobId: string,
-  modelKey: ImageToVideoModel,
-  credentials?: CredentialScopedDb,
-  viaStamp: string = 'fal',
-  endpointId?: string,
-  threadId?: string
-) {
-  const via = assertMediaVia(viaStamp);
-  const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
-  const falEndpointId = endpointId ?? modelConfig.id;
-
-  switch (via) {
-    case 'xai': {
-      const key = await resolveOptionalXaiKey(credentials);
-      if (!key) {
-        throw new Error(
-          `Motion job ${jobId} was submitted to xAI but no xAI key is available to poll it`
-        );
-      }
-      return await getVideoJobStatus({
-        adapter: createNativeMotionAdapter(key.key),
-        jobId,
-        ...(threadId && { threadId }),
-      });
-    }
-    case 'google': {
-      const key = await resolveGoogleKeyForStampedJob(credentials);
-      if (!key) {
-        throw new Error(
-          `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`
-        );
-      }
-      const result = await getVideoJobStatus({
-        adapter: createNativeGeminiMotionAdapter(key.key),
-        jobId,
-        ...(threadId && { threadId }),
-      });
-      if (
-        result.status === 'completed' &&
-        result.url &&
-        isGeminiFilesVideoUrl(result.url)
-      ) {
-        const fileState = await getGeminiFileState(result.url, key.key);
-        if (fileState === 'FAILED') {
-          return {
-            ...result,
-            status: 'failed' as const,
-            error: 'Gemini Files API marked the generated video as FAILED',
-          };
-        }
-        if (fileState !== 'ACTIVE') {
-          return { jobId: result.jobId, status: 'processing' as const };
-        }
-      }
-      return result;
-    }
-    case 'fal': {
-      const key = await resolveFalMotionKey(credentials);
-      // Bound a single status fetch — the workflow already budgets total poll
-      // wall-clock across batches; this only prevents one hung HTTP call from
-      // freezing a poll step forever (#826).
-      return await getVideoJobStatus({
-        adapter: falVideo(falEndpointId, {
-          apiKey: key.key,
-          fetch: createDeadlineFetch(
-            FAL_REQUEST_TIMEOUT_MS,
-            'Motion job status'
-          ),
-        }),
-        jobId,
-        ...(threadId && { threadId }),
-      });
-    }
-    case 'byteplus': {
-      const arkKey = getArkApiKey();
-      if (!arkKey) {
-        throw new Error(
-          'ARK_API_KEY is required to poll a BytePlus motion job'
-        );
-      }
-      const modelId = getBytePlusVideoModelId(modelKey);
-      if (!modelId) {
-        throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
-      }
-      const { apiKey, ...config } = arkAdapterConfig(
-        arkKey,
-        FAL_REQUEST_TIMEOUT_MS
-      );
-      const createBytePlusVideo = await loadBytePlusVideo();
-      return await withBytePlusQuotaRetry('motion poll', () =>
-        getVideoJobStatus({
-          adapter: createBytePlusVideo(modelId, apiKey, config),
-          jobId,
-          ...(threadId && { threadId }),
-        })
-      );
-    }
-  }
-}
-
-export async function motionCostFromUsage(
-  via: MediaVia,
-  usage: TokenUsage | undefined,
-  ctx: {
-    modelKey: ImageToVideoModel;
-    hasReferenceImages: boolean;
-    /**
-     * Reference-only shots route to the reference-to-video endpoint (or its
-     * text-to-video sibling when no sheets matched, #1521), so the charge must
-     * be priced against that endpoint — resolving without it would bill an
-     * image-to-video rate for a job that never ran there.
-     */
-    referenceOnly?: boolean;
-  }
-) {
-  const billed = billedFields(usage);
-  switch (via) {
-    case 'xai': {
-      const cost = grokVideoCost(usage?.cost);
-      if (cost === undefined) {
-        reportMissingBillingCost({
-          source: 'motion-cost-from-usage-xai',
-          modelId: ctx.modelKey,
-          metadata: { usage },
-        });
-      }
-      if (billed.missingUnitsReason) {
-        reportMissingBillingCost({
-          source: 'motion-cost-from-usage-xai',
-          modelId: ctx.modelKey,
-          description: billed.missingUnitsReason,
-          metadata: { usage },
-        });
-      }
-      return {
-        endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: cost ?? ZERO_MICROS,
-        recordFalUsage: false,
-      };
-    }
-    case 'google': {
-      // Omni bills per second of video, reported as output tokens on the
-      // interaction's usage — priced at Google's published video-output rate.
-      const cost = geminiVideoCostFromUsage(usage);
-      if (cost === undefined) {
-        reportMissingBillingCost({
-          source: 'motion-cost-from-usage-google',
-          modelId: ctx.modelKey,
-          metadata: { usage },
-        });
-      }
-      if (billed.missingUnitsReason) {
-        reportMissingBillingCost({
-          source: 'motion-cost-from-usage-google',
-          modelId: ctx.modelKey,
-          description: billed.missingUnitsReason,
-          metadata: { usage },
-        });
-      }
-      return {
-        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: cost ?? ZERO_MICROS,
-        recordFalUsage: false,
-      };
-    }
-    case 'fal': {
-      const endpointId = resolveMotionEndpoint(
-        ctx.modelKey,
-        ctx.hasReferenceImages,
-        'fal',
-        ctx.referenceOnly ?? false
-      ).endpointId;
-      return {
-        endpointId,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: await falCostFromUnits(
-          endpointId,
-          billed.unitsBilled,
-          undefined,
-          {
-            missingUnitsReason: billed.missingUnitsReason,
-          }
-        ),
-        recordFalUsage: true,
-      };
-    }
-    case 'byteplus': {
-      const endpointId = getBytePlusVideoModelId(ctx.modelKey);
-      if (!endpointId) {
-        throw new Error(
-          `No BytePlus model id for motion model "${ctx.modelKey}"`
-        );
-      }
-      const unitsBilled = bytePlusVideoUnitsBilled(usage?.totalTokens);
-      return {
-        endpointId,
-        unitsBilled,
-        billedUnit: undefined,
-        cost: await falCostFromUnits(endpointId, unitsBilled),
-        recordFalUsage: false,
-      };
-    }
-  }
 }
 
 /**

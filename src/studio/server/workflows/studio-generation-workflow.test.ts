@@ -51,9 +51,11 @@ vi.doMock('@/studio/server/upload', () => ({
 }));
 vi.doMock('@/studio/server/studio-video-generation', () => ({
   submitStudioVideoJob: mockSubmit,
-  pollStudioVideoJob: mockPoll,
-  studioVideoCostFromUsage: mockCost,
   arkStillsForStudio: () => [],
+}));
+vi.doMock('@/motion/server/video-job', () => ({
+  pollVideoJob: mockPoll,
+  videoCostFromUsage: mockCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
   ingestArkAssets: mockIngestArkAssets,

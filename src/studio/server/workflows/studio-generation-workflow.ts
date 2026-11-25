@@ -52,12 +52,16 @@ import { toCdnUrl } from '@/platform/server/storage/buckets';
 import { isEngineAbortError } from '@/platform/server/workflow/errors';
 import type { StudioRunInput } from '@/studio/schema';
 import {
-  pollStudioVideoJob,
-  studioVideoCostFromUsage,
   arkStillsForStudio,
   submitStudioVideoJob,
 } from '@/studio/server/studio-video-generation';
 import { studioImageParams } from '@/studio/text-to-video';
+import {
+  pollVideoJob,
+  videoCostFromUsage,
+  type VideoGatewayCall,
+} from '@/motion/server/video-job';
+import type { GatewayStore } from '@/gateway/server/phases';
 import { uploadStudioImage, uploadStudioVideo } from '@/studio/server/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
@@ -229,6 +233,22 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     let seedanceInternalRetried = false;
     let succeededJob: Awaited<ReturnType<typeof submitStudioVideoJob>> | null =
       null;
+    // The `openstory` via stores the clip where upload-video would, inside the poll that saw it (#1645).
+    const gatewayStore: GatewayStore = async (media) => {
+      if (!('url' in media)) {
+        throw new Error('The gateway returned an inline video');
+      }
+      const stored = await uploadStudioVideo({
+        videoUrl: media.url,
+        organizationId,
+        assetId,
+      });
+      return {
+        url: stored.url,
+        path: stored.path,
+        contentType: stored.contentType,
+      };
+    };
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;
@@ -272,6 +292,12 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             draft: input.draft,
             finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
             credentials: scopedDb.credentials,
+            gateway: {
+              scopedDb,
+              runId: event.instanceId,
+              idempotencyKey: `${event.instanceId}:submit-video${tag}`,
+              store: gatewayStore,
+            } satisfies VideoGatewayCall,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -324,12 +350,12 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           async (): Promise<StudioPollOutcome> => {
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
             while (Date.now() < deadline) {
-              let pollResult: Awaited<ReturnType<typeof pollStudioVideoJob>>;
+              let pollResult: Awaited<ReturnType<typeof pollVideoJob>>;
               try {
-                pollResult = await pollStudioVideoJob(
-                  job,
-                  scopedDb.credentials
-                );
+                pollResult = await pollVideoJob(job, {
+                  credentials: scopedDb.credentials,
+                  gateway: { scopedDb, store: gatewayStore },
+                });
               } catch (error) {
                 if (isContentRejectionError(error)) {
                   return {
@@ -492,12 +518,21 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       );
     }
 
-    const billing = await step.do('price-video-generation', async () =>
-      studioVideoCostFromUsage(job, billedUsage)
-    );
-    const videoCost = billing.cost;
+    // The `openstory` via was charged by the gateway in the poll that finished it.
+    const jobVia = job.via;
+    const billing =
+      jobVia === 'openstory'
+        ? null
+        : await step.do('price-video-generation', async () =>
+            videoCostFromUsage(
+              { ...job, via: jobVia },
+              billedUsage,
+              'studio-video'
+            )
+          );
+    const videoCost = billing?.cost ?? ZERO_MICROS;
 
-    if (billing.recordFalUsage) {
+    if (billing?.recordFalUsage) {
       await recordFalUsageStep(
         step,
         scopedDb,
@@ -563,9 +598,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         model: videoModel,
         provider: job.via,
         activity: 'video',
-        costMicros: videoCost,
-        unitsBilled: billing.unitsBilled,
-        billedUnit: billing.billedUnit,
+        ...(billing && {
+          costMicros: videoCost,
+          unitsBilled: billing.unitsBilled,
+          billedUnit: billing.billedUnit,
+        }),
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,
@@ -587,8 +624,9 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         assetId,
         storageKey: videoUpload.path,
         provider: job.via,
-        model: billing.endpointId,
-        providerRequestId: job.jobId,
+        model: job.endpointId,
+        // A gateway job id is the transport's handle, not the provider's request id.
+        providerRequestId: job.via === 'openstory' ? null : job.jobId,
         workflowRunId: event.instanceId,
         prompt: input.prompt,
       });
@@ -597,7 +635,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     await step.do('persist-result', async () => {
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
-        costMicros: videoCost,
+        // Null on the gateway: the charge is the gateway job's.
+        costMicros: billing ? videoCost : null,
         provider: job.via,
         // The handle "Render at quality" renders the final from (#1756).
         draftTaskId: job.draftTaskId,
@@ -610,7 +649,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       `[StudioGenerationWorkflow] Asset ${assetId} completed: ${
         toCdnUrl(videoUpload.url) ?? videoUpload.url
       }`,
-      { assetId, providerRequestId: job.jobId, model: videoModel }
+      { assetId, via: job.via, model: videoModel }
     );
 
     await this.notifyContentFeed(event, input, outputs, step);

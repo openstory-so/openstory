@@ -14,7 +14,7 @@
  * `bespoke.mp4`. Upload to R2 with `upload-style-hover-videos-to-r2.ts` (which
  * only ever writes `hover.mp4`, never the canonical/bespoke samples).
  *
- * Reuses production motion submit (`submitMotionJob` / `pollMotionJob`) and
+ * Reuses production motion submit (`submitMotionJob` / `pollVideoJob`) and
  * `buildMotionShotPrompt`.
  *
  * Run:
@@ -43,10 +43,8 @@ import {
 import type { MotionPrompt } from '@/shots/scene-analysis.schema';
 import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 import { fetchVideoForUpload } from '@/motion/server/video-storage';
-import {
-  pollMotionJob,
-  submitMotionJob,
-} from '@/motion/server/motion-generation';
+import { submitMotionJob } from '@/motion/server/motion-generation';
+import { pollVideoJob } from '@/motion/server/video-job';
 import { snapDuration } from '@/motion/snap-duration';
 import { styleSlug } from '@/look/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
@@ -282,6 +280,7 @@ async function generateClip(
     // Square output: Seedance honours aspectRatio; Grok has no aspect_ratio
     // param and inherits the (square) input still — the renders are square.
     generateAudio: false, // silent — no sound on hover clips
+    gateway: null,
   });
 
   const deadline = Date.now() + MOTION_POLL_TIMEOUT_MS;
@@ -289,13 +288,10 @@ async function generateClip(
     // `job.via` (not the default): with XAI_API_KEY set, a Grok clip is
     // submitted to xAI and its job id means nothing to fal. Same for a
     // Google-stamped Omni Flash job.
-    const poll = await pollMotionJob(
-      job.jobId,
-      job.modelKey,
-      undefined,
-      job.via,
-      job.endpointId
-    );
+    const poll = await pollVideoJob(job, {
+      credentials: undefined,
+      gateway: null,
+    });
     if (poll.status === 'completed') {
       if (poll.url) return poll.url;
       throw new Error(poll.error || 'Completed with no video URL');

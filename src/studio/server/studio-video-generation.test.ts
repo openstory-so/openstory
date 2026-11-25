@@ -50,7 +50,9 @@ const mockCreateGrokVideo = vi.fn(() => ({
   name: 'grok',
   model: 'grok-imagine-video-1.5',
 }));
+const actual_grok = await vi.importActual('@tanstack/ai-grok');
 vi.doMock('@tanstack/ai-grok', () => ({
+  ...actual_grok,
   createGrokVideo: mockCreateGrokVideo,
 }));
 
@@ -59,7 +61,9 @@ const mockCreateGeminiVideo = vi.fn(() => ({
   name: 'gemini',
   model: 'gemini-omni-1.2-flash',
 }));
+const actual_gemini = await vi.importActual('@tanstack/ai-gemini');
 vi.doMock('@tanstack/ai-gemini', () => ({
+  ...actual_gemini,
   createGeminiVideo: mockCreateGeminiVideo,
 }));
 
@@ -68,7 +72,9 @@ const mockCreateBytePlusVideo = vi.fn(() => ({
   name: 'byteplus',
   model: 'dreamina-seedance-2-5-260628',
 }));
+const actual_byteplus = await vi.importActual('@tanstack/ai-byteplus');
 vi.doMock('@tanstack/ai-byteplus', () => ({
+  ...actual_byteplus,
   createBytePlusVideo: mockCreateBytePlusVideo,
 }));
 
@@ -77,12 +83,11 @@ vi.doMock('@/models/server/byteplus-final-render', () => ({
   submitBytePlusFinalRender: mockSubmitFinalRender,
 }));
 
-const {
-  arkStillsForStudio,
-  submitStudioVideoJob,
-  pollStudioVideoJob,
-  studioVideoCostFromUsage,
-} = await import('./studio-video-generation');
+const { arkStillsForStudio, submitStudioVideoJob } =
+  await import('./studio-video-generation');
+const { pollVideoJob, videoCostFromUsage } =
+  await import('@/motion/server/video-job');
+const direct = { credentials: undefined, gateway: null };
 
 describe('submitStudioVideoJob', () => {
   beforeEach(() => {
@@ -108,6 +113,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2_5',
       duration: 5,
@@ -148,6 +154,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2_5',
       duration: 5,
@@ -172,6 +179,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Camera pushes in',
       model: 'seedance_v2',
       mode: 'frames',
@@ -198,6 +206,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Image1 walks past Image2',
       model: 'minimax_h3_max',
       mode: 'reference',
@@ -250,6 +259,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'grok_imagine_video_1_5',
       duration: 5,
@@ -277,6 +287,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'gemini_omni_flash',
       duration: 5,
@@ -313,6 +324,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Camera pushes in',
       model: 'gemini_omni_flash',
       mode: 'frames',
@@ -349,6 +361,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Image1 walks past Image2',
       model: 'gemini_omni_flash',
       mode: 'reference',
@@ -400,6 +413,7 @@ describe('submitStudioVideoJob', () => {
     try {
       const result = await submitStudioVideoJob({
         arkAssets: registeredAssets,
+        gateway: null,
         prompt: 'A red fox turns toward camera',
         model: 'gemini_omni_flash',
         duration: 5,
@@ -422,6 +436,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'gemini_omni_flash',
       duration: 5,
@@ -439,6 +454,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Camera pushes in',
       model: 'gemini_omni_flash',
       mode: 'frames',
@@ -462,6 +478,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Camera pushes in',
       model: 'gemini_omni_flash',
       mode: 'frames',
@@ -484,6 +501,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'grok_imagine_video_1_5',
       duration: 5,
@@ -500,6 +518,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2_5',
       duration: 5,
@@ -526,6 +545,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2_5',
       duration: 5,
@@ -549,6 +569,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2',
       duration: 5,
@@ -566,6 +587,7 @@ describe('submitStudioVideoJob', () => {
     await expect(
       submitStudioVideoJob({
         arkAssets: registeredAssets,
+        gateway: null,
         prompt: 'A red fox turns toward camera',
         model: 'seedance_v2_5',
         duration: 5,
@@ -581,6 +603,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2_5',
       duration: 5,
@@ -615,6 +638,7 @@ describe('submitStudioVideoJob', () => {
     await expect(
       submitStudioVideoJob({
         arkAssets: registeredAssets,
+        gateway: null,
         prompt: 'Camera pushes in',
         model: 'seedance_v2_5',
         mode: 'frames',
@@ -632,6 +656,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Camera pushes in',
       model: 'seedance_v2_5',
       mode: 'frames',
@@ -672,6 +697,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'The fox walks',
       model: 'seedance_v2_5',
       mode: 'reference',
@@ -759,6 +785,7 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'Make it night',
       model: 'seedance_v2_5',
       mode: 'edit',
@@ -790,6 +817,7 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
     await expect(
       submitStudioVideoJob({
         arkAssets: registeredAssets,
+        gateway: null,
         prompt: 'Make it night',
         model: 'seedance_v2_5',
         mode: 'edit',
@@ -806,6 +834,7 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
 
     await submitStudioVideoJob({
       arkAssets: registeredAssets,
+      gateway: null,
       prompt: 'A red fox turns toward camera',
       model: 'seedance_v2',
       duration: 'auto',
@@ -819,7 +848,7 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
   });
 });
 
-describe('pollStudioVideoJob', () => {
+describe('pollVideoJob', () => {
   beforeEach(() => {
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
@@ -841,12 +870,16 @@ describe('pollStudioVideoJob', () => {
       url: 'https://example.com/video.mp4',
     });
 
-    const result = await pollStudioVideoJob({
-      jobId: 'job-1',
-      via: 'fal',
-      endpointId: 'fal-ai/kling-video/v3/pro/text-to-video',
-      threadId: 'thread-1',
-    });
+    const result = await pollVideoJob(
+      {
+        jobId: 'job-1',
+        via: 'fal',
+        endpointId: 'fal-ai/kling-video/v3/pro/text-to-video',
+        threadId: 'thread-1',
+        modelKey: 'kling_v3_pro',
+      },
+      direct
+    );
 
     expect(result.status).toBe('completed');
     expect(mockFalVideo).toHaveBeenCalledWith(
@@ -866,12 +899,16 @@ describe('pollStudioVideoJob', () => {
       url: 'https://example.com/video.mp4',
     });
 
-    const result = await pollStudioVideoJob({
-      jobId: 'ark-job',
-      via: 'byteplus',
-      endpointId: 'dreamina-seedance-2-5-260628',
-      threadId: 'thread-ark',
-    });
+    const result = await pollVideoJob(
+      {
+        jobId: 'ark-job',
+        via: 'byteplus',
+        endpointId: 'dreamina-seedance-2-5-260628',
+        threadId: 'thread-ark',
+        modelKey: 'seedance_v2_5',
+      },
+      direct
+    );
 
     expect(result.status).toBe('completed');
     expect(mockCreateBytePlusVideo).toHaveBeenCalled();
@@ -886,12 +923,16 @@ describe('pollStudioVideoJob', () => {
       url: 'data:video/mp4;base64,AAAA',
     });
 
-    const result = await pollStudioVideoJob({
-      jobId: 'google-job',
-      via: 'google',
-      endpointId: 'gemini-omni-1.2-flash',
-      threadId: 'thread-google',
-    });
+    const result = await pollVideoJob(
+      {
+        jobId: 'google-job',
+        via: 'google',
+        endpointId: 'gemini-omni-1.2-flash',
+        threadId: 'thread-google',
+        modelKey: 'gemini_omni_flash',
+      },
+      direct
+    );
 
     expect(result.status).toBe('completed');
     expect(mockCreateGeminiVideo).toHaveBeenCalled();
@@ -899,7 +940,7 @@ describe('pollStudioVideoJob', () => {
   });
 });
 
-describe('pollStudioVideoJob under a region block', () => {
+describe('pollVideoJob under a region block', () => {
   it('still polls Google for a google-stamped job', async () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockCreateGeminiVideo.mockClear();
@@ -911,12 +952,16 @@ describe('pollStudioVideoJob under a region block', () => {
     });
 
     try {
-      const result = await pollStudioVideoJob({
-        jobId: 'google-job',
-        via: 'google',
-        endpointId: 'gemini-omni-1.2-flash',
-        threadId: 'thread-google',
-      });
+      const result = await pollVideoJob(
+        {
+          jobId: 'google-job',
+          via: 'google',
+          endpointId: 'gemini-omni-1.2-flash',
+          threadId: 'thread-google',
+          modelKey: 'gemini_omni_flash',
+        },
+        direct
+      );
       expect(result.status).toBe('processing');
       expect(mockCreateGeminiVideo).toHaveBeenCalled();
       expect(mockFalVideo).not.toHaveBeenCalled();
@@ -926,15 +971,16 @@ describe('pollStudioVideoJob under a region block', () => {
   });
 });
 
-describe('studioVideoCostFromUsage', () => {
+describe('videoCostFromUsage', () => {
   it('bills Ark tokens and skips fal usage sampling', async () => {
-    const billing = await studioVideoCostFromUsage(
+    const billing = await videoCostFromUsage(
       {
         via: 'byteplus',
         endpointId: 'dreamina-seedance-2-5-260628',
         modelKey: 'seedance_v2_5',
       },
-      { promptTokens: 0, completionTokens: 0, totalTokens: 108_000 }
+      { promptTokens: 0, completionTokens: 0, totalTokens: 108_000 },
+      'studio-video'
     );
     expect(billing.unitsBilled).toBe(108);
     expect(billing.recordFalUsage).toBe(false);
@@ -942,13 +988,14 @@ describe('studioVideoCostFromUsage', () => {
   });
 
   it('prices Google video-output tokens and skips fal usage sampling', async () => {
-    const billing = await studioVideoCostFromUsage(
+    const billing = await videoCostFromUsage(
       {
         via: 'google',
         endpointId: 'gemini-omni-1.2-flash',
         modelKey: 'gemini_omni_flash',
       },
-      { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
+      { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 },
+      'studio-video'
     );
     expect(billing.cost).toBe(347_700);
     expect(billing.recordFalUsage).toBe(false);

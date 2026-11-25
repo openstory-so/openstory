@@ -33,20 +33,28 @@ const mockIngestArkAssets = vi.fn(
 );
 const mockRecordMediaGenerationSpan = vi.fn();
 const emit = vi.fn(async () => {});
+const mockPersistCompletion = vi.fn(
+  async (): Promise<{ status: 'completed' | 'cancelled' }> => ({
+    status: 'completed',
+  })
+);
 
 vi.doMock('@/motion/server/motion-generation', () => ({
   submitMotionJob: mockSubmit,
-  pollMotionJob: mockPoll,
   canRenderReferenceOnly: async () => true,
   calculateMotionMetadata: mockCalculateMotionMetadata,
-  motionCostFromUsage: () => ({
-    cost: 0,
-    unitsBilled: 0,
-    endpointId: 'fal/x',
-    recordFalUsage: false,
-  }),
   resolveMotionVia: mockResolveMotionVia,
   arkStillsForMotion: () => [],
+}));
+const mockVideoCost = vi.fn(async () => ({
+  cost: 0,
+  unitsBilled: 0,
+  endpointId: 'fal/x',
+  recordFalUsage: false,
+}));
+vi.doMock('@/motion/server/video-job', () => ({
+  pollVideoJob: mockPoll,
+  videoCostFromUsage: mockVideoCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
   ingestArkAssets: mockIngestArkAssets,
@@ -83,7 +91,7 @@ vi.doMock('@/platform/realtime', () => ({
 }));
 vi.doMock('./motion-workflow-persist', () => ({
   rescuedMotionPromptOf: () => null,
-  persistMotionCompletion: async () => ({ status: 'completed' }),
+  persistMotionCompletion: mockPersistCompletion,
   persistMotionFailure: async () => {},
 }));
 vi.doMock('@/stills/server/workflows/content-soften', () => ({
@@ -280,6 +288,12 @@ const rescueEmit = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   mockSubmit.mockImplementation(async () => job());
+  mockVideoCost.mockResolvedValue({
+    cost: 0,
+    unitsBilled: 0,
+    endpointId: 'fal/x',
+    recordFalUsage: false,
+  });
   mockPoll.mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
   mockSoften.mockResolvedValue('the softened prompt');
   mockResolveMotionVia.mockResolvedValue('fal');
@@ -388,6 +402,57 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
     ).rejects.toThrow(/temporary error.*not charged/);
     expect(mockSubmit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('MotionWorkflow on the openstory via (#2435)', () => {
+  const charged = {
+    cost: 1_000_000,
+    unitsBilled: 5,
+    endpointId: 'fal/x',
+    recordFalUsage: false,
+  };
+
+  it('leaves the charge to the gateway: the run neither prices nor deducts', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockVideoCost.mockResolvedValue(charged);
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion',
+        }),
+      })
+    );
+    expect(mockPoll).toHaveBeenCalledWith(
+      expect.objectContaining({ via: 'openstory' }),
+      expect.objectContaining({ gateway: expect.anything() })
+    );
+    expect(mockVideoCost).not.toHaveBeenCalled();
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+  });
+
+  it('still prices and deducts a direct clip', async () => {
+    mockVideoCost.mockResolvedValue(charged);
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockDeductWorkflowCredits).toHaveBeenCalledOnce();
+  });
+
+  it('a render cancelled mid-flight adds no charge of the run to the gateway one', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockVideoCost.mockResolvedValue(charged);
+    mockPersistCompletion.mockResolvedValueOnce({ status: 'cancelled' });
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
   });
 });
 

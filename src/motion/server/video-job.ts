@@ -1,0 +1,377 @@
+/**
+ * One video job for motion and studio: sent direct or through the `openstory`
+ * gateway, polled on its stamped via, priced from usage on a direct via
+ * (docs/architecture/media-vias.md § The openstory via).
+ */
+
+import { getEnv } from '#env';
+import { billedFields } from '@/billing/billed-quantity';
+import { reportMissingBillingCost } from '@/billing/billing-observability';
+import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
+import { ZERO_MICROS } from '@/billing/money';
+import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
+import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
+import { openstoryVideo, openstoryVideoStatus } from '@/gateway/server/adapter';
+import {
+  inProcessGateway,
+  inProcessPoller,
+} from '@/gateway/server/adapter/in-process';
+import type { GatewayStore } from '@/gateway/server/phases';
+import { resolveGatewayRoute } from '@/gateway/server/route';
+import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
+import {
+  geminiVideoCostFromUsage,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/models/gemini-native';
+import { grokVideoCost, NATIVE_GROK_VIDEO_MODEL } from '@/models/grok-native';
+import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import {
+  arkAdapterConfig,
+  getArkApiKey,
+  loadBytePlusVideo,
+} from '@/models/server/byteplus-config';
+import type { ResolvedApiKey } from '@/models/server/db/api-keys';
+import {
+  createDeadlineFetch,
+  FAL_REQUEST_TIMEOUT_MS,
+} from '@/models/server/fal-deadline-fetch';
+import { resolveGoogleKeyForStampedJob } from '@/models/server/google-key';
+import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
+import { assertMediaVia, type MediaVia } from '@/models/via';
+import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
+import type {
+  CredentialScopedDb,
+  WorkflowScopedDb,
+} from '@/platform/server/db/scoped-workflow';
+import { generateVideo, type TokenUsage } from '@tanstack/ai';
+import { falVideo } from '@tanstack/ai-fal';
+import { createGeminiVideo } from '@tanstack/ai-gemini';
+import { createGrokVideo } from '@tanstack/ai-grok';
+import { z } from 'zod';
+import { getVideoJobStatus } from './video-job-status';
+import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
+
+export async function resolveFalKey(
+  credentials?: CredentialScopedDb
+): Promise<ResolvedApiKey> {
+  if (credentials) return credentials.resolveKey('fal');
+  return { key: getEnv().FAL_KEY, source: 'platform' };
+}
+
+export async function resolveOptionalFalKey(
+  credentials?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (credentials) return credentials.resolveOptionalKey('fal');
+  const platformKey = getEnv().FAL_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+/** Undefined when no xAI key exists. */
+export async function resolveOptionalXaiKey(
+  credentials?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (credentials) return credentials.resolveOptionalKey('xai');
+  const platformKey = getEnv().XAI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+/** `fetch` is set only to capture the body (`sendVideoJob`). */
+export function createNativeGrokVideoAdapter(
+  apiKey: string,
+  fetch: typeof globalThis.fetch = workersSafeFetch
+) {
+  const env = getEnv();
+  return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
+    fetch,
+    ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
+  });
+}
+
+export function createNativeGeminiVideoAdapter(apiKey: string) {
+  const env = getEnv();
+  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
+    // The aimock hook for the native Google path, like XAI_BASE_URL.
+    ...(env.GEMINI_BASE_URL && {
+      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+    }),
+  });
+}
+
+/** What the `openstory` via needs from the calling step; null keeps the call direct. */
+export type VideoGatewayCall = {
+  scopedDb: WorkflowScopedDb;
+  /** The caller's run, so the stale-job sweep can end a job whose run died. */
+  runId: string;
+  /** Replay-stable per submit step: a retried step finds the same job and hold. */
+  idempotencyKey: string;
+  /** Streams the finished clip into R2 inside the poll step that saw it (#1645). */
+  store: GatewayStore;
+};
+
+/** A provider call; `fetch` is passed only to capture the body it would send. */
+export type VideoSend = (
+  fetch?: typeof globalThis.fetch
+) => Promise<{ jobId: string }>;
+
+const jsonBody = z.record(z.string(), z.json());
+
+/** The exact body the provider adapter would send, read off its one request; nothing leaves. */
+async function captureVideoBody(send: VideoSend): Promise<GatewayJobInput> {
+  let body: GatewayJobInput | undefined;
+  const capture: typeof globalThis.fetch = async (input, init) => {
+    body = jsonBody.parse(JSON.parse(await new Request(input, init).text()));
+    throw new Error('Captured, not sent');
+  };
+  try {
+    await send(capture);
+  } catch (error) {
+    if (!body) throw error;
+  }
+  if (!body) throw new Error('The provider call made no request');
+  return body;
+}
+
+/**
+ * Sends one video job. With a gateway call and a body the gateway can hold,
+ * the body the provider adapter would send goes through the `openstory`
+ * adapter (held, then charged by the poll that sees it finish); otherwise the
+ * provider call runs as it is. Decided once, before any job exists.
+ */
+export async function sendVideoJob(params: {
+  provider: GatewayProvider;
+  /** The provider's own model id: a fal endpoint, the xAI or Ark model. */
+  modelId: string;
+  threadId: string;
+  gateway: VideoGatewayCall | null;
+  send: VideoSend;
+}): Promise<{ jobId: string; via: 'openstory' | 'direct' }> {
+  const { gateway } = params;
+  if (gateway) {
+    const body = await captureVideoBody(params.send);
+    // Decided in the submit step, where the body first exists; the step's result is the snapshot.
+    const route = await resolveGatewayRoute({
+      scopedDb: gateway.scopedDb.liveRead,
+      provider: params.provider,
+      modelId: params.modelId,
+      body,
+    });
+    if (route.via === 'openstory') {
+      const transport = inProcessGateway({
+        scopedDb: gateway.scopedDb,
+        model: route.model,
+        runId: gateway.runId,
+        store: gateway.store,
+        // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
+        uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+      });
+      const job = await generateVideo({
+        adapter: openstoryVideo(route.model.id, transport, {
+          idempotencyKey: gateway.idempotencyKey,
+        }),
+        prompt: '',
+        modelOptions: body,
+        threadId: params.threadId,
+        debug: false,
+      });
+      return { jobId: job.jobId, via: 'openstory' };
+    }
+  }
+  const job = await params.send();
+  return { jobId: job.jobId, via: 'direct' };
+}
+
+export type StampedVideoJob = {
+  jobId: string;
+  /** A missing stamp is a job from before the field: fal. */
+  via: string | undefined;
+  /** The provider's model id the job went to; missing on runs from before the stamp: the catalog id. */
+  endpointId: string | undefined;
+  modelKey: ImageToVideoModel;
+  threadId?: string;
+};
+
+/**
+ * One status read on the via the job was stamped with: job ids are
+ * via-scoped, so a re-resolved via would read a lost generation. An
+ * `openstory` job's poll that sees it finish stores and charges it.
+ */
+export async function pollVideoJob(
+  job: StampedVideoJob,
+  ctx: {
+    /** Undefined runs on the platform keys (scripts with no D1). */
+    credentials: CredentialScopedDb | undefined;
+    /** Required to poll an `openstory` job. */
+    gateway: Pick<VideoGatewayCall, 'scopedDb' | 'store'> | null;
+  }
+) {
+  const thread = job.threadId ? { threadId: job.threadId } : {};
+  const stamp = job.via ?? 'fal';
+  const endpointId = job.endpointId ?? IMAGE_TO_VIDEO_MODELS[job.modelKey].id;
+  if (stamp === 'openstory') {
+    if (!ctx.gateway) {
+      throw new Error(`Video job on the gateway polled without its store`);
+    }
+    return getVideoJobStatus({
+      adapter: openstoryVideoStatus(endpointId, inProcessPoller(ctx.gateway)),
+      jobId: job.jobId,
+      ...thread,
+    });
+  }
+  const via = assertMediaVia(stamp);
+  switch (via) {
+    case 'xai': {
+      const key = await resolveOptionalXaiKey(ctx.credentials);
+      if (!key) {
+        throw new Error(
+          `Video job ${job.jobId} was submitted to xAI but no xAI key is available to poll it`
+        );
+      }
+      return getVideoJobStatus({
+        adapter: createNativeGrokVideoAdapter(key.key),
+        jobId: job.jobId,
+        ...thread,
+      });
+    }
+    case 'google': {
+      const key = await resolveGoogleKeyForStampedJob(ctx.credentials);
+      if (!key) {
+        throw new Error(
+          `Video job ${job.jobId} was submitted to Google but no Google key is available to poll it`
+        );
+      }
+      const result = await getVideoJobStatus({
+        adapter: createNativeGeminiVideoAdapter(key.key),
+        jobId: job.jobId,
+        ...thread,
+      });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
+    }
+    case 'fal': {
+      const key = await resolveFalKey(ctx.credentials);
+      // Bounds one status fetch; the workflow budgets the whole poll (#826).
+      return getVideoJobStatus({
+        adapter: falVideo(endpointId, {
+          apiKey: key.key,
+          fetch: createDeadlineFetch(
+            FAL_REQUEST_TIMEOUT_MS,
+            'Video job status'
+          ),
+        }),
+        jobId: job.jobId,
+        ...thread,
+      });
+    }
+    case 'byteplus': {
+      const arkKey = getArkApiKey();
+      if (!arkKey) {
+        throw new Error(
+          `Video job ${job.jobId} was submitted to BytePlus but no ARK_API_KEY is available to poll it`
+        );
+      }
+      const { apiKey, ...config } = arkAdapterConfig(
+        arkKey,
+        FAL_REQUEST_TIMEOUT_MS
+      );
+      const createBytePlusVideo = await loadBytePlusVideo();
+      return withBytePlusQuotaRetry('video poll', () =>
+        getVideoJobStatus({
+          adapter: createBytePlusVideo(endpointId, apiKey, config),
+          jobId: job.jobId,
+          ...thread,
+        })
+      );
+    }
+  }
+}
+
+/** The charge for a clip on a direct via; an `openstory` clip is charged by the gateway. */
+export async function videoCostFromUsage(
+  job: { via: MediaVia; endpointId: string; modelKey: ImageToVideoModel },
+  usage: TokenUsage | undefined,
+  source: 'motion' | 'studio-video'
+) {
+  const billed = billedFields(usage);
+  const reportMissing = (cost: unknown) => {
+    const label = `${source}-cost-from-usage-${job.via}`;
+    if (cost === undefined) {
+      reportMissingBillingCost({
+        source: label,
+        modelId: job.modelKey,
+        metadata: { usage },
+      });
+    }
+    if (billed.missingUnitsReason) {
+      reportMissingBillingCost({
+        source: label,
+        modelId: job.modelKey,
+        description: billed.missingUnitsReason,
+        metadata: { usage },
+      });
+    }
+  };
+  switch (job.via) {
+    case 'xai': {
+      const cost = grokVideoCost(usage?.cost);
+      reportMissing(cost);
+      return {
+        endpointId: NATIVE_GROK_VIDEO_MODEL,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: cost ?? ZERO_MICROS,
+        recordFalUsage: false,
+      };
+    }
+    case 'google': {
+      // Omni bills seconds of video as output tokens, at Google's video rate.
+      const cost = geminiVideoCostFromUsage(usage);
+      reportMissing(cost);
+      return {
+        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: cost ?? ZERO_MICROS,
+        recordFalUsage: false,
+      };
+    }
+    case 'fal':
+      return {
+        endpointId: job.endpointId,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: await falCostFromUnits(
+          job.endpointId,
+          billed.unitsBilled,
+          undefined,
+          { missingUnitsReason: billed.missingUnitsReason }
+        ),
+        recordFalUsage: true,
+      };
+    case 'byteplus': {
+      const unitsBilled = bytePlusVideoUnitsBilled(usage?.totalTokens);
+      return {
+        endpointId: job.endpointId,
+        unitsBilled,
+        billedUnit: undefined,
+        cost: await falCostFromUnits(job.endpointId, unitsBilled),
+        recordFalUsage: false,
+      };
+    }
+  }
+}
