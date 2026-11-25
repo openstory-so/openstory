@@ -894,6 +894,87 @@ from modelschemas on a request.
 - The lists read modelschemas: an outage hides them, and stops generation
   for every model outside the snapshot.
 
+## Motion, studio video and lip-sync (#2435)
+
+### One path
+
+`src/motion/server/video-job.ts` is the one send, poll and price path for
+motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
+`motionCostFromUsage` and `studioVideoCostFromUsage` are gone.
+
+- **Route in the submit step.** The motion body (prompt, references, Ark
+  asset ids, fetchable URLs) first exists there, and motion has six
+  triggers. `sendVideoJob` captures the body the provider adapter would send
+  (its one request, intercepted; nothing leaves) and asks
+  `resolveGatewayRoute` with `scopedDb.liveRead`, the workflow's BYOK hatch.
+  The step's result (job id plus `via`) is the snapshot.
+- **`openstory`:** the same body through `openstoryVideo` over
+  `inProcessGateway`, key `<run>:submit-motion<tag>` (studio
+  `submit-video<tag>`). The job is stamped `via: 'openstory'`.
+- **Direct:** own key, a model or body the gateway cannot hold, an Ark draft
+  or its final (Ark task ids the gateway does not hand out), and scripts.
+  The reason is logged (`Video job routed direct`).
+- **Poll follows the stamp.** `openstory` polls `openstoryVideoStatus` over
+  `inProcessPoller`; the poll that sees the job finish stores the clip to R2
+  and charges it. A missing stamp is fal, and a missing endpoint stamp is the
+  catalog id, so a job in flight from before finishes where it went.
+- **Price:** `videoCostFromUsage` runs only on a direct via, on the endpoint
+  stamped on the job. A gateway clip skips `price-motion-generation` and
+  `deduct-credits`, and its version records no provider request id.
+- **Cancel** is data-only, as before: the version is marked cancelled and the
+  run goes on. The provider job is not stopped, so the gateway charges it
+  when it finishes and the clip is discarded. A provider failure is released
+  by the poller (`releaseGatewayRun`); a run that times out after 30 minutes
+  leaves a live job that the stale-job sweep ends (hold zeroed, job failed).
+  Each attempt holds in its own submit, so no hold outlives
+  `RESERVATION_TTL_MS` (6 hours) under a live run.
+- **Packed clips:** one run, one submit, one gateway job, one charge.
+- **Upload rights:** `video-job.ts` passes `UPLOAD_RIGHTS_CHECKED`. Studio
+  checks every upload at the click (`requireCheckedUploadRights`); motion's
+  stills and sheets passed the same gate when saved, and its reference clips
+  are checked in `check-reference-clip-rights`.
+
+### Holdable today (2026-11-26)
+
+The product's real request bodies, priced against the live cards:
+
+| Model (via)                         | Holdable | Why not                                               |
+| ----------------------------------- | -------- | ----------------------------------------------------- |
+| Grok Imagine Video 1.5 (native xAI) | Yes      |                                                       |
+| Kling v4, i2v and reference (fal)   | Yes      |                                                       |
+| Kling O3 reference (fal)            | Yes      |                                                       |
+| Omni Flash i2v and reference (fal)  | Yes      | (native Google is the product's via; see below)       |
+| Seedance 2.0 mini (fal)             | Yes      |                                                       |
+| Seedance 2.5 reference (fal)        | Yes      |                                                       |
+| Seedance 2.5 i2v (fal)              | No       | prices, but the schema check refuses `aspect_ratio`   |
+| Seedance 2.0, 2.5, mini (Ark)       | No       | card lever `input_video` has no estimate              |
+| Omni Flash (native Google)          | No       | usage-only card (tokens), no estimate                 |
+| Kling v3 Pro i2v (fal)              | No       | card `generate_audio` is an enum; the field a boolean |
+| MiniMax H3 Max (fal)                | No       | card `resolution` is lower case; the schema `768P`    |
+| Grok Imagine Video 1.5 (fal)        | No       | card `image_url` is typed boolean                     |
+| Seedance 2.0 enterprise (fal)       | No       | unknown model                                         |
+| Sync lip-sync v3 (fal)              | No       | usage-only card (`minutes`), no estimate              |
+
+With platform keys the product sends Grok to xAI, Seedance to Ark and Omni
+Flash to Google, so today only Grok and the fal Kling and Seedance models
+reach the gateway. The upstream card issues are not filed yet (see the PR).
+
+### Lip-sync
+
+`LipsyncWorkflow` stays on the direct fal path: its card has no estimate.
+It now builds a fal client per step (`lipsyncFalClient`). The shared
+`fal.config` it used put an organization's key on the module client and then
+awaited, so two runs in one isolate could send each other's key
+(`lipsync-fal-client.test.ts`).
+
+### Delete in #2439
+
+Kept only for own keys and unholdable models: the direct submit branches in
+`submitMotionJob` / `submitStudioVideoJob`, the non-`openstory` arms of
+`pollVideoJob`, `videoCostFromUsage`, the motion and studio
+`deduct-credits` / `price-motion-generation` / `price-video-generation`
+steps, `recordFalUsageStep` for video, and `lipsyncFalClient`.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

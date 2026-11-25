@@ -38,6 +38,7 @@ import {
 import { resolveGoogleKeyForStampedJob } from '@/models/server/google-key';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { assertMediaVia, type MediaVia } from '@/models/via';
+import { getLogger } from '@/platform/logger';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type {
   CredentialScopedDb,
@@ -50,6 +51,8 @@ import { createGrokVideo } from '@tanstack/ai-grok';
 import { z } from 'zod';
 import { getVideoJobStatus } from './video-job-status';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
+
+const logger = getLogger(['openstory', 'motion', 'video-job']);
 
 export async function resolveFalKey(
   credentials?: CredentialScopedDb
@@ -155,7 +158,13 @@ export async function sendVideoJob(params: {
       modelId: params.modelId,
       body,
     });
-    if (route.via === 'openstory') {
+    if (route.via === 'direct') {
+      logger.info('Video job routed direct', {
+        provider: params.provider,
+        modelId: params.modelId,
+        reason: route.reason,
+      });
+    } else {
       const transport = inProcessGateway({
         scopedDb: gateway.scopedDb,
         model: route.model,

@@ -786,8 +786,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // exhausts its budget fails only its own slot — motion-batch's
     // Promise.allSettled keeps sibling clips and the sequence alive.
     let videoUrl = '';
-    // Raw usage for the clip that succeeded — `motionCostFromUsage` turns
-    // this into a billed cost + unit count below, switching on the job's via.
+    // Raw usage of the clip that succeeded; `videoCostFromUsage` prices it on a direct via.
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
     // Every rejection in order: the rescue's may lack the `body.<field>`
