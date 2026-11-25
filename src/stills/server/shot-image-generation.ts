@@ -30,6 +30,7 @@ import {
 } from '@/shots/server/shot-image-input';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import type {
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
@@ -152,7 +153,11 @@ export async function generateShotImage(
   try {
     workflowRunId = await triggerWorkflow(
       '/image',
-      { ...workflowInput, targetVariantId: claim.id },
+      {
+        ...workflowInput,
+        targetVariantId: claim.id,
+        gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
+      },
       {
         // Claim-scoped: stable across retries of THIS enqueue (CF collapses
         // duplicate create()s), fresh per claim so a deliberate re-roll
@@ -277,9 +282,16 @@ export async function generateShotImageVariants(
       : null,
   };
 
-  const workflowRunId = await triggerWorkflow('/variant-image', workflowInput, {
-    deduplicationId: `variant-${shot.id}-${Date.now()}`,
-  });
+  const workflowRunId = await triggerWorkflow(
+    '/variant-image',
+    {
+      ...workflowInput,
+      gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
+    },
+    {
+      deduplicationId: `variant-${shot.id}-${Date.now()}`,
+    }
+  );
 
   return { workflowRunId, shotId: shot.id };
 }

@@ -10,6 +10,9 @@ vi.doMock('@/shots/server/shot-image-input', () => ({
   prepareShotImageWorkflowInput: prepare,
   getSceneLocationReferenceImages: vi.fn(),
 }));
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: vi.fn(async () => ({})),
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: vi.fn(async () => 'run-1'),
 }));

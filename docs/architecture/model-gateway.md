@@ -750,6 +750,41 @@ adapter's first product caller and the own-key path needs a run too.
 `extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
 bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
+## Product stills on the gateway (#2434)
+
+The trigger decides the route and puts it on the payload as
+`gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`):
+one `resolveGatewayRoute` per Grok image model, so a run that falls back to
+another Grok model mid-run still has its answer. A run triggered before
+#2434 has no routes and stays direct. `generateImageWithProvider` is the one
+place the route is applied (`gatewayImageRequest`): an `openstory` route plus
+a body the endpoint takes (`gatewayCannotRun`) runs the `openstory` adapter
+over `inProcessGateway`; anything else goes direct as before.
+
+- Each attempt is its own job and hold: the idempotency key is
+  `<runId>:<stepName>`, and the softening loops name a step per attempt.
+- A Grok refusal is a provider 4xx: the hold is released, the job is
+  `CONTENT_REJECTED`, and the message reaches `isContentRejectionError`
+  unchanged, so softening runs as before.
+- An `openstory` still is charged by the gateway; the workflows skip their
+  image `deductWorkflowCredits` on that via. Studio takes no trigger hold for
+  it.
+- Proof (2026-11-26, `bun dev`): one Studio Grok still through
+  `StudioGenerationWorkflow`. One hold of $0.06, one `credit_usage` of $0.06
+  (`gateway:<job>:settle`), no other debit, output in R2.
+
+Routed today: Studio images, shot image and variant regenerations, character
+and location sheet regenerations. Stay direct:
+
+- Stills with reference images (Grok's `v1/images/generations` takes none),
+  upscales (an edit), sheet portraits that edit, posters (fal).
+- fal Flux and Seedream: the cards have a usage lever with no estimate
+  (#2432). Gemini images: TanStack/schemas#755.
+- Runs from the sequence pipeline (storyboard, continue, update stale, smart
+  retry, add model, shot preview): their triggers do not carry routes yet.
+- Pre-flight quotes still read the fal pricing map: Grok 2.0 shows $0.04, the
+  card holds and charges $0.06 at `quality: medium`.
+
 ## Every model can be priced (#2432)
 
 ### The stored snapshot
