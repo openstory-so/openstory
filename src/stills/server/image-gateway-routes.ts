@@ -1,8 +1,7 @@
 /** Image routes a trigger snapshots onto the payload: every Grok image model, since a run may switch to the content fallback. */
 
 import {
-  gatewayRouteKey,
-  resolveGatewayRoute,
+  resolveGatewayRoutes,
   type GatewayRoutes,
 } from '@/gateway/server/route';
 import { nativeGrokImageModel } from '@/models/grok-native';
@@ -11,7 +10,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { typedEntries } from '@/platform/typed-object';
 
 /** Grok only: the product builds no gateway body for fal, Seedream or Gemini stills yet (docs/architecture/model-gateway.md). */
-export async function imageGatewayRoutes(
+export function imageGatewayRoutes(
   scopedDb: Pick<ScopedDb, 'apiKeys'>
 ): Promise<GatewayRoutes> {
   const ids = new Set(
@@ -20,19 +19,8 @@ export async function imageGatewayRoutes(
       return id ? [id] : [];
     })
   );
-  const routes = await Promise.all(
-    [...ids].map(
-      async (modelId) =>
-        [
-          gatewayRouteKey('grok', modelId),
-          await resolveGatewayRoute({
-            scopedDb,
-            provider: 'grok',
-            modelId,
-            body: null,
-          }),
-        ] as const
-    )
+  return resolveGatewayRoutes(
+    scopedDb,
+    [...ids].map((modelId) => ({ provider: 'grok' as const, modelId }))
   );
-  return Object.fromEntries(routes);
 }

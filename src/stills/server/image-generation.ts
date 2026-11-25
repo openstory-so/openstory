@@ -39,11 +39,7 @@ import { getLogger } from '@/platform/logger';
 import { openstoryImage } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import type { GatewayModel } from '@/gateway/server/catalog';
-import {
-  gatewayCannotRun,
-  gatewayRouteKey,
-  type GatewayRoutes,
-} from '@/gateway/server/route';
+import { gatewayRunRoute, type GatewayRoutes } from '@/gateway/server/route';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import type { GatewayJobInput } from '@/gateway/schema';
@@ -223,15 +219,15 @@ export function gatewayImageRequest(
   routes: GatewayRoutes | undefined
 ): { model: GatewayModel; body: GatewayJobInput } | null {
   const nativeModel = nativeGrokImageModel(params.model);
-  const route = nativeModel
-    ? routes?.[gatewayRouteKey('grok', nativeModel)]
-    : undefined;
-  if (!nativeModel || route?.via !== 'openstory') return null;
+  if (!nativeModel) return null;
   const body = buildGrokImageBody(params, nativeModel);
-  // A routing rule on the run's own body, before any job: never a retry on another via.
-  const reason = gatewayCannotRun(route.model, body);
-  if (reason) {
-    logger.info(`Image stays direct: ${reason}`, { model: params.model });
+  const route = gatewayRunRoute(
+    routes,
+    { provider: 'grok', modelId: nativeModel },
+    body
+  );
+  if (route.via === 'direct') {
+    logger.info(`Image stays direct: ${route.reason}`, { model: params.model });
     return null;
   }
   return { model: route.model, body };

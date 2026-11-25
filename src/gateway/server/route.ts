@@ -2,13 +2,13 @@
 
 import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
 import {
-  getGatewayModel,
+  getSnapshotGatewayModel,
   unholdableReason,
   type GatewayModel,
 } from '@/gateway/server/catalog';
 import { priceGatewayJob } from '@/gateway/server/price';
 import { validatedBody } from '@/gateway/server/submit-job';
-import { OpenStoryError, ValidationError } from '@/platform/errors';
+import { ValidationError } from '@/platform/errors';
 import type { ApiKeyProvider } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -17,13 +17,16 @@ export type GatewayRoute =
   | { readonly via: 'openstory'; readonly model: GatewayModel }
   | { readonly via: 'direct'; readonly reason: string };
 
-/** Routes a run carries, keyed by `gatewayRouteKey`; a model with no entry is direct. */
+/** Routes a run carries, keyed by `gatewayRouteKey`; any kind of model. */
 export type GatewayRoutes = Readonly<Record<string, GatewayRoute>>;
 
-export function gatewayRouteKey(
-  provider: GatewayProvider,
-  modelId: string
-): string {
+/** A model a trigger routes. */
+export type GatewayRouteTarget = {
+  readonly provider: GatewayProvider;
+  readonly modelId: string;
+};
+
+function gatewayRouteKey(provider: GatewayProvider, modelId: string): string {
   return `${provider}/${modelId}`;
 }
 
@@ -33,6 +36,10 @@ const OWN_KEY: Readonly<Record<GatewayProvider, ApiKeyProvider | null>> = {
   byteplus: null,
   gemini: 'google',
   grok: 'xai',
+};
+
+type RouteScopedDb = {
+  readonly apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
 };
 
 /** Why the gateway cannot run this body on this model, or null: the schema and the card, no read. */
@@ -52,38 +59,61 @@ export function gatewayCannotRun(
 }
 
 /**
- * Own key -> direct; platform key and a holdable card -> openstory; else
- * direct with the reason. A null `body` (built only in the run) leaves the
- * body check to `gatewayCannotRun` at the call.
+ * Own key -> direct; platform key and a holdable card in the stored snapshot
+ * -> openstory; else direct with the reason. Never reads modelschemas. A null
+ * `body` (built only in the run) leaves the body check to `gatewayRunRoute`.
  */
 export async function resolveGatewayRoute({
   scopedDb,
   provider,
   modelId,
   body,
-}: {
-  readonly scopedDb: {
-    readonly apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
-  };
-  readonly provider: GatewayProvider;
-  readonly modelId: string;
+}: GatewayRouteTarget & {
+  readonly scopedDb: RouteScopedDb;
   readonly body: GatewayJobInput | null;
 }): Promise<GatewayRoute> {
   const ownKey = OWN_KEY[provider];
   if (ownKey && (await scopedDb.apiKeys.hasUsableKey(ownKey))) {
     return { via: 'direct', reason: 'The organization has its own key' };
   }
-  let model: GatewayModel;
-  try {
-    model = await getGatewayModel(provider, modelId);
-  } catch (error) {
-    // A refusal routes direct; an outage throws.
-    if (error instanceof OpenStoryError && error.statusCode < 500) {
-      return { via: 'direct', reason: error.message };
-    }
-    throw error;
-  }
+  const model = await getSnapshotGatewayModel(provider, modelId);
+  if (!model) return { via: 'direct', reason: 'not in the gateway snapshot' };
   const reason =
     unholdableReason(model.card) ?? (body && gatewayCannotRun(model, body));
   return reason ? { via: 'direct', reason } : { via: 'openstory', model };
+}
+
+/** The routes a trigger puts on the payload: one per model the run may call. */
+export async function resolveGatewayRoutes(
+  scopedDb: RouteScopedDb,
+  targets: readonly GatewayRouteTarget[]
+): Promise<GatewayRoutes> {
+  const entries = await Promise.all(
+    targets.map(
+      async (target) =>
+        [
+          gatewayRouteKey(target.provider, target.modelId),
+          await resolveGatewayRoute({ scopedDb, ...target, body: null }),
+        ] as const
+    )
+  );
+  return Object.fromEntries(entries);
+}
+
+/**
+ * The route a run applies: its payload snapshot plus the pure body check, no
+ * read, so a step retry takes the same route. Absent routes are a payload
+ * from before #2434 and run direct.
+ */
+export function gatewayRunRoute(
+  routes: GatewayRoutes | undefined,
+  target: GatewayRouteTarget,
+  body: GatewayJobInput
+): GatewayRoute {
+  if (!routes) return { via: 'direct', reason: 'triggered before routes' };
+  const route = routes[gatewayRouteKey(target.provider, target.modelId)];
+  if (!route) return { via: 'direct', reason: 'not routed at the trigger' };
+  if (route.via === 'direct') return route;
+  const reason = gatewayCannotRun(route.model, body);
+  return reason ? { via: 'direct', reason } : route;
 }

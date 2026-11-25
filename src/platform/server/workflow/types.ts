@@ -102,11 +102,7 @@ export interface UserWorkflowContext {
    * still zero explicitly.
    */
   ownsReservation?: boolean;
-  /**
-   * Gateway routes decided at the trigger (`resolveGatewayRoute`, #2430).
-   * Optional only for runs triggered before #2434: those stay direct.
-   * Children inherit it from the parent payload, like `reservationId`.
-   */
+  /** Optional only because a payload persisted before #2434 has none; read it through `gatewayRunRoute`. */
   gatewayRoutes?: GatewayRoutes;
 }
 
