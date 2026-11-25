@@ -45,6 +45,7 @@ import {
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
 import { SEED_AUDIO_MAX_REFERENCES } from '@/cast/server/voice/seed-audio';
 import { generateSeedDialogueSpeech } from '@/motion/server/generate-seed-dialogue-speech';
+import { platformSeedRecorder } from '@/cast/server/voice/seed-audio';
 import {
   generateDialogueSpeechCall,
   type DialogueSpeechCall,
@@ -229,9 +230,10 @@ async function recordClaimed(
             (line) => voiceProviderOf(line.voiceId) === 'seed'
           )
             ? await generateSeedDialogueSpeech({
-                seedKey: (
-                  await args.scopedDb.credentials.resolveKey('seed-speech')
-                ).key,
+                record: platformSeedRecorder(
+                  (await args.scopedDb.credentials.resolveKey('seed-speech'))
+                    .key
+                ),
                 elevenLabsKey: eleven.key,
                 organizationId: args.organizationId,
                 sequenceId: args.sequenceId,

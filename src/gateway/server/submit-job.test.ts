@@ -200,8 +200,13 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const { submitGatewayJob, holdGatewayJob, gatedUrls, readIdempotencyKey } =
-  await import('./submit-job');
+const {
+  submitGatewayJob,
+  holdGatewayJob,
+  gatedUrls,
+  readIdempotencyKey,
+  UPLOAD_RIGHTS_CHECKED,
+} = await import('./submit-job');
 const { readGatewayJob } = await import('./read-job');
 const { settleGatewayJob } = await import('./settle');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
@@ -546,16 +551,43 @@ describe('submitGatewayJob', () => {
   });
 
   it('refuses a Seed Audio voice cloned from a clip, which the check cannot hear', async () => {
-    const error = await refused({
-      provider: 'byteplus',
-      modelId: 'seed-audio-1.0',
-      body: {
+    for (const reference of [
+      { audio_url: 'https://a.example/mara.wav' },
+      { audio_data: 'UklGRg==' },
+    ]) {
+      const error = await refused({
+        provider: 'byteplus',
+        modelId: 'seed-audio-1.0',
+        body: {
+          text_prompt: '@Audio1 says the port engine is done for',
+          duration: 5,
+          references: [reference],
+        },
+      });
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(String(error)).toContain('Cloning a voice');
+    }
+    expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
+  it('holds a cloned Seed Audio voice for the in-process caller, which ran its own rights step', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const { job } = await holdGatewayJob(
+      model,
+      {
         text_prompt: '@Audio1 says the port engine is done for',
         duration: 5,
-        references: [{ audio_url: 'https://a.example/mara.wav' }],
+        references: [{ audio_data: 'UklGRg==' }],
       },
-    });
-    expect(error).toBeInstanceOf(ValidationError);
+      {
+        scopedDb,
+        rights: UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-clone-1',
+        oauthClientId: null,
+      }
+    );
+    expect(job.status).toBe('queued');
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
   });
 

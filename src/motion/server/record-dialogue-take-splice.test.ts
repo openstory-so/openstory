@@ -99,7 +99,7 @@ const base = {
 const record = (overrides: { base?: typeof base | null } = {}) =>
   recordDialogueTake({
     elevenLabsKey: 'el-key',
-    seedKey: null,
+    seed: null,
     organizationId: 'org',
     sequenceId: 'seq',
     shotId: 'shot',

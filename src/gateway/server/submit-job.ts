@@ -169,18 +169,6 @@ export function validatedBody(
     });
   }
 
-  // The likeness check sees images and video; it cannot hear whose voice a clip is.
-  if (
-    model.provider === 'byteplus' &&
-    model.endpointId === BYTEPLUS_ENDPOINTS.speech &&
-    Array.isArray(body.references) &&
-    body.references.some((entry) => isObject(entry) && 'audio_url' in entry)
-  ) {
-    throw new ValidationError(
-      'Cloning a voice from a clip is not served; use a `speaker`'
-    );
-  }
-
   const malformed = countFieldWhere(
     body,
     (count) => !Number.isInteger(count) || Number(count) < 1
@@ -205,6 +193,23 @@ export function validatedBody(
     );
   }
   return body;
+}
+
+/** The likeness check cannot hear whose voice a clip is; only the product's own voice flow, with its own rights step, clones. */
+function refuseVoiceClone(model: GatewayModel, body: GatewayJobInput): void {
+  if (
+    model.provider === 'byteplus' &&
+    model.endpointId === BYTEPLUS_ENDPOINTS.speech &&
+    Array.isArray(body.references) &&
+    body.references.some(
+      (entry) =>
+        isObject(entry) && ('audio_url' in entry || 'audio_data' in entry)
+    )
+  ) {
+    throw new ValidationError(
+      'Cloning a voice from a clip is not served; use a `speaker`'
+    );
+  }
 }
 
 const INLINE = 'Send media as a URL, not inline data';
@@ -341,6 +346,7 @@ export async function holdGatewayJob(
     organizationId: scopedDb.organizationId,
   });
   if (rights !== UPLOAD_RIGHTS_CHECKED) {
+    refuseVoiceClone(model, input);
     await requireCheckedUploadRights(
       withPlatformLlmKey(rights.scopedDb),
       gatedUrls(input),

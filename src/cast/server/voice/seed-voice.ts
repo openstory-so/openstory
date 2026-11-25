@@ -25,7 +25,11 @@ import {
 import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { readStorageObject, uploadFile } from '#storage';
 import { isolateVoice } from './elevenlabs-voice';
-import { recordCheckedTake, SEED_BOOTH_PROMPT } from './seed-audio';
+import {
+  recordCheckedTake,
+  SEED_BOOTH_PROMPT,
+  type SeedRecorder,
+} from './seed-audio';
 import { WORD_LEAD_SECONDS } from './take-check';
 import { z } from 'zod';
 
@@ -43,8 +47,8 @@ export type RecordedRangeRead = {
   /** The whole read, for audition. */
   url: string;
   path: string;
-  /** What the take spent, for billing. */
-  seedSeconds: number;
+  /** What the take spent, for billing; `seedSeconds` is null when the gateway charged it. */
+  seedSeconds: number | null;
   transcribedSeconds: number;
   isolatedSeconds: number;
 };
@@ -55,14 +59,15 @@ function rangeReadPrompt(description: string, script: RangeScript): string {
 }
 
 export async function recordRangeRead(input: {
-  seedKey: string;
+  record: SeedRecorder;
   elevenLabsKey: string;
   voiceId: string;
   description: string;
   script: RangeScript;
 }): Promise<RecordedRangeRead> {
   const take = await recordCheckedTake({
-    seedKey: input.seedKey,
+    record: input.record,
+    take: 1,
     elevenLabsKey: input.elevenLabsKey,
     prompt: rangeReadPrompt(input.description, input.script),
     references: [],

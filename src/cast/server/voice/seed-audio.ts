@@ -14,12 +14,27 @@
  * included.
  */
 
+import type { Microdollars } from '@/billing/money';
+import {
+  SEED_AUDIO_ENDPOINT,
+  seedAudioCost,
+} from '@/billing/seed-speech-pricing';
 import { SEED_AUDIO_MODEL } from '@/cast/seed-voice';
+import type { GatewayJobInput } from '@/gateway/schema';
+import { openstoryAudio } from '@/gateway/server/adapter';
+import { inProcessGateway } from '@/gateway/server/adapter/in-process';
+import type { GatewayModel } from '@/gateway/server/catalog';
+import { storeGatewayOutput } from '@/gateway/server/storage';
+import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
 import { getSeedSpeechBaseUrl } from '@/models/server/seed-speech-config';
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { generateId } from '@/platform/id';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { honestDataSize } from '@/motion/server/pad-dialogue-audio';
+import { readStorageObject } from '#storage';
+import { generateAudio } from '@tanstack/ai';
 import { transcribeSpeech } from './elevenlabs-voice';
 import { checkParts, type PartsCheck } from './take-check';
 
@@ -36,9 +51,49 @@ export const SEED_BOOTH_PROMPT =
 
 type SeedAudioResult = {
   wav: Uint8Array<ArrayBuffer>;
-  /** Seconds billed (`original_duration`). */
-  billedSeconds: number;
+  /** Seconds the caller bills (`original_duration`); null when the gateway held and charged the take. */
+  billedSeconds: number | null;
 };
+
+/** Records one take of a Seed Audio body; `take` numbers the takes of one step. */
+export type SeedRecorder = (
+  body: GatewayJobInput,
+  take: number
+) => Promise<SeedAudioResult>;
+
+/** The caller's ledger line for a take: none when the gateway charged it. */
+export function seedCharge(billedSeconds: number | null): {
+  endpointId: string;
+  model: string;
+  costMicros: Microdollars;
+}[] {
+  return billedSeconds === null
+    ? []
+    : [
+        {
+          endpointId: SEED_AUDIO_ENDPOINT,
+          model: SEED_AUDIO_MODEL,
+          costMicros: seedAudioCost(billedSeconds),
+        },
+      ];
+}
+
+/** The request: a text prompt and the reference clips as bytes, `@Audio1` first. */
+function seedAudioBody(
+  prompt: string,
+  references: readonly Uint8Array[]
+): GatewayJobInput {
+  return {
+    model: SEED_AUDIO_MODEL,
+    text_prompt: prompt,
+    ...(references.length > 0 && {
+      references: references.map((bytes) => ({
+        audio_data: bytesToBase64(bytes),
+      })),
+    }),
+    audio_config: { format: 'wav', sample_rate: SAMPLE_RATE },
+  };
+}
 
 type SeedResponse = {
   code?: number;
@@ -47,51 +102,86 @@ type SeedResponse = {
   original_duration?: number;
 };
 
-async function seedAudio(input: {
-  apiKey: string;
-  prompt: string;
-  /** Reference clips as bytes, `@Audio1` first. */
-  references: readonly Uint8Array[];
-}): Promise<SeedAudioResult> {
-  const body = JSON.stringify({
-    model: SEED_AUDIO_MODEL,
-    text_prompt: input.prompt,
-    ...(input.references.length > 0 && {
-      references: input.references.map((bytes) => ({
-        audio_data: bytesToBase64(bytes),
-      })),
-    }),
-    audio_config: {
-      format: 'wav',
-      sample_rate: SAMPLE_RATE,
-    },
+/** The platform key, called here; the caller bills `billedSeconds`. */
+export function platformSeedRecorder(apiKey: string): SeedRecorder {
+  return async (input) => {
+    const body = JSON.stringify(input);
+    for (let attempt = 0; ; attempt++) {
+      await acquireSeedSpeechToken();
+      const res = await fetch(`${getSeedSpeechBaseUrl()}/api/v3/tts/create`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': apiKey,
+          'X-Api-Request-Id': generateId(),
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(240_000),
+      });
+      const json: SeedResponse = await res
+        .json<SeedResponse>()
+        .catch(() => ({}));
+      if (res.status === 429 && attempt < QUOTA_RETRIES) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 2000 * (attempt + 1))
+        );
+        continue;
+      }
+      if (!res.ok || !json.audio) {
+        throw new Error(
+          `Seed Audio ${res.status}${json.code ? ` ${json.code}` : ''}: ${json.message ?? 'no audio returned'}`
+        );
+      }
+      const wav = base64ToBytes(json.audio);
+      honestDataSize(wav);
+      return { wav, billedSeconds: json.original_duration ?? 0 };
+    }
+  };
+}
+
+/**
+ * The `openstory` gateway: each take is held and charged there, under
+ * `${idempotencyKey}:${take}`, so a retried step must put its attempt in the key.
+ */
+export function gatewaySeedRecorder(params: {
+  scopedDb: WorkflowScopedDb;
+  /** The model as it read at the trigger. */
+  model: GatewayModel;
+  runId: string;
+  idempotencyKey: string;
+}): SeedRecorder {
+  const { scopedDb, model, runId } = params;
+  const folder = `seed-takes/${generateId()}`;
+  // References: the organization's Seed voice clips (made from text) and the user's own in-app mic take.
+  const gateway = inProcessGateway({
+    scopedDb,
+    model,
+    runId,
+    store: (media, index) =>
+      storeGatewayOutput({
+        media,
+        kind: 'audio',
+        organizationId: scopedDb.organizationId,
+        folder,
+        index,
+      }),
+    uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
   });
-  for (let attempt = 0; ; attempt++) {
-    await acquireSeedSpeechToken();
-    const res = await fetch(`${getSeedSpeechBaseUrl()}/api/v3/tts/create`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': input.apiKey,
-        'X-Api-Request-Id': generateId(),
-        'Content-Type': 'application/json',
-      },
-      body,
-      signal: AbortSignal.timeout(240_000),
+  return async (body, take) => {
+    const { audio } = await generateAudio({
+      adapter: openstoryAudio(model.id, gateway, {
+        idempotencyKey: `${params.idempotencyKey}:${take}`,
+      }),
+      prompt: '',
+      modelOptions: body,
+      threadId: runId,
     });
-    const json: SeedResponse = await res.json<SeedResponse>().catch(() => ({}));
-    if (res.status === 429 && attempt < QUOTA_RETRIES) {
-      await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
-      continue;
-    }
-    if (!res.ok || !json.audio) {
-      throw new Error(
-        `Seed Audio ${res.status}${json.code ? ` ${json.code}` : ''}: ${json.message ?? 'no audio returned'}`
-      );
-    }
-    const wav = base64ToBytes(json.audio);
-    honestDataSize(wav);
-    return { wav, billedSeconds: json.original_duration ?? 0 };
-  }
+    const key = audio.url ? r2KeyFromUrl(audio.url) : null;
+    const stored = key ? await readStorageObject(key) : null;
+    if (!stored) throw new Error('The gateway stored no Seed take');
+    honestDataSize(stored.bytes);
+    return { wav: stored.bytes, billedSeconds: null };
+  };
 }
 
 export type CheckedTake = SeedAudioResult & {
@@ -105,17 +195,18 @@ export type CheckedTake = SeedAudioResult & {
  * say was spoken, in order.
  */
 export async function recordCheckedTake(input: {
-  seedKey: string;
+  record: SeedRecorder;
+  /** Numbers this take among the step's takes. */
+  take: number;
   elevenLabsKey: string;
   prompt: string;
   references: readonly Uint8Array[];
   parts: readonly string[];
 }): Promise<CheckedTake> {
-  const take = await seedAudio({
-    apiKey: input.seedKey,
-    prompt: input.prompt,
-    references: input.references,
-  });
+  const take = await input.record(
+    seedAudioBody(input.prompt, input.references),
+    input.take
+  );
   const heard = await transcribeSpeech(
     input.elevenLabsKey,
     take.wav,

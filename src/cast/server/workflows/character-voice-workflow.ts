@@ -32,6 +32,7 @@ import {
 } from '@/billing/seed-speech-pricing';
 import { newSeedVoiceId, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import { recordRangeRead } from '@/cast/server/voice/seed-voice';
+import { platformSeedRecorder } from '@/cast/server/voice/seed-audio';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -379,7 +380,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
               // ponytail: a take that fails the check is re-recorded by the
               // step retry and not billed to the organization; the platform eats it.
               const made = await recordRangeRead({
-                seedKey: seed.key,
+                record: platformSeedRecorder(seed.key),
                 elevenLabsKey: eleven.key,
                 voiceId,
                 description: voiceDescription,
@@ -388,12 +389,16 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
               // One ledger line per provider: Seed records, ElevenLabs checks
               // and cleans.
               const charges = [
-                {
-                  key: '',
-                  endpointId: SEED_AUDIO_ENDPOINT,
-                  seconds: made.seedSeconds,
-                  costMicros: seedAudioCost(made.seedSeconds),
-                },
+                ...(made.seedSeconds === null
+                  ? []
+                  : [
+                      {
+                        key: '',
+                        endpointId: SEED_AUDIO_ENDPOINT,
+                        seconds: made.seedSeconds,
+                        costMicros: seedAudioCost(made.seedSeconds),
+                      },
+                    ]),
                 {
                   key: ':scribe',
                   endpointId: ELEVENLABS_SCRIBE_ENDPOINT,

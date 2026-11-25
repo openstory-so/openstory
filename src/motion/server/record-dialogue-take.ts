@@ -30,13 +30,13 @@ import {
   scribeCost,
   speechToSpeechCost,
 } from '@/billing/elevenlabs-pricing';
-import {
-  SEED_AUDIO_ENDPOINT,
-  seedAudioCost,
-} from '@/billing/seed-speech-pricing';
 import { SEED_AUDIO_MODEL, voiceProviderOf } from '@/cast/seed-voice';
 import { SCRIBE_MODEL } from '@/cast/server/voice/elevenlabs-voice';
-import { recordCheckedTake } from '@/cast/server/voice/seed-audio';
+import {
+  recordCheckedTake,
+  seedCharge,
+  type SeedRecorder,
+} from '@/cast/server/voice/seed-audio';
 import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
 import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
 import type { Microdollars } from '@/billing/money';
@@ -113,7 +113,7 @@ type ConvertedTake = {
 export async function recordDialogueTake(input: {
   elevenLabsKey: string;
   /** Required for a Seed voice. */
-  seedKey: string | null;
+  seed: SeedRecorder | null;
   organizationId: string;
   sequenceId: string;
   shotId: string;
@@ -410,9 +410,9 @@ function seedGuidedPrompt(
 async function convertWithSeed(
   line: DialogueTakeLine,
   take: Uint8Array<ArrayBuffer>,
-  keys: { seedKey: string | null; elevenLabsKey: string }
+  keys: { seed: SeedRecorder | null; elevenLabsKey: string }
 ): Promise<ConvertedTake> {
-  if (!keys.seedKey) {
+  if (!keys.seed) {
     throw new NonRetryableError('Seed Speech is not configured');
   }
   const bundle = await loadSeedVoice(line.voiceId);
@@ -421,7 +421,8 @@ async function convertWithSeed(
   let lastProblem = '';
   for (let attempt = 1; attempt <= SEED_TAKE_ATTEMPTS; attempt++) {
     const made = await recordCheckedTake({
-      seedKey: keys.seedKey,
+      record: keys.seed,
+      take: attempt,
       elevenLabsKey: keys.elevenLabsKey,
       prompt,
       references: [voice, take],
@@ -452,11 +453,7 @@ async function convertWithSeed(
       ),
       ttsModel: SEED_AUDIO_MODEL,
       charges: [
-        {
-          endpointId: SEED_AUDIO_ENDPOINT,
-          model: SEED_AUDIO_MODEL,
-          costMicros: seedAudioCost(made.billedSeconds),
-        },
+        ...seedCharge(made.billedSeconds),
         {
           endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
           model: SCRIBE_MODEL,
