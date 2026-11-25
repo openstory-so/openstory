@@ -63,7 +63,7 @@ function logPrefix(workflowName: string | undefined): string {
 
 function skipDeduction(
   scopedDb: WorkflowScopedDb,
-  opts: WorkflowDeductionOpts
+  opts: WorkflowDeductionOpts & { costMicros: Microdollars }
 ): void {
   const prefix = logPrefix(opts.workflowName);
   logger.warn(
@@ -96,9 +96,10 @@ export async function deductWorkflowCredits(
   if (!opts.scopedDb) return;
   const { scopedDb } = opts;
 
-  if (opts.usedOwnKey || opts.costMicros === null) return;
+  const { costMicros } = opts;
+  if (opts.usedOwnKey || costMicros === null) return;
 
-  if (opts.costMicros <= 0) {
+  if (costMicros <= 0) {
     reportMissingBillingCost({
       source: 'workflow-deduction',
       workflowName: opts.workflowName,
@@ -112,7 +113,7 @@ export async function deductWorkflowCredits(
   if (opts.reservationId) {
     const captured = await scopedDb.billing.captureReservation(
       opts.reservationId,
-      opts.costMicros,
+      costMicros,
       {
         description: opts.description,
         metadata: opts.metadata,
@@ -120,7 +121,7 @@ export async function deductWorkflowCredits(
       }
     );
     if (!captured.ok) {
-      skipDeduction(scopedDb, opts);
+      skipDeduction(scopedDb, { ...opts, costMicros });
       return;
     }
     if (captured.skippedDeltaMicros) {
@@ -132,13 +133,13 @@ export async function deductWorkflowCredits(
     return;
   }
 
-  const debit = await scopedDb.billing.tryDeductCredits(opts.costMicros, {
+  const debit = await scopedDb.billing.tryDeductCredits(costMicros, {
     description: opts.description,
     metadata: opts.metadata,
     idempotencyKey: opts.idempotencyKey,
   });
   if (!debit.ok) {
-    skipDeduction(scopedDb, opts);
+    skipDeduction(scopedDb, { ...opts, costMicros });
   }
 }
 

@@ -139,7 +139,14 @@ function adapter(chunks: () => AdapterYieldChunk[]): AnyTextAdapter & {
     name: 'fake',
     model: 'vendor/model',
     calls: 0,
-    '~types': {},
+    '~types': {
+      providerOptions: {},
+      inputModalities: ['text'],
+      messageMetadataByModality: {},
+      toolCapabilities: {},
+      toolCallMetadata: {},
+      systemPromptMetadata: {},
+    },
     async *chatStream() {
       fake.calls++;
       yield* chunks();
@@ -188,6 +195,7 @@ async function ledger() {
 const OPTIONS = {
   model: 'vendor/model',
   messages: [{ role: 'user' as const, content: 'hi' }],
+  threadId: 't',
   logger: resolveDebugOption(false),
 };
 
@@ -304,7 +312,7 @@ describe('withTextGateway', () => {
   ): ResolvedLlmKey => ({ key: 'k', source, via });
   const route = (resolved: ResolvedLlmKey) =>
     withTextGateway(
-      { resolveLlmKey: async () => resolved },
+      { resolveLlmKey: async (_model?: string) => resolved },
       { db, organizationId, billing: gateway.billing }
     ).resolveLlmKey('vendor/model');
 

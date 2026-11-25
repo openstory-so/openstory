@@ -2,6 +2,7 @@
 
 import { reportSkippedDeduction } from '@/billing/billing-observability';
 import { micros, type Microdollars } from '@/billing/money';
+import type { createBillingMethods } from '@/billing/server/db/billing';
 import type { PricingRefreshDb } from '@/billing/server/refresh-fal-pricing';
 import {
   GATEWAY_PLATFORM_FEE_BPS,
@@ -19,7 +20,6 @@ import { getPlatformLlmKey } from '@/models/server/create-adapter';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   AdapterYieldChunk,
   AnyTextAdapter,
@@ -31,7 +31,7 @@ const MEDIA_PART_TOKENS = 4096;
 const CHARGED = 'openstoryGatewayCharged';
 
 export type TextGatewayBilling = Pick<
-  ScopedDb['billing'],
+  ReturnType<typeof createBillingMethods>,
   'createReservation' | 'settleReservation' | 'zeroReservation'
 >;
 
