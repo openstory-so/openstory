@@ -24,7 +24,11 @@ import {
   openstoryVideoStatus,
 } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
-import { type GatewayStore, storeGatewayResult } from '@/gateway/server/phases';
+import {
+  type GatewayStore,
+  releaseGatewayRun,
+  storeGatewayResult,
+} from '@/gateway/server/phases';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import { storeGatewayOutput } from '@/gateway/server/storage';
@@ -245,8 +249,11 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
-    const { assetId } = event.payload;
+    const { assetId, route } = event.payload;
     await scopedDb.generatedAssets.markFailed(assetId, error);
+    if (route.via === 'openstory') {
+      await releaseGatewayRun(scopedDb, route.hold, error);
+    }
     if (isContentRejectionError(error)) {
       logger.warn(`Asset ${assetId} failed: ${error}`);
     } else {

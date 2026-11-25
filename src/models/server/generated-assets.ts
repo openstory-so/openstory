@@ -9,7 +9,10 @@ import { ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { GeneratedAssetInput } from '@/platform/server/db/schema';
+import type {
+  GeneratedAssetActivity,
+  GeneratedAssetInput,
+} from '@/platform/server/db/schema';
 import { getGatewayModel } from '@/gateway/server/catalog';
 import { gatedUrls, holdGatewayJob } from '@/gateway/server/submit-job';
 import { GATEWAY_ERROR_MESSAGES } from '@/gateway/schema';
@@ -63,48 +66,62 @@ export async function createGeneratedAsset(
 ): Promise<CreateGeneratedAssetResult> {
   const assetId = generateId();
   let route: AssetGenerationWorkflowInput['route'];
-  let hold: { jobId: string; reservationId: string | undefined } | null = null;
-  // Own keys stay on today's direct path, unbilled (#2439 moves them).
-  if (data.provider === 'fal' && (await scopedDb.apiKeys.hasUsableKey('fal'))) {
-    const validation = validateAssetInput(
-      await fetchModelInputSchema(data.endpointId, data.activity),
-      data.input
-    );
-    if (!validation.success) return { ok: false, issues: validation.issues };
-    await requireGenerationAllowed({
-      userId: scopedDb.userId,
-      organizationId: scopedDb.organizationId,
-    });
-    await requireCheckedUploadRights(scopedDb, gatedUrls(data.input), request);
-    route = { via: 'fal', endpointId: data.endpointId };
-  } else {
-    const model = await getGatewayModel(data.provider, data.endpointId);
-    try {
+  let activity: GeneratedAssetActivity;
+  try {
+    // Own keys stay on today's direct path, unbilled (#2439 moves them).
+    if (
+      data.provider === 'fal' &&
+      (await scopedDb.apiKeys.hasUsableKey('fal'))
+    ) {
+      const validation = validateAssetInput(
+        await fetchModelInputSchema(data.endpointId, data.activity),
+        data.input
+      );
+      if (!validation.success) return { ok: false, issues: validation.issues };
+      await requireGenerationAllowed({
+        userId: scopedDb.userId,
+        organizationId: scopedDb.organizationId,
+      });
+      await requireCheckedUploadRights(
+        scopedDb,
+        gatedUrls(data.input),
+        request
+      );
+      route = { via: 'fal', endpointId: data.endpointId };
+      activity = data.activity;
+    } else {
+      const model = await getGatewayModel(data.provider, data.endpointId);
       const held = await holdGatewayJob(model, data.input, {
         scopedDb,
         rights: { scopedDb, request },
         idempotencyKey: `asset:${assetId}`,
         oauthClientId: null,
       });
-      hold = { jobId: held.job.id, reservationId: held.run.reservationId };
-    } catch (error) {
-      if (!(error instanceof ValidationError)) throw error;
-      const parsed = issuesSchema.safeParse(error.details);
-      return {
-        ok: false,
-        issues: parsed.success
-          ? parsed.data.issues
-          : [{ path: '', message: error.message }],
+      route = {
+        via: 'openstory',
+        model,
+        hold: { jobId: held.job.id, reservationId: held.run.reservationId },
       };
+      // The model's kind, never the client's word, picks the call and the bucket.
+      activity = model.kind;
     }
-    route = { via: 'openstory', model };
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    const parsed = issuesSchema.safeParse(error.details);
+    return {
+      ok: false,
+      issues: parsed.success
+        ? parsed.data.issues
+        : [{ path: '', message: error.message }],
+    };
   }
+  const hold = route.via === 'openstory' ? route.hold : null;
 
   const row = await scopedDb.generatedAssets.insert({
     id: assetId,
     provider: route.via,
     endpointId: data.endpointId,
-    activity: data.activity,
+    activity,
     modelName: data.modelName,
     input: data.input,
     status: 'queued',
@@ -115,7 +132,7 @@ export async function createGeneratedAsset(
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
     assetId: row.id,
-    activity: data.activity,
+    activity,
     input: data.input,
     route,
   };
@@ -132,7 +149,7 @@ export async function createGeneratedAsset(
         // No run will flip these rows, so they fail here.
         await scopedDb.generatedAssets.markFailed(
           row.id,
-          generationCouldNotStartMessage(data.activity)
+          generationCouldNotStartMessage(activity)
         );
         if (hold) {
           await scopedDb.gatewayJobs.markFailed(hold.jobId, {
@@ -150,7 +167,7 @@ export async function createGeneratedAsset(
     if (hold) {
       // The sweep ends the job if this run dies without a word.
       await scopedDb.gatewayJobs.attachRun(hold.jobId, {
-        reservationId: hold.reservationId ?? null,
+        reservationId: hold.reservationId,
         workflowRunId,
       });
     }

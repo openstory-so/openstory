@@ -1872,7 +1872,12 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
    * under `asset:<assetId>`. `fal`: the organization's own fal key, unbilled.
    */
   route:
-    | { via: 'openstory'; model: GatewayModel }
+    | {
+        via: 'openstory';
+        model: GatewayModel;
+        /** The click's job and hold, so a failed run lets the hold go. */
+        hold: { jobId: string; reservationId: string };
+      }
     | { via: 'fal'; endpointId: string };
 }
 

@@ -118,13 +118,11 @@ export async function getGatewayModel(
 
 /** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */
 export function unholdableReason(card: RateCard): string | null {
-  const lever = Object.entries(card.inputs).find(
-    ([, input]) =>
+  const unpriced = Object.values(card.inputs).some(
+    (input) =>
       input.bound === 'usage' && !(input.kind === 'number' && input.estimate)
   );
-  return lever
-    ? `\`${lever[0]}\` is priced on usage with no estimate, so it cannot be held`
-    : null;
+  return unpriced ? 'No price yet for this model' : null;
 }
 
 /** Why the gateway cannot run this model, or null; a refusal is the reason, an outage throws. */

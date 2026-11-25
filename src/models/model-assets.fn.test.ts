@@ -230,7 +230,13 @@ describe('createGeneratedAsset', () => {
       '/asset',
       expect.objectContaining({
         assetId: result.id,
-        route: { via: 'openstory', model: GROK },
+        // The model's kind, whatever the client said.
+        activity: GROK.kind,
+        route: {
+          via: 'openstory',
+          model: GROK,
+          hold: { jobId: job?.id, reservationId: holds[0]?.id },
+        },
       }),
       { deduplicationId: `asset-${result.id}` }
     );
@@ -295,6 +301,54 @@ describe('createGeneratedAsset', () => {
     expect(await db.select().from(gatewayJobs)).toEqual([]);
     expect(await db.select().from(creditReservations)).toEqual([]);
     expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('refuses for credits at the click with a 402, leaving no row', async () => {
+    const { InsufficientCreditsError } = await import('@/platform/errors');
+    await db
+      .update(credits)
+      .set({ balance: 0 })
+      .where(eq(credits.organizationId, ORGANIZATION_ID));
+    try {
+      const error = await createGeneratedAsset(
+        scoped(false),
+        grokData({ prompt: 'Mara wipes her hands on a rag' }),
+        REQUEST
+      ).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(InsufficientCreditsError);
+      expect(error).toMatchObject({ statusCode: 402 });
+      expect(await db.select().from(generatedAssets)).toEqual([]);
+      expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+    } finally {
+      await db
+        .update(credits)
+        .set({ balance: 100_000_000 })
+        .where(eq(credits.organizationId, ORGANIZATION_ID));
+    }
+  });
+
+  it('runs the model kind, not the activity the client sent', async () => {
+    const result = await createGeneratedAsset(
+      scoped(false),
+      { ...grokData({ prompt: 'Mara signs the log' }), activity: 'video' },
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    const [row] = await db.select().from(generatedAssets);
+    expect(row?.activity).toBe(GROK.kind);
+  });
+
+  it('returns inline media on an own key as a form issue, leaving no row', async () => {
+    const result = await createGeneratedAsset(
+      scoped(true),
+      falData({ prompt: 'ok', image_url: 'data:image/png;base64,AAAA' }),
+      REQUEST
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      issues: [{ path: '', message: 'Send media as a URL, not inline data' }],
+    });
+    expect(await db.select().from(generatedAssets)).toEqual([]);
   });
 
   it('refuses a restricted account with an own key, leaving no row', async () => {

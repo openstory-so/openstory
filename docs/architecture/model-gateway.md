@@ -621,12 +621,17 @@ route once, at the click, and puts it on the payload:
 
 The page lists Grok, BytePlus and Gemini models beside fal. A model the
 gateway cannot run is shown with the reason: no request schema, no price, or
-a usage lever with no estimate (`unholdableReason`, until #2432). A fal model
-the gateway cannot hold still runs on an own fal key.
+a usage lever with no estimate (`unholdableReason`, "No price yet for this
+model", until #2432). A fal model the gateway cannot hold still runs on an
+own fal key; the detail page reads `hasFalKey` from the billing gate query
+and, without one, shows the model unavailable rather than fail at the click.
+A run's kind is the model's (`model.kind`), never the client's `activity`,
+and a failed run lets the click's hold go (`releaseGatewayRun` in
+`onFailure`).
 
 The model list carries a price summary, not the card, so the list marks only
 a model with no schema or no price; the detail page reads the card and says
-when it cannot be held.
+when it has no price yet.
 
 Run on `bun dev` (2026-11-26) through `createGeneratedAssetFn` with a
 session, one each:

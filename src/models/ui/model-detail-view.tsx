@@ -8,6 +8,7 @@
  * live schema — its per-field messages flow back into `<SchemaForm errors>`.
  */
 
+import { useBillingGateQuery } from '@/billing/ui/use-billing-gate';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ACTIVITY_ICONS, ACTIVITY_LABELS, categoryLabel } from './model-card';
 import { AssetResult } from '@/ui/schema-form/asset-result';
@@ -184,7 +185,9 @@ const ModelDetailContent: FC<DetailProps> = ({
 const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
   const { model, inputSchema, provider, unavailable } = detail;
   // An own fal key can still run a model the gateway cannot hold.
-  const blocked = unavailable !== null && provider !== 'fal';
+  const { data: gate } = useBillingGateQuery();
+  const ownFalKey = provider === 'fal' && gate?.hasFalKey === true;
+  const blocked = unavailable !== null && !ownFalKey;
   const queryClient = useQueryClient();
   const { requireAuth, isAuthenticated } = useAuthGate();
 
@@ -288,9 +291,11 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
         </div>
         {unavailable && (
           <p className="text-sm text-muted-foreground">
-            {provider === 'fal'
-              ? `Runs only with your own fal key: ${unavailable}`
-              : `Unavailable: ${unavailable}`}
+            {ownFalKey
+              ? `Runs on your own fal key: ${unavailable}`
+              : provider === 'fal'
+                ? `Unavailable without your own fal key: ${unavailable}`
+                : `Unavailable: ${unavailable}`}
           </p>
         )}
       </header>
