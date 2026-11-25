@@ -332,7 +332,8 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
           numImages: 1,
           outputFormat: 'png',
         },
-        { credentials: scopedDb.credentials }
+        // An edit of the still with references: no gateway image endpoint takes one yet.
+        { credentials: scopedDb.credentials, gateway: null }
       );
       // Stored in the same step: an inline-bytes result has no URL to pass
       // to a later one, and the image would ride the checkpoint (#1645).

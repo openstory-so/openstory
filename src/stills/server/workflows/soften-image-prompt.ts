@@ -213,6 +213,13 @@ async function generateOnce(
     try {
       const result = await generateImageWithProvider(params, {
         credentials: scopedDb.credentials,
+        gateway: {
+          routes: input.gatewayRoutes,
+          scopedDb,
+          runId: args.workflowRunId,
+          // Each attempt is its own gateway job and hold.
+          idempotencyKey: `${args.workflowRunId}:${stepName}`,
+        },
         observability: {
           observationName: 'shot-image',
           tags: ['image'],

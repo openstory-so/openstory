@@ -126,7 +126,8 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
                 prompt,
                 imageSize: aspectRatioToImageSize(aspectRatio),
               },
-              { credentials: scopedDb.credentials }
+              // A fal model: the gateway holds no fal still yet (docs/architecture/model-gateway.md).
+              { credentials: scopedDb.credentials, gateway: null }
             );
             const generatedPosterUrl = result.imageUrls[0];
             if (!generatedPosterUrl) return null;

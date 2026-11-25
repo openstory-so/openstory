@@ -137,7 +137,7 @@ function requireSameRequest(
   }
 }
 
-function validatedBody(
+export function validatedBody(
   model: GatewayModel,
   raw: GatewayJobInput
 ): GatewayJobInput {

@@ -213,6 +213,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       logTag: '[CharacterSheetWorkflow:cf]',
       subject: `sheet for ${input.characterName}`,
       stepName: 'generate-sheet-image',
+      gatewayRoutes: input.gatewayRoutes,
       params: builtParams,
       meta: { characterDbId },
       store: (result) =>
@@ -235,27 +236,33 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const imageMetadata = generation.metadata;
     const generationParams = generation.params;
 
+    // An `openstory` still was held and charged by the gateway (#2434).
+    const charged = generation.via === 'openstory';
     // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
+    const falUsage: { requestId?: string } = charged
+      ? {}
+      : await recordFalUsageStep(step, scopedDb, imageMetadata);
 
     // Deduct credits for image generation (skip if organization used own fal key)
-    await step.do('deduct-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: extractImageCost(imageMetadata),
-        usedOwnKey: imageMetadata.usedOwnKey,
-        description: `Character sheet (${generationParams.model})`,
-        idempotencyKey: `${event.instanceId}:sheet`,
-        reservationId: input.reservationId,
-        metadata: {
-          ...falUsage,
-          model: generationParams.model,
-          characterName: input.characterName,
-          characterDbId: input.characterDbId,
-        },
-        workflowName: 'CharacterSheetWorkflow',
+    if (!charged) {
+      await step.do('deduct-credits', async () => {
+        await deductWorkflowCredits({
+          scopedDb,
+          costMicros: extractImageCost(imageMetadata),
+          usedOwnKey: imageMetadata.usedOwnKey,
+          description: `Character sheet (${generationParams.model})`,
+          idempotencyKey: `${event.instanceId}:sheet`,
+          reservationId: input.reservationId,
+          metadata: {
+            ...falUsage,
+            model: generationParams.model,
+            characterName: input.characterName,
+            characterDbId: input.characterDbId,
+          },
+          workflowName: 'CharacterSheetWorkflow',
+        });
       });
-    });
+    }
 
     let sheetImageUrl: string = storageResult.url;
     const sheetImagePath: string = storageResult.path;

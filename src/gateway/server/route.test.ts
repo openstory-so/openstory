@@ -43,7 +43,7 @@ vi.doMock('./catalog', () => ({
   getGatewayModel: async (_provider: string, id: string) =>
     id === UNPRICED.id ? UNPRICED : HOLDABLE,
 }));
-const { resolveGatewayRoute } = await import('./route');
+const { gatewayCannotRun, resolveGatewayRoute } = await import('./route');
 
 const scopedDb = (ownKey: boolean) => ({
   apiKeys: { hasUsableKey: vi.fn(async () => ownKey) },
@@ -95,6 +95,16 @@ describe('resolveGatewayRoute', () => {
     expect(route.via).toBe('direct');
   });
 
+  it('leaves a body built only in the run to the call', async () => {
+    const route = await resolveGatewayRoute({
+      scopedDb: scopedDb(false),
+      provider: 'grok',
+      modelId: HOLDABLE.id,
+      body: null,
+    });
+    expect(route.via).toBe('openstory');
+  });
+
   it('never checks an own key for platform-only BytePlus', async () => {
     const db = scopedDb(true);
     const route = await resolveGatewayRoute({
@@ -105,5 +115,25 @@ describe('resolveGatewayRoute', () => {
     });
     expect(route.via).toBe('openstory');
     expect(db.apiKeys.hasUsableKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('gatewayCannotRun', () => {
+  const withSchema: GatewayModel = {
+    ...HOLDABLE,
+    inputSchema: {
+      type: 'object',
+      properties: { prompt: { type: 'string' }, n: { type: 'number' } },
+    },
+  };
+
+  it('runs a body the schema and card accept', () => {
+    expect(gatewayCannotRun(withSchema, { prompt: 'a', n: 1 })).toBeNull();
+  });
+
+  it('names a field the endpoint does not take, such as reference images', () => {
+    expect(
+      gatewayCannotRun(withSchema, { prompt: 'a', n: 1, image: { url: 'x' } })
+    ).toMatch(/no field named image/);
   });
 });

@@ -33,16 +33,32 @@ import {
 } from '@/models/server/gemini-files';
 import { withGoogleRegionFallback } from '@/models/google-region';
 import { isNativeBytePlusImageModel } from '@/models/models';
-import type { MediaVia } from '@/models/via';
+import type { MediaVia, ProductVia } from '@/models/via';
 import { generateId } from '@/platform/id';
+import { getLogger } from '@/platform/logger';
+import { openstoryImage } from '@/gateway/server/adapter';
+import { inProcessGateway } from '@/gateway/server/adapter/in-process';
+import type { GatewayModel } from '@/gateway/server/catalog';
+import {
+  gatewayCannotRun,
+  gatewayRouteKey,
+  type GatewayRoutes,
+} from '@/gateway/server/route';
+import { storeGatewayOutput } from '@/gateway/server/storage';
+import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
+import type { GatewayJobInput } from '@/gateway/schema';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
-import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
+import type {
+  CredentialScopedDb,
+  WorkflowScopedDb,
+} from '@/platform/server/db/scoped-workflow';
 import { buildBytePlusImageRequest } from '@/stills/build-byteplus-image-request';
 import type { ImageGenerationParams } from '@/stills/build-image-request';
 import {
   buildGeminiImageRequest,
+  buildGrokImageBody,
   buildGrokImageRequest,
   buildImageRequest,
 } from '@/stills/build-image-request';
@@ -64,8 +80,22 @@ import { createGrokImage } from '@tanstack/ai-grok';
 
 export type { ImageGenerationParams } from '@/stills/build-image-request';
 
+const logger = getLogger(['openstory', 'stills', 'image-generation']);
+
+/** What the `openstory` route needs of the run; the route itself was decided at the trigger. */
+type ImageGatewayCall = {
+  /** The payload's routes; absent on a run triggered before #2434, which stays direct. */
+  readonly routes: GatewayRoutes | undefined;
+  readonly scopedDb: WorkflowScopedDb;
+  readonly runId: string;
+  /** Unique per attempt (`${instanceId}:${stepName}`): a retried step reuses the job and its hold. */
+  readonly idempotencyKey: string;
+};
+
 /** Non-serializable options passed separately from ImageGenerationParams */
 export type ImageGenerationOptions = {
+  /** Null where no run carries routes; such a call stays direct. */
+  gateway: ImageGatewayCall | null;
   credentials?: CredentialScopedDb;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
@@ -81,8 +111,8 @@ export type ImageGenerationResult = {
   parameters: ImageGenerationParams;
   generatedAt: string;
   processingTimeMs: number;
-  /** Pricing Via — which API served this. Vendor is `IMAGE_MODELS[model].vendor`. */
-  via: MediaVia;
+  /** Pricing Via — which API served this; `openstory` was held and charged by the gateway. */
+  via: ProductVia;
   metadata: {
     prompt: string;
     model: string;
@@ -122,24 +152,31 @@ export async function generateImageWithProvider(
     userId: options?.observability?.userId ?? options?.credentials?.userId,
   };
 
+  const gateway = options?.gateway;
+  const onGateway = gateway
+    ? gatewayImageRequest(params, gateway.routes)
+    : null;
   // The via of the attempt in flight, for the failure span.
-  let via: MediaVia = 'fal';
+  let via: ProductVia = onGateway ? 'openstory' : 'fal';
   try {
-    // A Google location refusal re-runs once off Google (`google-region.ts`).
-    const result = await withGoogleRegionFallback(
-      'image generation',
-      async () => {
-        const route = await resolveImageVia(params.model, options?.credentials);
-        via = route.via;
-        return generateImageInternal(
-          params,
-          options,
-          route.xaiKey,
-          route.googleKey,
-          route.via
-        );
-      }
-    );
+    const result =
+      onGateway && gateway
+        ? await generateOnGateway(params, onGateway, gateway)
+        : // A Google location refusal re-runs once off Google (`google-region.ts`).
+          await withGoogleRegionFallback('image generation', async () => {
+            const route = await resolveImageVia(
+              params.model,
+              options?.credentials
+            );
+            via = route.via;
+            return generateImageInternal(
+              params,
+              options,
+              route.xaiKey,
+              route.googleKey,
+              route.via
+            );
+          });
     via = result.via;
     recordMediaGenerationSpan({
       ...attribution,
@@ -178,6 +215,82 @@ export async function generateImageWithProvider(
     }
     throw error;
   }
+}
+
+/** The gateway model and body when the route for this model is `openstory` and the body can run there; else null (direct). */
+export function gatewayImageRequest(
+  params: ImageGenerationParams,
+  routes: GatewayRoutes | undefined
+): { model: GatewayModel; body: GatewayJobInput } | null {
+  const nativeModel = nativeGrokImageModel(params.model);
+  const route = nativeModel
+    ? routes?.[gatewayRouteKey('grok', nativeModel)]
+    : undefined;
+  if (!nativeModel || route?.via !== 'openstory') return null;
+  const body = buildGrokImageBody(params, nativeModel);
+  // A routing rule on the run's own body, before any job: never a retry on another via.
+  const reason = gatewayCannotRun(route.model, body);
+  if (reason) {
+    logger.info(`Image stays direct: ${reason}`, { model: params.model });
+    return null;
+  }
+  return { model: route.model, body };
+}
+
+/** One gateway job: held, run, stored and charged in this step; a content refusal is released and rethrown. */
+async function generateOnGateway(
+  params: ImageGenerationParams,
+  request: { model: GatewayModel; body: GatewayJobInput },
+  call: ImageGatewayCall
+): Promise<ImageGenerationResult> {
+  const startTime = Date.now();
+  const folder = `gateway/${generateId()}`;
+  const transport = inProcessGateway({
+    scopedDb: call.scopedDb,
+    model: request.model,
+    runId: call.runId,
+    store: (media, index) =>
+      storeGatewayOutput({
+        media,
+        kind: 'image',
+        organizationId: call.scopedDb.organizationId,
+        folder,
+        index,
+      }),
+    // Product refs are our own stored uploads, classified when they were uploaded.
+    uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+  });
+  const result = await generateImage({
+    adapter: openstoryImage(request.model.id, transport, {
+      idempotencyKey: call.idempotencyKey,
+    }),
+    prompt: '',
+    modelOptions: request.body,
+    threadId: call.runId,
+  });
+  const imageUrls = result.images.flatMap((image) =>
+    image.url ? [image.url] : []
+  );
+  if (imageUrls.length === 0) {
+    throw new Error('No images returned from generation');
+  }
+  return {
+    imageUrls,
+    parameters: params,
+    generatedAt: new Date().toISOString(),
+    processingTimeMs: Date.now() - startTime,
+    via: 'openstory',
+    metadata: {
+      prompt: params.prompt,
+      model: params.model,
+      endpointId: request.model.endpointId,
+      numImages: imageUrls.length,
+      dimensions: imageUrls.map(() => ({ width: 0, height: 0 })),
+      file_sizes: imageUrls.map(() => 0),
+      seed: params.seed,
+      usedOwnKey: false,
+    },
+  };
 }
 
 async function resolveOptionalXaiKey(

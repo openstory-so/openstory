@@ -7,7 +7,8 @@ import {
   type GatewayModel,
 } from '@/gateway/server/catalog';
 import { priceGatewayJob } from '@/gateway/server/price';
-import { OpenStoryError } from '@/platform/errors';
+import { validatedBody } from '@/gateway/server/submit-job';
+import { OpenStoryError, ValidationError } from '@/platform/errors';
 import type { ApiKeyProvider } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -15,6 +16,16 @@ import { RateCardError } from '@modelschemas/rate-card/evaluator';
 export type GatewayRoute =
   | { readonly via: 'openstory'; readonly model: GatewayModel }
   | { readonly via: 'direct'; readonly reason: string };
+
+/** Routes a run carries, keyed by `gatewayRouteKey`; a model with no entry is direct. */
+export type GatewayRoutes = Readonly<Record<string, GatewayRoute>>;
+
+export function gatewayRouteKey(
+  provider: GatewayProvider,
+  modelId: string
+): string {
+  return `${provider}/${modelId}`;
+}
 
 /** The organization key that keeps a provider's calls on the direct path; BytePlus is platform-only. */
 const OWN_KEY: Readonly<Record<GatewayProvider, ApiKeyProvider | null>> = {
@@ -24,7 +35,27 @@ const OWN_KEY: Readonly<Record<GatewayProvider, ApiKeyProvider | null>> = {
   grok: 'xai',
 };
 
-/** Own key -> direct; platform key and a card that can hold `body` -> openstory; else direct with the reason. */
+/** Why the gateway cannot run this body on this model, or null: the schema and the card, no read. */
+export function gatewayCannotRun(
+  model: GatewayModel,
+  body: GatewayJobInput
+): string | null {
+  try {
+    priceGatewayJob(model.card, validatedBody(model, body));
+    return null;
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof RateCardError) {
+      return error.message;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Own key -> direct; platform key and a holdable card -> openstory; else
+ * direct with the reason. A null `body` (built only in the run) leaves the
+ * body check to `gatewayCannotRun` at the call.
+ */
 export async function resolveGatewayRoute({
   scopedDb,
   provider,
@@ -36,7 +67,7 @@ export async function resolveGatewayRoute({
   };
   readonly provider: GatewayProvider;
   readonly modelId: string;
-  readonly body: GatewayJobInput;
+  readonly body: GatewayJobInput | null;
 }): Promise<GatewayRoute> {
   const ownKey = OWN_KEY[provider];
   if (ownKey && (await scopedDb.apiKeys.hasUsableKey(ownKey))) {
@@ -52,15 +83,7 @@ export async function resolveGatewayRoute({
     }
     throw error;
   }
-  const unholdable = unholdableReason(model.card);
-  if (unholdable) return { via: 'direct', reason: unholdable };
-  try {
-    priceGatewayJob(model.card, body);
-  } catch (error) {
-    if (error instanceof RateCardError) {
-      return { via: 'direct', reason: error.message };
-    }
-    throw error;
-  }
-  return { via: 'openstory', model };
+  const reason =
+    unholdableReason(model.card) ?? (body && gatewayCannotRun(model, body));
+  return reason ? { via: 'direct', reason } : { via: 'openstory', model };
 }

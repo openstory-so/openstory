@@ -176,6 +176,7 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           logTag: '[ElementSheetWorkflow:cf]',
           subject: `element ${entry.token}`,
           stepName: `generate-element-image-${index}`,
+          gatewayRoutes: input.gatewayRoutes,
           params: builtParams,
           meta: { elementId: entry.elementId },
           store: (result) =>
@@ -189,31 +190,37 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
         const imageMetadata = generation.metadata;
         const generationParams = generation.params;
 
+        // An `openstory` still was held and charged by the gateway (#2434).
+        const charged = generation.via === 'openstory';
         // Before the deduction guard — see recordFalUsageStep (#1069).
-        const falUsage = await recordFalUsageStep(
-          step,
-          scopedDb,
-          imageMetadata,
-          `record-fal-usage-${index}`
-        );
+        const falUsage: { requestId?: string } = charged
+          ? {}
+          : await recordFalUsageStep(
+              step,
+              scopedDb,
+              imageMetadata,
+              `record-fal-usage-${index}`
+            );
 
-        await step.do(`deduct-credits-${index}`, async () => {
-          await deductWorkflowCredits({
-            scopedDb,
-            costMicros: extractImageCost(imageMetadata),
-            usedOwnKey: imageMetadata.usedOwnKey,
-            description: `Element reference (${generationParams.model})`,
-            idempotencyKey: `${event.instanceId}:element-ref-${index}`,
-            reservationId: input.reservationId,
-            metadata: {
-              ...falUsage,
-              model: generationParams.model,
-              token: entry.token,
-              sequenceId,
-            },
-            workflowName: 'ElementSheetWorkflow',
+        if (!charged) {
+          await step.do(`deduct-credits-${index}`, async () => {
+            await deductWorkflowCredits({
+              scopedDb,
+              costMicros: extractImageCost(imageMetadata),
+              usedOwnKey: imageMetadata.usedOwnKey,
+              description: `Element reference (${generationParams.model})`,
+              idempotencyKey: `${event.instanceId}:element-ref-${index}`,
+              reservationId: input.reservationId,
+              metadata: {
+                ...falUsage,
+                model: generationParams.model,
+                token: entry.token,
+                sequenceId,
+              },
+              workflowName: 'ElementSheetWorkflow',
+            });
           });
-        });
+        }
 
         await step.do(`record-provenance-${index}`, async () => {
           await recordProvenance(scopedDb.provenance, {

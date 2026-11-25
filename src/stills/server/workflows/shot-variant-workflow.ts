@@ -217,6 +217,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       logTag: '[ShotVariantWorkflow]',
       subject: `variant grid ${input.shotId}`,
       stepName: 'generate-image',
+      gatewayRoutes: input.gatewayRoutes,
       params: prep.params,
       prompt: prep.basePrompt,
       rebuild: (nextPrompt, model) => {
@@ -257,22 +258,25 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    await step.do('deduct-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: extractImageCost(imageMetadata),
-        usedOwnKey: imageMetadata.usedOwnKey,
-        description: `Variant grid generation (${prep.params.model})`,
-        idempotencyKey: `${event.instanceId}:variant-image`,
-        metadata: {
-          ...falUsage,
-          model: prep.params.model,
-          shotId: input.shotId,
-          sequenceId: input.sequenceId,
-        },
-        workflowName: 'ShotVariantWorkflow',
+    // An `openstory` still was held and charged by the gateway (#2434).
+    if (imageVia !== 'openstory') {
+      await step.do('deduct-credits', async () => {
+        await deductWorkflowCredits({
+          scopedDb,
+          costMicros: extractImageCost(imageMetadata),
+          usedOwnKey: imageMetadata.usedOwnKey,
+          description: `Variant grid generation (${prep.params.model})`,
+          idempotencyKey: `${event.instanceId}:variant-image`,
+          metadata: {
+            ...falUsage,
+            model: prep.params.model,
+            shotId: input.shotId,
+            sequenceId: input.sequenceId,
+          },
+          workflowName: 'ShotVariantWorkflow',
+        });
       });
-    });
+    }
 
     const imageUrl = uploadResult.url;
 

@@ -4,8 +4,10 @@
  */
 
 import { base64ToBytes } from '@/platform/base64';
+import { readStorageObject } from '#storage';
 import {
   organizationKeyPrefix,
+  r2KeyFromUrl,
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
@@ -42,8 +44,20 @@ const DATA_URI = /^data:([^;,]+);base64,(.*)$/;
 /**
  * Open a generated image for upload. Native Gemini always answers with
  * inline base64, and BytePlus can — workerd's `fetch` does not read `data:`.
+ * A gateway still is already in R2 (`/r2/…`), which `fetch` cannot read either.
  */
-function fetchGeneratedImage(url: string): Promise<Response> {
+async function fetchGeneratedImage(url: string): Promise<Response> {
+  const key = r2KeyFromUrl(url);
+  if (key) {
+    const object = await readStorageObject(key);
+    if (!object) return new Response(null, { status: 404 });
+    return new Response(object.bytes, {
+      headers: {
+        'Content-Type': object.contentType,
+        'Content-Length': String(object.bytes.byteLength),
+      },
+    });
+  }
   if (!url.startsWith('data:')) return fetch(url);
   const match = DATA_URI.exec(url);
   if (!match?.[1] || match[2] === undefined) {
@@ -53,14 +67,12 @@ function fetchGeneratedImage(url: string): Promise<Response> {
   }
   const bytes = base64ToBytes(match[2]);
   const contentType = sniffImageMimeType(bytes) ?? match[1];
-  return Promise.resolve(
-    new Response(bytes, {
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': String(bytes.byteLength),
-      },
-    })
-  );
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': String(bytes.byteLength),
+    },
+  });
 }
 
 /**

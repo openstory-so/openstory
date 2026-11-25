@@ -29,6 +29,7 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   type AnalysisModelId,
 } from '@/models/models.config';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   generateImageWithProvider,
@@ -213,6 +214,8 @@ export type GenerateImageSofteningArgs = {
    */
   stepName: string;
   params: ImageGenerationParams;
+  /** The payload's routes, decided at the trigger. */
+  gatewayRoutes: GatewayRoutes | undefined;
   /**
    * Persist the rendered image to its final key. Runs INSIDE the generating
    * step, on purpose (#1645): a provider that answers with inline bytes has
@@ -307,6 +310,13 @@ export async function generateImageSoftening(
       try {
         const result = await generateImageWithProvider(params, {
           credentials: scopedDb.credentials,
+          gateway: {
+            routes: args.gatewayRoutes,
+            scopedDb,
+            runId: args.workflowRunId,
+            // Each attempt is its own gateway job and hold.
+            idempotencyKey: `${args.workflowRunId}:${name}`,
+          },
         });
         // Same step, deliberately — see `store` on the args.
         const stored = await args.store(result);

@@ -3,6 +3,7 @@
  */
 
 import type { GatewayModel } from '@/gateway/server/catalog';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
@@ -101,6 +102,12 @@ export interface UserWorkflowContext {
    * still zero explicitly.
    */
   ownsReservation?: boolean;
+  /**
+   * Gateway routes decided at the trigger (`resolveGatewayRoute`, #2430).
+   * Optional only for runs triggered before #2434: those stay direct.
+   * Children inherit it from the parent payload, like `reservationId`.
+   */
+  gatewayRoutes?: GatewayRoutes;
 }
 
 export interface SequenceWorkflowContext extends UserWorkflowContext {

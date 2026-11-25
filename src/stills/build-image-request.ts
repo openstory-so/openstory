@@ -7,6 +7,8 @@
  * of `buildMotionRequest` (#873). Client-safe: no env, no adapters.
  */
 
+import type { GatewayJobInput } from '@/gateway/schema';
+import type { NativeGrokImageModel } from '@/models/grok-native';
 import {
   nativeGeminiImageModel,
   type GeminiImageResolution,
@@ -539,6 +541,27 @@ export function buildGrokImageRequest(params: ImageGenerationParams): {
       params.model,
       params.referenceImageUrls ?? []
     ),
+  };
+}
+
+/** xAI's own body for the `openstory` gateway; refs ride as `image`/`images`, as the direct path's edit call sends them. */
+export function buildGrokImageBody(
+  params: ImageGenerationParams,
+  nativeModel: NativeGrokImageModel
+): GatewayJobInput {
+  const grok = buildGrokImageRequest(params);
+  const [aspectRatio, resolution] = grok.size.split('_');
+  const refs = grok.referenceImageUrls;
+  return {
+    model: nativeModel,
+    prompt: grok.prompt,
+    n: grok.numImages,
+    ...(aspectRatio && { aspect_ratio: aspectRatio }),
+    ...(resolution && { resolution }),
+    // The direct path asks 2.0 for medium.
+    ...(nativeModel === 'grok-imagine-image-2.0' && { quality: 'medium' }),
+    ...(refs.length === 1 && refs[0] && { image: { url: refs[0] } }),
+    ...(refs.length > 1 && { images: refs.map((url) => ({ url })) }),
   };
 }
 
