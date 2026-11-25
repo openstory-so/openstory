@@ -14,6 +14,7 @@ import { priceGatewayJob } from '@/gateway/server/price';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import { getMaxOutputTokens } from '@/models/models.config';
+import { getPlatformLlmKey } from '@/models/server/create-adapter';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
@@ -70,7 +71,11 @@ function cardPricesTokens(model: GatewayTextModel): boolean {
   }
 }
 
-/** `resolveLlmKey` with a platform key's call routed to the gateway when its card can price it. */
+/**
+ * `resolveLlmKey` with a platform key's call routed to the gateway when its
+ * card can price it, and `resolvePlatformLlmKey` for the public API, which
+ * spends platform keys only: null when the gateway cannot price the model.
+ */
 export function withTextGateway<
   T extends { resolveLlmKey(model?: string): Promise<ResolvedLlmKey> },
 >(
@@ -80,26 +85,40 @@ export function withTextGateway<
     organizationId: string;
     billing: TextGatewayBilling;
   }
-): T {
+): T & {
+  resolvePlatformLlmKey(model: string): Promise<ResolvedLlmKey | null>;
+} {
+  const attach = async (
+    key: ResolvedLlmKey,
+    model: string
+  ): Promise<ResolvedLlmKey> => {
+    if (key.source !== 'platform') return key;
+    const card = textCardKey(key.via, model);
+    if (!card) return key;
+    const stored = await getStoredTextModel(scope.db, card.provider, card.id);
+    if (!stored || !cardPricesTokens(stored)) return key;
+    return {
+      ...key,
+      gateway: {
+        registryId: model,
+        model: stored,
+        maxOutputTokens: getMaxOutputTokens(model),
+        organizationId: scope.organizationId,
+        billing: scope.billing,
+      },
+    };
+  };
   return {
     ...apiKeys,
-    resolveLlmKey: async (model?: string): Promise<ResolvedLlmKey> => {
+    resolveLlmKey: async (model?: string) => {
       const key = await apiKeys.resolveLlmKey(model);
-      if (key.source !== 'platform' || !model) return key;
-      const card = textCardKey(key.via, model);
-      if (!card) return key;
-      const stored = await getStoredTextModel(scope.db, card.provider, card.id);
-      if (!stored || !cardPricesTokens(stored)) return key;
-      return {
-        ...key,
-        gateway: {
-          registryId: model,
-          model: stored,
-          maxOutputTokens: getMaxOutputTokens(model),
-          organizationId: scope.organizationId,
-          billing: scope.billing,
-        },
-      };
+      return model ? attach(key, model) : key;
+    },
+    resolvePlatformLlmKey: async (model: string) => {
+      const platform = getPlatformLlmKey(model);
+      if (!platform) return null;
+      const key = await attach(platform, model);
+      return key.gateway ? key : null;
     },
   };
 }

@@ -67,6 +67,14 @@ describe('buildOpenApiDocument', () => {
       additionalProperties: true,
     });
     expect(doc.components.schemas).toHaveProperty('GatewayModelsResult');
+    const chat = doc.paths['/api/v1/gateway/chat/{model}'].post;
+    expect(chat.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GatewayChatRequest',
+    });
+    expect(doc.components.schemas.GatewayChatRequest.required).toEqual([
+      'messages',
+      'maxTokens',
+    ]);
     expect(doc.components.schemas.GatewayJob.required).toContain('_links');
   });
 

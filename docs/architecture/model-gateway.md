@@ -1253,6 +1253,35 @@ single deduction. A sequence's analysis makes tens of calls, so this is tens
 of D1 writes per sequence, well inside D1's limits; no per-run
 pre-authorisation was built.
 
+### The public endpoint
+
+`POST /api/v1/gateway/chat/{model}` (`src/gateway/server/chat.ts`) runs one
+text model on the same core and streams AG-UI events. `{model}` is an
+OpenStory analysis model id; the body is text turns, an optional system
+prompt and a required `maxTokens` (no tools, no media: inline media and tool
+execution stay on the trusted in-process path). It spends platform keys only
+(`resolvePlatformLlmKey`), so a model whose card cannot price it is refused,
+never run direct. `/gateway/*` already needs `models:invoke` on an OAuth
+token.
+
+### Real runs (2026-11-26, local, platform keys)
+
+Snapshot seeded with the Sonnet 5.5 OpenRouter card only, so the same run
+also shows the route per model.
+
+- A one-line script, enhanced and analysed to `stopAt: script` on Sonnet
+  5.5: four Sonnet calls (enhancement, then three analysis calls) each held
+  about $1.30 and charged once on the card ($0.0178, $0.0220, $0.0115,
+  $0.0205), equal to the cent-fraction to OpenRouter's own `usage.cost`. The
+  Opus 5.5 scene split had no card in the snapshot and took today's path,
+  deducted once.
+- One assistant turn with a tool call (`openstory_list_sequences`): two
+  Sonnet calls charged $0.0447 and $0.0033 (the second mostly cache reads),
+  both equal to OpenRouter's cost; no separate assistant deduction.
+- The public endpoint, `maxTokens: 32`: held $0.000478, charged $0.000110,
+  equal to OpenRouter's cost.
+- Every hold released (7 holds, $0 left held).
+
 ### No job row
 
 A text call writes no `gateway_jobs` row: it has nothing to poll, store or

@@ -236,9 +236,9 @@ function assertStructuredOutput<T>(
 export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
-  reasoning: boolean | undefined
+  reasoning: boolean | undefined,
+  maxTokens: number = getMaxOutputTokens(modelId)
 ) {
-  const maxTokens = getMaxOutputTokens(modelId);
   if (resolveNativeGrokModel(modelId, llmKeyInfo)) {
     return {
       ...(reasoning
