@@ -96,8 +96,9 @@ export function inProcessGateway(params: {
   return {
     submit: async (body: GatewayJobInput) => {
       let run: GatewayRun;
+      let job: Awaited<ReturnType<typeof holdGatewayJob>>['job'];
       try {
-        ({ run } = await holdGatewayJob(params.model, body, {
+        ({ run, job } = await holdGatewayJob(params.model, body, {
           scopedDb,
           rights: params.uploadRightsChecked,
           idempotencyKey: params.idempotencyKey,
@@ -109,6 +110,10 @@ export function inProcessGateway(params: {
           throw new NonRetryableError(error.message);
         }
         throw error;
+      }
+      // A step retried after its job settled: hand back what was stored, never run it again.
+      if (job.status === 'succeeded' && job.outputs) {
+        return { kind: 'done' as const, outputs: job.outputs };
       }
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
         reservationId: run.reservationId ?? null,

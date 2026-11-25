@@ -205,6 +205,8 @@ describe('the openstory adapter, in-process', () => {
         modelOptions: BODY,
       });
     }
+    // The provider ran once: the retry got the stored outputs back.
+    expect(start).toHaveBeenCalledTimes(1);
     const job = await onlyJob(IMAGE.id);
     expect(await chargesFor(job.id)).toEqual({
       debits: 1,
