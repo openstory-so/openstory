@@ -1082,6 +1082,14 @@ caller books `seed-audio` itself (`seedCharge`). The body is the same.
   `acquireSeedSpeechToken` before every call.
 - Scribe and isolation stay ElevenLabs ledger lines (`deductWorkflowCredits`).
 
+Real run on `bun dev` (2026-11-26): Generate voice, one Seed take, routed
+`openstory`. The first attempt's Seed call answered 500 (`audio risk audit`),
+so the step retried under attempt 2 and a new key; that take was held $0.30
+and charged $0.11975 once (47.9 s), one debit and one line. The run booked
+Scribe ($0.0029) and isolation ($0.0718) and no `seed-audio` line. The first
+attempt's job stays `running` with its $0.30 hold until the stale-job sweep
+ends it after the run is over.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

@@ -12,6 +12,7 @@
  * single bad shot doesn't kill the rest of the batch.
  */
 
+import { SEED_PIPELINE_DIRECT } from '@/cast/server/voice/seed-audio';
 import {
   arkAssetIdentities,
   bytePlusAssetSlots,
@@ -343,6 +344,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         minDurationSeconds: speech.minDurationSeconds,
         maxDurationSeconds: speech.maxDurationSeconds,
         analysisModelId: speech.analysisModelId,
+        seedSpeech: SEED_PIPELINE_DIRECT,
       },
       spawnStepName: 'spawn-dialogue-audio',
       awaitStepName: 'await-dialogue-audio',

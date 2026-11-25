@@ -200,13 +200,9 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const {
-  submitGatewayJob,
-  holdGatewayJob,
-  gatedUrls,
-  readIdempotencyKey,
-  UPLOAD_RIGHTS_CHECKED,
-} = await import('./submit-job');
+const submitJob = await import('./submit-job');
+const { submitGatewayJob, holdGatewayJob, gatedUrls, readIdempotencyKey } =
+  submitJob;
 const { readGatewayJob } = await import('./read-job');
 const { settleGatewayJob } = await import('./settle');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
@@ -551,10 +547,11 @@ describe('submitGatewayJob', () => {
   });
 
   it('refuses a Seed Audio voice cloned from a clip, which the check cannot hear', async () => {
-    for (const reference of [
+    const references: GatewayJobInput[] = [
       { audio_url: 'https://a.example/mara.wav' },
       { audio_data: 'UklGRg==' },
-    ]) {
+    ];
+    for (const reference of references) {
       const error = await refused({
         provider: 'byteplus',
         modelId: 'seed-audio-1.0',
@@ -582,7 +579,7 @@ describe('submitGatewayJob', () => {
       },
       {
         scopedDb,
-        rights: UPLOAD_RIGHTS_CHECKED,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
         idempotencyKey: 'seed-clone-1',
         oauthClientId: null,
       }
