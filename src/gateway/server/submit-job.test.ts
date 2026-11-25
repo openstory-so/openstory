@@ -198,7 +198,7 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const { submitGatewayJob, gatedUrls, readIdempotencyKey } =
+const { submitGatewayJob, holdGatewayJob, gatedUrls, readIdempotencyKey } =
   await import('./submit-job');
 const { readGatewayJob } = await import('./read-job');
 const { settleGatewayJob } = await import('./settle');
@@ -567,6 +567,24 @@ describe('submitGatewayJob', () => {
     expect((await reservationsFor(organizationId)).length).toBe(
       holdsAfterFirst
     );
+  });
+
+  it('holds once per key: a replay returns the same job and reservation, not created', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel(VIDEO.provider, VIDEO.modelId);
+    const hold = () =>
+      holdGatewayJob(model, VIDEO.body, {
+        scopedDb,
+        rights: { scopedDb, request },
+        idempotencyKey: 'hold-1',
+        oauthClientId: null,
+      });
+    const first = await hold();
+    const again = await hold();
+    expect(first.created).toBe(true);
+    expect(again.created).toBe(false);
+    expect(again.job.id).toBe(first.job.id);
+    expect(again.run.reservationId).toBe(first.run.reservationId);
   });
 
   it('refuses for credits with a 402 and leaves no job behind', async () => {

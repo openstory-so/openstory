@@ -215,9 +215,9 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    (#1645). A queued job (fal, Grok and BytePlus video) has its provider id
    stamped on the row, then is polled in batches; the batch that sees it
    finish stores the media. Bytes never cross a `step.do`.
-3. **Tail (PR 2):** `record-provenance` (`gateway_job`), `record-outputs`,
-   then `settle`, which prices the card with the usage, charges and marks the
-   job succeeded in one step. Nothing runs after it.
+3. **Tail (PR 2):** `record-provenance` (`gateway_job`), then `settle`,
+   which records the outputs, prices the card with the usage, charges and
+   marks the job succeeded in one step. Nothing runs after it.
 4. **Failure:** `onFailure` marks a live row `failed` with
    `{ code, message }` (`CONTENT_REJECTED` for a content refusal, else
    `GENERATION_FAILED`; `NOT_STARTED` is written by the submit when the
@@ -355,8 +355,8 @@ reads `{ totalMicros: 0, lines: [] }`; the shortfall is reported.
 
 ### A charged job never reads failed
 
-- The run records provenance and then the outputs (`record-outputs`) before
-  the charge. The `settle` step charges and marks the job succeeded; a retry
+- The run records provenance, then the `settle` step records the outputs
+  before the charge (`finishGatewayRun`), charges and marks the job succeeded; a retry
   replays the charge and writes the success again. Nothing runs after it.
 - `markFailed` first promotes a job that has charge lines and outputs to
   `succeeded`, at what its lines sum to, and only otherwise marks it failed.
@@ -507,12 +507,14 @@ call site changes its adapter and nothing else.
 
 The run of a held job is functions a caller runs in its own steps
 (`src/gateway/server/phases.ts`): `startGatewayRun`, `pollGatewayRun`
-(one poll), `settleGatewayRun`. The hold is `holdGatewayJob`
-(`submit-job.ts`): the model, the platform key, the body, the account, every
+(one poll), `settleGatewayRun`, `finishGatewayRun` (outputs, then the
+charge: the one place that order lives) and `releaseGatewayRun` (zero the
+hold, then `markFailed`, for a run that failed). The hold is `holdGatewayJob`
+(`submit-job.ts`), given the resolved model: the platform key, the body, the account, every
 URL, the price, the row and the reservation, returning the `GatewayRun`
 snapshot. `submitGatewayJob` is the public caller (replay, hold, trigger);
-`GatewayGenerationWorkflow` runs the phases in its steps, step names
-unchanged. Each phase stores media through a `GatewayStore` the caller
+`GatewayGenerationWorkflow` runs the phases in its steps; `record-outputs`
+folded into `settle`, so a replay re-records the same outputs. Each phase stores media through a `GatewayStore` the caller
 passes, inside the step that received it.
 
 ## Not in this stack

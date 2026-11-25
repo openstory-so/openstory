@@ -1,14 +1,16 @@
 /**
  * The run of a held gateway job as phases a caller runs in its own steps:
- * start, poll, settle (docs/architecture/model-gateway.md § Phases). The hold
- * is `holdGatewayJob` in submit-job.ts.
+ * start, poll, finish, release (docs/architecture/model-gateway.md § Phases).
+ * The hold is `holdGatewayJob` in submit-job.ts.
  */
 
 import { type Microdollars, ZERO_MICROS } from '@/billing/money';
+import { isContentRejectionError } from '@/models/content-rejection';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getLogger } from '@/platform/logger';
 import {
   GATEWAY_VIA,
+  type GatewayErrorCode,
   type GatewayJobInput,
   type GatewayJobKind,
   type GatewayJobOutput,
@@ -47,7 +49,8 @@ export type GatewayRun = {
   platformFeeBps: number;
   /** The OAuth client that submitted; null for an `osk_` key, a session or the product. */
   oauthClientId: string | null;
-  reservationId: string | undefined;
+  /** The hold; every gateway job is held before it runs. */
+  reservationId: string;
 };
 
 /** Streams one output into the caller's storage, inside the step that received it (#1645). */
@@ -72,6 +75,13 @@ export type GatewayPolled =
   | { kind: 'pending' }
   | { kind: 'failed'; error: string }
   | { kind: 'stored'; stored: GatewayStored };
+
+/** The job's error code for a failure message. */
+export function gatewayErrorCode(message: string): GatewayErrorCode {
+  return isContentRejectionError(message)
+    ? 'CONTENT_REJECTED'
+    : 'GENERATION_FAILED';
+}
 
 const usageSchema = z.record(z.string(), z.unknown());
 
@@ -162,5 +172,32 @@ export async function settleGatewayRun(
       model: run.target.modelId,
       requestId: stored.requestId,
     },
+  });
+}
+
+/** Records the outputs, then charges: a charged job always has its outputs. */
+export async function finishGatewayRun(
+  scopedDb: WorkflowScopedDb,
+  run: GatewayRun,
+  stored: GatewayStored,
+  idempotencyKey: string
+): Promise<Microdollars> {
+  await scopedDb.gatewayJobs.recordOutputs(run.jobId, {
+    outputs: stored.outputs,
+    via: GATEWAY_VIA[run.provider],
+  });
+  return settleGatewayRun(scopedDb, run, stored, idempotencyKey);
+}
+
+/** Ends a failed run: the hold zeroed first (safe once the run is over), then the job failed; a charged job stays succeeded. */
+export async function releaseGatewayRun(
+  scopedDb: Pick<WorkflowScopedDb, 'billing' | 'gatewayJobs'>,
+  run: Pick<GatewayRun, 'jobId' | 'reservationId'>,
+  error: string
+): Promise<void> {
+  await scopedDb.billing.zeroReservation(run.reservationId);
+  await scopedDb.gatewayJobs.markFailed(run.jobId, {
+    code: gatewayErrorCode(error),
+    message: error,
   });
 }

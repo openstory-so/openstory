@@ -107,8 +107,9 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
   captureProductEvent: vi.fn(),
 }));
 
-const { GatewayGenerationWorkflow, gatewayErrorCode } =
+const { GatewayGenerationWorkflow } =
   await import('./gateway-generation-workflow');
+const { gatewayErrorCode } = await import('@/gateway/server/phases');
 const { settleGatewayJob } = await import('@/gateway/server/settle');
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
@@ -312,7 +313,6 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
       'set-running',
       'start',
       'record-provenance',
-      'record-outputs',
       'settle',
     ]);
     expect(step.results.start).toEqual({
@@ -391,7 +391,7 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
       via: 'xai',
     });
     expect(order).toEqual([
-      'record-outputs:recordOutputs',
+      'settle:recordOutputs',
       'settle:settleReservation',
       'settle:markSucceeded',
     ]);
@@ -544,7 +544,6 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
       'stamp-provider-job',
       'poll-batch-0',
       'record-provenance',
-      'record-outputs',
       'settle',
     ]);
     expect(step.results.start).toEqual({ providerJobId: 'provider-1' });
@@ -601,7 +600,6 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
         'poll-batch-0',
         'poll-batch-1',
         'record-provenance',
-        'record-outputs',
         'settle',
       ]);
       expect(step.results['poll-batch-0']).toEqual({ kind: 'pending' });
@@ -750,7 +748,6 @@ describe('a throw after the charge', () => {
       'set-running',
       'start',
       'record-provenance',
-      'record-outputs',
       'settle',
       'emit-failure',
     ]);

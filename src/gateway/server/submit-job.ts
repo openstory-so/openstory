@@ -5,15 +5,17 @@
  */
 
 import type { Microdollars } from '@/billing/money';
-import {
-  releaseReservationOnThrow,
-  reserveRunCredits,
-} from '@/billing/server/preflight';
+import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { OpenStoryError, ValidationError } from '@/platform/errors';
+import {
+  InsufficientCreditsError,
+  OpenStoryError,
+  ValidationError,
+} from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -49,6 +51,24 @@ export type GatewaySubmitContext = {
 };
 
 export type GatewaySubmitResult = { job: GatewayJob; replay: boolean };
+
+/** How a body's media is checked: against the request that sent it. */
+export type GatewayRights = {
+  scopedDb: ScopedDb;
+  request: LikenessRequestContext;
+};
+
+/** What the hold writes: met by `ScopedDb` at a trigger and by `WorkflowScopedDb` in a step. */
+export type GatewayHoldDb = Pick<
+  WorkflowScopedDb,
+  'organizationId' | 'userId'
+> & {
+  gatewayJobs: Pick<
+    WorkflowScopedDb['gatewayJobs'],
+    'create' | 'deleteUnstarted'
+  >;
+  billing: Pick<WorkflowScopedDb['billing'], 'createReservation'>;
+};
 
 /** The `Idempotency-Key` header, trimmed; refused past 255 characters. */
 export function readIdempotencyKey(headers: Headers): string | null {
@@ -193,20 +213,21 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
 }
 
 /**
- * Validate and hold: the model, the platform key, the body, the account,
- * every URL, the price, the row and the hold. A refused request leaves no
- * row and no hold; `run` is null when the idempotency key already has a job.
+ * Validate and hold: the platform key, the body, the account, the media,
+ * the price, the row and the reservation. A refused request leaves no row and
+ * no hold. A replayed idempotency key returns its job and the same hold.
  */
-async function holdGatewayJob(
-  request: {
-    provider: GatewayProvider;
-    modelId: string;
-    body: GatewayJobInput;
-  },
-  ctx: GatewaySubmitContext
-): Promise<{ job: GatewayJob; run: GatewayRun | null }> {
-  const { scopedDb } = ctx;
-  const model = await getGatewayModel(request.provider, request.modelId);
+export async function holdGatewayJob(
+  model: GatewayModel,
+  body: GatewayJobInput,
+  ctx: {
+    scopedDb: GatewayHoldDb;
+    rights: GatewayRights;
+    idempotencyKey: string | null;
+    oauthClientId: string | null;
+  }
+): Promise<{ job: GatewayJob; created: boolean; run: GatewayRun }> {
+  const { scopedDb, rights } = ctx;
   // Before the hold: a run with no key would fail after taking the caller's money.
   if (!GATEWAY_DRIVERS[model.provider].configured(model.endpointId)) {
     throw new OpenStoryError(
@@ -215,17 +236,16 @@ async function holdGatewayJob(
       503
     );
   }
-  const input = validatedBody(model, request.body);
-  const media = gatedUrls(input);
+  const input = validatedBody(model, body);
 
   await requireGenerationAllowed({
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
   });
   await requireCheckedUploadRights(
-    withPlatformLlmKey(scopedDb),
-    media,
-    ctx.request
+    withPlatformLlmKey(rights.scopedDb),
+    gatedUrls(input),
+    rights.request
   );
 
   let estimate: Microdollars;
@@ -254,22 +274,18 @@ async function holdGatewayJob(
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
   });
-  if (!created) return { job, run: null };
 
-  // Platform keys only, so no BYOK skip: `providers: []` always holds.
-  let reservationId: string | undefined;
-  try {
-    reservationId = await reserveRunCredits(scopedDb, hold, {
-      providers: [],
-      idempotencyKey: `gateway:${job.id}`,
-      errorMessage: 'Insufficient credits for this model',
-    });
-  } catch (error) {
-    await scopedDb.gatewayJobs.deleteUnstarted(job.id);
-    throw error;
+  // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
+  const reserved = await scopedDb.billing.createReservation(hold, {
+    idempotencyKey: `gateway:${job.id}`,
+  });
+  if (!reserved.ok) {
+    if (created) await scopedDb.gatewayJobs.deleteUnstarted(job.id);
+    throw new InsufficientCreditsError('Insufficient credits for this model');
   }
   return {
     job,
+    created,
     run: {
       jobId: job.id,
       provider: model.provider,
@@ -280,7 +296,7 @@ async function holdGatewayJob(
       estimateMicros: estimate,
       platformFeeBps,
       oauthClientId: ctx.oauthClientId,
-      reservationId,
+      reservationId: reserved.reservationId,
     },
   };
 }
@@ -302,8 +318,14 @@ export async function submitGatewayJob(
     if (existing) return { job: existing, replay: true };
   }
 
-  const { job, run } = await holdGatewayJob(request, ctx);
-  if (!run) return { job, replay: true };
+  const model = await getGatewayModel(request.provider, request.modelId);
+  const { job, created, run } = await holdGatewayJob(model, request.body, {
+    scopedDb,
+    rights: { scopedDb, request: ctx.request },
+    idempotencyKey: ctx.idempotencyKey,
+    oauthClientId: ctx.oauthClientId,
+  });
+  if (!created) return { job, replay: true };
   const { reservationId } = run;
 
   const payload: GatewayGenerationWorkflowInput = {
