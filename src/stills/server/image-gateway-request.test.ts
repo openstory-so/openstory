@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { GatewayModel } from '@/gateway/server/catalog';
-import type { GatewayRoutes } from '@/gateway/server/route';
+import { gatewayRouteKey, type GatewayRoutes } from '@/gateway/server/route';
 import { gatewayImageRequest } from './image-generation';
 
 // The shape of modelschemas' `v1/images/generations` schema and card for Grok Imagine 2.0.
@@ -51,7 +51,10 @@ const GROK: GatewayModel = {
 };
 
 const OPENSTORY: GatewayRoutes = {
-  'grok/grok-imagine-image-2.0': { via: 'openstory', model: GROK },
+  [gatewayRouteKey('grok', 'grok-imagine-image-2.0')]: {
+    via: 'openstory',
+    model: GROK,
+  },
 };
 
 const still = {

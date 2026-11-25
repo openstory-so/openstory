@@ -26,7 +26,10 @@ export type GatewayRouteTarget = {
   readonly modelId: string;
 };
 
-function gatewayRouteKey(provider: GatewayProvider, modelId: string): string {
+export function gatewayRouteKey(
+  provider: GatewayProvider,
+  modelId: string
+): string {
   return `${provider}/${modelId}`;
 }
 
@@ -83,17 +86,23 @@ export async function resolveGatewayRoute({
   return reason ? { via: 'direct', reason } : { via: 'openstory', model };
 }
 
-/** The routes a trigger puts on the payload: one per model the run may call. */
+/** The routes a trigger puts on the payload: one per model the run may call; `body` when the trigger already has it. */
 export async function resolveGatewayRoutes(
   scopedDb: RouteScopedDb,
-  targets: readonly GatewayRouteTarget[]
+  targets: readonly (GatewayRouteTarget & {
+    readonly body?: GatewayJobInput;
+  })[]
 ): Promise<GatewayRoutes> {
   const entries = await Promise.all(
     targets.map(
-      async (target) =>
+      async ({ body, ...target }) =>
         [
           gatewayRouteKey(target.provider, target.modelId),
-          await resolveGatewayRoute({ scopedDb, ...target, body: null }),
+          await resolveGatewayRoute({
+            scopedDb,
+            ...target,
+            body: body ?? null,
+          }),
         ] as const
     )
   );
