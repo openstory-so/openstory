@@ -68,6 +68,30 @@ const GEMINI_IMAGE = rateCardSchema.parse({
   source: SOURCE,
 });
 
+// gemini-3.1-flash-lite-image as modelschemas has it (2026-11-26).
+const GEMINI_FLASH_LITE_IMAGE = rateCardSchema.parse({
+  inputs: {
+    input_tokens: { param: 'input_tokens', bound: 'usage', kind: 'number' },
+    output_tokens: { param: 'output_tokens', bound: 'usage', kind: 'number' },
+    image_output_tokens: {
+      param: 'image_output_tokens',
+      bound: 'usage',
+      kind: 'number',
+      default: 0,
+    },
+  },
+  tables: {},
+  price: {
+    '+': [
+      { '*': [{ var: 'input_tokens' }, 0.00000025] },
+      { '*': [{ var: 'output_tokens' }, 0.0000015] },
+      { '*': [{ var: 'image_output_tokens' }, 0.00003] },
+    ],
+  },
+  examples: [],
+  source: SOURCE,
+});
+
 const PROMPT =
   'Mara, a ferry mechanic, wipes her hands on a rag in the engine room';
 
@@ -105,6 +129,41 @@ describe('priceGatewayJob', () => {
         }
       )
     ).toBe(39_000);
+  });
+
+  it('prices Gemini image tokens apart from text, thinking as text output', () => {
+    // Google: a 1K image is 1,120 tokens, $0.0336. Plus 14 in and 6 text + 31 thinking out.
+    expect(
+      priceGatewayJob(
+        GEMINI_FLASH_LITE_IMAGE,
+        { contents: [{ parts: [{ text: PROMPT }] }] },
+        {
+          promptTokenCount: 14,
+          candidatesTokenCount: 1_126,
+          thoughtsTokenCount: 31,
+          totalTokenCount: 1_171,
+          candidatesTokensDetails: [
+            { modality: 'TEXT', tokenCount: 6 },
+            { modality: 'IMAGE', tokenCount: 1_120 },
+          ],
+        }
+      )
+    ).toBe(33_659);
+  });
+
+  it('prices a per-megapixel fal card off the megapixels the driver reports', () => {
+    const SCHNELL = rateCardSchema.parse({
+      inputs: {
+        megapixels: { param: 'megapixels', bound: 'usage', kind: 'number' },
+      },
+      tables: {},
+      price: { '*': [{ var: 'megapixels' }, 0.003] },
+      examples: [],
+      source: SOURCE,
+    });
+    expect(
+      priceGatewayJob(SCHNELL, { prompt: PROMPT }, { megapixels: 0.786_432 })
+    ).toBe(2_359);
   });
 
   it('throws RateCardError for a request it cannot price', () => {

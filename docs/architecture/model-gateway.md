@@ -399,6 +399,30 @@ to the reservation or sums `credit_reservations` joined to `gateway_jobs`
 `submitGatewayJob` before `reserveRunCredits`, where the hold amount is
 known.
 
+## Shipped (#2431, foundation)
+
+### Usage in the card's names
+
+- **Gemini** reports `usageMetadata` as Google sends it. The evaluator's
+  `normalizeUsage` maps it onto the card: `promptTokenCount` to
+  `input_tokens`, image tokens (`candidatesTokensDetails`, modality `IMAGE`)
+  to `image_output_tokens`, and the rest of `candidatesTokenCount` plus
+  `thoughtsTokenCount` to `output_tokens`. The driver does not map it again.
+  Checked against Google's page for `gemini-3.1-flash-lite-image`: $0.25 in,
+  $1.50 text and thinking out, $30 a million image tokens, "$0.0336 per 1K
+  image" (1,120 tokens); the card prices the same (`price.test.ts`).
+- **fal** results carry no usage. The driver reports `megapixels`, the sum of
+  `width × height / 1,000,000` over the result's `images`, never fal's billed
+  units; a result with no image sizes reports no usage. fal rounds nothing
+  here: the card gets the exact figure.
+
+### Blocked upstream
+
+- **Gemini image models cannot load** (TanStack/schemas#755). The record
+  names `v1beta/models/{modelsId}:generateContent` under `image`; modelschemas
+  files that schema under `chat`, so its `_links.schema` is a 404 and
+  `getGatewayModel` refuses. Not worked around by reading the chat schema.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

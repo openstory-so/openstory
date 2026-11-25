@@ -26,6 +26,16 @@ vi.doMock('@/models/server/byteplus-governor', () => ({
   acquireSeedSpeechToken,
 }));
 
+const falQueue = {
+  submit: vi.fn(),
+  status: vi.fn(),
+  result: vi.fn(),
+};
+const falConfig = vi.fn();
+vi.doMock('@fal-ai/client', () => ({
+  fal: { config: falConfig, queue: falQueue },
+}));
+
 const fetchMock =
   vi.fn<(input: string | Request, init?: RequestInit) => Promise<Response>>();
 vi.stubGlobal('fetch', fetchMock);
@@ -406,14 +416,31 @@ describe('gemini driver', () => {
             finishReason: 'STOP',
           },
         ],
-        usageMetadata: { promptTokenCount: 14, candidatesTokenCount: 1_290 },
+        usageMetadata: {
+          promptTokenCount: 14,
+          candidatesTokenCount: 1_296,
+          thoughtsTokenCount: 30,
+          candidatesTokensDetails: [
+            { modality: 'TEXT', tokenCount: 6 },
+            { modality: 'IMAGE', tokenCount: 1_290 },
+          ],
+        },
         responseId: 'resp-1',
       })
     );
     expect(await start('gemini')).toEqual({
       result: {
         media: [{ base64: 'AAAA', contentType: 'image/png' }],
-        usage: { promptTokenCount: 14, candidatesTokenCount: 1_290 },
+        // As Google sent it: the card's evaluator maps it (price.test.ts).
+        usage: {
+          promptTokenCount: 14,
+          candidatesTokenCount: 1_296,
+          thoughtsTokenCount: 30,
+          candidatesTokensDetails: [
+            { modality: 'TEXT', tokenCount: 6 },
+            { modality: 'IMAGE', tokenCount: 1_290 },
+          ],
+        },
         requestId: 'resp-1',
       },
     });
@@ -451,6 +478,110 @@ describe('gemini driver', () => {
     await expect(
       GATEWAY_DRIVERS.gemini.poll(STARTS.gemini.target, 'resp-1', credentials)
     ).rejects.toBeInstanceOf(NonRetryableError);
+  });
+});
+
+describe('fal driver', () => {
+  const target = {
+    modelId: 'fal-ai/flux/schnell',
+    endpointId: 'fal-ai/flux/schnell',
+  };
+  const body = { prompt: PROMPT, image_size: 'landscape_4_3' };
+
+  it("queues the caller's body unchanged on the platform key", async () => {
+    falQueue.submit.mockResolvedValueOnce({ request_id: 'fal-1' });
+    expect(await GATEWAY_DRIVERS.fal.start(target, body, credentials)).toEqual({
+      jobId: 'fal-1',
+    });
+    expect(falConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: 'fal-key' })
+    );
+    expect(falQueue.submit).toHaveBeenCalledWith('fal-ai/flux/schnell', {
+      input: body,
+    });
+  });
+
+  it('does not retry a 422', async () => {
+    falQueue.submit.mockRejectedValueOnce(
+      Object.assign(new Error('Unprocessable'), {
+        status: 422,
+        body: { detail: [{ msg: 'image_size is not valid' }] },
+      })
+    );
+    const error = await GATEWAY_DRIVERS.fal
+      .start(target, body, credentials)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NonRetryableError);
+    expect(error).toMatchObject({
+      message: expect.stringContaining('(422)'),
+    });
+  });
+
+  it('is pending until the queue completes', async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'IN_PROGRESS' });
+    expect(
+      await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials)
+    ).toEqual({
+      status: 'pending',
+    });
+    expect(falQueue.result).not.toHaveBeenCalled();
+  });
+
+  it('reads the media and works megapixels out from the image sizes', async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
+    falQueue.result.mockResolvedValueOnce({
+      data: {
+        images: [
+          {
+            url: 'https://fal.media/a.jpg',
+            width: 1024,
+            height: 768,
+            content_type: 'image/jpeg',
+          },
+          {
+            url: 'https://fal.media/b.jpg',
+            width: 512,
+            height: 512,
+            content_type: 'image/jpeg',
+          },
+        ],
+      },
+    });
+    expect(
+      await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials)
+    ).toEqual({
+      status: 'done',
+      result: {
+        media: [
+          { url: 'https://fal.media/a.jpg', contentType: 'image/jpeg' },
+          { url: 'https://fal.media/b.jpg', contentType: 'image/jpeg' },
+        ],
+        usage: { megapixels: (1024 * 768 + 512 * 512) / 1_000_000 },
+        requestId: 'fal-1',
+      },
+    });
+  });
+
+  it('reports no usage when the result carries no image sizes', async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
+    falQueue.result.mockResolvedValueOnce({
+      data: {
+        video: { url: 'https://fal.media/v.mp4', content_type: 'video/mp4' },
+      },
+    });
+    const poll = await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials);
+    expect(poll).toMatchObject({ status: 'done', result: { usage: null } });
+  });
+
+  it("fails with the provider's reason when the result rejects", async () => {
+    falQueue.status.mockResolvedValueOnce({ status: 'COMPLETED' });
+    falQueue.result.mockRejectedValueOnce(new Error('NSFW content detected'));
+    expect(
+      await GATEWAY_DRIVERS.fal.poll(target, 'fal-1', credentials)
+    ).toEqual({
+      status: 'failed',
+      error: expect.stringContaining('NSFW content detected'),
+    });
   });
 });
 
