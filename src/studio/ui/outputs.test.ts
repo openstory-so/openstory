@@ -19,6 +19,7 @@ function asset(
     organizationId: 'organization',
     userId: 'user',
     provider: 'fal',
+    gatewayJobId: null,
     endpointId: 'fal-ai/example',
     modelName: 'Example',
     source: 'studio',

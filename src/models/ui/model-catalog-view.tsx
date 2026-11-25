@@ -20,6 +20,7 @@ import {
   listProviderModelsFn,
 } from '@/models/model-catalog.fn';
 import { CATALOG_ACTIVITIES, type CatalogActivity } from '@/models/catalog';
+import type { GatewayProvider } from '@/gateway/schema';
 import {
   useSuspenseInfiniteQuery,
   useSuspenseQuery,
@@ -167,7 +168,8 @@ const ModelResults: FC<{
   );
 };
 
-const PROVIDER_LABELS = {
+const PROVIDER_LABELS: Record<GatewayProvider, string> = {
+  fal: 'fal',
   grok: 'Grok',
   byteplus: 'BytePlus',
   gemini: 'Gemini',

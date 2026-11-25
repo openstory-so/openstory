@@ -136,6 +136,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
           adapter: openstoryVideo(model, transport(stored)),
           prompt: '',
           modelOptions: input,
+          threadId: event.instanceId,
         });
         return { jobId: job.jobId, stored };
       });
@@ -173,7 +174,11 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     } else {
       outputs = await step.do('generate', async () => {
         const stored: GatewayJobOutput[] = [];
-        const options = { prompt: '', modelOptions: input };
+        const options = {
+          prompt: '',
+          modelOptions: input,
+          threadId: event.instanceId,
+        };
         if (activity === 'image') {
           await generateImage({
             adapter: openstoryImage(model, transport(stored)),
