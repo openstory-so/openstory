@@ -16,6 +16,11 @@ vi.doMock('./providers', async (importOriginal) => ({
 }));
 
 const { settleGatewayRun, startGatewayRun } = await import('./phases');
+const { platformOnlyCredentials } = await import('./platform-credentials');
+const CREDENTIALS = platformOnlyCredentials({
+  organizationId: 'org-1',
+  userId: 'user-1',
+});
 
 // $10 a million output tokens, read off the usage.
 const PER_TOKEN = rateCardSchema.parse({
@@ -67,7 +72,7 @@ describe('startGatewayRun', () => {
     }));
     const run = { ...RUN, card: PER_IMAGE, input: { ...RUN.input, n: 2 } };
 
-    const started = await startGatewayRun(run, {}, store);
+    const started = await startGatewayRun(run, CREDENTIALS, store);
     expect(store).toHaveBeenCalledTimes(2);
     if (!('stored' in started)) throw new Error('not stored');
     expect(started.stored.outputs).toHaveLength(2);

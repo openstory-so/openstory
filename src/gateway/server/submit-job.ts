@@ -234,12 +234,12 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
     }
     // The parser also drops every tab, LF and CR inside the string.
     const parsed = trimmed.replace(/[\t\n\r]/g, '');
-    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(parsed);
+    const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(parsed)?.[0];
     const urlLike =
       /^[\\/]{2}/.test(parsed) ||
-      (scheme !== null &&
-        (FETCHED_SCHEMES.has(scheme[1].toLowerCase()) ||
-          /^[\\/]{2}/.test(parsed.slice(scheme[0].length))));
+      (scheme !== undefined &&
+        (FETCHED_SCHEMES.has(scheme.slice(0, -1).toLowerCase()) ||
+          /^[\\/]{2}/.test(parsed.slice(scheme.length))));
     if (urlLike) {
       // Only http(s), exactly as the parser writes it: a provider may fetch what we did not check.
       let href: string | null = null;
