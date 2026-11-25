@@ -11,6 +11,7 @@ import type { TextGatewayProvider } from '@/gateway/schema';
 import type { GatewayTextModel } from '@/gateway/server/catalog';
 import { getStoredTextModel } from '@/gateway/server/db/gateway-models';
 import { priceGatewayJob } from '@/gateway/server/price';
+import { normalizeUsage } from '@modelschemas/rate-card/evaluator';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import { getMaxOutputTokens } from '@/models/models.config';
@@ -210,18 +211,36 @@ async function hold(
   };
 }
 
-/** The provider's usage in OpenAI Chat shape, so `normalizeUsage` splits cached and reasoning tokens onto the card's levers. */
-function chatUsage(usage: TokenUsage): Record<string, unknown> {
+/** Web searches the provider ran server-side (OpenRouter's `serverToolUseDetails`). */
+function webSearches(usage: TokenUsage): number {
+  const details: unknown = usage.providerUsageDetails?.serverToolUseDetails;
+  return typeof details === 'object' &&
+    details !== null &&
+    'webSearchRequests' in details &&
+    typeof details.webSearchRequests === 'number'
+    ? details.webSearchRequests
+    : 0;
+}
+
+/** The provider's usage on the card's levers: cached, cache-write and reasoning split out by `normalizeUsage`, plus web searches. */
+function cardUsage(
+  gateway: TextGateway,
+  usage: TokenUsage
+): Record<string, unknown> {
+  const searches = webSearches(usage);
   return {
-    prompt_tokens: usage.promptTokens,
-    completion_tokens: usage.completionTokens,
-    prompt_tokens_details: {
-      cached_tokens: usage.promptTokensDetails?.cachedTokens ?? 0,
-      cache_write_tokens: usage.promptTokensDetails?.cacheWriteTokens ?? 0,
-    },
-    completion_tokens_details: {
-      reasoning_tokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
-    },
+    ...normalizeUsage(gateway.model.card, {
+      prompt_tokens: usage.promptTokens,
+      completion_tokens: usage.completionTokens,
+      prompt_tokens_details: {
+        cached_tokens: usage.promptTokensDetails?.cachedTokens ?? 0,
+        cache_write_tokens: usage.promptTokensDetails?.cacheWriteTokens ?? 0,
+      },
+      completion_tokens_details: {
+        reasoning_tokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
+      },
+    }),
+    ...(searches > 0 && { web_searches: searches }),
   };
 }
 
@@ -234,7 +253,7 @@ async function settle(
 ): Promise<void> {
   // Cut off with no usage: the input bound and what streamed, never above the hold.
   const cost = usage
-    ? price(gateway, chatUsage(usage))
+    ? price(gateway, cardUsage(gateway, usage))
     : streamedChars > 0
       ? micros(
           Math.min(

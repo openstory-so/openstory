@@ -21,6 +21,9 @@ import {
   type TokenUsage,
 } from '@tanstack/ai';
 import { resolveDebugOption } from '@tanstack/ai/adapter-internals';
+import { createGeminiChat } from '@tanstack/ai-gemini';
+import { createGrokText } from '@tanstack/ai-grok';
+import { createOpenRouterText } from '@tanstack/ai-openrouter';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { storeGatewayModel } from '@/gateway/server/db/gateway-models';
@@ -50,6 +53,12 @@ const CARD = rateCardSchema.parse({
       kind: 'number',
       default: 0,
     },
+    web_searches: {
+      param: 'web_searches',
+      bound: 'usage',
+      kind: 'number',
+      default: 0,
+    },
   },
   tables: {
     rate: {
@@ -57,11 +66,17 @@ const CARD = rateCardSchema.parse({
         input_tokens: 1e-6,
         output_tokens: 1e-5,
         cache_read_tokens: 1e-7,
+        web_searches: 0.01,
       },
     },
   },
   price: {
-    '+': ['input_tokens', 'output_tokens', 'cache_read_tokens'].map((v) => ({
+    '+': [
+      'input_tokens',
+      'output_tokens',
+      'cache_read_tokens',
+      'web_searches',
+    ].map((v) => ({
       '*': [{ var: v }, { lookup: { table: 'rate', keys: ['base', v] } }],
     })),
   },
@@ -319,5 +334,86 @@ describe('withTextGateway', () => {
     expect(
       (await route(key('platform', 'openrouter'))).gateway
     ).toBeUndefined();
+  });
+});
+
+describe('openstoryText over each route', () => {
+  const finished = (usage: TokenUsage): AdapterYieldChunk[] =>
+    run().map((c) => (c.type === EventType.RUN_FINISHED ? { ...c, usage } : c));
+
+  it('prices OpenRouter web searches on the card lever', async () => {
+    const inner = adapter(() =>
+      finished({
+        ...USAGE(),
+        providerUsageDetails: {
+          serverToolUseDetails: { webSearchRequests: 2 },
+        },
+      })
+    );
+    for await (const _ of openstoryText(inner, gateway).chatStream(OPTIONS)) {
+      // drain
+    }
+    expect((await ledger()).charges).toEqual([22_000]);
+  });
+
+  it('holds an inline image at a fixed count, not its bytes, and passes the request through untouched', async () => {
+    const seen: unknown[] = [];
+    const inner = adapter(() => run());
+    const spy = Object.assign(inner, {
+      async *chatStream(options: unknown) {
+        seen.push(options);
+        yield* run();
+      },
+    });
+    const options = {
+      ...OPTIONS,
+      messages: [
+        {
+          role: 'user' as const,
+          content: [
+            {
+              type: 'image' as const,
+              source: {
+                type: 'data' as const,
+                value: 'A'.repeat(2_000_000),
+                mimeType: 'image/png',
+              },
+            },
+          ],
+        },
+      ],
+      modelOptions: { maxTokens: 10, plugins: [{ id: 'web' }] },
+      outputSchema: { type: 'object' },
+    };
+    for await (const _ of openstoryText(spy, gateway).chatStream(options)) {
+      // drain
+    }
+    expect(seen).toEqual([options]);
+    expect(seen[0]).toBe(options);
+    const [reservation] = await db
+      .select({ amount: creditReservations.originalAmount })
+      .from(creditReservations);
+    // About 4,096 input tokens and 10 output at $1/M and $10/M, not 2M bytes.
+    expect(reservation?.amount).toBeLessThan(5_000);
+  });
+
+  it('keeps the identity and capabilities of the real OpenRouter, xAI and Google adapters', () => {
+    for (const inner of [
+      createOpenRouterText('anthropic/claude-sonnet-5.5', 'k'),
+      createGrokText('grok-4.7', 'k'),
+      createGeminiChat('gemini-3.8-flash', 'k'),
+    ]) {
+      const wrapped = openstoryText(inner, gateway);
+      expect(wrapped.name).toBe(inner.name);
+      expect(wrapped.model).toBe(inner.model);
+      expect(wrapped.supportsFileSources).toBe(inner.supportsFileSources);
+      expect(wrapped.supportsCombinedToolsAndSchema()).toBe(
+        inner.supportsCombinedToolsAndSchema()
+      );
+      expect(wrapped.chatStream).not.toBe(inner.chatStream);
+      expect(Boolean(wrapped.structuredOutputStream)).toBe(
+        Boolean(inner.structuredOutputStream)
+      );
+    }
   });
 });

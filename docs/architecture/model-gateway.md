@@ -1223,7 +1223,9 @@ itself skips it (`chargedByGateway`, `llmCostToDeduct` returning null,
   call site sends.
 - **Charge at the end:** the card on the usage the stream reported, mapped to
   OpenAI Chat usage and through `normalizeUsage`, so cached, cache-write and
-  reasoning tokens are priced on their own levers. Never `llmCostFromUsage`,
+  reasoning tokens are priced on their own levers, plus OpenRouter's
+  server-side web searches (`serverToolUseDetails.webSearchRequests`) on the
+  card's `web_searches` lever. Never `llmCostFromUsage`,
   never the provider's `cost`. A charge above the hold grows it while the
   balance allows (`settleReservation`), else it is reported as skipped.
 - **Cut off part way** (abort, dropped connection, an error after content):
