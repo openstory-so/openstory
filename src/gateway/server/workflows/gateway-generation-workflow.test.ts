@@ -580,6 +580,41 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
     );
   });
 
+  it('polls on in a new batch, after a sleep, when one runs out pending', async () => {
+    vi.useFakeTimers();
+    try {
+      mockStart.mockResolvedValueOnce({ jobId: 'provider-1' });
+      // A batch is 30 s of polls 3 s apart: ten pendings use it up.
+      for (let i = 0; i < 10; i++) {
+        mockPoll.mockResolvedValueOnce({ status: 'pending' });
+      }
+      const step = makeStep();
+      const { scopedDb, billing } = makeScopedDb();
+      const run = makeWorkflow().runBody(makeEvent(), step, scopedDb);
+      await vi.advanceTimersByTimeAsync(31_000);
+      await run;
+
+      expect(step.names).toEqual([
+        'set-running',
+        'start',
+        'stamp-provider-job',
+        'poll-batch-0',
+        'poll-batch-1',
+        'record-provenance',
+        'record-outputs',
+        'settle',
+      ]);
+      expect(step.results['poll-batch-0']).toEqual({ kind: 'pending' });
+      expect(step.results['poll-batch-1']).toMatchObject({ kind: 'stored' });
+      expect(step.sleep).toHaveBeenCalledWith('poll-wait-1', 1);
+      expect(mockPoll).toHaveBeenCalledTimes(11);
+      expect(mockStore).toHaveBeenCalledTimes(1);
+      expect(billing.settleReservation).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('fails without storing or settling when the provider fails the job', async () => {
     mockStart.mockResolvedValueOnce({ jobId: 'provider-1' });
     mockPoll.mockResolvedValueOnce({ status: 'failed', error: 'boom' });

@@ -163,12 +163,27 @@ const falDriver: Driver = {
       status: 'done',
       result: {
         media: extractAssetOutputs(data),
-        usage: null,
+        usage: falUsage(data),
         requestId: jobId,
       },
     };
   },
 };
+
+const falImages = z.object({
+  images: z.array(z.object({ width: z.number(), height: z.number() })).min(1),
+});
+
+/** fal's result carries no usage: per-megapixel cards read the result's own image sizes. */
+function falUsage(data: JsonValue): JsonObject | null {
+  const parsed = falImages.safeParse(data);
+  if (!parsed.success) return null;
+  const pixels = parsed.data.images.reduce(
+    (sum, image) => sum + image.width * image.height,
+    0
+  );
+  return { megapixels: pixels / 1_000_000 };
+}
 
 async function configureFal(credentials: GatewayCredentials): Promise<void> {
   const { key } = await credentials.resolveKey('fal');
