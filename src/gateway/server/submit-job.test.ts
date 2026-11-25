@@ -179,15 +179,18 @@ const requireCheckedUploadRights = vi.fn(
   ) => new Map()
 );
 
-const hasPlatformKey = vi.fn(
-  (_provider: GatewayProvider, _endpointId: string) => true
-);
-const realCredentials = await import('@/gateway/server/platform-credentials');
-vi.doMock('@/gateway/server/platform-credentials', () => ({
-  ...realCredentials,
-  hasPlatformKey,
-}));
 vi.doMock('#db-client', () => ({ getDb: () => db }));
+const configured = vi.fn((_endpointId: string) => true);
+const realProviders = await import('@/gateway/server/providers');
+vi.doMock('@/gateway/server/providers', () => ({
+  ...realProviders,
+  GATEWAY_DRIVERS: Object.fromEntries(
+    Object.entries(realProviders.GATEWAY_DRIVERS).map(([provider, driver]) => [
+      provider,
+      { ...driver, configured },
+    ])
+  ),
+}));
 vi.doMock('@/gateway/server/catalog', () => ({ getGatewayModel }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/cast/server/upload-check', () => ({ requireCheckedUploadRights }));
@@ -512,16 +515,13 @@ describe('submitGatewayJob', () => {
   });
 
   it('refuses a provider with no platform key before the hold, as a 503', async () => {
-    hasPlatformKey.mockReturnValueOnce(false);
+    configured.mockReturnValueOnce(false);
     const error = await refused(VIDEO);
     expect(error).toMatchObject({
       code: 'PROVIDER_NOT_CONFIGURED',
       statusCode: 503,
     });
-    expect(hasPlatformKey).toHaveBeenCalledWith(
-      'grok',
-      'v1/videos/generations'
-    );
+    expect(configured).toHaveBeenCalledWith('v1/videos/generations');
   });
 
   it('refuses a request the card cannot price, with no row and no hold', async () => {

@@ -429,17 +429,20 @@ known.
   logs keep the provider's own text.
 - **Missing platform key.** The submit refuses with
   `503 PROVIDER_NOT_CONFIGURED` right after the model lookup, before the
-  body checks and the hold, when the key the driver spends is not set
-  (`hasPlatformKey`: `FAL_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
-  `ARK_API_KEY`, or the Seed Speech key for `tts/create`).
+  body checks and the hold, when the driver says it cannot run the endpoint
+  (`configured` on each driver in `GATEWAY_DRIVERS`). It is the same check the
+  run makes: the platform key (`FAL_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
+  `ARK_API_KEY`, or the Seed Speech key for `tts/create`) and, for the native
+  drivers, the E2E gate.
 - **Stuck jobs.** The existing 5-minute cron (`*/5`, the reconcile branch of
-  `scheduled()`) also runs `reconcileGatewayJobs`: a `queued` or `running`
-  job with a run id, untouched for 5 minutes, whose run the engine reports
-  over (errored, terminated, gone or complete) is ended through `markFailed`,
-  so a charged job still ends `succeeded`. A run still in flight, or one the
-  engine cannot read, is left for the next pass. The hold is not released
-  here; it expires on its TTL. A job whose run id was never recorded
-  (`attachRun` failed and the run died) is not swept.
+  `scheduled()`) also runs `reconcileGatewayJobs`. It takes `queued` or
+  `running` jobs with a run id, untouched for 5 minutes, oldest first (100 a
+  pass). Each one whose run the engine reports over (errored, terminated, gone
+  or complete) is ended as its `onFailure` would have: `markFailed` (a charged
+  job still ends `succeeded`), then its hold zeroed, and a warning logged. A
+  run still in flight, or one the engine cannot read, is left for the next
+  pass. A job whose run id was never recorded (`attachRun` failed and the run
+  died) is not swept.
 
 ### Real jobs (2026-11-26)
 

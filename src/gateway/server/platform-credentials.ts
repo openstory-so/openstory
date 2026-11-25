@@ -3,8 +3,6 @@
  * organization's own provider keys are never read, so every job is billed.
  */
 
-import { BYTEPLUS_ENDPOINTS, type GatewayProvider } from '@/gateway/schema';
-import { getArkApiKey } from '@/models/server/byteplus-config';
 import { getPlatformLlmKey } from '@/models/server/create-adapter';
 import { resolvePlatformOptionalKey } from '@/models/server/db/api-keys';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -29,26 +27,6 @@ export function platformOnlyCredentials(scope: {
       return key;
     },
   };
-}
-
-/** Whether the platform key the model's driver spends is set. */
-export function hasPlatformKey(
-  provider: GatewayProvider,
-  endpointId: string
-): boolean {
-  switch (provider) {
-    case 'fal':
-      return resolvePlatformOptionalKey('fal') !== undefined;
-    case 'grok':
-      return resolvePlatformOptionalKey('xai') !== undefined;
-    case 'gemini':
-      return resolvePlatformOptionalKey('google') !== undefined;
-    case 'byteplus':
-      // Seed Audio is not on Ark: its own key.
-      return endpointId === BYTEPLUS_ENDPOINTS.speech
-        ? resolvePlatformOptionalKey('seed-speech') !== undefined
-        : Boolean(getArkApiKey());
-  }
 }
 
 /** `scopedDb` with its LLM key on the platform's: the submit's likeness check spends no organization key. */

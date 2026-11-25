@@ -29,10 +29,8 @@ import {
   type GatewayProvider,
 } from '@/gateway/schema';
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
-import {
-  hasPlatformKey,
-  withPlatformLlmKey,
-} from '@/gateway/server/platform-credentials';
+import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
+import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -211,7 +209,7 @@ export async function submitGatewayJob(
 
   const model = await getGatewayModel(request.provider, request.modelId);
   // Before the hold: a run with no key would fail after taking the caller's money.
-  if (!hasPlatformKey(model.provider, model.endpointId)) {
+  if (!GATEWAY_DRIVERS[model.provider].configured(model.endpointId)) {
     throw new OpenStoryError(
       'This provider is not configured on this server',
       'PROVIDER_NOT_CONFIGURED',
