@@ -354,7 +354,7 @@ export async function submitGatewayJob(
 
   try {
     await scopedDb.gatewayJobs.attachRun(job.id, {
-      reservationId: reservationId ?? null,
+      reservationId,
       workflowRunId,
     });
   } catch (error) {

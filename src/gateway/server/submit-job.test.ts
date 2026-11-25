@@ -865,7 +865,7 @@ describe('the charge', () => {
       via: 'xai',
     });
     await scopedDb.billing.settleReservation(
-      payload.reservationId ?? '',
+      payload.reservationId,
       gatewayCharge({
         providerCostMicros: micros(9_000),
         platformFeeBps: 0,
