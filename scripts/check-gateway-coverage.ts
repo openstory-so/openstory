@@ -4,6 +4,7 @@
  *   bun scripts/check-gateway-coverage.ts            # live modelschemas
  *   bun scripts/check-gateway-coverage.ts --record   # live, and rewrite the recorded fixture
  *   bun scripts/check-gateway-coverage.ts --recorded # the recorded fixture, no network
+ *   add --json for [{ provider, id, holdable, reason }] on stdout instead of the table
  *
  * Two requests a model: set MODELSCHEMAS_API_KEY (anonymous is 60 an hour).
  * Exits 1 when a gap is not listed in docs/architecture/model-gateway.md.
@@ -69,18 +70,31 @@ if (process.argv.includes('--record')) {
 }
 
 const coverages = models.map(modelCoverage);
-const mark = (ok: boolean) => (ok ? 'yes' : 'no');
-console.log('| Model | Found | Schema | Card | Hold | Charge |');
-console.log('| --- | --- | --- | --- | --- | --- |');
-for (const c of coverages) {
+const gaps = coverages.filter((c) => coverageGap(c) !== null);
+if (process.argv.includes('--json')) {
   console.log(
-    `| \`${c.provider}/${c.id}\` | ${mark(c.found)} | ${mark(c.schema)} | ${mark(c.card)} | ${c.hold ?? 'yes'} | ${c.charge ?? 'yes'} |`
+    JSON.stringify(
+      coverages.map((c) => {
+        const reason = coverageGap(c);
+        return { provider: c.provider, id: c.id, holdable: !reason, reason };
+      }),
+      null,
+      2
+    )
+  );
+} else {
+  const mark = (ok: boolean) => (ok ? 'yes' : 'no');
+  console.log('| Model | Found | Schema | Card | Hold | Charge |');
+  console.log('| --- | --- | --- | --- | --- | --- |');
+  for (const c of coverages) {
+    console.log(
+      `| \`${c.provider}/${c.id}\` | ${mark(c.found)} | ${mark(c.schema)} | ${mark(c.card)} | ${c.hold ?? 'yes'} | ${c.charge ?? 'yes'} |`
+    );
+  }
+  console.log(
+    `\n${coverages.length - gaps.length}/${coverages.length} can be held and charged.`
   );
 }
-const gaps = coverages.filter((c) => coverageGap(c) !== null);
-console.log(
-  `\n${coverages.length - gaps.length}/${coverages.length} can be held and charged.`
-);
 
 const unlisted = unlistedGaps(coverages, readFileSync(DOC, 'utf8'));
 for (const c of unlisted) {
