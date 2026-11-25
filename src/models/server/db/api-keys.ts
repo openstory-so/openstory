@@ -92,6 +92,47 @@ type CachedKeyLookup =
       invalidReason: string | null;
     };
 
+function platformKeyFor(provider: ApiKeyProvider): string | undefined {
+  const env = getEnv();
+  switch (provider) {
+    case 'openrouter':
+      return env.OPENROUTER_KEY || undefined;
+    case 'fal':
+      return env.FAL_KEY || undefined;
+    case 'xai':
+      return env.XAI_API_KEY || undefined;
+    case 'google':
+      return env.GEMINI_API_KEY || undefined;
+    case 'llmtr':
+      // Organization BYOK only — OpenRouter/fal cover platform LLM calls.
+      return undefined;
+    case 'upload_post':
+      // Publishing always posts to the organization's OWN social accounts, so
+      // there is deliberately no platform-level fallback (#1267).
+      return undefined;
+    default: {
+      const _exhaustive: never = provider;
+      throw new Error(`Unknown provider: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+/** The platform's own key, never an organization's; all the model gateway spends. */
+export function resolvePlatformOptionalKey(
+  provider: ResolvableProvider
+): ResolvedApiKey | undefined {
+  if (provider === 'elevenlabs') {
+    const key = isElevenLabsConfigured() ? getElevenLabsApiKey() : undefined;
+    return key ? { key, source: 'platform' } : undefined;
+  }
+  if (provider === 'seed-speech') {
+    const key = isSeedSpeechConfigured() ? getSeedSpeechApiKey() : undefined;
+    return key ? { key, source: 'platform' } : undefined;
+  }
+  const key = platformKeyFor(provider);
+  return key ? { key, source: 'platform' } : undefined;
+}
+
 export function createApiKeysReadMethods(db: Database, organizationId: string) {
   // Per-scope memoization of the `organization_api_keys` row lookup. A ScopedDb is
   // built fresh per workflow run / request, so this cache lives exactly one
@@ -305,46 +346,14 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
     }
   }
 
-  function platformKeyFor(provider: ApiKeyProvider): string | undefined {
-    const env = getEnv();
-    switch (provider) {
-      case 'openrouter':
-        return env.OPENROUTER_KEY || undefined;
-      case 'fal':
-        return env.FAL_KEY || undefined;
-      case 'xai':
-        return env.XAI_API_KEY || undefined;
-      case 'google':
-        return env.GEMINI_API_KEY || undefined;
-      case 'llmtr':
-        // Organization BYOK only — OpenRouter/fal cover platform LLM calls.
-        return undefined;
-      case 'upload_post':
-        // Publishing always posts to the organization's OWN social accounts, so
-        // there is deliberately no platform-level fallback (#1267).
-        return undefined;
-      default: {
-        const _exhaustive: never = provider;
-        throw new Error(`Unknown provider: ${String(_exhaustive)}`);
-      }
-    }
-  }
-
   // Missing key is undefined, not an error: native-provider routing (#1216)
   // uses this to skip to the next provider (usually fal). `resolveKey` wraps
   // this and throws, which is what fal's always-claim path needs.
   async function resolveOptionalKey(
     provider: ResolvableProvider
   ): Promise<ResolvedApiKey | undefined> {
-    if (provider === 'elevenlabs') {
-      if (!isElevenLabsConfigured()) return undefined;
-      const key = getElevenLabsApiKey();
-      return key ? { key, source: 'platform' } : undefined;
-    }
-    if (provider === 'seed-speech') {
-      if (!isSeedSpeechConfigured()) return undefined;
-      const key = getSeedSpeechApiKey();
-      return key ? { key, source: 'platform' } : undefined;
+    if (provider === 'elevenlabs' || provider === 'seed-speech') {
+      return resolvePlatformOptionalKey(provider);
     }
 
     const organizationProvider: ApiKeyProvider = provider;

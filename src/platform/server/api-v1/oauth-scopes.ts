@@ -3,7 +3,8 @@
  *
  * Only OAuth bearer tokens are scoped; an `osk_` key has the full API. Cheap
  * reads need `sequences:read`; edits and exports need `sequences:write`;
- * anything that spends credits needs `generate`.
+ * anything that spends credits needs `generate`; every `/gateway` request,
+ * reads included, needs `models:invoke`.
  */
 
 import type { OAuthApiScope } from '@/platform/server/auth/oauth-scopes';
@@ -21,7 +22,8 @@ const GENERATE_PATHS = [/^\/sequences\/?$/, /^\/scripts\/enhance\/?$/];
 export function requiredOAuthScope(request: Request): OAuthApiScope | null {
   const pathname = new URL(request.url).pathname;
   if (!pathname.startsWith(API_V1_BASE)) return null;
-  const relative = pathname.slice(API_V1_BASE.length) || '/';
+  // Read as the router matches: case-insensitive, decoded, empty segments dropped.
+  const relative = routerPath(pathname.slice(API_V1_BASE.length)) || '/';
   const method = request.method.toUpperCase();
 
   if (
@@ -31,9 +33,22 @@ export function requiredOAuthScope(request: Request): OAuthApiScope | null {
   ) {
     return null;
   }
+  if (relative === '/gateway' || relative.startsWith('/gateway/')) {
+    return 'models:invoke';
+  }
   if (!MUTATING_METHODS.has(method)) return 'sequences:read';
   if (GENERATE_PATHS.some((pattern) => pattern.test(relative))) {
     return 'generate';
   }
   return 'sequences:write';
+}
+
+function routerPath(path: string): string {
+  let decoded = path;
+  try {
+    decoded = decodeURI(path);
+  } catch {
+    // Malformed escapes: match on the raw path.
+  }
+  return decoded.toLowerCase().replace(/\/{2,}/g, '/');
 }

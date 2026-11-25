@@ -31,6 +31,12 @@ import { sequenceAssetsResultSchema } from './sequence-assets';
 import { organizationResultSchema } from './organization';
 import { stitchCutSchema } from '@/stitches/cut';
 import { publishStitchBodySchema } from '@/stitches/publish-body';
+import {
+  EXAMPLE_GATEWAY_SUBMIT,
+  gatewayJobResourceSchema,
+  gatewayModelsResultSchema,
+} from '@/gateway/server/api-documents';
+import { GATEWAY_PROVIDERS } from '@/gateway/schema';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -137,6 +143,13 @@ export function buildOpenApiDocument(): JsonObject {
   );
   const { root: publishStitchRequest, defs: publishStitchDefs } =
     componentSchemas(publishStitchBodySchema);
+  const gatewayJobIdParam: JsonObject = {
+    name: 'id',
+    in: 'path',
+    required: true,
+    description: 'The gateway job id (ULID).',
+    schema: { type: 'string' },
+  };
 
   const waitParam: JsonObject = {
     name: 'wait',
@@ -176,6 +189,11 @@ export function buildOpenApiDocument(): JsonObject {
       {
         name: 'stitches',
         description: 'Share a cut from the stitch CLI as a public page.',
+      },
+      {
+        name: 'gateway',
+        description:
+          'Run image and video models on platform keys, billed to the organization.',
       },
     ],
     paths: {
@@ -794,6 +812,117 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/gateway/models`]: {
+        get: {
+          tags: ['gateway'],
+          summary: 'List gateway models',
+          description:
+            'Every priced image, video and audio model the gateway can run, on fal, BytePlus, Gemini and Grok, each with its submit path. OAuth tokens need the `models:invoke` scope.',
+          responses: {
+            '200': {
+              description: 'The model catalog.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayModelsResult' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse(
+              'No organization, or an OAuth token without `models:invoke`.'
+            ),
+          },
+        },
+      },
+      [`${API_V1_BASE}/gateway/{provider}/{model}`]: {
+        post: {
+          tags: ['gateway'],
+          summary: 'Submit a gateway job',
+          description:
+            "Run one model on OpenStory's platform keys. The body is the provider's own request body, checked against the model's schema on modelschemas.com. The price is the model's rate card: it is held at submit and charged to the key's (or token's) organization when the job finishes; a failed job releases the hold. A request the card cannot price is refused. Every URL in the body is checked for a real person first, and inline media is refused. Responds 202 with the job; poll its `self` link (with `?wait`). Send an `Idempotency-Key` header to make a retry return the same job instead of starting another.",
+          parameters: [
+            {
+              name: 'provider',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: [...GATEWAY_PROVIDERS] },
+            },
+            {
+              name: 'model',
+              in: 'path',
+              required: true,
+              description:
+                "The provider's own model id. A fal id keeps its slashes.",
+              schema: { type: 'string' },
+            },
+            {
+              name: 'Idempotency-Key',
+              in: 'header',
+              required: false,
+              description:
+                'Up to 255 characters. A repeat with the same key returns the first job.',
+              schema: { type: 'string', maxLength: 255 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { type: 'object', additionalProperties: true },
+                example: EXAMPLE_GATEWAY_SUBMIT.body,
+              },
+            },
+          },
+          responses: {
+            '202': {
+              description: 'The job, queued (or the job a repeated key made).',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayJob' },
+                },
+              },
+            },
+            '400': errorResponse(
+              'Invalid JSON, a body the model schema refuses, a request the rate card cannot price, inline media, or an image that needs a portrait attestation.'
+            ),
+            '401': errorResponse('Missing or invalid API key.'),
+            '402': errorResponse(
+              'INSUFFICIENT_CREDITS — the organization cannot cover the estimate.'
+            ),
+            '404': errorResponse('Unknown provider or model.'),
+            '403': errorResponse(
+              'No organization, a restricted account, or an OAuth token without `models:invoke`.'
+            ),
+            '429': errorResponse(
+              'RATE_LIMITED — too many submits for this organization; honour Retry-After.'
+            ),
+          },
+        },
+      },
+      [`${API_V1_BASE}/gateway/jobs/{id}`]: {
+        get: {
+          tags: ['gateway'],
+          summary: 'Get a gateway job',
+          description:
+            "Status, absolute result URLs once it succeeded, the error once it failed, and the charge once it settled. With ?wait, long-polls until the job changes or ends. Another organization's job is a 404.",
+          parameters: [gatewayJobIdParam, waitParam],
+          responses: {
+            '200': {
+              description: 'The job.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GatewayJob' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse(
+              'No organization, or an OAuth token without `models:invoke`.'
+            ),
+            '404': errorResponse('No such job for this organization.'),
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {
@@ -835,6 +964,8 @@ export function buildOpenApiDocument(): JsonObject {
         ...componentDefs(styleListResultSchema),
         ...componentDefs(rootDocumentSchema),
         ...componentDefs(errorEnvelopeSchema),
+        ...componentDefs(gatewayModelsResultSchema),
+        ...componentDefs(gatewayJobResourceSchema),
       },
     },
   };

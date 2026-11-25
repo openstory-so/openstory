@@ -211,7 +211,10 @@ async function toCatalogApiError(response: Response): Promise<CatalogApiError> {
  * the optional `MODELSCHEMAS_API_KEY` (lifts the anonymous rate limit).
  * Returns the raw JSON text; callers cast to the endpoint's response type.
  */
-async function fetchCatalogJson(path: string, ttlMs: number): Promise<string> {
+export async function fetchCatalogJson(
+  path: string,
+  ttlMs: number
+): Promise<string> {
   const cached = getCached(path);
   if (cached !== undefined) return cached;
 

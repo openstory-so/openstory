@@ -64,7 +64,7 @@ const POLL_INTERVAL_MS = 3_000;
 const MAX_BATCHES = 60;
 
 /** R2 bucket per activity — assets reuse the existing media buckets. */
-const ACTIVITY_BUCKETS: Record<GeneratedAssetActivity, StorageBucket> = {
+export const ACTIVITY_BUCKETS: Record<GeneratedAssetActivity, StorageBucket> = {
   image: STORAGE_BUCKETS.THUMBNAILS,
   video: STORAGE_BUCKETS.VIDEOS,
   audio: STORAGE_BUCKETS.AUDIO,

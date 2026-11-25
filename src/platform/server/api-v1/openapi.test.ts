@@ -45,6 +45,31 @@ describe('buildOpenApiDocument', () => {
     expect(doc.paths['/api/v1/stitches/{id}/publish'].post).toBeDefined();
   });
 
+  it('documents the gateway endpoints with a valid example', () => {
+    expect(doc.paths['/api/v1/gateway/models'].get).toBeDefined();
+    expect(
+      doc.paths['/api/v1/gateway/jobs/{id}'].get.responses['404']
+    ).toBeDefined();
+    const submit = doc.paths['/api/v1/gateway/{provider}/{model}'].post;
+    expect(submit.responses['202'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/GatewayJob',
+    });
+    expect(submit.responses['402']).toBeDefined();
+    expect(submit.responses['429']).toBeDefined();
+    expect(submit.parameters.map((p: { name: string }) => p.name)).toEqual([
+      'provider',
+      'model',
+      'Idempotency-Key',
+    ]);
+    // The body is the provider's own, so the document cannot type it.
+    expect(submit.requestBody.content['application/json'].schema).toEqual({
+      type: 'object',
+      additionalProperties: true,
+    });
+    expect(doc.components.schemas).toHaveProperty('GatewayModelsResult');
+    expect(doc.components.schemas.GatewayJob.required).toContain('_links');
+  });
+
   it('documents the create-style endpoint with a valid example and a 409', () => {
     const op = doc.paths['/api/v1/styles'].post;
     expect(op.responses['201']).toBeDefined();
