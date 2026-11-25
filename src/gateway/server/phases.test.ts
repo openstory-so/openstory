@@ -45,20 +45,43 @@ const RUN = {
   reservationId: 'res-1',
 } as const;
 
+// $0.04 an image, priced off the request's `n`.
+const PER_IMAGE = rateCardSchema.parse({
+  inputs: { n: { param: 'n', bound: 'request', kind: 'number' } },
+  tables: {},
+  price: { '*': [{ var: 'n' }, 0.04] },
+  examples: [],
+  source: PER_TOKEN.source,
+});
+
 describe('startGatewayRun', () => {
-  it('stores nothing when the model returns more outputs than the request held', async () => {
+  it('stores and charges only the outputs the request held when the model returns more', async () => {
     const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
     start.mockResolvedValue({
       result: { media: [media, media, media], usage: null, requestId: null },
     });
-    const store = vi.fn();
-    await expect(
-      startGatewayRun({ ...RUN, input: { ...RUN.input, n: 2 } }, {}, store)
-    ).rejects.toThrow('The model returned 3 outputs; the request held 2');
-    await expect(startGatewayRun(RUN, {}, store)).rejects.toThrow(
-      'the request held 1'
+    const store = vi.fn(async (_media: unknown, index: number) => ({
+      url: `/r2/output-${index}.png`,
+      path: `output-${index}.png`,
+      contentType: 'image/png',
+    }));
+    const run = { ...RUN, card: PER_IMAGE, input: { ...RUN.input, n: 2 } };
+
+    const started = await startGatewayRun(run, {}, store);
+    expect(store).toHaveBeenCalledTimes(2);
+    if (!('stored' in started)) throw new Error('not stored');
+    expect(started.stored.outputs).toHaveLength(2);
+
+    await settleGatewayRun(
+      asStub<WorkflowScopedDb>({}),
+      run,
+      started.stored,
+      'run-1:gateway-settle'
     );
-    expect(store).not.toHaveBeenCalled();
+    expect(settleGatewayJob).toHaveBeenCalledTimes(1);
+    expect(settleGatewayJob).toHaveBeenCalledWith(
+      expect.objectContaining({ costMicros: micros(80_000) })
+    );
   });
 });
 

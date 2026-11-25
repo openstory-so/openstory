@@ -444,6 +444,27 @@ describe('submitGatewayJob', () => {
     });
   });
 
+  it('refuses a count that is not a whole number of at least 1, at any depth', async () => {
+    const loose = { provider: 'grok', modelId: 'grok-imagine-loose' } as const;
+    // The schema already refuses a string or an array where it says number.
+    for (const n of ['4', [4]]) {
+      expect(await refused({ ...loose, body: { ...BODY, n } })).toBeInstanceOf(
+        ValidationError
+      );
+    }
+    for (const body of [
+      { ...BODY, n: 1.5 },
+      { ...BODY, n: 0 },
+      { ...BODY, options: [{ candidateCount: '2' }] },
+    ]) {
+      expect(await refused({ ...loose, body })).toMatchObject({
+        message: expect.stringContaining(
+          'must be a whole number of at least 1'
+        ),
+      });
+    }
+  });
+
   it('refuses a body the schema refuses, with no row and no hold', async () => {
     const error = await refused({
       ...VIDEO,
@@ -770,6 +791,10 @@ describe('gatedUrls', () => {
       'https://a.example/1.png\n',
       'HTTPS://A.EXAMPLE/1.png',
       'https://a.example',
+      'ht\ntps://a.example/1.png',
+      'h\ttps://a.example/1.png',
+      'https:\r//a.example/1.png',
+      '/\n/a.example/1.png',
     ]) {
       expect(() => gatedUrls({ image: value })).toThrow(
         'Media URLs must be plain http(s) URLs'
@@ -781,6 +806,7 @@ describe('gatedUrls', () => {
     expect(
       gatedUrls({
         prompt: 'Data: the ferry log, read aloud. Mara: "Scene one."',
+        script: 'MARA:\n\tThe engine is dead.\nJONAH:\tThen we row.',
         note: 'blob: a shapeless thing',
       })
     ).toEqual([]);

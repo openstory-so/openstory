@@ -37,7 +37,7 @@ import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import type { GatewayRun } from '@/gateway/server/phases';
 import {
   COUNT_FIELDS,
-  nestedCount,
+  countFieldWhere,
   priceGatewayJob,
 } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
@@ -181,12 +181,24 @@ function validatedBody(
     );
   }
 
+  const malformed = countFieldWhere(
+    body,
+    (count) => !Number.isInteger(count) || Number(count) < 1
+  );
+  if (malformed) {
+    throw new ValidationError(
+      `\`${malformed}\` must be a whole number of at least 1`
+    );
+  }
   const priced = new Set(cardParams(model.card).request);
   const unpriced =
     COUNT_FIELDS.find((field) => {
       const count = body[field];
       return typeof count === 'number' && count > 1 && !priced.has(field);
-    }) ?? Object.values(body).map(nestedCount).find(Boolean);
+    }) ??
+    Object.values(body)
+      .map((inner) => countFieldWhere(inner, (count) => Number(count) > 1))
+      .find(Boolean);
   if (unpriced) {
     throw new ValidationError(
       `The rate card does not price \`${unpriced}\` above 1 for this model`
@@ -220,12 +232,14 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
     if (/^data:[^\s,]*,/i.test(trimmed) || /^blob:\S/i.test(trimmed)) {
       throw new ValidationError(INLINE);
     }
-    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+    // The parser also drops every tab, LF and CR inside the string.
+    const parsed = trimmed.replace(/[\t\n\r]/g, '');
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(parsed);
     const urlLike =
-      /^[\\/]{2}/.test(trimmed) ||
+      /^[\\/]{2}/.test(parsed) ||
       (scheme !== null &&
         (FETCHED_SCHEMES.has(scheme[1].toLowerCase()) ||
-          /^[\\/]{2}/.test(trimmed.slice(scheme[0].length))));
+          /^[\\/]{2}/.test(parsed.slice(scheme[0].length))));
     if (urlLike) {
       // Only http(s), exactly as the parser writes it: a provider may fetch what we did not check.
       let href: string | null = null;

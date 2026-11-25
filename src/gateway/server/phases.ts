@@ -103,18 +103,19 @@ export async function storeGatewayResult(
   };
 }
 
-/** More outputs than the hold covers are neither stored nor charged. */
+/** Only the outputs the hold covers are stored and charged; extras are dropped. */
 function heldResult(
   run: GatewayRun,
   result: GatewayRunResult
 ): GatewayRunResult {
   const held = heldOutputs(run.input);
-  if (result.media.length > held) {
-    throw new NonRetryableError(
-      `The model returned ${result.media.length} outputs; the request held ${held}`
-    );
-  }
-  return result;
+  if (result.media.length <= held) return result;
+  logger.warn('gateway model returned more outputs than were held', {
+    jobId: run.jobId,
+    returned: result.media.length,
+    held,
+  });
+  return { ...result, media: result.media.slice(0, held) };
 }
 
 /** Sends the body. A provider that answers at once has its media stored here. */

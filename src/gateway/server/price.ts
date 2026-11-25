@@ -23,15 +23,18 @@ export const COUNT_FIELDS = [
   'candidate_count',
 ];
 
-/** A count field above 1 anywhere under `value`; no card prices a nested one. */
-export function nestedCount(value: unknown): string | undefined {
-  if (Array.isArray(value)) return value.map(nestedCount).find(Boolean);
+/** The first count field at any depth under `value` whose count is `refused`. */
+export function countFieldWhere(
+  value: unknown,
+  refused: (count: unknown) => boolean
+): string | undefined {
+  if (Array.isArray(value)) {
+    return value.map((item) => countFieldWhere(item, refused)).find(Boolean);
+  }
   if (value === null || typeof value !== 'object') return undefined;
   for (const [key, inner] of Object.entries(value)) {
-    if (COUNT_FIELDS.includes(key) && typeof inner === 'number' && inner > 1) {
-      return key;
-    }
-    const found = nestedCount(inner);
+    if (COUNT_FIELDS.includes(key) && refused(inner)) return key;
+    const found = countFieldWhere(inner, refused);
     if (found) return found;
   }
   return undefined;
