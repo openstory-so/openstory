@@ -33,13 +33,24 @@ type GatewayPollResult =
   | { kind: 'failed'; error: string }
   | { kind: 'done'; outputs: GatewayJobOutput[] };
 
-/** The seam between the adapter and where the gateway runs: in-process today, HTTP for a self-hosted install (#2438). */
-export type GatewayTransport = {
-  /** Hold and start. A provider that answers at once is stored and charged here. */
-  submit: (body: GatewayJobInput) => Promise<GatewaySubmitted>;
-  /** One poll; the poll that sees the job finish stores and charges it. */
+/** One poll; the poll that sees the job finish stores and charges it. */
+export type GatewayPoller = {
   poll: (handle: string) => Promise<GatewayPollResult>;
 };
+
+/** The seam between the adapter and where the gateway runs: in-process today, HTTP for a self-hosted install (#2438). */
+export type GatewayTransport = GatewayPoller & {
+  /** Hold and start under the call's key; a provider that answers at once is stored and charged here. */
+  submit: (
+    body: GatewayJobInput,
+    idempotencyKey: string
+  ) => Promise<GatewaySubmitted>;
+};
+
+/** Replay-stable per call, e.g. `${instanceId}:${stepName}`: a retried step reuses the job and its hold. */
+type GatewayCall = { idempotencyKey: string };
+
+type Submit = (body: GatewayJobInput) => Promise<GatewaySubmitted>;
 
 const POLL_INTERVAL_MS = 3_000;
 const DONE = 'done:';
@@ -73,10 +84,11 @@ function bodyOf(options: {
 /** Submit and poll until done, in this call: images and audio answer in seconds. */
 async function runToEnd(
   transport: GatewayTransport,
+  call: GatewayCall,
   body: GatewayJobInput,
   signal: AbortSignal | undefined
 ): Promise<GatewayJobOutput[]> {
-  const submitted = await transport.submit(body);
+  const submitted = await transport.submit(body, call.idempotencyKey);
   if (submitted.kind === 'done') return submitted.outputs;
   for (;;) {
     signal?.throwIfAborted();
@@ -91,7 +103,8 @@ class OpenstoryImageAdapter extends BaseImageAdapter<string, GatewayJobInput> {
   readonly name = 'openstory';
   constructor(
     model: string,
-    private readonly transport: GatewayTransport
+    private readonly transport: GatewayTransport,
+    private readonly call: GatewayCall
   ) {
     super(model);
   }
@@ -102,6 +115,7 @@ class OpenstoryImageAdapter extends BaseImageAdapter<string, GatewayJobInput> {
     options.logger.request('openstory.generateImages', { model: this.model });
     const outputs = await runToEnd(
       this.transport,
+      this.call,
       bodyOf(options),
       options.abortSignal
     );
@@ -117,7 +131,8 @@ class OpenstoryAudioAdapter extends BaseAudioAdapter<string, GatewayJobInput> {
   readonly name = 'openstory';
   constructor(
     model: string,
-    private readonly transport: GatewayTransport
+    private readonly transport: GatewayTransport,
+    private readonly call: GatewayCall
   ) {
     super(model);
   }
@@ -128,6 +143,7 @@ class OpenstoryAudioAdapter extends BaseAudioAdapter<string, GatewayJobInput> {
     options.logger.request('openstory.generateAudio', { model: this.model });
     const outputs = await runToEnd(
       this.transport,
+      this.call,
       bodyOf(options),
       options.abortSignal
     );
@@ -156,7 +172,9 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
 
   constructor(
     model: string,
-    private readonly transport: GatewayTransport
+    private readonly poller: GatewayPoller,
+    /** Null on an adapter built only to poll. */
+    private readonly submit: Submit | null
   ) {
     super(undefined, model);
   }
@@ -165,7 +183,12 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
     options: VideoGenerationOptions<GatewayJobInput>
   ): Promise<VideoJobResult> {
     options.logger.request('openstory.createVideoJob', { model: this.model });
-    const submitted = await this.transport.submit(bodyOf(options));
+    if (!this.submit) {
+      throw new NonRetryableError(
+        'This adapter only polls: build it with openstoryVideo'
+      );
+    }
+    const submitted = await this.submit(bodyOf(options));
     return {
       jobId:
         submitted.kind === 'queued'
@@ -177,7 +200,7 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
 
   async getVideoStatus(jobId: string): Promise<VideoStatusResult> {
     if (jobId.startsWith(DONE)) return { jobId, status: 'completed' };
-    const polled = await this.transport.poll(jobId);
+    const polled = await this.poller.poll(jobId);
     if (polled.kind === 'pending') return { jobId, status: 'processing' };
     if (polled.kind === 'failed') {
       return { jobId, status: 'failed', error: polled.error };
@@ -204,14 +227,34 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
   }
 }
 
-export function openstoryImage(model: string, transport: GatewayTransport) {
-  return new OpenstoryImageAdapter(model, transport);
+export function openstoryImage(
+  model: string,
+  transport: GatewayTransport,
+  call: GatewayCall
+) {
+  return new OpenstoryImageAdapter(model, transport, call);
 }
 
-export function openstoryVideo(model: string, transport: GatewayTransport) {
-  return new OpenstoryVideoAdapter(model, transport);
+/** For the step that creates the video job. */
+export function openstoryVideo(
+  model: string,
+  transport: GatewayTransport,
+  call: GatewayCall
+) {
+  return new OpenstoryVideoAdapter(model, transport, (body) =>
+    transport.submit(body, call.idempotencyKey)
+  );
 }
 
-export function openstoryAudio(model: string, transport: GatewayTransport) {
-  return new OpenstoryAudioAdapter(model, transport);
+/** For a step that polls a video job: no model snapshot, key or rights needed. */
+export function openstoryVideoStatus(model: string, poller: GatewayPoller) {
+  return new OpenstoryVideoAdapter(model, poller, null);
+}
+
+export function openstoryAudio(
+  model: string,
+  transport: GatewayTransport,
+  call: GatewayCall
+) {
+  return new OpenstoryAudioAdapter(model, transport, call);
 }

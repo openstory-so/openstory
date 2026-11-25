@@ -27,7 +27,7 @@ function* walk(dir: string): Generator<string> {
 
 /** `import … from`, `export … from` and `import(…)`, with what they name. */
 const FROM_RE =
-  /^(?:import|export)\s+(?!type\s)([\s\S]*?)\s+from\s+['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/gm;
+  /^\s*(?:import|export)\s+(?!type\s)([^;'"]*?)\s*from\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/gm;
 
 function resolves(file: string, spec: string): boolean {
   const target = spec.startsWith('.')

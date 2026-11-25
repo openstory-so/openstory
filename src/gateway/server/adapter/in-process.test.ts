@@ -55,8 +55,8 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const { inProcessGateway } = await import('./in-process');
-const { openstoryAudio, openstoryImage, openstoryVideo } =
+const { inProcessGateway, inProcessPoller } = await import('./in-process');
+const { openstoryAudio, openstoryImage, openstoryVideo, openstoryVideoStatus } =
   await import('./index');
 const submitJob = await import('../submit-job');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
@@ -107,16 +107,25 @@ const store = vi.fn(async (_media: unknown, index: number) => ({
   contentType: 'image/png',
 }));
 
-function transport(model: GatewayModel, idempotencyKey: string) {
+const workflowDb = () =>
+  toWorkflowScopedDb(createScopedDb(organizationId, userId));
+
+function transport(model: GatewayModel) {
   return inProcessGateway({
-    scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
+    scopedDb: workflowDb(),
     model,
     runId: 'image_run-1',
-    idempotencyKey,
     store,
     uploadRightsChecked: submitJob.UPLOAD_RIGHTS_CHECKED,
   });
 }
+
+/** What a poll step builds: no model, key or rights. */
+const statusAdapter = (model: GatewayModel) =>
+  openstoryVideoStatus(
+    model.id,
+    inProcessPoller({ scopedDb: workflowDb(), store })
+  );
 
 /** Debits written for the job, and what its lines sum to. */
 async function chargesFor(jobId: string) {
@@ -189,7 +198,9 @@ describe('the openstory adapter, in-process', () => {
     start.mockResolvedValue(answered);
     const result = await generateImage({
       threadId: 'thread-1',
-      adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-1:image')),
+      adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+        idempotencyKey: 'run-1:image',
+      }),
       prompt: '',
       modelOptions: BODY,
     });
@@ -214,7 +225,9 @@ describe('the openstory adapter, in-process', () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       await generateImage({
         threadId: 'thread-1',
-        adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-2:image')),
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-2:image',
+        }),
         prompt: '',
         modelOptions: BODY,
       });
@@ -248,13 +261,15 @@ describe('the openstory adapter, in-process', () => {
     // Each step builds its own adapter; the job id carries what a poll needs.
     const { jobId } = await generateVideo({
       threadId: 'thread-1',
-      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-3:submit')),
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-3:submit',
+      }),
       prompt: '',
       modelOptions: BODY,
     });
     const pollStep = () =>
       getVideoJobStatus({
-        adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-3:submit')),
+        adapter: statusAdapter(VIDEO),
         jobId,
       });
     expect((await pollStep()).status).toBe('processing');
@@ -292,7 +307,9 @@ describe('the openstory adapter, in-process', () => {
     const submitStep = () =>
       generateVideo({
         threadId: 'thread-1',
-        adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+          idempotencyKey: 'run-9:submit',
+        }),
         prompt: '',
         modelOptions: BODY,
       });
@@ -301,7 +318,7 @@ describe('the openstory adapter, in-process', () => {
     const replayed = await submitStep();
     expect(start).toHaveBeenCalledTimes(1);
     await getVideoJobStatus({
-      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-9:submit')),
+      adapter: statusAdapter(VIDEO),
       jobId: replayed.jobId,
     });
     expect(replayed.jobId).toBe(first.jobId);
@@ -319,7 +336,9 @@ describe('the openstory adapter, in-process', () => {
     const submitStep = () =>
       generateVideo({
         threadId: 'thread-1',
-        adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-10:submit')),
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+          idempotencyKey: 'run-10:submit',
+        }),
         prompt: '',
         modelOptions: BODY,
       });
@@ -340,24 +359,42 @@ describe('the openstory adapter, in-process', () => {
     expect(hold?.remainingAmount).toBe(0);
   });
 
-  it('refuses a second job on one transport', async () => {
-    start.mockResolvedValue(answered);
-    const adapter = openstoryImage(IMAGE.id, transport(IMAGE, 'run-11:image'));
-    await generateImage({
-      threadId: 'thread-1',
-      adapter,
-      prompt: '',
-      modelOptions: BODY,
-    });
-    await expect(
-      generateImage({
+  it('recovers a retried submit on the same transport object', async () => {
+    start.mockResolvedValue({ jobId: 'xai-11' });
+    // A workflow retries `step.do` by calling the callback again: the transport is reused.
+    const shared = transport(VIDEO);
+    const submitStep = () =>
+      generateVideo({
         threadId: 'thread-1',
-        adapter,
+        adapter: openstoryVideo(VIDEO.id, shared, {
+          idempotencyKey: 'run-11:submit',
+        }),
         prompt: '',
         modelOptions: BODY,
-      })
-    ).rejects.toThrow('build one per call');
+      });
+    const first = await submitStep();
+    const retried = await submitStep();
+    expect(retried.jobId).toBe(first.jobId);
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws on a succeeded job with no outputs rather than answer with no media', async () => {
+    start.mockResolvedValue(answered);
+    const step = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-12:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await step();
+    await db
+      .update(gatewayJobs)
+      .set({ outputs: [] })
+      .where(eq(gatewayJobs.modelKey, IMAGE.id));
+    await expect(step()).rejects.toThrow('succeeded with no outputs');
   });
 
   it('lets the hold go when the provider fails the job', async () => {
@@ -365,12 +402,14 @@ describe('the openstory adapter, in-process', () => {
     poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
     const { jobId } = await generateVideo({
       threadId: 'thread-1',
-      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-4:submit')),
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-4:submit',
+      }),
       prompt: '',
       modelOptions: BODY,
     });
     const status = await getVideoJobStatus({
-      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, 'run-4:submit')),
+      adapter: statusAdapter(VIDEO),
       jobId,
     });
     expect(status).toMatchObject({ status: 'failed', error: 'Job failed' });
@@ -395,7 +434,9 @@ describe('the openstory adapter, in-process', () => {
     const audio: GatewayModel = { ...IMAGE, id: 'grok-audio', kind: 'audio' };
     const result = await generateAudio({
       threadId: 'thread-1',
-      adapter: openstoryAudio(audio.id, transport(audio, 'run-7:audio')),
+      adapter: openstoryAudio(audio.id, transport(audio), {
+        idempotencyKey: 'run-7:audio',
+      }),
       prompt: '',
       modelOptions: BODY,
     });
@@ -412,7 +453,9 @@ describe('the openstory adapter, in-process', () => {
     start.mockResolvedValue(answered);
     await generateImage({
       threadId: 'thread-1',
-      adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-5:image')),
+      adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+        idempotencyKey: 'run-5:image',
+      }),
       prompt: '',
       modelOptions: { prompt: 'data:image/png;base64,AAAA' },
     });
@@ -423,7 +466,9 @@ describe('the openstory adapter, in-process', () => {
     await expect(
       generateImage({
         threadId: 'thread-1',
-        adapter: openstoryImage(IMAGE.id, transport(IMAGE, 'run-6:image')),
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-6:image',
+        }),
         prompt: '',
         size: '1024x1024',
         modelOptions: BODY,

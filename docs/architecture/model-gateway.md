@@ -524,9 +524,14 @@ passes, inside the step that received it.
 `src/gateway/server/adapter/index.ts`: `openstoryImage`, `openstoryVideo`
 and `openstoryAudio` (TanStack `BaseImageAdapter`, `BaseVideoAdapter`,
 `BaseAudioAdapter`, `name: 'openstory'`), each over a `GatewayTransport`:
-`submit(body)` holds and starts, `poll(handle)` polls once. That type is the
-one seam; `inProcessGateway` (`adapter/in-process.ts`) is the transport
-today and the HTTP transport (#2438) is the other.
+`submit(body, idempotencyKey)` holds and starts, `poll(handle)` polls once.
+The transport is stateless and may be reused; the key is required on each
+adapter (`openstoryImage(model, transport, { idempotencyKey })`), which is
+built per call. A video poll step builds `openstoryVideoStatus(model,
+inProcessPoller({ scopedDb, store }))`: a `GatewayPoller` needs no model,
+key or rights. That type pair is the one seam; `inProcessGateway`
+(`adapter/in-process.ts`) is the transport today and the HTTP transport
+(#2438) is the other.
 
 - **In-process.** `submit` runs `holdGatewayJob` on the caller's
   `WorkflowScopedDb` with the model it snapshotted at the trigger (schema and
@@ -539,9 +544,14 @@ today and the HTTP transport (#2438) is the other.
   (`scopedDb.claims.gatewayJobs.getById`): a job that already ended answers
   from the row, so a retried poll never stores a second copy or charges
   again. A job whose caller died is ended by the sweep.
-- **The video job id** is the whole held run as JSON, so a poll step needs
-  nothing else. That is fine in-process; the HTTP transport (#2438) must
-  hand out an opaque id instead.
+- **The video job id** is the whole held `GatewayRun` as JSON, so a poll
+  step needs nothing else. That contract changes in #2438: the HTTP
+  transport hands out an opaque id, so a caller must not read the id.
+- **A succeeded job with no outputs** throws; it never answers with zero
+  media.
+- **An orphaned object.** A poll that stores the media and then fails to
+  finish leaves its R2 object; the retry answers from a fresh store or the
+  row, so at most one object is orphaned and the job is charged once.
 - **The body is `modelOptions`.** TanStack's `prompt` is required by its
   types and ignored here; pass `''`. `size`, `duration` and
   `numberOfImages` are refused: put them in the body.
@@ -553,14 +563,16 @@ today and the HTTP transport (#2438) is the other.
   row. So a transient start error (a dropped connection) fails the job
   closed on the retry rather than risk sending it twice.
 - **Idempotency.** The caller passes a replay-stable key per call (say
-  `${instanceId}:${stepName}`) and builds one transport per call: a
-  transport runs one job, and a second `submit` on it throws rather than
-  answer with the first job. A retried step finds the same job and the
+  `${instanceId}:${stepName}`, plus the variant's index in a fan-out). A
+  key reused with a different body is refused (`holdGatewayJob`, a 409 on
+  the public endpoint), so it never answers with another call's job. A
+  retried step, on the same transport object or a new one, finds the same job and the
   same hold (`gateway:<jobId>`), and the settle key is `gateway:<jobId>:settle`,
   so a generation is charged once however often a step runs.
 - **Images and audio** submit and poll to the end inside one call. **Video**
   maps onto `generateVideo` and `getVideoJobStatus` across the caller's steps.
-- **Refusals** (body, price, credits, missing key) are `NonRetryableError`:
+- **Refusals** (body, price, credits, missing key, a key reused for
+  another body) are `NonRetryableError`:
   the step does not retry the answer.
 
 ### Trusted callers

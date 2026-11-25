@@ -12,8 +12,10 @@ import {
   GATEWAY_PROVIDERS,
   GATEWAY_VIA,
   type GatewayJobInput,
+  type GatewayJobOutput,
 } from '@/gateway/schema';
-import type { GatewayTransport } from '@/gateway/server/adapter';
+import type { GatewayPoller, GatewayTransport } from '@/gateway/server/adapter';
+import type { GatewayJob } from '@/platform/server/db/schema';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import {
   finishGatewayRun,
@@ -50,14 +52,70 @@ const handleSchema = z.object({
   providerJobId: z.string(),
 });
 
+/** The outputs of a job that succeeded; a success with none is an error, never zero media. */
+function storedOutputs(job: GatewayJob): GatewayJobOutput[] {
+  if (!job.outputs?.length) {
+    throw new NonRetryableError(
+      `Gateway job ${job.id} succeeded with no outputs`
+    );
+  }
+  return job.outputs;
+}
+
+async function finish(
+  scopedDb: WorkflowScopedDb,
+  run: GatewayRun,
+  stored: GatewayStored
+) {
+  await finishGatewayRun(scopedDb, run, stored, `gateway:${run.jobId}:settle`);
+  return { kind: 'done' as const, outputs: stored.outputs };
+}
+
+/** Polls a handle `submit` gave out. Needs no model, key or rights: a poll step builds only this. */
+export function inProcessPoller(params: {
+  scopedDb: WorkflowScopedDb;
+  /** Called inside the step that received the media (#1645). */
+  store: GatewayStore;
+}): GatewayPoller {
+  const { scopedDb, store } = params;
+  const credentials = platformOnlyCredentials(scopedDb);
+  return {
+    poll: async (handle: string) => {
+      const { run, providerJobId } = handleSchema.parse(JSON.parse(handle));
+      // A retried poll whose job already ended answers from the row: no second store, no second charge.
+      const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
+      if (job?.status === 'succeeded') {
+        return { kind: 'done' as const, outputs: storedOutputs(job) };
+      }
+      if (job?.status === 'failed') {
+        return {
+          kind: 'failed' as const,
+          error: job.error?.message ?? 'Generation failed',
+        };
+      }
+      const polled = await pollGatewayRun(
+        run,
+        providerJobId,
+        credentials,
+        store
+      );
+      if (polled.kind === 'pending') return polled;
+      if (polled.kind === 'failed') {
+        await releaseGatewayRun(scopedDb, run, polled.error);
+        return polled;
+      }
+      return finish(scopedDb, run, polled.stored);
+    },
+  };
+}
+
+/** Holds, starts and polls in the caller's steps. Stateless: the key comes with each submit. */
 export function inProcessGateway(params: {
   scopedDb: WorkflowScopedDb;
   /** The model as it read at the trigger: its schema and card are not fetched mid-run. */
   model: GatewayModel;
   /** The caller's run, so the stale-job sweep can end a job whose run died. */
   runId: string;
-  /** Replay-stable, e.g. `${instanceId}:${stepName}`: a retried step reuses the job and its hold. One transport, one job. */
-  idempotencyKey: string;
   /** Called inside the step that received the media (#1645). */
   store: GatewayStore;
   /** The caller ran `requireUploadRights` on every URL in the body before the run. */
@@ -65,38 +123,20 @@ export function inProcessGateway(params: {
 }): GatewayTransport {
   const { scopedDb, store } = params;
   const credentials = platformOnlyCredentials(scopedDb);
-
-  const finish = async (run: GatewayRun, stored: GatewayStored) => {
-    await finishGatewayRun(
-      scopedDb,
-      run,
-      stored,
-      `gateway:${run.jobId}:settle`
-    );
-    return { kind: 'done' as const, outputs: stored.outputs };
-  };
-
-  let submitted = false;
   return {
-    submit: async (body: GatewayJobInput) => {
-      // One key is one job: a second submit would answer with the first job.
-      if (submitted) {
-        throw new NonRetryableError(
-          'An in-process transport runs one job: build one per call'
-        );
-      }
-      submitted = true;
+    ...inProcessPoller({ scopedDb, store }),
+    submit: async (body: GatewayJobInput, idempotencyKey: string) => {
       let run: GatewayRun;
-      let job: Awaited<ReturnType<typeof holdGatewayJob>>['job'];
+      let job: GatewayJob;
       try {
         ({ run, job } = await holdGatewayJob(params.model, body, {
           scopedDb,
           rights: params.uploadRightsChecked,
-          idempotencyKey: params.idempotencyKey,
+          idempotencyKey,
           oauthClientId: null,
         }));
       } catch (error) {
-        // A refusal (body, price, credits, key) is the answer to this call, not a blip to retry.
+        // A refusal (body, price, credits, key reused for another body) is the answer, not a blip to retry.
         if (error instanceof OpenStoryError && error.statusCode < 500) {
           throw new NonRetryableError(error.message);
         }
@@ -104,7 +144,7 @@ export function inProcessGateway(params: {
       }
       // A replayed job is never started twice: only a queued one starts here.
       if (job.status === 'succeeded') {
-        return { kind: 'done' as const, outputs: job.outputs ?? [] };
+        return { kind: 'done' as const, outputs: storedOutputs(job) };
       }
       if (job.status === 'failed') {
         throw new NonRetryableError(job.error?.message ?? 'Generation failed');
@@ -136,7 +176,7 @@ export function inProcessGateway(params: {
           throw error;
         }
       );
-      if ('stored' in started) return finish(run, started.stored);
+      if ('stored' in started) return finish(scopedDb, run, started.stored);
       await scopedDb.gatewayJobs.stampProviderJob(run.jobId, {
         via: GATEWAY_VIA[run.provider],
         providerJobId: started.providerJobId,
@@ -145,33 +185,6 @@ export function inProcessGateway(params: {
         kind: 'queued' as const,
         handle: JSON.stringify({ run, providerJobId: started.providerJobId }),
       };
-    },
-
-    poll: async (handle: string) => {
-      const { run, providerJobId } = handleSchema.parse(JSON.parse(handle));
-      // A retried poll whose job already ended answers from the row: no second store, no second charge.
-      const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
-      if (job?.status === 'succeeded') {
-        return { kind: 'done' as const, outputs: job.outputs ?? [] };
-      }
-      if (job?.status === 'failed') {
-        return {
-          kind: 'failed' as const,
-          error: job.error?.message ?? 'Generation failed',
-        };
-      }
-      const polled = await pollGatewayRun(
-        run,
-        providerJobId,
-        credentials,
-        store
-      );
-      if (polled.kind === 'pending') return polled;
-      if (polled.kind === 'failed') {
-        await releaseGatewayRun(scopedDb, run, polled.error);
-        return polled;
-      }
-      return finish(run, polled.stored);
     },
   };
 }
