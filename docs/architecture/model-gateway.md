@@ -470,6 +470,51 @@ Refused at submit, as they should be until #2432 or upstream:
 - `gemini-3.1-flash-lite-image`: `404 Unknown model`, the schema link
   (TanStack/schemas#755).
 
+## The `openstory` adapter (#2433)
+
+### Spike: how a TanStack AI adapter carries a provider's body
+
+Read against `@tanstack/ai` 1.4: `ImageAdapter.generateImages`,
+`AudioAdapter.generateAudio` and `VideoAdapter.createVideoJob` /
+`getVideoStatus` / `getVideo`, and how `@tanstack/ai-fal`, `-grok`, `-gemini`
+and `-byteplus` fill them. Each provider adapter builds its provider's body
+from `prompt`, `size`, `duration`, `numberOfImages` and `modelOptions`.
+
+**Decision.** One `openstory` adapter per kind. `modelOptions` is the
+provider's own body, built by the product's existing builders, and is sent
+as it is. The video shape maps onto a gateway job one to one:
+`createVideoJob` is the hold and the start, `getVideoStatus` is one poll,
+`getVideo` returns the stored URL. The product already calls
+`generateVideo` in one step and `getVideoJobStatus` in its poll steps, so a
+call site changes its adapter and nothing else.
+
+**What does not fit:**
+
+- `prompt`, `size`, `duration` and `numberOfImages` are TanStack's own
+  normalised fields. The gateway never builds a body, so the adapter refuses
+  `size`, `duration` and `numberOfImages`, and never writes `prompt` onto
+  the body; the prompt lives in the body under the provider's own name.
+- `getVideo` returns a URL. The gateway hands the media to the caller's
+  `store` in the poll that saw the job finish (#1645), so `getVideo` returns
+  that stored URL; there is no provider URL to fetch twice.
+- A TanStack job id is one string. The in-process job id carries the
+  gateway job id, the provider's job id and the hold, so a poll reads no row.
+- Rate cards, holds and usage have no place in the adapter interfaces; the
+  adapter returns `usage` only as TanStack's `TokenUsage` where it already
+  matches, and the charge stays on the gateway job.
+
+### Phases
+
+The run of a held job is functions a caller runs in its own steps
+(`src/gateway/server/phases.ts`): `startGatewayRun`, `pollGatewayRun`
+(one poll), `settleGatewayRun`. The hold is `holdGatewayJob`
+(`submit-job.ts`): the model, the platform key, the body, the account, every
+URL, the price, the row and the reservation, returning the `GatewayRun`
+snapshot. `submitGatewayJob` is the public caller (replay, hold, trigger);
+`GatewayGenerationWorkflow` runs the phases in its steps, step names
+unchanged. Each phase stores media through a `GatewayStore` the caller
+passes, inside the step that received it.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

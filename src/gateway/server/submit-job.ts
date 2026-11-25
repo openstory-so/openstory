@@ -31,6 +31,7 @@ import {
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
+import type { GatewayRun } from '@/gateway/server/phases';
 import { priceGatewayJob } from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
@@ -191,22 +192,20 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
-export async function submitGatewayJob(
+/**
+ * Validate and hold: the model, the platform key, the body, the account,
+ * every URL, the price, the row and the hold. A refused request leaves no
+ * row and no hold; `run` is null when the idempotency key already has a job.
+ */
+async function holdGatewayJob(
   request: {
     provider: GatewayProvider;
     modelId: string;
     body: GatewayJobInput;
   },
   ctx: GatewaySubmitContext
-): Promise<GatewaySubmitResult> {
+): Promise<{ job: GatewayJob; run: GatewayRun | null }> {
   const { scopedDb } = ctx;
-  if (ctx.idempotencyKey) {
-    const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
-      ctx.idempotencyKey
-    );
-    if (existing) return { job: existing, replay: true };
-  }
-
   const model = await getGatewayModel(request.provider, request.modelId);
   // Before the hold: a run with no key would fail after taking the caller's money.
   if (!GATEWAY_DRIVERS[model.provider].configured(model.endpointId)) {
@@ -255,7 +254,7 @@ export async function submitGatewayJob(
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
   });
-  if (!created) return { job, replay: true };
+  if (!created) return { job, run: null };
 
   // Platform keys only, so no BYOK skip: `providers: []` always holds.
   let reservationId: string | undefined;
@@ -269,21 +268,49 @@ export async function submitGatewayJob(
     await scopedDb.gatewayJobs.deleteUnstarted(job.id);
     throw error;
   }
+  return {
+    job,
+    run: {
+      jobId: job.id,
+      provider: model.provider,
+      kind: model.kind,
+      target: { modelId: model.id, endpointId: model.endpointId },
+      card: model.card,
+      input,
+      estimateMicros: estimate,
+      platformFeeBps,
+      oauthClientId: ctx.oauthClientId,
+      reservationId,
+    },
+  };
+}
+
+/** The public submit: replay, hold, then the run on `GatewayGenerationWorkflow`. */
+export async function submitGatewayJob(
+  request: {
+    provider: GatewayProvider;
+    modelId: string;
+    body: GatewayJobInput;
+  },
+  ctx: GatewaySubmitContext
+): Promise<GatewaySubmitResult> {
+  const { scopedDb } = ctx;
+  if (ctx.idempotencyKey) {
+    const existing = await scopedDb.gatewayJobs.getByIdempotencyKey(
+      ctx.idempotencyKey
+    );
+    if (existing) return { job: existing, replay: true };
+  }
+
+  const { job, run } = await holdGatewayJob(request, ctx);
+  if (!run) return { job, replay: true };
+  const { reservationId } = run;
 
   const payload: GatewayGenerationWorkflowInput = {
+    ...run,
     userId: scopedDb.userId,
     organizationId: scopedDb.organizationId,
-    reservationId,
     ownsReservation: true,
-    jobId: job.id,
-    provider: model.provider,
-    kind: model.kind,
-    target: { modelId: model.id, endpointId: model.endpointId },
-    card: model.card,
-    input,
-    estimateMicros: estimate,
-    platformFeeBps,
-    oauthClientId: ctx.oauthClientId,
   };
   const workflowRunId = await releaseReservationOnThrow(
     scopedDb,
