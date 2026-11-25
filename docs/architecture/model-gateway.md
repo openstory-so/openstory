@@ -1037,21 +1037,39 @@ steps, `recordFalUsageStep` for video, and `lipsyncFalClient`.
 ### Coverage (read 2026-11-26)
 
 Every ElevenLabs model on modelschemas answers `pricing: null`
-(TanStack/schemas#120 closed, but no card is served), so no ElevenLabs call
-the product makes can be held. They stay on today's direct path, platform key
-only, unchanged. There is no `elevenlabs` gateway provider or driver and no
-JSON job result yet: nothing could use them until a card exists.
+(TanStack/schemas#756; #120 closed, but no card is served), so no ElevenLabs
+call can be held today and every one runs on the direct path, platform key
+only, unchanged. The `elevenlabs` provider and driver exist so Music moves
+the day its card does.
 
-| Product call               | modelschemas                                                                                                            | Schema | Card                       | Where it runs |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------- | ------------- |
-| Music                      | `elevenlabs/music_v1`, `v1/music`                                                                                       | yes    | no, TanStack/schemas#756   | direct        |
-| Voice design               | `elevenlabs/eleven_ttv_v3`, `v1/text-to-voice/design`                                                                   | yes    | no, TanStack/schemas#756   | direct        |
-| Save a designed voice      | no model, `v1/text-to-voice`                                                                                            | yes    | account state, not a model | direct        |
-| Dialogue                   | `elevenlabs/eleven_v3`, `v1/text-to-dialogue/with-timestamps`; the row names only text-to-speech (TanStack/schemas#757) | yes    | no, TanStack/schemas#756   | direct        |
-| Mic take, ElevenLabs voice | `elevenlabs/eleven_multilingual_sts_v2`; the row names text-to-speech, not `v1/speech-to-speech` (TanStack/schemas#757) | yes    | no, TanStack/schemas#756   | direct        |
-| Scribe                     | `elevenlabs/scribe_v2`, `v1/speech-to-text`; no row (TanStack/schemas#757)                                              | yes    | no, TanStack/schemas#756   | direct        |
-| Isolation                  | no model, `v1/audio-isolation` (TanStack/schemas#757)                                                                   | yes    | no, TanStack/schemas#756   | direct        |
-| Seed Audio takes           | `byteplus/seed-audio-1.0`, `tts/create`                                                                                 | yes    | yes                        | gateway       |
+- **Driver** (`providers.ts`): platform key only (`OWN_KEY.elevenlabs` is
+  null in `route.ts`); `configured()` is `isElevenLabsConfigured()`; the
+  key is resolved per call; a 429 (the account's concurrency cap, never
+  run) is resent by `retryOnRateLimit`. An `audio/*` answer is one media
+  file; a JSON answer has its base64 audio (`audio_base64`,
+  `previews[].audio_base_64`) taken out as media and the rest kept as
+  `data`.
+- **JSON result.** `gateway_jobs.data` holds that rest (null when the
+  provider sent only files); the transport's `done` carries it, and the
+  public job document shows it once the job succeeded.
+- **A body is JSON only.** A query parameter has no place in it, and the
+  driver never moves a field out of the body. Voice design needs
+  `output_format=mp3_44100_128` (the 192 kbps default needs the Creator
+  tier) and dialogue needs `output_format=wav_44100` (the ranges are cut
+  from PCM WAV), so neither is routed even once a card exists. Scribe,
+  isolation and speech-to-speech take a multipart file, which a gateway
+  body cannot carry either.
+
+| Product call               | modelschemas                                                                                                            | Card                       | Where it runs                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
+| Music                      | `elevenlabs/music_v2_5`, `v1/music`                                                                                     | no, TanStack/schemas#756   | direct; the gateway once a card exists       |
+| Voice design               | `elevenlabs/eleven_ttv_v3`, `v1/text-to-voice/design`                                                                   | no, TanStack/schemas#756   | direct: `output_format` is a query parameter |
+| Save a designed voice      | no model, `v1/text-to-voice`                                                                                            | account state, not a model | direct                                       |
+| Dialogue                   | `elevenlabs/eleven_v3`, `v1/text-to-dialogue/with-timestamps`; the row names only text-to-speech (TanStack/schemas#757) | no, TanStack/schemas#756   | direct: `output_format` is a query parameter |
+| Mic take, ElevenLabs voice | `elevenlabs/eleven_multilingual_sts_v2`; the row names text-to-speech, not `v1/speech-to-speech` (TanStack/schemas#757) | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Scribe                     | `elevenlabs/scribe_v2`, `v1/speech-to-text`; no row (TanStack/schemas#757)                                              | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Isolation                  | no model, `v1/audio-isolation` (TanStack/schemas#757)                                                                   | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Seed Audio takes           | `byteplus/seed-audio-1.0`, `tts/create`                                                                                 | yes                        | gateway on a platform key                    |
 
 `seed-asr` has a card with no estimate (TanStack/schemas#672) but the product
 does not call it.
