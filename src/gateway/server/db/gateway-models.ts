@@ -43,44 +43,28 @@ export async function getStoredGatewayModel(
   return parsed.success ? parsed.data : null;
 }
 
-/** Every stored model of one provider, by the id it is asked for. */
+/** Every stored model that still parses. */
 export async function listStoredGatewayModels(
-  db: PricingRefreshDb,
-  provider: GatewayProvider
-): Promise<Map<string, GatewayModel>> {
-  const rows = await db
-    .select({ modelId: gatewayModels.modelId, model: gatewayModels.model })
-    .from(gatewayModels)
-    .where(eq(gatewayModels.provider, provider));
-  return new Map(
-    rows.flatMap((row) => {
-      const parsed = storedModelSchema.safeParse(row.model);
-      return parsed.success ? [[row.modelId, parsed.data] as const] : [];
-    })
-  );
-}
-
-export async function listStoredGatewayModelKeys(
   db: PricingRefreshDb
-): Promise<{ provider: GatewayProvider; id: string }[]> {
+): Promise<GatewayModel[]> {
   const rows = await db
-    .select({
-      provider: gatewayModels.provider,
-      id: gatewayModels.modelId,
-    })
+    .select({ model: gatewayModels.model })
     .from(gatewayModels);
-  return rows;
+  return rows.flatMap((row) => {
+    const parsed = storedModelSchema.safeParse(row.model);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
+/** Keyed by the model's own id, so an alias never gets a row of its own. */
 export async function storeGatewayModel(
   db: PricingRefreshDb,
-  modelId: string,
   model: GatewayModel,
   fetchedAt: Date
 ): Promise<void> {
   await db
     .insert(gatewayModels)
-    .values({ provider: model.provider, modelId, model, fetchedAt })
+    .values({ provider: model.provider, modelId: model.id, model, fetchedAt })
     .onConflictDoUpdate({
       target: [gatewayModels.provider, gatewayModels.modelId],
       set: { model, fetchedAt },

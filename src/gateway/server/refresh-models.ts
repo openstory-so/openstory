@@ -6,13 +6,16 @@ import { productGatewayModels } from '@/gateway/product-models';
 import { fetchGatewayModel } from '@/gateway/server/catalog';
 import {
   deleteStoredGatewayModel,
-  listStoredGatewayModelKeys,
+  listStoredGatewayModels,
   storeGatewayModel,
 } from '@/gateway/server/db/gateway-models';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cron', 'gateway-models']);
+
+/** The fal pricing refresh runs after this on the same cron. */
+const REFRESH_BUDGET_MS = 5 * 60 * 1000;
 
 export type GatewayModelsRefreshSummary = {
   stored: number;
@@ -21,45 +24,54 @@ export type GatewayModelsRefreshSummary = {
 };
 
 /**
- * Re-reads every product model and every model already stored. A model
- * modelschemas refuses (unknown, no schema, no card) is dropped; an outage
- * or a rate limit keeps the stored copy, and a run where nothing could be read throws.
+ * Re-reads every product model; the snapshot holds those and nothing else. A
+ * model modelschemas refuses, or answers under another id, is dropped; an
+ * outage, a rate limit or the time budget keeps the stored copy. A run that
+ * could read nothing throws.
  */
 export async function refreshGatewayModels(
-  db: PricingRefreshDb = getDb()
+  db: PricingRefreshDb = getDb(),
+  budgetMs: number = REFRESH_BUDGET_MS
 ): Promise<GatewayModelsRefreshSummary> {
-  const keys = new Map(
-    [...productGatewayModels(), ...(await listStoredGatewayModelKeys(db))].map(
-      (key) => [`${key.provider}/${key.id}`, key]
-    )
-  );
+  const deadline = Date.now() + budgetMs;
+  const products = productGatewayModels();
+  const wanted = new Set(products.map((m) => `${m.provider}/${m.id}`));
   const summary: GatewayModelsRefreshSummary = {
     stored: 0,
     dropped: 0,
     failed: 0,
   };
+  const drop = async (
+    provider: (typeof products)[number]['provider'],
+    id: string,
+    reason: string
+  ) => {
+    await deleteStoredGatewayModel(db, provider, id);
+    summary.dropped++;
+    logger.warn('dropped from the gateway snapshot', { provider, id, reason });
+  };
+  for (const stale of await listStoredGatewayModels(db)) {
+    if (!wanted.has(`${stale.provider}/${stale.id}`)) {
+      await drop(stale.provider, stale.id, 'not a product model');
+    }
+  }
   const now = new Date();
-  for (const { provider, id } of keys.values()) {
+  for (const { provider, id } of products) {
+    if (Date.now() > deadline) {
+      summary.failed++;
+      continue;
+    }
     try {
-      await storeGatewayModel(
-        db,
-        id,
-        await fetchGatewayModel(provider, id),
-        now
-      );
+      const model = await fetchGatewayModel(provider, id);
+      if (model.id !== id) {
+        await drop(provider, id, `modelschemas answers as ${model.id}`);
+        continue;
+      }
+      await storeGatewayModel(db, model, now);
       summary.stored++;
     } catch (error) {
       if (error instanceof NotFoundError || error instanceof ValidationError) {
-        await deleteStoredGatewayModel(db, provider, id);
-        summary.dropped++;
-        logger.warn(
-          'modelschemas refuses this model; dropped from the snapshot',
-          {
-            provider,
-            id,
-            reason: error.message,
-          }
-        );
+        await drop(provider, id, error.message);
         continue;
       }
       summary.failed++;

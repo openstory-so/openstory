@@ -177,7 +177,8 @@ POST /api/v1/gateway/grok/grok-imagine-video-1.5
 ### Models
 
 Every model modelschemas lists for the four providers that has an activity
-(`image`, `video`, `audio`), a request schema and a rate card.
+(`image`, `video`, `audio`), a request schema and a rate card. Since #2432,
+only the product's own models (§ The stored snapshot).
 
 Not served, and why:
 
@@ -658,17 +659,26 @@ The gateway reads a model, its request schema and its rate card from
 `gateway_models` (`src/platform/server/db/schema/gateway-models.ts`), never
 from modelschemas on a request.
 
-- `getGatewayModel` answers from the stored row. Only a model never stored
-  is fetched (`fetchGatewayModel`), and the answer is stored; a refusal (no
-  schema, no card, unknown) is not. So a modelschemas outage stops no model
-  the snapshot holds (`catalog.test.ts`, "serves a stored model with
-  modelschemas unreachable").
+- `getGatewayModel` answers from the stored row only. A model not stored is
+  `404 Unknown model`; a request never asks modelschemas and never writes a
+  row, so a caller cannot grow the table by inventing ids. A modelschemas
+  outage stops nothing the snapshot holds (`catalog.test.ts`, "serves a
+  stored model with modelschemas unreachable").
+- **The gateway serves the product's models.** The snapshot holds exactly
+  `productGatewayModels()` (`src/gateway/product-models.ts`), and
+  `GET /api/v1/gateway/models` lists the snapshot. Serving another model is
+  adding it there.
+- The Models page browses every modelschemas model, so it reads one the
+  snapshot lacks live (`getBrowsableGatewayModel`), through the catalog's
+  bounded TTL cache as the fal detail page always has, and keeps nothing.
 - `refreshGatewayModels` (`src/gateway/server/refresh-models.ts`) re-reads
-  every product model (`productGatewayModels`, `src/gateway/product-models.ts`)
-  and every stored row. A model modelschemas refuses is dropped; an outage or
-  a rate limit keeps the stored row; a run that could read nothing throws.
+  every product model under a 5 minute budget. Rows are keyed by the model's
+  own id: one modelschemas answers under another id is dropped, as is a model
+  it refuses and a row no longer in the product list. An outage, a rate limit
+  or the budget keeps the stored row; a run that could read nothing throws.
 - It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
-  pricing refresh, so no new cron expression. `bun scripts/refresh-fal-pricing.ts`
+  pricing refresh and in its own `try`, so a failure or the budget never
+  stops fal pricing; no new cron expression. `bun scripts/refresh-fal-pricing.ts`
   runs both against local D1. Set `MODELSCHEMAS_API_KEY`: a refresh is two
   requests a model, past the anonymous 60 an hour.
 - The fal pricing refresh takes its cards from this snapshot
@@ -679,8 +689,8 @@ from modelschemas on a request.
   unit, with a required price; a gateway model is keyed by provider and model
   id and carries a schema. One row is the whole `GatewayModel`, parsed on
   read, so a row an older deploy wrote is checked, not trusted.
-- The model lists (`GET /api/v1/gateway/models`, the Models page) still read
-  modelschemas: an outage hides the list, not generation.
+- The Models page lists still read modelschemas: an outage hides those
+  lists, not generation.
 
 ## Not in this stack
 

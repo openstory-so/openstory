@@ -10,7 +10,7 @@ import { assertModelsEnabled } from '@/platform/flags';
 import { GATEWAY_PROVIDERS } from '@/gateway/schema';
 import {
   gatewayUnavailable,
-  getGatewayModel,
+  getBrowsableGatewayModel,
   listProviderModels,
   unholdableReason,
 } from '@/gateway/server/catalog';
@@ -93,12 +93,14 @@ async function gatewayModelDetail(
   id: string,
   activity: CatalogActivity
 ): Promise<ModelDetail> {
-  const model = await getGatewayModel(provider, id).catch((error: unknown) => {
-    if (error instanceof OpenStoryError && error.statusCode < 500) {
-      throw new CatalogApiError(error.message, 404, 'unknown_schema');
+  const model = await getBrowsableGatewayModel(provider, id).catch(
+    (error: unknown) => {
+      if (error instanceof OpenStoryError && error.statusCode < 500) {
+        throw new CatalogApiError(error.message, 404, 'unknown_schema');
+      }
+      throw error;
     }
-    throw error;
-  });
+  );
   if (model.kind !== activity) {
     throw new CatalogApiError(`Not a ${activity} model`, 404, 'unknown_schema');
   }

@@ -287,11 +287,11 @@ describe('refreshFalPricing', () => {
     vi.doMock('@/gateway/server/db/gateway-models', () => ({
       listStoredGatewayModels: () =>
         Promise.resolve(
-          new Map(
-            [...(opts.cards ?? new Map<string, unknown>())].map(
-              ([id, card]) => [id, { card }]
-            )
-          )
+          [...(opts.cards ?? new Map<string, unknown>())].map(([id, card]) => ({
+            provider: 'fal',
+            id,
+            card,
+          }))
         ),
     }));
     vi.doMock('./fal-pricing-fetch', () => ({
