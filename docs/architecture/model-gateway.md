@@ -519,6 +519,51 @@ snapshot. `submitGatewayJob` is the public caller (replay, hold, trigger);
 folded into `settle`, so a replay re-records the same outputs. Each phase stores media through a `GatewayStore` the caller
 passes, inside the step that received it.
 
+### The adapter
+
+`src/gateway/server/adapter/index.ts`: `openstoryImage`, `openstoryVideo`
+and `openstoryAudio` (TanStack `BaseImageAdapter`, `BaseVideoAdapter`,
+`BaseAudioAdapter`, `name: 'openstory'`), each over a `GatewayTransport`:
+`submit(body)` holds and starts, `poll(handle)` polls once. That type is the
+one seam; `inProcessGateway` (`adapter/in-process.ts`) is the transport
+today and the HTTP transport (#2438) is the other.
+
+- **In-process.** `submit` runs `holdGatewayJob` on the caller's
+  `WorkflowScopedDb` with the model it snapshotted at the trigger (schema and
+  card are never fetched mid-run), records the caller's run id on the job
+  (the stale-job sweep reads it), starts, and for an answer at once stores
+  and settles. A queued job's id is a handle carrying the held run and the
+  provider's job id, so a poll step reads no row. The poll that sees the job
+  finish stores it through the caller's `store`, records the outputs and
+  settles; a failed job is marked failed and its hold zeroed. A job whose
+  caller died is ended by the sweep.
+- **Idempotency.** The caller passes a replay-stable key per call (say
+  `${instanceId}:${stepName}`). A retried step finds the same job and the
+  same hold (`gateway:<jobId>`), and the settle key is `gateway:<jobId>:settle`,
+  so a generation is charged once however often a step runs.
+- **Images and audio** submit and poll to the end inside one call. **Video**
+  maps onto `generateVideo` and `getVideoJobStatus` across the caller's steps.
+- **Refusals** (body, price, credits, missing key) are `NonRetryableError`:
+  the step does not retry the answer.
+
+### Trusted callers
+
+The public endpoint refuses inline media and runs the likeness check on every
+URL. `holdGatewayJob` takes `rights`: either `{ scopedDb, request }`, which
+runs those checks, or `UPLOAD_RIGHTS_CHECKED`, a unique symbol an in-process
+caller passes to say it ran `requireUploadRights` before the run (Gemini
+stills go inline by design, `geminiStillSource`). A JSON body cannot carry a
+symbol, and `submitGatewayJob` always passes the request, so the public
+endpoint can never skip the checks. `inProcessGateway` requires the symbol.
+
+### Billing handover
+
+A call through the adapter is held by `holdGatewayJob` and charged by
+`settleGatewayRun`, never by `deductWorkflowCredits`, `requireCredits` or
+`reserveRunCredits`; the hold is `billing.createReservation` with no own-key
+skip. `adapter/in-process.test.ts` fails if a generation is charged twice
+(a retried step, a replayed poll) or zero times.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty
