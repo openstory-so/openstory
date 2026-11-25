@@ -441,6 +441,32 @@ known.
   here; it expires on its TTL. A job whose run id was never recorded
   (`attachRun` failed and the run died) is not swept.
 
+### Real jobs (2026-11-26)
+
+One HTTP job per provider on `bun dev` with an `osk_` key: submit, `GET
+/api/v1/gateway/jobs/$id?wait`, then the hold, the lines against the debit
+and the R2 output read back.
+
+| Model                                            | Hold     | Charge    | Output    |
+| ------------------------------------------------ | -------- | --------- | --------- |
+| `grok-imagine-image`                             | $0.02    | $0.02     | JPEG, 200 |
+| `grok-imagine-video-1.5-lite` (2 s)              | $0.04    | $0.04     | MP4, 200  |
+| `seed-audio-1.0`                                 | $0.30    | $0.0152   | WAV, 200  |
+| `seedance-1-0-pro-fast-251015` (480p, 16:9, 2 s) | $0.01944 | $0.019845 | MP4, 200  |
+
+The lines summed to the debit on every job. Seedance charged 2% above its hold
+(Ark's `completion_tokens` beat the card's estimate); the capture grew the
+hold. Seedance holds only when the body carries `ratio`, `duration` and
+`resolution`, the card's estimate inputs; without `ratio` it is refused.
+
+Refused at submit, as they should be until #2432 or upstream:
+
+- `seedream-5-0-lite-260128`: `generated_images` is a usage lever with no
+  estimate.
+- `fal-ai/flux/schnell`: `megapixels` is a usage lever with no estimate.
+- `gemini-3.1-flash-lite-image`: `404 Unknown model`, the schema link
+  (TanStack/schemas#755).
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty
