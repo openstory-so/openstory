@@ -147,7 +147,7 @@ export type GatewayModelListing = GatewayModelSummary & {
   unavailable: string | null;
 };
 
-/** Every image, video and audio model of one provider, with why it cannot run when it cannot. */
+/** Every image, video and audio model of one provider, with why it cannot run when the list shows it. */
 export async function listProviderModels(
   provider: GatewayProvider
 ): Promise<GatewayModelListing[]> {
@@ -157,12 +157,12 @@ export async function listProviderModels(
   return body.models.flatMap((record): GatewayModelListing[] => {
     const kind = kindOf(provider, record);
     if (!kind) return [];
-    const card = rateCardSchema.safeParse(record.pricing);
+    // The list carries a price summary, not the card: the detail page says whether the card can be held.
     const unavailable = !record.schemaEndpointId
       ? 'This model has no request schema'
-      : !card.success
+      : !record.pricing
         ? 'This model has no price'
-        : unholdableReason(card.data);
+        : null;
     return [
       {
         provider,

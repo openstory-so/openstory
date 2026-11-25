@@ -622,6 +622,22 @@ gateway cannot run is shown with the reason: no request schema, no price, or
 a usage lever with no estimate (`unholdableReason`, until #2432). A fal model
 the gateway cannot hold still runs on an own fal key.
 
+The model list carries a price summary, not the card, so the list marks only
+a model with no schema or no price; the detail page reads the card and says
+when it cannot be held.
+
+Run on `bun dev` (2026-11-26) through `createGeneratedAssetFn` with a
+session, one each:
+
+| Model                                            | Hold     | Charge   | Output    |
+| ------------------------------------------------ | -------- | -------- | --------- |
+| `grok-imagine-image`                             | $0.02    | $0.02    | JPEG, 200 |
+| `seedance-1-0-pro-fast-251015` (480p, 16:9, 2 s) | $0.01985 | $0.01985 | MP4, 200  |
+
+One gateway job, one hold and one debit each; the lines summed to the debit.
+`fal-ai/flux/schnell` was refused at the click with the card's reason and
+`gemini-3.1-flash-lite-image` as an unknown model (TanStack/schemas#755).
+
 `AssetGenerationWorkflow` is kept, not deleted as #2433 planned: it is the
 adapter's first product caller and the own-key path needs a run too.
 `extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
