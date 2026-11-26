@@ -1184,11 +1184,11 @@ per provider, while text follows `resolveLlmKey`'s order.
 A call goes direct (priced as today) with a reason recorded on its
 transaction:
 
-| Call                                                                    | Reason                                      |
-| ----------------------------------------------------------------------- | ------------------------------------------- |
-| A model whose snapshot row is missing or whose card cannot price tokens | `no card`                                   |
-| OpenRouter through the platform fal key (no `OPENROUTER_KEY`)           | `no card` (fal's OpenRouter proxy has none) |
-| A request with `serviceTier` other than `standard`                      | `service tier <tier> is not on the card`    |
+| Call                                                                                                 | Reason                                                                    |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| A model whose snapshot row is missing or whose card cannot price tokens                              | `no card`                                                                 |
+| OpenRouter through the platform fal key (no `OPENROUTER_KEY`)                                        | `no card` (fal's OpenRouter proxy has none)                               |
+| Every llm-client OpenRouter call (`callLLM`, `callLLMStream`), which sends `serviceTier: 'priority'` | `service tier priority is not on the card` (upstream issue not yet filed) |
 
 Every OpenRouter call through llm-client's `buildModelOptions` sends
 `serviceTier: 'priority'`: script enhancement, the scene split, element and
