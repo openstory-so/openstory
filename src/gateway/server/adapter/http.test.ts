@@ -20,7 +20,7 @@ vi.doMock('#storage', () => ({
 const { gatewayPoller, gatewayTransport } = await import('./http');
 const { runGatewayToEnd } = await import('./index');
 const { NonRetryableError } = await import('cloudflare:workflows');
-const { UPLOAD_RIGHTS_CHECKED } = await import('../submit-job');
+const submitJob = await import('../submit-job');
 
 const ROUTE = {
   via: 'remote',
@@ -96,7 +96,7 @@ function transport() {
         contentType: 'image/jpeg',
       };
     },
-    uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+    uploadRightsChecked: submitJob.UPLOAD_RIGHTS_CHECKED,
     reservation: { id: 'run-reservation' },
   });
   return { transport, stored };

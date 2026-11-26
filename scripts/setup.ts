@@ -3,7 +3,8 @@
  *
  * Local dev barely needs it: `bun dev` bootstraps .env.local automatically
  * (scripts/ensure-env.ts), so `bun install && bun dev` just works. Run
- * `bun setup` to add the AI keys that unlock generation features.
+ * `bun setup` to add the OpenStory key (every model, paid on openstory.so)
+ * and, optionally, your own provider keys, which win for their provider.
  *
  * Modes:
  *   bun setup                 local dev — secrets + AI keys in .env.local
@@ -23,6 +24,8 @@ import {
 } from './env-file';
 import { runProdSetup } from './setup-prod';
 import { homedir } from 'node:os';
+import { main as openstoryCli } from '../packages/cli/src/cli.ts';
+import { storedKey } from '../packages/cli/src/login.ts';
 import {
   defaultDataDir,
   isWorktree,
@@ -96,8 +99,10 @@ async function localSetup() {
 
   await chooseDataDir();
 
-  // AI keys — the only values worth prompting for. Everything else is
-  // optional and documented in .env.example.
+  await chooseOpenStoryKey();
+
+  // Provider keys are optional with an OpenStory key: each one set here wins
+  // for its provider. Everything else is documented in .env.example.
   const vars = parseEnvFile(ENV_FILE);
 
   for (const { key, needs, message, hint } of AI_KEYS) {
@@ -149,6 +154,50 @@ async function localSetup() {
   p.outro(
     `Run ${chalk.bold('bun dev')} to start the development server.\nPublic HTTPS: ${chalk.bold('bun tunnel:provision')} then press t + Enter in bun dev.\nTo deploy to production, run: ${chalk.bold('bun setup --prod')}`
   );
+}
+
+/** The one key a self-hosted install needs (#2438): stored by `openstory login`, pasted, or skipped. */
+async function chooseOpenStoryKey() {
+  const vars = parseEnvFile(ENV_FILE);
+  if (vars.get('OPENSTORY_API_KEY')) {
+    p.log.success('OPENSTORY_API_KEY — already configured');
+    return;
+  }
+  const origin = vars.get('OPENSTORY_GATEWAY_URL') || 'https://openstory.so';
+  const choice = await p.select({
+    message: `OpenStory key — runs every model on ${origin}, paid from that organization's credits. Provider keys asked next are then optional.`,
+    options: [
+      { value: 'login', label: `Sign in to ${origin}` },
+      { value: 'paste', label: 'Paste an osk_ key' },
+      { value: 'skip', label: 'Skip: I will use my own provider keys' },
+    ],
+  });
+  if (p.isCancel(choice)) {
+    p.cancel('Setup cancelled. Progress saved to .env.local');
+    process.exit(0);
+  }
+  let key: string | null = null;
+  if (choice === 'login') {
+    key = await storedKey(homedir(), origin);
+    if (!key) {
+      await openstoryCli(['login', '--origin', origin]);
+      key = await storedKey(homedir(), origin);
+    }
+  } else if (choice === 'paste') {
+    const raw = await p.password({ message: 'Paste your osk_ key' });
+    if (p.isCancel(raw)) {
+      p.cancel('Setup cancelled. Progress saved to .env.local');
+      process.exit(0);
+    }
+    key = raw.trim() || null;
+  }
+  if (!key) return;
+  if (!key.startsWith('osk_')) {
+    p.log.warn('That is not an osk_ key; not saved.');
+    return;
+  }
+  upsertEnvVars(ENV_FILE, { OPENSTORY_API_KEY: key });
+  p.log.success('OPENSTORY_API_KEY — saved');
 }
 
 /** Where the local library lives (#2222). Default ~/openstory needs no env var. */

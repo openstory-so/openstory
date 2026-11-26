@@ -384,7 +384,7 @@ trigger failed (`NOT_STARTED`) is spent: retry with a new key.
   request, reads included. `osk_` keys are unscoped (app pays: the key's
   organization is charged). `oauthClientId` on the row is the token's
   client, for PR 3.
-- `GATEWAY_RATE_LIMITER` (60 submits a minute per organization, namespace
+- `GATEWAY_RATE_LIMITER` (300 submits a minute per organization since #2438, namespace
   `2380`) is declared in all three wrangler blocks. A 429 is
   `{ error: { code: 'RATE_LIMITED' } }` with `Retry-After`. Reads are not
   throttled beyond the per-key limiter.
@@ -1474,6 +1474,126 @@ A text call writes no `gateway_jobs` row. It has nothing to poll, store or
 read back, and a row would add a write to every call. Its record is the
 `credit_usage` transaction and the charge lines (`sku` set,
 `gateway_job_id` null).
+
+## Self-hosted on one key (#2438)
+
+A self-hosted install with `OPENSTORY_API_KEY` set sends each provider it has
+no key for to the hosted gateway (`OPENSTORY_GATEWAY_URL`, default
+`https://openstory.so`) over the public job API. The key's organization pays
+there.
+
+### Decisions
+
+- **One more route, decided once at the trigger.** `resolveGatewayRoute`:
+  an organization key -> direct; a key for the provider on this server ->
+  today's paths (`openstory` in-process when holdable, else direct); no key
+  here and `OPENSTORY_API_KEY` set -> `remote`; else direct. A key on this
+  server is read per provider even with no snapshot row (`serverHasKey`), so
+  a provider key in the install's own environment always wins. The payload
+  carries `{ via: 'remote' }`; `gatewayRunRoute` returns it with no body
+  check. The hosted side checks the schema and the card, so the install needs
+  no snapshot and no card to route.
+- **Never a fallback.** A hosted refusal (`400`, `402 INSUFFICIENT_CREDITS`,
+  `404 Unknown model`, a card that cannot price the request, a real person in
+  an input) is a `NonRetryableError` reading `CODE: message` as the hosted
+  side wrote it. A `429` or `5xx` is left to the step's retry; the same
+  Idempotency-Key makes the resend safe. Nothing is tried on a local key.
+- **No local hold, no local debit.** The HTTP transport never touches the
+  install's database: no `holdGatewayJob`, no settle, no
+  `deductWorkflowCredits` (the call sites skip it on the `openstory` via, which
+  a remote result carries). `requireCredits` and `reserveRunCredits` return
+  before any check when `OPENSTORY_API_KEY` is set, unless the caller asked
+  for platform-only work (`providers: []`), which runs on this server. So a
+  one-key install needs no local balance. `preflight.test.ts` and
+  `adapter/http.test.ts` pin it (the transport runs with a `scopedDb` that
+  throws on any touch). The hosted charge is shown, never debited: a clip's
+  `costMicros` comes from the hosted job document (`remoteJobCharge`), and
+  every finished job logs its id and charge.
+- **The handle is opaque.** A queued remote job's handle is `remote:<hosted job
+  id>` (`remoteHandle`, `src/gateway/server/remote-config.ts`), never the run
+  as JSON. `gatewayPoller(handle)` polls it over HTTP; `gatewayRunOf` answers
+  null for it; a timed-out remote clip is not released (the hosted job ends
+  and is charged there).
+- **The key is a secret.** Read from env inside the call that spends it
+  (`remoteGateway`), sent only as `Authorization: Bearer`, never on a
+  payload, in a URL or a log.
+
+### The transport
+
+`src/gateway/server/adapter/http.ts`: `gatewayTransport(route, …)` is the one
+place a call site turns a route into a transport (in-process or HTTP), and
+`gatewayPoller(handle, …)` the one place a poll does. Stills
+(`image-generation.ts`), audio (`audio-gateway.ts`) and video
+(`video-job.ts`) use them.
+
+- **Submit:** every local `/r2/` string in the body is uploaded first, then
+  `POST /api/v1/gateway/{provider}/{model}` with the call's Idempotency-Key.
+- **Poll:** `GET /api/v1/gateway/jobs/{id}?wait=20s`.
+- **Results:** each output URL is copied into the install's storage through
+  the caller's `store`, as a provider CDN URL is. A retried poll copies again
+  (one orphaned object at most); the charge is the hosted job's, once.
+
+### Uploads
+
+`POST /api/v1/gateway/uploads` (`src/gateway/server/uploads.ts`): the body
+is the file, `Content-Type` an image, video or audio type, `Content-Length`
+required (at most 500 MB), `Idempotency-Key` required. It stores under
+`gateway-uploads/<organization>/<sha256 of the key>.<ext>`, runs
+`requireCheckedUploadRights` on the absolute URL it answers (`201 { url }`),
+so a submit finds the verdict; a real person is `400 ATTESTATION_REQUIRED`.
+The key names the file: the same key returns the same URL and never rewrites
+the object, so a retried step sends the same body. The install sends
+`sha256(<call key>:<r2 key>)`. The likeness check is charged to the caller as
+it is on a submit.
+
+**Files expire** by an R2 lifecycle rule on the `gateway-uploads/` prefix, set
+once per bucket (not in `wrangler.jsonc`, which has no lifecycle field):
+`wrangler r2 bucket lifecycle add <bucket> gateway-uploads-1d gateway-uploads/ --expire-days 1`.
+
+### Rate limit
+
+`GATEWAY_RATE_LIMITER` is 300 a minute per organization (was 60), in all
+three wrangler blocks. Counted from the code paths, not a measured run: a
+6-scene short with 3 shots a scene and 3 characters and 3 locations is 6
+sheets, 18 stills and 18 clips (42 media submits) plus, once text runs
+remote, about 41 chat calls (script analysis, a visual and a motion prompt per
+shot). Stills and their prompts fan out at once, so that short peaks near 40
+calls in a minute; a 30-scene sequence (`MAX_SCENES`) near 180. 300 leaves
+room for content retries. Uploads are not counted; the per-key limiter (10 a
+second) still applies.
+
+### Not remote yet
+
+| Call                                   | Why                                                                                        | Where it runs                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
+| Every ElevenLabs call                  | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`     |
+| Scribe, isolation, mic take            | multipart bodies; ElevenLabs                                                               | direct                                 |
+| Seed takes cloned from a voice clip    | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                         |
+| Real people in any input               | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED`  |
+| Gemini images                          | TanStack/schemas#755                                                                       | direct; needs a Google key             |
+| fal Flux, Seedream, Nano Banana stills | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key                |
+| A model the hosted card cannot price   | the hosted side refuses                                                                    | hosted refusal                         |
+| Text (script analysis, prompts)        | the HTTP text stream is not built (#2437 lands its endpoint first)                         | direct; needs an OpenRouter or fal key |
+| The Models page                        | it holds at the click on this server (`createGeneratedAsset`)                              | in-process; needs the provider key     |
+
+### Proof (2026-11-26)
+
+The hosted side was `bun dev` on port 3008 with platform keys and an `osk_`
+key on a test organization funded with $2. The install side was the HTTP
+transport run from a test harness with no provider keys and a `scopedDb`
+that throws on any touch, so no local hold or debit was possible.
+
+| Model                | Hosted jobs | Hold  | Debit     | Lines     | Copied here         |
+| -------------------- | ----------- | ----- | --------- | --------- | ------------------- |
+| `grok-imagine-image` | 1           | $0.02 | $0.02     | $0.02     | JPEG, 408,922 bytes |
+| `seed-audio-1.0`     | 1           | $0.30 | $0.004906 | $0.004906 | WAV, 188,428 bytes  |
+
+The Grok call ran twice under one key: one hosted job, one debit. Uploads:
+the same key answered the same URL twice; a still with a person in it was
+refused `ATTESTATION_REQUIRED`; a `text/plain` body was refused. Not proven
+here: a full sequence on a fresh clone against a preview deployment, and a
+workflow on a second install end to end (both need a deployment of this
+branch).
 
 ## Not in this stack
 

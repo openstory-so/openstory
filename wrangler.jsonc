@@ -122,12 +122,13 @@
       "namespace_id": "1457",
       "simple": { "limit": 100, "period": 10 },
     },
-    // Per-organization throttle on POST /api/v1/gateway/jobs (model gateway).
-    // Not inherited by env blocks — redeclared below.
+    // Per-organization throttle on gateway submits. 300/min: a 30-scene
+    // sequence peaks near 180 calls in a minute (docs/architecture/model-gateway.md
+    // § Self-hosted on one key). Not inherited by env blocks — redeclared below.
     {
       "name": "GATEWAY_RATE_LIMITER",
       "namespace_id": "2380",
-      "simple": { "limit": 60, "period": 60 },
+      "simple": { "limit": 300, "period": 60 },
     },
   ],
   "workflows": [
@@ -452,7 +453,7 @@
         {
           "name": "GATEWAY_RATE_LIMITER",
           "namespace_id": "2380",
-          "simple": { "limit": 60, "period": 60 },
+          "simple": { "limit": 300, "period": 60 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
@@ -776,7 +777,7 @@
         {
           "name": "GATEWAY_RATE_LIMITER",
           "namespace_id": "2380",
-          "simple": { "limit": 60, "period": 60 },
+          "simple": { "limit": 300, "period": 60 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
