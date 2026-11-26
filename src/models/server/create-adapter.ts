@@ -11,7 +11,7 @@
  */
 
 import { getEnv } from '#env';
-import { openstoryText, type TextGateway } from '@/gateway/server/text';
+import { openstoryText, type TextMeter } from '@/gateway/server/text';
 import {
   nativeGeminiTextModel,
   type NativeGeminiTextModel,
@@ -57,8 +57,8 @@ export type LlmKeyInfo = {
    * models `LLMTR_TEXT_MODELS` maps).
    */
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
-  /** Set on a platform key whose model the gateway can price: every provider call is held and charged (#2437). */
-  gateway?: TextGateway;
+  /** Set on every platform key resolved for an organization: each provider call is charged once (#2437). */
+  meter?: TextMeter;
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -198,17 +198,17 @@ export function resolveNativeGeminiModel(
   return nativeGeminiTextModel(model);
 }
 
-/** The route's adapter, wrapped by the gateway when the key carries one; refuses a key resolved for another model. */
+/** The route's adapter, charged by the key's meter when it has one; refuses a card resolved for another model. */
 export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   const adapter = createRouteAdapter(model, keyInfo);
-  const gateway = keyInfo?.gateway;
-  if (!gateway) return adapter;
-  if (gateway.registryId !== model) {
+  const meter = keyInfo?.meter;
+  if (!meter) return adapter;
+  if (meter.card && meter.card.registryId !== model) {
     throw new Error(
-      `LLM key was resolved for '${gateway.registryId}', not '${model}'`
+      `LLM key was resolved for '${meter.card.registryId}', not '${model}'`
     );
   }
-  return openstoryText(adapter, gateway);
+  return openstoryText(adapter, meter, model);
 }
 
 // Callers must say which API a key belongs to (`via`) — a bare string can't:

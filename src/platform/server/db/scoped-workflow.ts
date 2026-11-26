@@ -261,6 +261,22 @@ export type WorkflowScopedDb = WorkflowDomains & {
   generationPlanning: ScopedDb;
 };
 
+/** A workflow run's db: its LLM calls draw on the run's reservation, or hold at the charge when it has none (#2437). */
+export function forWorkflowRun(
+  scopedDb: ScopedDb,
+  reservationId: string | null
+): WorkflowScopedDb {
+  const workflow = toWorkflowScopedDb(scopedDb);
+  return {
+    ...workflow,
+    credentials: {
+      ...workflow.credentials,
+      resolveLlmKey: (model) =>
+        scopedDb.apiKeys.resolveRunLlmKey(model, reservationId),
+    },
+  };
+}
+
 export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
   return {
     ...scopedDb,

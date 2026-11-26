@@ -29,11 +29,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { storeGatewayModel } from '@/gateway/server/db/gateway-models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import {
-  chargedByGateway,
-  isTokenUsage,
+  chargedOnceAs,
   openstoryText,
   withTextGateway,
-  type TextGateway,
+  type TextMeter,
 } from './text';
 
 // $1/M input, $10/M output, $0.10/M cached: 1,000 in + 100 out = 2,000 micros.
@@ -94,6 +93,7 @@ const MODEL: GatewayTextModel = {
 let db: Database;
 let close: () => Promise<void>;
 let organizationId = '';
+let billing: ReturnType<typeof createBillingMethods>;
 
 beforeAll(async () => {
   ({ db, close } = await createTestDb());
@@ -114,16 +114,21 @@ beforeEach(async () => {
     .insert(user)
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
   await db.insert(credits).values({ organizationId, balance: 10_000_000 });
-  gateway = {
-    registryId: 'vendor/model',
-    model: MODEL,
-    maxOutputTokens: 1000,
-    organizationId,
-    billing: createBillingMethods(db, organizationId, userId),
-  };
+  billing = createBillingMethods(db, organizationId, userId);
 });
 
-let gateway: TextGateway;
+/** A request's meter on the card route; override for a run or the direct route. */
+const meter = (over: Partial<TextMeter> = {}): TextMeter => ({
+  via: 'openrouter',
+  card: { registryId: 'vendor/model', model: MODEL },
+  organizationId,
+  billing,
+  run: null,
+  oauthClientId: null,
+  chargeKey: null,
+  resolve: () => Promise.reject(new Error('no re-run')),
+  ...over,
+});
 
 const USAGE = (): TokenUsage => ({
   promptTokens: 1000,
@@ -159,7 +164,7 @@ function adapter(chunks: () => AdapterYieldChunk[]): AnyTextAdapter & {
   return fake;
 }
 
-const run = (runId = 'r'): AdapterYieldChunk[] => [
+const run = (runId = 'r', usage: TokenUsage = USAGE()): AdapterYieldChunk[] => [
   { type: EventType.RUN_STARTED, runId, threadId: 't', timestamp: 0 },
   {
     type: EventType.TEXT_MESSAGE_CONTENT,
@@ -173,7 +178,7 @@ const run = (runId = 'r'): AdapterYieldChunk[] => [
     threadId: 't',
     timestamp: 0,
     finishReason: 'stop',
-    usage: USAGE(),
+    usage,
   },
 ];
 
@@ -195,53 +200,63 @@ async function ledger() {
 const OPTIONS = {
   model: 'vendor/model',
   messages: [{ role: 'user' as const, content: 'hi' }],
+  modelOptions: { maxTokens: 1000 },
   threadId: 't',
   logger: resolveDebugOption(false),
 };
 
-describe('openstoryText', () => {
-  it('holds before the call and charges the card on the reported usage once', async () => {
+async function drain(stream: AsyncIterable<unknown>) {
+  for await (const _ of stream) {
+    // drain
+  }
+}
+
+describe('openstoryText on the card route', () => {
+  it('holds before the call and charges the card once, with the model on every line', async () => {
     const inner = adapter(() => run());
-    const seen: AdapterYieldChunk[] = [];
-    for await (const chunk of openstoryText(inner, gateway).chatStream(
-      OPTIONS
-    )) {
-      seen.push(chunk);
-    }
-    expect(seen).toHaveLength(3);
+    await drain(
+      openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS)
+    );
     expect(await ledger()).toEqual({ charges: [2000], held: 0, holds: 1 });
-    const finished = seen.at(-1);
-    const usage: unknown =
-      finished?.type === EventType.RUN_FINISHED ? finished.usage : undefined;
-    expect(isTokenUsage(usage) && chargedByGateway(usage)).toBe(true);
+    const lines = await db.select().from(chargeLines);
+    expect(lines.map((l) => l.sku)).toEqual(
+      lines.map(() => 'openrouter/vendor/model')
+    );
   });
 
   it('prices cached tokens at the card lever, not the input rate', async () => {
     const inner = adapter(() =>
-      run().map((c) =>
-        c.type === EventType.RUN_FINISHED
-          ? {
-              ...c,
-              usage: {
-                ...USAGE(),
-                promptTokensDetails: { cachedTokens: 1000 },
-              },
-            }
-          : c
-      )
+      run('r', { ...USAGE(), promptTokensDetails: { cachedTokens: 1000 } })
     );
-    for await (const _ of openstoryText(inner, gateway).chatStream(OPTIONS)) {
-      // drain
-    }
+    await drain(
+      openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS)
+    );
     // 1,000 cached at $0.10/M = 100 micros, plus 100 out = 1,000.
     expect((await ledger()).charges).toEqual([1100]);
   });
 
+  it('prices OpenRouter web searches on the card lever', async () => {
+    const inner = adapter(() =>
+      run('r', {
+        ...USAGE(),
+        providerUsageDetails: {
+          serverToolUseDetails: { webSearchRequests: 2 },
+        },
+      })
+    );
+    await drain(
+      openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS)
+    );
+    expect((await ledger()).charges).toEqual([22_000]);
+  });
+
   it('charges what streamed when cut off, and releases the rest', async () => {
     const inner = adapter(() => run());
-    for await (const chunk of openstoryText(inner, gateway).chatStream(
-      OPTIONS
-    )) {
+    for await (const chunk of openstoryText(
+      inner,
+      meter(),
+      'vendor/model'
+    ).chatStream(OPTIONS)) {
       if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break;
     }
     const { charges, held } = await ledger();
@@ -258,18 +273,18 @@ describe('openstoryText', () => {
         timestamp: 0,
       },
     ]);
-    for await (const _ of openstoryText(inner, gateway).chatStream(OPTIONS)) {
-      // drain
-    }
+    await drain(
+      openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS)
+    );
     expect(await ledger()).toEqual({ charges: [], held: 0, holds: 1 });
   });
 
   it('charges structured output once', async () => {
-    const result = await openstoryText(
+    await openstoryText(
       adapter(() => []),
-      gateway
+      meter(),
+      'vendor/model'
     ).structuredOutput({ chatOptions: OPTIONS, outputSchema: {} });
-    expect(chargedByGateway(result.usage)).toBe(true);
     expect((await ledger()).charges).toEqual([2000]);
   });
 
@@ -279,89 +294,66 @@ describe('openstoryText', () => {
       .set({ balance: 0 })
       .where(eq(credits.organizationId, organizationId));
     const inner = adapter(() => run());
-    await expect(async () => {
-      for await (const _ of openstoryText(inner, gateway).chatStream(OPTIONS)) {
-        // drain
-      }
-    }).rejects.toThrow('Insufficient credits');
+    await expect(
+      drain(openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS))
+    ).rejects.toThrow('Insufficient credits');
     expect(inner.calls).toBe(0);
   });
 
-  it('charges each agent-loop turn of chat() once, and the marker reaches usage listeners', async () => {
+  it('refuses a request with no output budget before holding or calling', async () => {
+    const inner = adapter(() => run());
+    await expect(
+      drain(
+        openstoryText(inner, meter(), 'vendor/model').chatStream({
+          ...OPTIONS,
+          modelOptions: {},
+        })
+      )
+    ).rejects.toThrow('output budget');
+    expect(inner.calls).toBe(0);
+    expect((await ledger()).holds).toBe(0);
+  });
+
+  it('charges each agent-loop turn of chat() once', async () => {
     const inner = adapter(() => run(generateId()));
-    const usages: TokenUsage[] = [];
-    for await (const _ of chat({
-      adapter: openstoryText(inner, gateway),
-      threadId: 't',
-      messages: [{ role: 'user', content: 'hi' }],
-      middleware: [{ onUsage: (_ctx, usage) => void usages.push(usage) }],
-    })) {
-      // drain
-    }
-    expect(inner.calls).toBe(1);
-    expect((await ledger()).charges).toEqual([2000]);
-    expect(usages.length).toBeGreaterThan(0);
-    expect(usages.every(chargedByGateway)).toBe(true);
-  });
-});
-
-describe('withTextGateway', () => {
-  const key = (
-    source: 'organization' | 'platform',
-    via: ResolvedLlmKey['via']
-  ): ResolvedLlmKey => ({ key: 'k', source, via });
-  const route = (resolved: ResolvedLlmKey) =>
-    withTextGateway(
-      { resolveLlmKey: async (_model?: string) => resolved },
-      { db, organizationId, billing: gateway.billing }
-    ).resolveLlmKey('vendor/model');
-
-  beforeEach(async () => {
-    await db.delete(gatewayModels);
-    await storeGatewayModel(db, MODEL, new Date());
-  });
-
-  it('routes a platform OpenRouter key whose model has a card', async () => {
-    const resolved = await route(key('platform', 'openrouter'));
-    expect(resolved.gateway?.model.id).toBe('vendor/model');
-  });
-
-  it('leaves own keys, LLMTR and fal direct and uncharged', async () => {
-    for (const resolved of [
-      key('organization', 'openrouter'),
-      key('organization', 'llmtr'),
-      key('organization', 'xai'),
-      key('platform', 'fal'),
-    ]) {
-      expect((await route(resolved)).gateway).toBeUndefined();
-    }
-  });
-
-  it('stays direct when the snapshot has no card for the model', async () => {
-    await db.delete(gatewayModels);
-    expect(
-      (await route(key('platform', 'openrouter'))).gateway
-    ).toBeUndefined();
-  });
-});
-
-describe('openstoryText over each route', () => {
-  const finished = (usage: TokenUsage): AdapterYieldChunk[] =>
-    run().map((c) => (c.type === EventType.RUN_FINISHED ? { ...c, usage } : c));
-
-  it('prices OpenRouter web searches on the card lever', async () => {
-    const inner = adapter(() =>
-      finished({
-        ...USAGE(),
-        providerUsageDetails: {
-          serverToolUseDetails: { webSearchRequests: 2 },
-        },
+    await drain(
+      chat({
+        adapter: openstoryText(inner, meter(), 'vendor/model'),
+        threadId: 't',
+        messages: [{ role: 'user', content: 'hi' }],
+        modelOptions: { maxTokens: 1000 },
       })
     );
-    for await (const _ of openstoryText(inner, gateway).chatStream(OPTIONS)) {
-      // drain
-    }
-    expect((await ledger()).charges).toEqual([22_000]);
+    expect(inner.calls).toBe(1);
+    expect((await ledger()).charges).toEqual([2000]);
+  });
+
+  it('draws on the run reservation with no hold of its own, and leaves it open', async () => {
+    const reserved = await billing.createReservation(50_000, {
+      idempotencyKey: 'run',
+    });
+    if (!reserved.ok) throw new Error('no run reservation');
+    const inner = adapter(() => run());
+    await drain(
+      openstoryText(
+        inner,
+        meter({ run: { reservationId: reserved.reservationId } }),
+        'vendor/model'
+      ).chatStream({ ...OPTIONS, modelOptions: {} })
+    );
+    expect(await ledger()).toEqual({ charges: [2000], held: 48_000, holds: 1 });
+  });
+
+  it('charges a run with no reservation with no hold before the call', async () => {
+    const inner = adapter(() => run());
+    await drain(
+      openstoryText(
+        inner,
+        meter({ run: { reservationId: null } }),
+        'vendor/model'
+      ).chatStream({ ...OPTIONS, modelOptions: {} })
+    );
+    expect(await ledger()).toEqual({ charges: [2000], held: 0, holds: 1 });
   });
 
   it('holds an inline image at a fixed count, not its bytes, and passes the request through untouched', async () => {
@@ -393,9 +385,9 @@ describe('openstoryText over each route', () => {
       modelOptions: { maxTokens: 10, plugins: [{ id: 'web' }] },
       outputSchema: { type: 'object' },
     };
-    for await (const _ of openstoryText(spy, gateway).chatStream(options)) {
-      // drain
-    }
+    await drain(
+      openstoryText(spy, meter(), 'vendor/model').chatStream(options)
+    );
     expect(seen).toEqual([options]);
     expect(seen[0]).toBe(options);
     const [reservation] = await db
@@ -404,14 +396,136 @@ describe('openstoryText over each route', () => {
     // About 4,096 input tokens and 10 output at $1/M and $10/M, not 2M bytes.
     expect(reservation?.amount).toBeLessThan(5_000);
   });
+});
 
+describe('openstoryText on the direct route', () => {
+  // OpenRouter's own bill for the call: what `llmCostFromUsage` charges today.
+  const billed = (): TokenUsage => ({ ...USAGE(), cost: 0.0015 });
+
+  it('charges a request once at the provider cost, with no hold', async () => {
+    const inner = adapter(() => run('r', billed()));
+    await drain(
+      openstoryText(inner, meter({ card: null }), 'vendor/model').chatStream(
+        OPTIONS
+      )
+    );
+    expect(await ledger()).toEqual({ charges: [1500], held: 0, holds: 0 });
+  });
+
+  it('captures against the run reservation', async () => {
+    const reserved = await billing.createReservation(50_000, {
+      idempotencyKey: 'run',
+    });
+    if (!reserved.ok) throw new Error('no run reservation');
+    const inner = adapter(() => run('r', billed()));
+    await drain(
+      openstoryText(
+        inner,
+        meter({ card: null, run: { reservationId: reserved.reservationId } }),
+        'vendor/model'
+      ).chatStream(OPTIONS)
+    );
+    expect(await ledger()).toEqual({ charges: [1500], held: 48_500, holds: 1 });
+  });
+
+  it('prices a priority-tier request as OpenRouter billed it, not on the card', async () => {
+    const inner = adapter(() => run('r', billed()));
+    await drain(
+      openstoryText(inner, meter(), 'vendor/model').chatStream({
+        ...OPTIONS,
+        modelOptions: { maxTokens: 1000, serviceTier: 'priority' },
+      })
+    );
+    expect(await ledger()).toEqual({ charges: [1500], held: 0, holds: 0 });
+  });
+
+  it('charges a repeated single-call site once under its charge key', async () => {
+    const charged = chargedOnceAs(
+      {
+        key: 'k',
+        source: 'platform',
+        via: 'openrouter',
+        meter: meter({ card: null }),
+      },
+      'likeness:https://example.com/a.png'
+    );
+    for (let i = 0; i < 2; i++) {
+      const inner = adapter(() => run('r', billed()));
+      if (!charged.meter) throw new Error('no meter');
+      await drain(
+        openstoryText(inner, charged.meter, 'vendor/model').chatStream(OPTIONS)
+      );
+    }
+    expect((await ledger()).charges).toEqual([1500]);
+  });
+});
+
+describe('withTextGateway', () => {
+  const key = (
+    source: 'organization' | 'platform',
+    via: ResolvedLlmKey['via']
+  ): ResolvedLlmKey => ({ key: 'k', source, via });
+  const keys = (resolved: ResolvedLlmKey) =>
+    withTextGateway(
+      { resolveLlmKey: async (_model?: string) => resolved },
+      { db, organizationId, billing }
+    );
+
+  beforeEach(async () => {
+    await db.delete(gatewayModels);
+    await storeGatewayModel(db, MODEL, new Date());
+  });
+
+  it('meters a platform OpenRouter key on its card', async () => {
+    const resolved = await keys(key('platform', 'openrouter')).resolveLlmKey(
+      'vendor/model'
+    );
+    expect(resolved.meter?.card?.model.id).toBe('vendor/model');
+    expect(resolved.meter?.run).toBeNull();
+  });
+
+  it('carries the run reservation for a workflow run', async () => {
+    const resolved = await keys(key('platform', 'openrouter')).resolveRunLlmKey(
+      'vendor/model',
+      'res-1'
+    );
+    expect(resolved.meter?.run).toEqual({ reservationId: 'res-1' });
+  });
+
+  it('leaves own keys and LLMTR unmetered, so they are never charged', async () => {
+    for (const resolved of [
+      key('organization', 'openrouter'),
+      key('organization', 'llmtr'),
+      key('organization', 'xai'),
+    ]) {
+      expect(
+        (await keys(resolved).resolveLlmKey('vendor/model')).meter
+      ).toBeUndefined();
+    }
+  });
+
+  it('meters platform fal, and a model with no card, on the direct route', async () => {
+    expect(
+      (await keys(key('platform', 'fal')).resolveLlmKey('vendor/model')).meter
+        ?.card
+    ).toBeNull();
+    await db.delete(gatewayModels);
+    const resolved = await keys(key('platform', 'openrouter')).resolveLlmKey(
+      'vendor/model'
+    );
+    expect(resolved.meter).toBeDefined();
+    expect(resolved.meter?.card).toBeNull();
+  });
+});
+
+describe('openstoryText over each provider adapter', () => {
   it('keeps the identity and capabilities of the real OpenRouter, xAI and Google adapters', () => {
     for (const inner of [
       createOpenRouterText('anthropic/claude-sonnet-5.5', 'k'),
       createGrokText('grok-4.7', 'k'),
       createGeminiChat('gemini-3.8-flash', 'k'),
     ]) {
-      const wrapped = openstoryText(inner, gateway);
+      const wrapped = openstoryText(inner, meter(), inner.model);
       expect(wrapped.name).toBe(inner.name);
       expect(wrapped.model).toBe(inner.model);
       expect(wrapped.supportsFileSources).toBe(inner.supportsFileSources);

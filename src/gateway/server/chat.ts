@@ -17,7 +17,8 @@ export async function streamGatewayChat(
     readonly apiKeys: Pick<ScopedDb['apiKeys'], 'resolvePlatformLlmKey'>;
   },
   model: string,
-  body: GatewayChatBody
+  body: GatewayChatBody,
+  oauthClientId: string | null
 ): Promise<Response> {
   if (!isValidAnalysisModelId(model)) throw new NotFoundError('Unknown model');
   const ceiling = getMaxOutputTokens(model, 1);
@@ -25,7 +26,10 @@ export async function streamGatewayChat(
     throw new ValidationError(`maxTokens is above this model's ${ceiling}`);
   }
   // Platform keys only, so every run is billed; a model the card cannot price is refused, never run direct.
-  const key = await scopedDb.apiKeys.resolvePlatformLlmKey(model);
+  const key = await scopedDb.apiKeys.resolvePlatformLlmKey(
+    model,
+    oauthClientId
+  );
   if (!key) throw new ValidationError('This model cannot be priced yet');
   const abortController = new AbortController();
   const stream = chat({

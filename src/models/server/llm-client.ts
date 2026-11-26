@@ -6,12 +6,7 @@
 import type { TextModel } from '@/models/models';
 import { getMaxOutputTokens } from '@/models/models.config';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
-import {
-  addMicros,
-  usdToMicros,
-  ZERO_MICROS,
-  type Microdollars,
-} from '@/billing/money';
+import { usdToMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import {
@@ -60,7 +55,6 @@ import {
   isContentFilterFinish,
 } from '@/models/content-rejection';
 
-import { chargedByGateway, isTokenUsage } from '@/gateway/server/text';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'llm-client']);
@@ -184,21 +178,17 @@ export function llmCostFromUsage(
   return ZERO_MICROS;
 }
 
-/** What a call site still deducts: null when the gateway already charged the call (#2437). */
-export function llmCostToDeduct(
-  usage: TokenUsage | undefined,
-  modelId: string,
-  via?: LlmKeyInfo['via']
-): Microdollars | null {
-  return chargedByGateway(usage) ? null : llmCostFromUsage(usage, modelId, via);
-}
-
-/** Two deductible costs summed; null only when the gateway charged both. */
-export function addCosts(
-  a: Microdollars | null,
-  b: Microdollars | null
-): Microdollars | null {
-  return a === null ? b : b === null ? a : addMicros(a, b);
+export function isTokenUsage(value: unknown): value is TokenUsage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'promptTokens' in value &&
+    'completionTokens' in value &&
+    'totalTokens' in value &&
+    typeof value.promptTokens === 'number' &&
+    typeof value.completionTokens === 'number' &&
+    typeof value.totalTokens === 'number'
+  );
 }
 
 export type StreamChunk<T = never> =
@@ -1084,8 +1074,9 @@ export async function* callLLMStream<T>(
         googleBlockedAtStart
       )
     ) {
-      const apiKey = params.resolveApiKey
-        ? await params.resolveApiKey(params.model)
+      const resolve = params.resolveApiKey ?? params.apiKey?.meter?.resolve;
+      const apiKey = resolve
+        ? await resolve(params.model)
         : params.apiKey?.via === 'google'
           ? undefined
           : params.apiKey;
@@ -1110,9 +1101,8 @@ export async function* callLLMStream<T>(
     logger.warn(
       `Model ${params.model} is region-blocked here; retrying with ${fallback}`
     );
-    const apiKey = params.resolveApiKey
-      ? await params.resolveApiKey(fallback)
-      : params.apiKey;
+    const resolve = params.resolveApiKey ?? params.apiKey?.meter?.resolve;
+    const apiKey = resolve ? await resolve(fallback) : params.apiKey;
     yield* callLLMStreamOnce({
       ...params,
       model: fallback,

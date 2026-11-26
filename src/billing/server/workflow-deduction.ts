@@ -38,8 +38,7 @@ const logger = getLogger(['openstory', 'billing', 'workflow-deduction']);
 type WorkflowDeductionOpts = {
   /** Scoped DB context for the organization. Skips deduction if undefined (e.g., anonymous workflows). */
   scopedDb: WorkflowScopedDb | undefined;
-  /** Null when the gateway already charged the call (#2437). */
-  costMicros: Microdollars | null;
+  costMicros: Microdollars;
   /** Set to true if the organization used their own API key for this generation */
   usedOwnKey: boolean;
   description: string;
@@ -63,7 +62,7 @@ function logPrefix(workflowName: string | undefined): string {
 
 function skipDeduction(
   scopedDb: WorkflowScopedDb,
-  opts: WorkflowDeductionOpts & { costMicros: Microdollars }
+  opts: WorkflowDeductionOpts
 ): void {
   const prefix = logPrefix(opts.workflowName);
   logger.warn(
@@ -96,10 +95,9 @@ export async function deductWorkflowCredits(
   if (!opts.scopedDb) return;
   const { scopedDb } = opts;
 
-  const { costMicros } = opts;
-  if (opts.usedOwnKey || costMicros === null) return;
+  if (opts.usedOwnKey) return;
 
-  if (costMicros <= 0) {
+  if (opts.costMicros <= 0) {
     reportMissingBillingCost({
       source: 'workflow-deduction',
       workflowName: opts.workflowName,
@@ -113,7 +111,7 @@ export async function deductWorkflowCredits(
   if (opts.reservationId) {
     const captured = await scopedDb.billing.captureReservation(
       opts.reservationId,
-      costMicros,
+      opts.costMicros,
       {
         description: opts.description,
         metadata: opts.metadata,
@@ -121,7 +119,7 @@ export async function deductWorkflowCredits(
       }
     );
     if (!captured.ok) {
-      skipDeduction(scopedDb, { ...opts, costMicros });
+      skipDeduction(scopedDb, opts);
       return;
     }
     if (captured.skippedDeltaMicros) {
@@ -133,13 +131,13 @@ export async function deductWorkflowCredits(
     return;
   }
 
-  const debit = await scopedDb.billing.tryDeductCredits(costMicros, {
+  const debit = await scopedDb.billing.tryDeductCredits(opts.costMicros, {
     description: opts.description,
     metadata: opts.metadata,
     idempotencyKey: opts.idempotencyKey,
   });
   if (!debit.ok) {
-    skipDeduction(scopedDb, { ...opts, costMicros });
+    skipDeduction(scopedDb, opts);
   }
 }
 

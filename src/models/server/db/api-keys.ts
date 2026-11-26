@@ -77,7 +77,7 @@ export type ResolvedApiKey =
 // Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
 // Completions, models per `LLMTR_TEXT_MODELS`).
 export type ResolvedLlmKey = ResolvedApiKey &
-  Pick<LlmKeyInfo, 'gateway'> & {
+  Pick<LlmKeyInfo, 'meter'> & {
     via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
   };
 

@@ -1,6 +1,9 @@
 /** Platform-key LLM calls held and charged by the gateway from the model's card (#2437); see model-gateway.md § Text. */
 
-import { reportSkippedDeduction } from '@/billing/billing-observability';
+import {
+  reportMissingBillingCost,
+  reportSkippedDeduction,
+} from '@/billing/billing-observability';
 import { micros, type Microdollars } from '@/billing/money';
 import type { createBillingMethods } from '@/billing/server/db/billing';
 import type { PricingRefreshDb } from '@/billing/server/refresh-fal-pricing';
@@ -15,9 +18,9 @@ import { priceGatewayJob } from '@/gateway/server/price';
 import { normalizeUsage } from '@modelschemas/rate-card/evaluator';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
 import { nativeGrokTextModel } from '@/models/grok-native';
-import { getMaxOutputTokens } from '@/models/models.config';
 import { getPlatformLlmKey } from '@/models/server/create-adapter';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import { isTokenUsage, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import type {
@@ -28,21 +31,36 @@ import type {
 
 /** A non-text part is held at this many input tokens; the charge reads the real count. */
 const MEDIA_PART_TOKENS = 4096;
-const CHARGED = 'openstoryGatewayCharged';
 
-export type TextGatewayBilling = Pick<
+export type TextMeterBilling = Pick<
   ReturnType<typeof createBillingMethods>,
-  'createReservation' | 'settleReservation' | 'zeroReservation'
+  | 'createReservation'
+  | 'settleReservation'
+  | 'zeroReservation'
+  | 'captureReservation'
+  | 'tryDeductCredits'
+  | 'deductCredits'
 >;
 
-export type TextGateway = {
-  /** The registry id the key was resolved for; the adapter refuses any other. */
-  readonly registryId: string;
-  readonly model: GatewayTextModel;
-  /** What call sites send as the output budget, held when a request names none. */
-  readonly maxOutputTokens: number;
+/** A workflow run (drawing on its reservation when it has one), or null for a request with no run. */
+type TextRun = { readonly reservationId: string | null } | null;
+
+/** Charges every provider call a platform key makes, on the gateway's card or as today (#2437). */
+export type TextMeter = {
+  readonly via: ResolvedLlmKey['via'];
+  /** The card this route is priced from, for the registry id the key was resolved for; null prices it as today. */
+  readonly card: {
+    readonly registryId: string;
+    readonly model: GatewayTextModel;
+  } | null;
   readonly organizationId: string;
-  readonly billing: TextGatewayBilling;
+  readonly billing: TextMeterBilling;
+  readonly run: TextRun;
+  readonly oauthClientId: string | null;
+  /** One charge per key: a single-call site that repeats for the same thing is charged once. */
+  readonly chargeKey: string | null;
+  /** The same resolver, for a re-run on another route or model. */
+  readonly resolve: (model: string) => Promise<ResolvedLlmKey>;
 };
 
 /** The card a platform key's call is priced from: the provider's own, by the route the key takes. */
@@ -73,9 +91,10 @@ function cardPricesTokens(model: GatewayTextModel): boolean {
 }
 
 /**
- * `resolveLlmKey` with a platform key's call routed to the gateway when its
- * card can price it, and `resolvePlatformLlmKey` for the public API, which
- * spends platform keys only: null when the gateway cannot price the model.
+ * `apiKeys` whose platform keys carry a meter: `resolveLlmKey` for a request,
+ * `resolveRunLlmKey` inside a workflow run, `resolvePlatformLlmKey` for the
+ * public API (platform keys only, null when the card cannot price it).
+ * An organization's own key carries none and is never charged.
  */
 export function withTextGateway<
   T extends { resolveLlmKey(model?: string): Promise<ResolvedLlmKey> },
@@ -84,58 +103,81 @@ export function withTextGateway<
   scope: {
     db: PricingRefreshDb;
     organizationId: string;
-    billing: TextGatewayBilling;
+    billing: TextMeterBilling;
   }
 ): T & {
-  resolvePlatformLlmKey(model: string): Promise<ResolvedLlmKey | null>;
+  resolveRunLlmKey(
+    model: string | undefined,
+    reservationId: string | null
+  ): Promise<ResolvedLlmKey>;
+  resolvePlatformLlmKey(
+    model: string,
+    oauthClientId: string | null
+  ): Promise<ResolvedLlmKey | null>;
 } {
-  const attach = async (
-    key: ResolvedLlmKey,
-    model: string
-  ): Promise<ResolvedLlmKey> => {
-    if (key.source !== 'platform') return key;
-    const card = textCardKey(key.via, model);
-    if (!card) return key;
+  const cardFor = async (key: ResolvedLlmKey, model: string | undefined) => {
+    const card = model ? textCardKey(key.via, model) : null;
+    if (!model || !card) return null;
     const stored = await getStoredTextModel(scope.db, card.provider, card.id);
-    if (!stored || !cardPricesTokens(stored)) return key;
-    return {
-      ...key,
-      gateway: {
-        registryId: model,
-        model: stored,
-        maxOutputTokens: getMaxOutputTokens(model),
-        organizationId: scope.organizationId,
-        billing: scope.billing,
-      },
-    };
+    return stored && cardPricesTokens(stored)
+      ? { registryId: model, model: stored }
+      : null;
   };
+  const metered = async (
+    key: ResolvedLlmKey,
+    model: string | undefined,
+    run: TextRun,
+    oauthClientId: string | null,
+    resolve: (model: string) => Promise<ResolvedLlmKey>
+  ): Promise<ResolvedLlmKey> =>
+    key.source === 'platform'
+      ? {
+          ...key,
+          meter: {
+            via: key.via,
+            card: await cardFor(key, model),
+            organizationId: scope.organizationId,
+            billing: scope.billing,
+            run,
+            oauthClientId,
+            chargeKey: null,
+            resolve,
+          },
+        }
+      : key;
+  const resolveLlmKey = async (model?: string): Promise<ResolvedLlmKey> =>
+    metered(
+      await apiKeys.resolveLlmKey(model),
+      model,
+      null,
+      null,
+      resolveLlmKey
+    );
+  const resolveRunLlmKey = async (
+    model: string | undefined,
+    reservationId: string | null
+  ): Promise<ResolvedLlmKey> =>
+    metered(
+      await apiKeys.resolveLlmKey(model),
+      model,
+      { reservationId },
+      null,
+      (next) => resolveRunLlmKey(next, reservationId)
+    );
   return {
     ...apiKeys,
-    resolveLlmKey: async (model?: string) => {
-      const key = await apiKeys.resolveLlmKey(model);
-      return model ? attach(key, model) : key;
-    },
-    resolvePlatformLlmKey: async (model: string) => {
+    resolveLlmKey,
+    resolveRunLlmKey,
+    resolvePlatformLlmKey: async (model, oauthClientId) => {
       const platform = getPlatformLlmKey(model);
       if (!platform) return null;
-      const key = await attach(platform, model);
-      return key.gateway ? key : null;
+      const key = await metered(platform, model, null, oauthClientId, (m) =>
+        Promise.reject(new Error(`No re-run for ${m} on the public API`))
+      );
+      return key.meter?.card ? key : null;
     },
   };
 }
-
-/** True when the gateway already charged the call this usage belongs to. */
-export function chargedByGateway(usage: TokenUsage | undefined): boolean {
-  return usage?.providerUsageDetails?.[CHARGED] === true;
-}
-
-function markCharged(usage: TokenUsage): void {
-  usage.providerUsageDetails = {
-    ...usage.providerUsageDetails,
-    [CHARGED]: true,
-  };
-}
-
 function isMediaPart(value: unknown): boolean {
   return (
     typeof value === 'object' &&
@@ -169,46 +211,39 @@ function requestMaxTokens(
   ].find((n): n is number => typeof n === 'number' && n > 0);
 }
 
-type HeldCall = {
-  readonly id: string;
+type Held = {
   readonly reservationId: string;
-  readonly inputTokens: number;
   readonly estimateMicros: Microdollars;
 };
 
-function price(
-  gateway: TextGateway,
-  usage: Record<string, unknown>
-): Microdollars {
-  return priceGatewayJob(gateway.model.card, {}, usage);
+type Card = GatewayTextModel;
+
+function price(card: Card, usage: Record<string, unknown>): Microdollars {
+  return priceGatewayJob(card.card, {}, usage);
 }
 
+/** A request with no run holds the card on its input bound and output budget before the provider call. */
 async function hold(
-  gateway: TextGateway,
+  meter: TextMeter,
+  card: Card,
   inputTokens: number,
   outputTokens: number
-): Promise<HeldCall> {
-  const id = generateId();
-  const estimateMicros = price(gateway, {
+): Promise<Held> {
+  const estimateMicros = price(card, {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
   });
-  const holdMicros = gatewayCharge({
-    providerCostMicros: estimateMicros,
-    platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
-  }).totalMicros;
-  const reserved = await gateway.billing.createReservation(holdMicros, {
-    idempotencyKey: `text:${id}`,
-  });
+  const reserved = await meter.billing.createReservation(
+    gatewayCharge({
+      providerCostMicros: estimateMicros,
+      platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+    }).totalMicros,
+    { idempotencyKey: `text:${generateId()}` }
+  );
   if (!reserved.ok) {
     throw new InsufficientCreditsError('Insufficient credits for this model');
   }
-  return {
-    id,
-    reservationId: reserved.reservationId,
-    inputTokens,
-    estimateMicros,
-  };
+  return { reservationId: reserved.reservationId, estimateMicros };
 }
 
 /** Web searches the provider ran server-side (OpenRouter's `serverToolUseDetails`). */
@@ -223,13 +258,10 @@ function webSearches(usage: TokenUsage): number {
 }
 
 /** The provider's usage on the card's levers: cached, cache-write and reasoning split out by `normalizeUsage`, plus web searches. */
-function cardUsage(
-  gateway: TextGateway,
-  usage: TokenUsage
-): Record<string, unknown> {
+function cardUsage(card: Card, usage: TokenUsage): Record<string, unknown> {
   const searches = webSearches(usage);
   return {
-    ...normalizeUsage(gateway.model.card, {
+    ...normalizeUsage(card.card, {
       prompt_tokens: usage.promptTokens,
       completion_tokens: usage.completionTokens,
       prompt_tokens_details: {
@@ -244,72 +276,127 @@ function cardUsage(
   };
 }
 
-/** Charges once on the reported usage, or on what streamed when cut off (at most the hold); nothing streamed is released. */
-async function settle(
-  gateway: TextGateway,
-  call: HeldCall,
-  usage: TokenUsage | undefined,
-  streamedChars: number
-): Promise<void> {
-  // Cut off with no usage: the input bound and what streamed, never above the hold.
-  const cost = usage
-    ? price(gateway, cardUsage(gateway, usage))
-    : streamedChars > 0
-      ? micros(
-          Math.min(
-            price(gateway, {
-              input_tokens: call.inputTokens,
-              output_tokens: streamedChars,
-            }),
-            call.estimateMicros
-          )
-        )
-      : null;
-  if (cost !== null) {
-    const { lines, totalMicros } = gatewayCharge({
-      providerCostMicros: cost,
-      platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
-    });
-    const description = `Gateway (${gateway.model.provider}/${gateway.model.id})`;
-    const idempotencyKey = `text:${call.id}:settle`;
-    const metadata = {
-      provider: gateway.model.provider,
-      model: gateway.model.id,
-      usage: usage ?? null,
-      cutOff: !usage,
-      estimateMicros: call.estimateMicros,
-    };
-    const settled = await gateway.billing.settleReservation(
-      call.reservationId,
-      lines,
-      { idempotencyKey, description, metadata }
-    );
-    const skipped = settled.ok ? settled.skippedDeltaMicros : totalMicros;
-    if (skipped) {
-      reportSkippedDeduction({
-        organizationId: gateway.organizationId,
-        workflowName: 'text-gateway',
-        description,
-        costMicros: skipped,
-        idempotencyKey,
-        metadata,
-      });
-    }
-  }
-  await gateway.billing.zeroReservation(call.reservationId);
+/** The key charged once under `chargeKey`, however often the call repeats; for single-call sites only. */
+export function chargedOnceAs(
+  key: ResolvedLlmKey,
+  chargeKey: string
+): ResolvedLlmKey {
+  return key.meter ? { ...key, meter: { ...key.meter, chargeKey } } : key;
 }
 
-export function isTokenUsage(value: unknown): value is TokenUsage {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'promptTokens' in value &&
-    'completionTokens' in value &&
-    'totalTokens' in value &&
-    typeof value.promptTokens === 'number' &&
-    typeof value.completionTokens === 'number' &&
-    typeof value.totalTokens === 'number'
-  );
+/** One provider call: what it is priced on, and what it reported. */
+type Call = {
+  readonly model: string;
+  /** Null: priced as today (`llmCostFromUsage`), for the reason in `direct`. */
+  readonly card: Card | null;
+  readonly direct: string | null;
+  readonly held: Held | null;
+  readonly inputTokens: number;
+  usage: TokenUsage | undefined;
+  streamedChars: number;
+};
+
+function cardCost(card: Card, call: Call): Microdollars | null {
+  if (call.usage) return price(card, cardUsage(card, call.usage));
+  if (call.streamedChars === 0) return null;
+  // Cut off with no usage: the input bound and what streamed, never above a hold.
+  const cost = price(card, {
+    input_tokens: call.inputTokens,
+    output_tokens: call.streamedChars,
+  });
+  return call.held ? micros(Math.min(cost, call.held.estimateMicros)) : cost;
+}
+
+/** Charges the call once: on the card (lines carry the model as sku) or as today; a hold of its own is always released. */
+async function charge(meter: TextMeter, call: Call): Promise<void> {
+  const idempotencyKey = meter.chargeKey ?? `text:${generateId()}`;
+  const description = `LLM (${call.model})`;
+  const metadata = {
+    via: meter.via,
+    model: call.model,
+    card: call.card ? `${call.card.provider}/${call.card.id}` : null,
+    direct: call.direct,
+    usage: call.usage ?? null,
+    cutOff: !call.usage,
+  };
+  const skipped = (costMicros: Microdollars) =>
+    reportSkippedDeduction({
+      organizationId: meter.organizationId,
+      workflowName: 'llm',
+      description,
+      costMicros,
+      idempotencyKey,
+      metadata,
+    });
+  const runReservation = meter.run?.reservationId ?? null;
+  try {
+    if (call.card) {
+      const cost = cardCost(call.card, call);
+      if (cost === null) return;
+      const sku = `${call.card.provider}/${call.card.id}`;
+      const { lines, totalMicros } = gatewayCharge({
+        providerCostMicros: cost,
+        platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+      });
+      let reservationId = runReservation ?? call.held?.reservationId ?? null;
+      let ownHold = false;
+      if (!reservationId) {
+        // A run with no reservation holds at the charge, so its lines are written like any other.
+        const reserved = await meter.billing.createReservation(totalMicros, {
+          idempotencyKey: `${idempotencyKey}:hold`,
+        });
+        if (!reserved.ok) return skipped(totalMicros);
+        reservationId = reserved.reservationId;
+        ownHold = true;
+      }
+      try {
+        const settled = await meter.billing.settleReservation(
+          reservationId,
+          lines.map((line) => ({ ...line, sku })),
+          {
+            idempotencyKey,
+            description,
+            metadata,
+            attribution: { oauthClientId: meter.oauthClientId },
+          }
+        );
+        const short = settled.ok ? settled.skippedDeltaMicros : totalMicros;
+        if (short) skipped(short);
+      } finally {
+        if (ownHold) await meter.billing.zeroReservation(reservationId);
+      }
+      return;
+    }
+    // No usage means nothing was used (the model never answered).
+    if (!call.usage || call.usage.totalTokens === 0) return;
+    const cost = llmCostFromUsage(call.usage, call.model, meter.via);
+    if (cost <= 0) {
+      reportMissingBillingCost({
+        source: 'llm',
+        modelId: call.model,
+        organizationId: meter.organizationId,
+        metadata,
+      });
+      return;
+    }
+    const opts = { idempotencyKey, description, metadata };
+    if (runReservation) {
+      const captured = await meter.billing.captureReservation(
+        runReservation,
+        cost,
+        opts
+      );
+      const short = captured.ok ? captured.skippedDeltaMicros : cost;
+      if (short) skipped(short);
+    } else if (meter.run) {
+      const debit = await meter.billing.tryDeductCredits(cost, opts);
+      if (!debit.ok) skipped(cost);
+    } else {
+      await meter.billing.deductCredits(cost, opts);
+    }
+  } finally {
+    if (call.held) await meter.billing.zeroReservation(call.held.reservationId);
+  }
 }
 
 function chunkUsage(chunk: AdapterYieldChunk): TokenUsage | undefined {
@@ -320,50 +407,43 @@ function chunkUsage(chunk: AdapterYieldChunk): TokenUsage | undefined {
   return isTokenUsage(usage) ? usage : undefined;
 }
 
-async function* metered(
-  gateway: TextGateway,
-  inputTokens: number,
-  outputTokens: number,
-  run: () => AsyncIterable<AdapterYieldChunk>
-): AsyncIterable<AdapterYieldChunk> {
-  const call = await hold(gateway, inputTokens, outputTokens);
-  let usage: TokenUsage | undefined;
-  let streamed = 0;
-  try {
-    for await (const chunk of run()) {
-      if ('delta' in chunk && typeof chunk.delta === 'string') {
-        streamed += chunk.delta.length;
-      }
-      const reported = chunkUsage(chunk);
-      if (reported) {
-        markCharged(reported);
-        usage = reported;
-      }
-      yield chunk;
-    }
-  } finally {
-    await settle(gateway, call, usage, streamed);
-  }
-}
-
 function errorUsage(error: unknown): TokenUsage | undefined {
   if (!(error instanceof Error) || !('usage' in error)) return undefined;
   const usage: unknown = error.usage;
   return isTokenUsage(usage) ? usage : undefined;
 }
 
+/** Why a call is priced as today rather than on a card: none, or a lever the card does not have. */
+function directReason(
+  meter: TextMeter,
+  modelOptions: Record<string, unknown> | undefined
+): string | null {
+  if (!meter.card) return 'no card';
+  const tier = modelOptions?.serviceTier;
+  return typeof tier === 'string' && tier !== 'standard'
+    ? `service tier ${tier} is not on the card`
+    : null;
+}
+
 /**
- * The route's own adapter with a hold before each provider call and one
- * charge after it; the request and the stream pass through unchanged.
+ * The route's own adapter with each provider call charged once by its meter;
+ * the request and the stream pass through unchanged.
  */
 export function openstoryText<A extends AnyTextAdapter>(
   inner: A,
-  gateway: TextGateway
+  meter: TextMeter,
+  model: string
 ): A {
   type ChatOptions = Parameters<A['chatStream']>[0];
   type StructuredOptions = Parameters<A['structuredOutput']>[0];
-  const bounds = (options: ChatOptions, outputSchema?: unknown) => ({
-    input: inputTokenBound([
+
+  const begin = async (
+    options: ChatOptions,
+    outputSchema?: unknown
+  ): Promise<Call> => {
+    const direct = directReason(meter, options.modelOptions);
+    const card = direct ? null : (meter.card?.model ?? null);
+    const inputTokens = inputTokenBound([
       options.systemPrompts,
       options.messages,
       options.tools?.map((tool: { name: string; description: string }) => [
@@ -371,37 +451,75 @@ export function openstoryText<A extends AnyTextAdapter>(
         tool.description,
       ]),
       outputSchema,
-    ]),
-    output: requestMaxTokens(options.modelOptions) ?? gateway.maxOutputTokens,
-  });
-
-  const chatStream = (options: ChatOptions) => {
-    const { input, output } = bounds(options);
-    return metered(gateway, input, output, () => inner.chatStream(options));
+    ]);
+    // Only a request with no run holds; inside a run the run's reservation is the hold.
+    if (!card || meter.run) {
+      return {
+        model,
+        card,
+        direct,
+        held: null,
+        inputTokens,
+        usage: undefined,
+        streamedChars: 0,
+      };
+    }
+    const output = requestMaxTokens(options.modelOptions);
+    if (output === undefined) {
+      throw new Error(
+        `An LLM call outside a run must set its output budget (${model})`
+      );
+    }
+    const held = await hold(meter, card, inputTokens, output);
+    return {
+      model,
+      card,
+      direct,
+      held,
+      inputTokens,
+      usage: undefined,
+      streamedChars: 0,
+    };
   };
-  const structuredOutputStream = (options: StructuredOptions) => {
-    const { input, output } = bounds(options.chatOptions, options.outputSchema);
-    return metered(gateway, input, output, () => {
+
+  async function* metered(
+    started: Promise<Call>,
+    run: () => AsyncIterable<AdapterYieldChunk>
+  ): AsyncIterable<AdapterYieldChunk> {
+    const call = await started;
+    try {
+      for await (const chunk of run()) {
+        if ('delta' in chunk && typeof chunk.delta === 'string') {
+          call.streamedChars += chunk.delta.length;
+        }
+        call.usage = chunkUsage(chunk) ?? call.usage;
+        yield chunk;
+      }
+    } finally {
+      await charge(meter, call);
+    }
+  }
+
+  const chatStream = (options: ChatOptions) =>
+    metered(begin(options), () => inner.chatStream(options));
+  const structuredOutputStream = (options: StructuredOptions) =>
+    metered(begin(options.chatOptions, options.outputSchema), () => {
       if (!inner.structuredOutputStream) {
         throw new Error(`${inner.name} has no structured output stream`);
       }
       return inner.structuredOutputStream(options);
     });
-  };
   const structuredOutput = async (options: StructuredOptions) => {
-    const { input, output } = bounds(options.chatOptions, options.outputSchema);
-    const call = await hold(gateway, input, output);
-    let usage: TokenUsage | undefined;
+    const call = await begin(options.chatOptions, options.outputSchema);
     try {
       const result = await inner.structuredOutput(options);
-      usage = result.usage;
-      if (usage) markCharged(usage);
+      call.usage = result.usage;
       return result;
     } catch (error) {
-      usage = errorUsage(error);
+      call.usage = errorUsage(error);
       throw error;
     } finally {
-      await settle(gateway, call, usage, 0);
+      await charge(meter, call);
     }
   };
 

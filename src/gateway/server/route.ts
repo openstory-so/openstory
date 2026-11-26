@@ -33,10 +33,7 @@ export type GatewayRouteTarget = {
   readonly modelId: string;
 };
 
-export function gatewayRouteKey(
-  provider: GatewayProvider,
-  modelId: string
-): string {
+function gatewayRouteKey(provider: GatewayProvider, modelId: string): string {
   return `${provider}/${modelId}`;
 }
 
