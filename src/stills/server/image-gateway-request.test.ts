@@ -58,7 +58,7 @@ const GROK: GatewayModel = {
 const OPENSTORY: GatewayRoutes = {
   [gatewayRouteKey('grok', 'grok-imagine-image-2.0')]: {
     via: 'openstory',
-    model: GROK,
+    model: JSON.stringify(GROK),
   },
 };
 
@@ -72,7 +72,7 @@ const still = {
 describe('gatewayImageRequest', () => {
   it("sends a Grok still with no references as xAI's own body", () => {
     const request = gatewayImageRequest(still, OPENSTORY);
-    expect(request?.model).toBe(GROK);
+    expect(request?.model).toEqual(GROK);
     expect(request?.body).toMatchObject({
       model: 'grok-imagine-image-2.0',
       n: 1,

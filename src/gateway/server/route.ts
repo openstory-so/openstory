@@ -6,6 +6,7 @@ import {
   unholdableReason,
   type GatewayModel,
 } from '@/gateway/server/catalog';
+import { storedModelSchema } from '@/gateway/server/db/gateway-models';
 import { priceGatewayJob } from '@/gateway/server/price';
 import { validatedBody } from '@/gateway/server/submit-job';
 import { ValidationError } from '@/platform/errors';
@@ -17,8 +18,13 @@ export type GatewayRoute =
   | { readonly via: 'openstory'; readonly model: GatewayModel }
   | { readonly via: 'direct'; readonly reason: string };
 
+/** A route as the payload carries it: the model as JSON text, since the card's type is too deep for a step's `Serializable`. */
+type GatewayRouteSnapshot =
+  | { readonly via: 'openstory'; readonly model: string }
+  | { readonly via: 'direct'; readonly reason: string };
+
 /** Routes a run carries, keyed by `gatewayRouteKey`; any kind of model. */
-export type GatewayRoutes = Readonly<Record<string, GatewayRoute>>;
+export type GatewayRoutes = Readonly<Record<string, GatewayRouteSnapshot>>;
 
 /** A model a trigger routes. */
 export type GatewayRouteTarget = {
@@ -98,15 +104,23 @@ export async function resolveGatewayRoutes(
       async ({ body, ...target }) =>
         [
           gatewayRouteKey(target.provider, target.modelId),
-          await resolveGatewayRoute({
-            scopedDb,
-            ...target,
-            body: body ?? null,
-          }),
+          snapshotRoute(
+            await resolveGatewayRoute({
+              scopedDb,
+              ...target,
+              body: body ?? null,
+            })
+          ),
         ] as const
     )
   );
   return Object.fromEntries(entries);
+}
+
+function snapshotRoute(route: GatewayRoute): GatewayRouteSnapshot {
+  return route.via === 'openstory'
+    ? { via: 'openstory', model: JSON.stringify(route.model) }
+    : route;
 }
 
 /**
@@ -123,6 +137,7 @@ export function gatewayRunRoute(
   const route = routes[gatewayRouteKey(target.provider, target.modelId)];
   if (!route) return { via: 'direct', reason: 'not routed at the trigger' };
   if (route.via === 'direct') return route;
-  const reason = gatewayCannotRun(route.model, body);
-  return reason ? { via: 'direct', reason } : route;
+  const model = storedModelSchema.parse(JSON.parse(route.model));
+  const reason = gatewayCannotRun(model, body);
+  return reason ? { via: 'direct', reason } : { via: 'openstory', model };
 }
