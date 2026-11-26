@@ -812,10 +812,10 @@ the fal map says $0.04). Direct routes keep the fal map. The public catalog
 pricing the composers read in the browser is not organization-aware and
 still shows the fal price.
 
-Double hold: a run that owns a reservation (the pipeline envelope, a shot or
-sheet trigger) still holds its estimate while each gateway job holds again,
-until the run zeroes what it did not spend. `runReservationId` on the image
-gateway call is where the run's hold goes once the transport can draw on it.
+No double hold: a run that owns a reservation (the pipeline envelope, a
+shot or sheet trigger) passes it as `runReservationId`, and the gateway job
+charges that reservation instead of holding its own. A run with none (Studio
+on the `openstory` route) holds per job.
 
 ## Every model can be priced (#2432)
 
