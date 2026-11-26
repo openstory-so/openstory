@@ -203,6 +203,7 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('x-ai/grok-4.20', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -221,6 +222,7 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('anthropic/claude-fable-5.1', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -234,6 +236,7 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('openai/gpt-5.4-mini', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
     expect(lastLlmtrCall().config.api).toBe('responses');
@@ -245,6 +248,7 @@ describe('createAdapter LLMTR routing', () => {
       createAdapter('anthropic/claude-opus-5-fast', {
         key: 'llmtr-organization',
         via: 'llmtr',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/LLMTR does not carry model/);
@@ -259,6 +263,7 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('x-ai/grok-4.20', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -283,6 +288,7 @@ describe('createAdapter routing (issue #895)', () => {
     createAdapter(MODEL, {
       key: 'sk-fal-organization',
       via: 'fal',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -305,6 +311,7 @@ describe('createAdapter routing (issue #895)', () => {
     createAdapter(MODEL, {
       key: 'sk-or-organization',
       via: 'openrouter',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -321,6 +328,7 @@ describe('createAdapter routing (issue #895)', () => {
     createAdapter(MODEL, {
       key: 'sk-fal-organization',
       via: 'fal',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -388,6 +396,7 @@ describe('native xAI routing (issue #1167)', () => {
     createAdapter(MODEL, {
       key: 'xai-organization',
       via: 'xai',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -408,6 +417,7 @@ describe('native xAI routing (issue #1167)', () => {
     createAdapter('x-ai/grok-4.20', {
       key: 'xai-organization',
       via: 'xai',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -422,6 +432,7 @@ describe('native xAI routing (issue #1167)', () => {
       createAdapter('anthropic/claude-opus-5-fast', {
         key: 'xai-organization',
         via: 'xai',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/xAI key cannot be sent to OpenRouter/);
@@ -449,6 +460,7 @@ describe('native Google routing', () => {
     createAdapter('google/gemini-3.8-flash', {
       key: 'google-organization',
       via: 'google',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
     expect(geminiCalls.at(-1)?.model).toBe('gemini-3.8-flash');
@@ -458,6 +470,7 @@ describe('native Google routing', () => {
     createAdapter(GEMINI_MODEL, {
       key: 'google-organization',
       via: 'google',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -480,6 +493,7 @@ describe('native Google routing', () => {
     createAdapter('google/gemini-3-flash-preview', {
       key: 'google-organization',
       via: 'google',
+      source: 'platform' as const,
       meter: { uncharged: 'no organization' as const },
     });
 
@@ -497,6 +511,7 @@ describe('native Google routing', () => {
       createAdapter('anthropic/claude-sonnet-5.5', {
         key: 'google-organization',
         via: 'google',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/Google key cannot be sent to OpenRouter/);
@@ -544,6 +559,7 @@ describe('resolveNativeGeminiModel', () => {
       resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
         key: 'k',
         via: 'google',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBe('gemini-3.1-pro-preview');
@@ -551,6 +567,7 @@ describe('resolveNativeGeminiModel', () => {
       resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
         key: 'k',
         via: 'openrouter',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBeUndefined();
@@ -558,6 +575,7 @@ describe('resolveNativeGeminiModel', () => {
       resolveNativeGeminiModel('openai/gpt-5.5', {
         key: 'k',
         via: 'google',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBeUndefined();
@@ -602,6 +620,7 @@ describe('resolveNativeGrokModel', () => {
       resolveNativeGrokModel(MODEL, {
         key: 'k',
         via: 'xai',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBe('grok-4.7');
@@ -609,6 +628,7 @@ describe('resolveNativeGrokModel', () => {
       resolveNativeGrokModel(MODEL, {
         key: 'k',
         via: 'openrouter',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBeUndefined();
@@ -616,6 +636,7 @@ describe('resolveNativeGrokModel', () => {
       resolveNativeGrokModel('openai/gpt-5.5', {
         key: 'k',
         via: 'xai',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       })
     ).toBeUndefined();

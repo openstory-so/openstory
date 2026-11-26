@@ -133,45 +133,32 @@ describe('Enhance with a still on the Gemini Files API (#2400)', () => {
 });
 
 describe('Enhance on an unfunded script (#1567)', () => {
-  const platformKey = (card: boolean) => ({
-    key: 'p',
-    source: 'platform',
-    via: 'openrouter',
-    meter: {
-      via: 'openrouter',
-      card: card ? { registryId: 'x-ai/grok-4.7' } : null,
-      chargeKey: null,
-      describe: null,
-      resolve: vi.fn(),
-    },
-  });
-  const run = async (card: boolean, funded: boolean) => {
+  it('lets its own hold decide, running free when the balance cannot take it, with no credit pre-check', async () => {
+    const hasEnoughCredits = vi.fn(async () => false);
     const scopedDb = asStub<ScopedDb>({
-      apiKeys: { resolveLlmKey: vi.fn(async () => platformKey(card)) },
-      billing: { hasEnoughCredits: vi.fn(async () => funded) },
+      apiKeys: {
+        resolveLlmKey: vi.fn(async () => ({
+          key: 'p',
+          source: 'platform',
+          via: 'openrouter',
+          meter: {
+            via: 'openrouter',
+            card: null,
+            chargeKey: null,
+            whenShort: 'refuse',
+            describe: null,
+            resolve: vi.fn(),
+          },
+        })),
+      },
+      billing: { hasEnoughCredits },
     });
     await enhanceScriptToString(
       { script: 'A cyclist races home.' },
       { scopedDb, userId: 'u1', organizationId: 't1' }
     );
-    return callLLMStream.mock.calls[0]?.[0].apiKey.meter;
-  };
-
-  it.each([
-    ['card', true],
-    ['direct', false],
-  ])(
-    'runs free on the %s route when the organization cannot pay, never refused or charged',
-    async (_route, card) => {
-      expect(await run(card, false)).toEqual({
-        uncharged: 'unfunded generation',
-      });
-    }
-  );
-
-  it('is metered as "Script enhancement" when the organization can pay', async () => {
-    const meter = await run(true, true);
-    expect(meter).toMatchObject({ card: { registryId: 'x-ai/grok-4.7' } });
+    const meter = callLLMStream.mock.calls[0]?.[0].apiKey.meter;
+    expect(meter).toMatchObject({ whenShort: 'run free' });
     expect(
       typeof meter === 'object' &&
         meter !== null &&
@@ -179,5 +166,6 @@ describe('Enhance on an unfunded script (#1567)', () => {
         typeof meter.describe === 'function' &&
         meter.describe('x-ai/grok-4.7')
     ).toBe('Script enhancement');
+    expect(hasEnoughCredits).not.toHaveBeenCalled();
   });
 });

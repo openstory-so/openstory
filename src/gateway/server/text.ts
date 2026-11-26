@@ -72,6 +72,8 @@ export type TextMeter = {
   readonly oauthClientId: string | null;
   /** One charge per key: a single-call site that repeats for the same thing is charged once. */
   readonly chargeKey: string | null;
+  /** What a request the balance cannot cover does: refused, or run free (#1567 unfunded generation; never a negative balance). */
+  readonly whenShort: 'refuse' | 'run free';
   /** The transaction's description for the model that answered; a call with none is refused before it starts. */
   readonly describe: ((model: string) => string) | null;
   /** The same resolver, for a re-run on another route or model. */
@@ -157,6 +159,7 @@ export function withTextGateway<
             run,
             oauthClientId,
             chargeKey: null,
+            whenShort: 'refuse',
             describe,
             resolve,
           },
@@ -256,7 +259,7 @@ async function hold(
   card: Card,
   inputTokens: number,
   outputTokens: number
-): Promise<Held> {
+): Promise<Held | null> {
   const estimateMicros = price(card, {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
@@ -268,10 +271,11 @@ async function hold(
     }).totalMicros,
     { idempotencyKey: `text:${generateId()}` }
   );
-  if (!reserved.ok) {
-    throw new InsufficientCreditsError('Insufficient credits for this model');
+  if (reserved.ok) {
+    return { reservationId: reserved.reservationId, estimateMicros };
   }
-  return { reservationId: reserved.reservationId, estimateMicros };
+  if (meter.whenShort === 'run free') return null;
+  throw new InsufficientCreditsError('Insufficient credits for this model');
 }
 
 /** Web searches the provider ran server-side (OpenRouter's `serverToolUseDetails`). */
@@ -307,8 +311,13 @@ function cardUsage(card: Card, usage: TokenUsage): Record<string, unknown> {
 /** The key for one call site: what its charge reads on the transaction, and a charge key when a repeat of the same thing is charged once. */
 export function forCall(
   key: ResolvedLlmKey,
-  site: { describe: (model: string) => string; chargeKey?: string }
+  site: {
+    describe: (model: string) => string;
+    chargeKey?: string;
+    whenShort?: TextMeter['whenShort'];
+  }
 ): ResolvedLlmKey {
+  if (key.source === 'organization') return key;
   const { meter } = key;
   if ('uncharged' in meter) return key;
   return {
@@ -316,6 +325,7 @@ export function forCall(
     meter: {
       ...meter,
       describe: site.describe,
+      whenShort: site.whenShort ?? meter.whenShort,
       chargeKey: site.chargeKey ?? meter.chargeKey,
       resolve: async (model) => forCall(await meter.resolve(model), site),
     },
@@ -336,25 +346,36 @@ type Call = {
   readonly outputBound: number | undefined;
   usage: TokenUsage | undefined;
   streamedBytes: number;
+  /** A request the balance could not hold, run free: never charged. */
+  readonly free: boolean;
+  /** The provider threw or sent a run error; a consumer closing the stream is not one. */
+  providerFailed: boolean;
 };
+
+/** Usage for a call the provider never counted: none when it failed before any text, else estimated and bounded. */
+function uncountedUsage(call: Call): TokenUsage | undefined {
+  if (call.providerFailed && call.streamedBytes === 0) return undefined;
+  const streamed = estimatedTokens(call.streamedBytes);
+  const output =
+    call.outputBound === undefined
+      ? streamed
+      : Math.min(streamed, call.outputBound);
+  return {
+    promptTokens: call.inputEstimate,
+    completionTokens: output,
+    totalTokens: call.inputEstimate + output,
+  };
+}
 
 function cardCost(card: Card, call: Call): Microdollars | null {
   if (call.usage) return price(card, cardUsage(card, call.usage));
-  if (call.streamedBytes === 0) return null;
-  // Cut off with no usage: estimated tokens, never above what the request's bound would have held.
+  const usage = uncountedUsage(call);
+  if (!usage) return null;
   const cost = price(card, {
-    input_tokens: call.inputEstimate,
-    output_tokens: estimatedTokens(call.streamedBytes),
+    input_tokens: usage.promptTokens,
+    output_tokens: usage.completionTokens,
   });
-  const cap = call.held
-    ? call.held.estimateMicros
-    : call.outputBound === undefined
-      ? null
-      : price(card, {
-          input_tokens: call.inputEstimate,
-          output_tokens: call.outputBound,
-        });
-  return cap === null ? cost : micros(Math.min(cost, cap));
+  return call.held ? micros(Math.min(cost, call.held.estimateMicros)) : cost;
 }
 
 /** Charges the call once: on the card (lines carry the model as sku) or as today; a hold of its own is always released. */
@@ -363,6 +384,7 @@ async function charge(
   describe: (model: string) => string,
   call: Call
 ): Promise<void> {
+  if (call.free) return;
   const idempotencyKey = meter.chargeKey ?? `text:${generateId()}`;
   const description = describe(call.model);
   const metadata = {
@@ -421,9 +443,10 @@ async function charge(
       }
       return;
     }
-    // No usage means nothing was used (the model never answered).
-    if (!call.usage || call.usage.totalTokens === 0) return;
-    const cost = llmCostFromUsage(call.usage, call.model, meter.via);
+    // A provider failure before any text is free; a consumer closing early is not.
+    const usage = call.usage ?? uncountedUsage(call);
+    if (!usage || usage.totalTokens === 0) return;
+    const cost = llmCostFromUsage(usage, call.model, meter.via);
     if (cost <= 0) {
       reportMissingBillingCost({
         source: 'llm',
@@ -446,7 +469,12 @@ async function charge(
       const debit = await meter.billing.tryDeductCredits(cost, opts);
       if (!debit.ok) skipped(cost);
     } else {
-      await meter.billing.deductCredits(cost, opts);
+      if (meter.whenShort === 'run free') {
+        // Only what the balance covers: an unfunded request runs free, never negative.
+        await meter.billing.tryDeductCredits(cost, opts);
+      } else {
+        await meter.billing.deductCredits(cost, opts);
+      }
     }
   } finally {
     if (call.held) await meter.billing.zeroReservation(call.held.reservationId);
@@ -459,6 +487,11 @@ function chunkUsage(chunk: AdapterYieldChunk): TokenUsage | undefined {
   }
   const usage: unknown = chunk.usage;
   return isTokenUsage(usage) ? usage : undefined;
+}
+
+/** The caller's own abort signal, not the provider: the call is still charged. */
+function isAbort(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 function errorUsage(error: unknown): TokenUsage | undefined {
@@ -523,6 +556,8 @@ export function openstoryText<A extends AnyTextAdapter>(
       outputBound,
       usage: undefined,
       streamedBytes: 0,
+      providerFailed: false,
+      free: false,
     };
     // Only a request with no run holds; inside a run the run's reservation is the hold.
     if (!card || meter.run) return call;
@@ -531,10 +566,8 @@ export function openstoryText<A extends AnyTextAdapter>(
         `An LLM call outside a run must set its output budget (${model})`
       );
     }
-    return {
-      ...call,
-      held: await hold(meter, card, inputTokens, outputBound),
-    };
+    const held = await hold(meter, card, inputTokens, outputBound);
+    return { ...call, held, free: held === null };
   };
 
   async function* metered(
@@ -548,8 +581,12 @@ export function openstoryText<A extends AnyTextAdapter>(
           call.streamedBytes += utf8Bytes(chunk.delta);
         }
         call.usage = chunkUsage(chunk) ?? call.usage;
+        if (chunk.type === 'RUN_ERROR') call.providerFailed = true;
         yield chunk;
       }
+    } catch (error) {
+      call.providerFailed = !isAbort(error);
+      throw error;
     } finally {
       await charge(meter, describe, call);
     }
@@ -572,6 +609,7 @@ export function openstoryText<A extends AnyTextAdapter>(
       return result;
     } catch (error) {
       call.usage = errorUsage(error);
+      call.providerFailed = !isAbort(error);
       throw error;
     } finally {
       await charge(meter, describe, call);

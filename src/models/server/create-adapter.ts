@@ -45,7 +45,7 @@ const logger = getLogger(['openstory', 'ai', 'create-adapter']);
  */
 const FAL_OPENROUTER_BASE_URL = 'https://fal.run/openrouter/router/openai/v1';
 
-export type LlmKeyInfo = {
+type LlmKeyRoute = {
   key: string;
   /**
    * Which API the key belongs to: 'openrouter' calls OpenRouter directly
@@ -57,22 +57,31 @@ export type LlmKeyInfo = {
    * models `LLMTR_TEXT_MODELS` maps).
    */
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
-  /** How the key's calls are charged: a meter, or a named reason they are not (#2437). */
-  meter: TextMeter | Uncharged;
 };
 
-/** A key whose calls are never charged: the organization's own key, or a platform key with no organization to charge. */
-export type Uncharged = {
-  readonly uncharged: 'own key' | 'no organization' | 'unfunded generation';
+/** The organization's own key: never charged. */
+export type OwnKey = { readonly uncharged: 'own key' };
+/** A platform key nobody is charged for, and why. */
+export type PlatformUncharged = {
+  readonly uncharged: 'no organization';
 };
 
-export const OWN_KEY: Uncharged = { uncharged: 'own key' };
-/** #1567: an unfunded script run's enhancement is free on the platform key, never a negative balance or a refusal. */
-export const UNFUNDED_GENERATION: Uncharged = {
-  uncharged: 'unfunded generation',
+/** How the key's calls are charged (#2437): a platform key carries a meter or a named platform reason, never `own key`. */
+export type LlmKeyInfo = LlmKeyRoute &
+  (
+    | { source: 'organization'; meter: OwnKey }
+    | {
+        source: 'platform';
+        fallbackReason?: string;
+        meter: TextMeter | PlatformUncharged;
+      }
+  );
+
+export const OWN_KEY: OwnKey = { uncharged: 'own key' };
+/** Only for callers with no organization; the files that may use it are pinned by `unmetered-llm-keys.test.ts`. */
+export const NO_ORGANIZATION: PlatformUncharged = {
+  uncharged: 'no organization',
 };
-/** Only for callers with no organization: `getPlatformLlmKey`'s allowlist is pinned by `platform-llm-key-callers.test.ts`. */
-export const NO_ORGANIZATION: Uncharged = { uncharged: 'no organization' };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
 // OpenRouter SDK hardcodes `Bearer`; rewrite the header on the way out.

@@ -11,7 +11,6 @@
  */
 
 import { forCall } from '@/gateway/server/text';
-import { UNFUNDED_GENERATION } from '@/models/server/create-adapter';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { longestTakeSeconds } from '@/shots/shot-list-pass';
 import { getEnv } from '#env';
@@ -75,13 +74,14 @@ export async function prepareBilling(
     typeof metadata?.model === 'string' ? metadata.model : undefined;
   const llmKey = forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
     describe: () => description,
+    // #1567: the call's own hold decides; one it cannot take runs free.
+    ...(opts?.allowUnfunded && { whenShort: 'run free' as const }),
   });
-  if (llmKey.source === 'organization') return { llmKey };
+  if (llmKey.source === 'organization' || opts?.allowUnfunded) {
+    return { llmKey };
+  }
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));
   if (canAfford) return { llmKey };
-  if (opts?.allowUnfunded) {
-    return { llmKey: { ...llmKey, meter: UNFUNDED_GENERATION } };
-  }
   throw new InsufficientCreditsError(
     `Insufficient credits for ${description.toLowerCase()}`
   );

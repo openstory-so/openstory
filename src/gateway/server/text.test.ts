@@ -127,6 +127,7 @@ const meter = (over: Partial<TextMeter> = {}): TextMeter => ({
   run: null,
   oauthClientId: null,
   chargeKey: null,
+  whenShort: 'refuse',
   describe: (model) => `LLM analysis (${model})`,
   resolve: () => Promise.reject(new Error('no re-run')),
   ...over,
@@ -347,6 +348,43 @@ describe('openstoryText on the card route', () => {
     expect(charges[0]).toBeLessThan(1100);
   });
 
+  it('charges the prompt when the caller disconnects before any text, and releases the rest', async () => {
+    const inner = adapter(() => run());
+    for await (const chunk of openstoryText(
+      inner,
+      meter(),
+      'vendor/model'
+    ).chatStream(OPTIONS)) {
+      if (chunk.type === EventType.RUN_STARTED) break;
+    }
+    const { charges, held } = await ledger();
+    expect(charges).toHaveLength(1);
+    expect(charges[0]).toBeGreaterThan(0);
+    expect(held).toBe(0);
+  });
+
+  it('charges the prompt when the caller aborts before any text', async () => {
+    const inner = adapter(() => {
+      const abort = new Error('aborted');
+      abort.name = 'AbortError';
+      throw abort;
+    });
+    await expect(
+      drain(openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS))
+    ).rejects.toThrow('aborted');
+    expect((await ledger()).charges).toHaveLength(1);
+  });
+
+  it('charges nothing when the provider throws before any content', async () => {
+    const inner = adapter(() => {
+      throw new Error('400 Bad Request');
+    });
+    await expect(
+      drain(openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS))
+    ).rejects.toThrow('400');
+    expect(await ledger()).toEqual({ charges: [], held: 0, holds: 1 });
+  });
+
   it('charges nothing when the provider refuses before any content', async () => {
     const inner = adapter(() => [
       {
@@ -549,6 +587,59 @@ describe('openstoryText on the direct route', () => {
   });
 });
 
+describe('an unfunded request that runs free (#1567)', () => {
+  const setBalance = (balance: number) =>
+    db
+      .update(credits)
+      .set({ balance })
+      .where(eq(credits.organizationId, organizationId));
+  // maxTokens 32,000 at $10/M holds about 320,000 micros: more than $0.10.
+  const enhance = (over: Partial<TextMeter> = {}) =>
+    drain(
+      openstoryText(
+        adapter(() => run('r', { ...USAGE(), cost: 0.0015 })),
+        meter({ whenShort: 'run free', ...over }),
+        'vendor/model'
+      ).chatStream({ ...OPTIONS, modelOptions: { maxTokens: 32_000 } })
+    );
+
+  it.each([
+    ['$0', 0],
+    ['$0.10', 100_000],
+  ])(
+    'runs free at %s on the card route, with no hold left and no charge',
+    async (_label, balance) => {
+      await setBalance(balance);
+      await enhance();
+      expect(await ledger()).toMatchObject({ charges: [], held: 0 });
+    }
+  );
+
+  it('runs free at $0 on the direct route, never below zero', async () => {
+    await setBalance(0);
+    await enhance({ card: null });
+    expect((await ledger()).charges).toEqual([]);
+    const [row] = await db
+      .select({ balance: credits.balance })
+      .from(credits)
+      .where(eq(credits.organizationId, organizationId));
+    expect(row?.balance).toBe(0);
+  });
+
+  it('is charged as usual when funded, on both routes', async () => {
+    await enhance();
+    await enhance({ card: null });
+    expect((await ledger()).charges).toEqual([2000, 1500]);
+  });
+
+  it('a request that must refuse still refuses at $0.10', async () => {
+    await setBalance(100_000);
+    await expect(enhance({ whenShort: 'refuse' })).rejects.toThrow(
+      'Insufficient credits'
+    );
+  });
+});
+
 describe('the transaction description', () => {
   const platformKey = (over: Partial<TextMeter> = {}): ResolvedLlmKey => ({
     key: 'k',
@@ -606,14 +697,10 @@ describe('withTextGateway', () => {
   const key = (
     source: 'organization' | 'platform',
     via: ResolvedLlmKey['via']
-  ): ResolvedLlmKey => ({
-    key: 'k',
-    source,
-    via,
-    meter: {
-      uncharged: source === 'organization' ? 'own key' : 'no organization',
-    },
-  });
+  ): ResolvedLlmKey =>
+    source === 'organization'
+      ? { key: 'k', source, via, meter: { uncharged: 'own key' } }
+      : { key: 'k', source, via, meter: { uncharged: 'no organization' } };
   const keys = (resolved: ResolvedLlmKey) =>
     withTextGateway(
       { resolveLlmKey: async (_model?: string) => resolved },

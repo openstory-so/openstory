@@ -137,7 +137,7 @@ describe('analyzeTalentMedia region fallback', () => {
       llmKey: {
         key: 'k',
         via: 'llmtr',
-        meter: { uncharged: 'no organization' as const },
+        meter: { uncharged: 'own key' as const },
         source: 'organization',
       },
       resolveLlmKey,

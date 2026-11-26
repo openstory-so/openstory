@@ -567,7 +567,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'organization-google',
               via: 'google',
-              meter: { uncharged: 'no organization' as const },
+              meter: { uncharged: 'own key' as const },
               source: 'organization',
             },
           })
@@ -597,7 +597,7 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'organization-openrouter',
         via: 'openrouter' as const,
-        meter: { uncharged: 'no organization' as const },
+        meter: { uncharged: 'own key' as const },
         source: 'organization' as const,
       }));
 
@@ -608,7 +608,7 @@ describe('llm-client', () => {
           apiKey: {
             key: 'organization-google',
             via: 'google',
-            meter: { uncharged: 'no organization' as const },
+            meter: { uncharged: 'own key' as const },
             source: 'organization',
           },
           resolveApiKey,
@@ -620,7 +620,7 @@ describe('llm-client', () => {
           {
             key: 'organization-openrouter',
             via: 'openrouter',
-            meter: { uncharged: 'no organization' as const },
+            meter: { uncharged: 'own key' as const },
             source: 'organization',
           }
         );
@@ -698,7 +698,7 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'k',
         via: 'openrouter' as const,
-        meter: { uncharged: 'no organization' as const },
+        meter: { uncharged: 'own key' as const },
         source: 'organization' as const,
       }));
 
@@ -709,7 +709,7 @@ describe('llm-client', () => {
         apiKey: {
           key: 'k',
           via: 'llmtr',
-          meter: { uncharged: 'no organization' as const },
+          meter: { uncharged: 'own key' as const },
           source: 'organization',
         },
         resolveApiKey,
@@ -738,7 +738,7 @@ describe('llm-client', () => {
         apiKey: {
           key: 'k',
           via: 'openrouter',
-          meter: { uncharged: 'no organization' as const },
+          meter: { uncharged: 'own key' as const },
           source: 'organization',
         },
       })) {
@@ -1407,7 +1407,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
-              meter: { uncharged: 'no organization' as const },
+              meter: { uncharged: 'own key' as const },
               source: 'organization',
             },
           })
@@ -1464,7 +1464,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
-              meter: { uncharged: 'no organization' as const },
+              meter: { uncharged: 'own key' as const },
               source: 'organization',
             },
           })
@@ -1494,7 +1494,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
-              meter: { uncharged: 'no organization' as const },
+              meter: { uncharged: 'own key' as const },
               source: 'organization',
             },
           })
@@ -1523,7 +1523,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
-              meter: { uncharged: 'no organization' as const },
+              meter: { uncharged: 'own key' as const },
               source: 'organization',
             },
           })

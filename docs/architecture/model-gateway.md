@@ -1202,29 +1202,34 @@ the assistant, the public endpoint and native xAI and Google calls send no
 tier and are priced on the card.
 
 Every LLM key carries its charging mode in the type (`LlmKeyInfo.meter`,
-required): a `TextMeter`, or `{ uncharged: 'own key' }` for an
-organization's own key, `{ uncharged: 'no organization' }` for a platform
-key with nobody to charge, or `{ uncharged: 'unfunded generation' }` for
-#1567 (below). `createAdapter` and llm-client take the key as a
+required), and the key is a union on `source`: an organization's key
+carries only `{ uncharged: 'own key' }`; a platform key carries a
+`TextMeter` or `{ uncharged: 'no organization' }` (nobody to charge). So a
+platform key cannot be marked `own key` and run free: it does not
+type-check. `createAdapter` and llm-client take the key as a
 required argument, so no call builds an adapter on an implicit platform key.
 Only `getPlatformLlmKey` mints a `no organization` key, and
 `unmetered-llm-keys.test.ts` pins the files that may call it: the
 definition; the unwrapped `apiKeys` (which only `scoped.ts` builds, inside
 `withTextGateway`); `text.ts`, which meters it; a durable call with no
 `scopedDb` (an anonymous workflow); llm-client's Google re-run of a call
-already marked uncharged; and script enhancement for #1567.
+already marked uncharged. The same test also fails on any other file that
+writes `OWN_KEY`, a reason literal, a bare `uncharged:` or copies a meter
+from another key (`meter: someKey.meter`).
 
-**Unfunded script enhancement (#1567).** When the organization cannot cover
-`estimateLLMCost(1)`, enhancement still runs, free, on a key marked
-`unfunded generation`: never refused, never a negative balance. This is the
-only `allowUnfunded` caller. The other `prepareBilling` callers (`ai.fn`:
+**Unfunded script enhancement (#1567).** Its meter is `whenShort: 'run
+free'`, so the call's own hold decides: a request the balance cannot hold
+(on the card route) runs free, and on the direct route it is charged only
+what `tryDeductCredits` can take. Never refused, never a negative balance,
+and there is no separate pre-check whose amount could disagree with the
+hold. This is the only `allowUnfunded` caller. The other `prepareBilling` callers (`ai.fn`:
 prompt shortening, scene duration estimate, style recommendation) refuse
 with `InsufficientCreditsError` as before.
 
 **Google region re-run with no resolver** (the `ai.fn` sites pass none).
 A metered key re-runs through its meter's resolver, so the re-run is
-charged on its own route. A key marked `no organization` or `unfunded
-generation` re-runs uncharged on the platform's key, as it was. An
+charged on its own route. A key marked `no organization` re-runs
+uncharged on the platform's key, as it was. An
 organization's own Google key is refused (the error surfaces): it never
 re-runs on a platform key, as before #2437.
 
@@ -1288,15 +1293,20 @@ resolver, so the retry is metered on its own route.
   capture in `settleReservation` / `captureReservation`). Otherwise the
   shortfall is reported as a skipped deduction (`reportSkippedDeduction`) and
   the call is not charged for it.
-- **Cut off part way** (an abort, a dropped connection, an error after
-  content): with no usage reported, the prompt and what streamed are
+- **Cut off** (the caller disconnects or aborts, at any point, or the
+  provider fails after content): with no usage reported, the prompt and what streamed are
   estimated at UTF-8 bytes / 3, rounded up, capped at what the request's
   output bound would have held (the hold itself for a request; computed at
   charge time in a run). Bytes / 3 is about 1.3x for English and about right
   for CJK: an under-estimate is paid by the platform and can be had by
-  aborting every stream, so the estimate errs slightly high. A call that streamed
-  nothing and reported no usage (a refusal, a Google location refusal, a
-  4xx) is charged nothing, and its own hold is released.
+  aborting every stream, so the estimate errs slightly high. A caller that
+  disconnects before the first text still pays the prompt estimate, since
+  the provider bills the prompt and any hidden reasoning. Only a provider
+  failure before any text (a refusal, a Google location refusal, a 4xx,
+  a run error) is free, and its own hold is released. On the direct route
+  an estimate is priced by `llmCostFromUsage`, which has no rate for an
+  OpenRouter model without the provider's `cost`, so such a call stays
+  uncharged (reported as a missing cost) until it has a card.
 - **What a charge records:** each charge line's `sku` is
   `<provider>/<model id>`, so the #2439 usage view groups lines by model and
   day. The transaction metadata holds the via, the model, the card, the

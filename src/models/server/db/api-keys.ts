@@ -78,14 +78,16 @@ export type ResolvedApiKey =
 // API for Grok models (issue #1167), 'google' = Google's own Gemini API for
 // Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
 // Completions, models per `LLMTR_TEXT_MODELS`).
-export type ResolvedLlmKey = ResolvedApiKey &
-  Pick<LlmKeyInfo, 'meter'> & {
-    via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
-  };
+export type ResolvedLlmKey = LlmKeyInfo;
 
 /** Unmetered until `withTextGateway` puts a meter on a platform key. */
-function chargeOf(key: ResolvedApiKey) {
-  return key.source === 'organization' ? OWN_KEY : NO_ORGANIZATION;
+function withVia(
+  key: ResolvedApiKey,
+  via: ResolvedLlmKey['via']
+): ResolvedLlmKey {
+  return key.source === 'organization'
+    ? { ...key, via, meter: OWN_KEY }
+    : { ...key, via, meter: NO_ORGANIZATION };
 }
 
 // The cached shape of a `organization_api_keys` lookup. Holds the *encrypted* row
@@ -450,13 +452,13 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
 
     if (model && nativeGrokTextModel(model)) {
       const xai = await resolveOptionalKey('xai');
-      if (xai) return { ...xai, via: 'xai', meter: chargeOf(xai) };
+      if (xai) return withVia(xai, 'xai');
     }
 
     // Skipped where Google refused this isolate's location (`google-region.ts`).
     if (model && nativeGeminiTextModel(model) && !isGoogleRegionBlockedHere()) {
       const google = await resolveOptionalKey('google');
-      if (google) return { ...google, via: 'google', meter: chargeOf(google) };
+      if (google) return withVia(google, 'google');
     }
 
     if (model && llmtrTextModel(model)) {

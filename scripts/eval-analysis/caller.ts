@@ -46,6 +46,7 @@ if (!OPENROUTER_KEY) {
 const API_KEY = {
   key: OPENROUTER_KEY,
   via: 'openrouter' as const,
+  source: 'platform' as const,
   meter: NO_ORGANIZATION,
 };
 

@@ -95,6 +95,7 @@ describe('chatModelOptionsForCall', () => {
       {
         key: 'k',
         via: 'llmtr',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       },
       true
@@ -111,6 +112,7 @@ describe('chatModelOptionsForCall', () => {
       {
         key: 'k',
         via: 'openrouter',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       },
       undefined
@@ -128,6 +130,7 @@ describe('chatModelOptionsForCall', () => {
       {
         key: 'k',
         via: 'openrouter',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       },
       true
@@ -145,6 +148,7 @@ describe('chatModelOptionsForCall', () => {
       {
         key: 'k',
         via: 'llmtr',
+        source: 'platform' as const,
         meter: { uncharged: 'no organization' as const },
       },
       undefined
