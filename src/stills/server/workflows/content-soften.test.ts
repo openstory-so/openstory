@@ -93,6 +93,7 @@ function run(
     scopedDb,
     workflowRunId: 'wf-1',
     userId: 'u1',
+    gatewayRoutes: undefined,
     sequenceId: 'seq_1',
     kind: 'character-sheet',
     logTag: '[Test]',

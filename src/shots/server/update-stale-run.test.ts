@@ -47,6 +47,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     triggerWorkflow.mockResolvedValue(runId);
     await expect(
       launchUpdateStale({
+        scopedDb: asStub({}),
         userId: 'u',
         organizationId: 't',
         sequenceId,
@@ -64,6 +65,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     emit.mockRejectedValueOnce(new Error('DO down'));
     await expect(
       launchUpdateStale({
+        scopedDb: asStub({}),
         userId: 'u',
         organizationId: 't',
         sequenceId,
