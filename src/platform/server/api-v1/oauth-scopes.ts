@@ -44,11 +44,22 @@ export function requiredOAuthScope(request: Request): OAuthApiScope | null {
 }
 
 function routerPath(path: string): string {
-  let decoded = path;
+  return decodeLikeRouter(path)
+    .toLowerCase()
+    .replace(/\/{2,}/g, '/');
+}
+
+/** As router-core's `decodePath`: a malformed escape leaves the valid ones around it decoded. */
+function decodeLikeRouter(path: string): string {
   try {
-    decoded = decodeURI(path);
+    return decodeURI(path);
   } catch {
-    // Malformed escapes: match on the raw path.
+    return path.replace(/%[0-9a-f]{2}/gi, (escape) => {
+      try {
+        return decodeURI(escape);
+      } catch {
+        return escape;
+      }
+    });
   }
-  return decoded.toLowerCase().replace(/\/{2,}/g, '/');
 }

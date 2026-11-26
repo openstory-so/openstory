@@ -444,6 +444,48 @@ describe('submitGatewayJob', () => {
     });
   });
 
+  it('reads no count inside a JSON schema the body carries (a property named `n`)', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(
+      {
+        provider: 'grok',
+        modelId: 'grok-imagine-loose',
+        body: {
+          ...BODY,
+          options: [
+            {
+              type: 'object',
+              properties: { n: { type: 'integer' }, numberOfImages: {} },
+              examples: [{ n: 3 }],
+              default: { sampleCount: 0 },
+            },
+          ],
+        },
+      },
+      ctx(scopedDb)
+    );
+    expect(job.input).toMatchObject({ options: [expect.any(Object)] });
+  });
+
+  it('refuses the camelCase and batch count spellings above 1 when the card does not price them', async () => {
+    for (const field of [
+      'sampleCount',
+      'numberOfImages',
+      'numberOfVideos',
+      'batch_size',
+      'num_samples',
+    ]) {
+      const error = await refused({
+        provider: 'grok',
+        modelId: 'grok-imagine-loose',
+        body: { ...BODY, options: [{ [field]: 2 }] },
+      });
+      expect(error).toMatchObject({
+        message: `The rate card does not price \`${field}\` above 1 for this model`,
+      });
+    }
+  });
+
   it('refuses a count that is not a whole number of at least 1, at any depth', async () => {
     const loose = { provider: 'grok', modelId: 'grok-imagine-loose' } as const;
     // The schema already refuses a string or an array where it says number.
@@ -789,10 +831,12 @@ describe('gatedUrls', () => {
       '/\\a.example/1.png',
       '\x01https://a.example/1.png',
       'https://a.example/1.png\n',
-      'HTTPS://A.EXAMPLE/1.png',
-      'https://a.example',
+      'https://a.example:443/1.png',
+      'https://a.example/x/../1.png',
+      'https://\u200ba.example/1.png',
+      'https:// a.example/1.png',
       'ht\ntps://a.example/1.png',
-      'h\ttps://a.example/1.png',
+      'htt\tps://a.example/1.png',
       'https:\r//a.example/1.png',
       '/\n/a.example/1.png',
     ]) {
@@ -802,7 +846,36 @@ describe('gatedUrls', () => {
     }
   });
 
+  it('gates the href of a URL that differs only in case, the root slash or percent-encoding', () => {
+    expect(
+      gatedUrls({
+        a: 'HTTPS://A.EXAMPLE/1.png',
+        b: 'https://a.example',
+        c: 'https://a.example?take=2',
+        d: 'https://a.example/stills/Mara café.png',
+        e: 'https://Mara@A.example/1.png',
+      })
+    ).toEqual([
+      'https://a.example/1.png',
+      'https://a.example/',
+      'https://a.example/?take=2',
+      'https://a.example/stills/Mara%20caf%C3%A9.png',
+      'https://Mara@a.example/1.png',
+    ]);
+  });
+
   it('leaves a prompt alone that only looks like a scheme', () => {
+    expect(
+      gatedUrls({
+        label: 'Label:\n//note from the director',
+        tab: 'Scene:\t//cut here',
+        history: 'http: the old protocol Mara still swears by',
+        empty: 'https:',
+      })
+    ).toEqual([]);
+  });
+
+  it('leaves a prompt alone that only looks like a scheme, data or blob', () => {
     expect(
       gatedUrls({
         prompt: 'Data: the ferry log, read aloud. Mara: "Scene one."',

@@ -95,6 +95,24 @@ describe('requiredOAuthScope', () => {
     }
   });
 
+  it('reads an encoded slash and a malformed escape as the router does', () => {
+    for (const path of [
+      '/api/v1/gateway/fal/fal-ai%2Fflux-2',
+      '/api/v1/gateway/jobs/%ZZ',
+      '/%61pi/v1/gateway/jobs/%E0%A4%A',
+      '/api/%76%31/gateway/jobs/50%',
+    ]) {
+      expect([path, requiredOAuthScope(req('POST', path))]).toEqual([
+        path,
+        'models:invoke',
+      ]);
+    }
+    // The router leaves `%2F` encoded, so this is no gateway route; it still needs a scope.
+    expect(
+      requiredOAuthScope(req('POST', '/api/v1/gateway%2Fjobs'))
+    ).not.toBeNull();
+  });
+
   it('ignores non-v1 paths', () => {
     expect(requiredOAuthScope(req('GET', '/api/auth/session'))).toBeNull();
   });

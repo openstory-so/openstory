@@ -21,7 +21,24 @@ export const COUNT_FIELDS = [
   'max_images',
   'candidateCount',
   'candidate_count',
+  'sampleCount',
+  'numberOfImages',
+  'numberOfVideos',
+  'batch_size',
+  'num_samples',
 ];
+
+// JSON Schema keywords whose children are property names or sample data, not counts (a tool or response schema).
+const SCHEMA_KEYWORDS = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'examples',
+  'default',
+  'enum',
+  'const',
+]);
 
 /** The first count field at any depth under `value` whose count is `refused`. */
 export function countFieldWhere(
@@ -33,7 +50,9 @@ export function countFieldWhere(
   }
   if (value === null || typeof value !== 'object') return undefined;
   for (const [key, inner] of Object.entries(value)) {
-    if (COUNT_FIELDS.includes(key) && refused(inner)) return key;
+    if (SCHEMA_KEYWORDS.has(key)) continue;
+    const isCount = inner === null || typeof inner !== 'object';
+    if (COUNT_FIELDS.includes(key) && isCount && refused(inner)) return key;
     const found = countFieldWhere(inner, refused);
     if (found) return found;
   }

@@ -218,6 +218,38 @@ const INLINE_KEYS = new Set([
   'image_data',
 ]);
 
+/** Percent-encodes what the URL parser may encode, so a written URL and its href compare. */
+function encodeLikeParser(url: string): string {
+  return url.replace(/[^\x21-\x7e]|["'<>`{}|^]/gu, (char) =>
+    [...new TextEncoder().encode(char)]
+      .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, '0')}`)
+      .join('')
+  );
+}
+
+/**
+ * The href of a plain http(s) URL, or null. It must read back as written,
+ * up to scheme and host case, the root slash and percent-encoding.
+ */
+function plainHttpHref(body: string): string | null {
+  if (body.includes('\\')) return null;
+  let url: URL;
+  try {
+    url = new URL(body);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  const written = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(body);
+  if (!written) return null;
+  const [, scheme, authority, rest] = written;
+  const at = authority.lastIndexOf('@') + 1;
+  const normalised = `${scheme.toLowerCase()}://${authority.slice(0, at)}${authority.slice(at).toLowerCase()}${rest.startsWith('/') ? '' : '/'}${rest}`;
+  return encodeLikeParser(normalised) === encodeLikeParser(url.href)
+    ? url.href
+    : null;
+}
+
 /**
  * Every URL in the body, for the likeness check. Anything else that could
  * carry media is refused: the check is keyed on a URL, and bytes it cannot
@@ -234,24 +266,20 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
     }
     // The parser also drops every tab, LF and CR inside the string.
     const parsed = trimmed.replace(/[\t\n\r]/g, '');
-    const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(parsed)?.[0];
+    const fetched = /^([a-z][a-z0-9+.-]*):(.?)/i.exec(parsed);
     const urlLike =
       /^[\\/]{2}/.test(parsed) ||
-      (scheme !== undefined &&
-        (FETCHED_SCHEMES.has(scheme.slice(0, -1).toLowerCase()) ||
-          /^[\\/]{2}/.test(parsed.slice(scheme.length))));
+      // `http: the old protocol` is prose: no host follows the scheme.
+      (fetched !== null &&
+        FETCHED_SCHEMES.has(fetched[1].toLowerCase()) &&
+        fetched[2] !== '' &&
+        !/\s/.test(fetched[2])) ||
+      // Any other scheme with an authority, as written: `Label:\n//note` is prose.
+      /^[a-z][a-z0-9+.-]*:[\\/]{2}/i.test(trimmed);
     if (urlLike) {
-      // Only http(s), exactly as the parser writes it: a provider may fetch what we did not check.
-      let href: string | null = null;
-      try {
-        const url = new URL(body);
-        if (url.protocol === 'http:' || url.protocol === 'https:') {
-          href = url.href;
-        }
-      } catch {
-        // Not a URL at all: refused below.
-      }
-      if (href !== body || body.includes('\\')) {
+      // Only http(s), as the parser writes it: a provider may fetch what we did not check.
+      const href = plainHttpHref(body);
+      if (href === null) {
         throw new ValidationError('Media URLs must be plain http(s) URLs');
       }
       found.push(href);

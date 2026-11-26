@@ -171,17 +171,25 @@ POST /api/v1/gateway/grok/grok-imagine-video-1.5
   not name is refused, not dropped; and a count field (`COUNT_FIELDS` in
   `price.ts`) above 1 that the card does not price is refused, as is one
   above 1 at any depth below the top level, and any count at any depth that
-  is not a whole number of at least 1.
-- Only as many outputs as the request's count (else one) are stored and
-  charged; extras a model returns are dropped with a warning (`heldResult` in
-  `phases.ts`).
-- A media string must be a plain `http(s)` URL exactly as the URL parser
-  writes it back (`new URL(s).href === s`), or one of our own `/r2/` paths.
+  is not a whole number of at least 1. A count is a number or string, never
+  an object, and nothing under a JSON Schema keyword (`properties`,
+  `examples`, `default`, …) is read as one, so a tool or response schema
+  with a property named `n` passes.
+- On a card priced from the request alone, only as many outputs as the
+  request's count (else one) are stored and charged; extras a model returns
+  are dropped with a warning. A card that charges from usage keeps and
+  charges every output it returns (`heldResult` in `phases.ts`).
+- A media string must be a plain `http(s)` URL, or one of our own `/r2/`
+  paths. It must read back from the URL parser as written, up to scheme and
+  host case, the root slash and percent-encoding; the parser's href is what
+  the likeness check sees, and the body goes to the provider as sent.
   Anything a parser would still fetch is URL-like and checked: `https:host`,
   `https:/host`, backslashes, a leading control character, a tab, LF or CR
-  anywhere (the parser drops them). `data:` and
-  `blob:` in any spelling, a protocol-relative URL, and any other scheme
-  followed by `//` are refused (`gatedUrls`).
+  inside an `http`, `https` or `ftp` URL (the parser drops them), a default
+  port, a dot segment. `data:` and `blob:` in any spelling, a
+  protocol-relative URL, and any other scheme written with `//` are refused
+  (`gatedUrls`). Prose is not: `http: the old protocol` (no host follows the
+  scheme) and `Label:\n//note` (another scheme, tested as written).
 
 ### Models
 

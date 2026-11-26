@@ -59,6 +59,17 @@ const PER_IMAGE = rateCardSchema.parse({
   source: PER_TOKEN.source,
 });
 
+// $0.03 a megapixel, read off the usage: what Flux 2 Max's card charges.
+const PER_MEGAPIXEL = rateCardSchema.parse({
+  inputs: {
+    megapixels: { param: 'megapixels', bound: 'usage', kind: 'number' },
+  },
+  tables: {},
+  price: { '*': [{ var: 'megapixels' }, 0.03] },
+  examples: [],
+  source: PER_TOKEN.source,
+});
+
 describe('startGatewayRun', () => {
   it('stores and charges only the outputs the request held when the model returns more', async () => {
     const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
@@ -86,6 +97,38 @@ describe('startGatewayRun', () => {
     expect(settleGatewayJob).toHaveBeenCalledTimes(1);
     expect(settleGatewayJob).toHaveBeenCalledWith(
       expect.objectContaining({ costMicros: micros(80_000) })
+    );
+  });
+
+  it('stores and charges every output when the card charges from usage (Flux 2 Max, megapixels)', async () => {
+    const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
+    start.mockResolvedValue({
+      result: {
+        media: [media, media, media],
+        usage: { megapixels: 3 },
+        requestId: null,
+      },
+    });
+    const store = vi.fn(async (_media: unknown, index: number) => ({
+      url: `/r2/output-${index}.png`,
+      path: `output-${index}.png`,
+      contentType: 'image/png',
+    }));
+    const run = { ...RUN, card: PER_MEGAPIXEL, input: { ...RUN.input, n: 1 } };
+
+    const started = await startGatewayRun(run, CREDENTIALS, store);
+    expect(store).toHaveBeenCalledTimes(3);
+    if (!('stored' in started)) throw new Error('not stored');
+    expect(started.stored.outputs).toHaveLength(3);
+
+    await settleGatewayRun(
+      asStub<WorkflowScopedDb>({}),
+      run,
+      started.stored,
+      'run-1:gateway-settle'
+    );
+    expect(settleGatewayJob).toHaveBeenLastCalledWith(
+      expect.objectContaining({ costMicros: micros(90_000) })
     );
   });
 });

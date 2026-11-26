@@ -29,6 +29,7 @@ import {
   RateCardError,
   type RateCard,
 } from '@modelschemas/rate-card/evaluator';
+import { cardParams } from '@modelschemas/rate-card/evaluator';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
@@ -108,6 +109,8 @@ function heldResult(
   run: GatewayRun,
   result: GatewayRunResult
 ): GatewayRunResult {
+  // A card that charges from usage pays for every output it returns.
+  if (cardParams(run.card).usage.length > 0) return result;
   const held = heldOutputs(run.input);
   if (result.media.length <= held) return result;
   logger.warn('gateway model returned more outputs than were held', {
