@@ -1,5 +1,6 @@
 /** `POST /api/v1/gateway/chat/{model}`: one platform-key text run, held and charged like every in-process call (#2437). */
 
+import { forCall } from '@/gateway/server/text';
 import type { GatewayChatBody } from '@/gateway/chat-schema';
 import {
   getMaxOutputTokens,
@@ -26,10 +27,13 @@ export async function streamGatewayChat(
     throw new ValidationError(`maxTokens is above this model's ${ceiling}`);
   }
   // Platform keys only, so every run is billed; a model the card cannot price is refused, never run direct.
-  const key = await scopedDb.apiKeys.resolvePlatformLlmKey(
+  const resolved = await scopedDb.apiKeys.resolvePlatformLlmKey(
     model,
     oauthClientId
   );
+  const key =
+    resolved &&
+    forCall(resolved, { describe: (answered) => `Gateway chat (${answered})` });
   // The public API charges the card only: a model it cannot price is refused, never run direct.
   if (!key || !('card' in key.meter) || !key.meter.card) {
     throw new ValidationError('This model cannot be priced yet');

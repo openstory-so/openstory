@@ -1016,7 +1016,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                 DEFAULT_ANALYSIS_MODEL,
               shotId: input.shotId,
               model,
-              reservationId: input.reservationId,
             });
             prompt = structured
               ? assembleShotPrompt({ ...structured, fullPrompt: softer })
@@ -1264,7 +1263,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               DEFAULT_ANALYSIS_MODEL,
             shotId: input.shotId,
             model: IMAGE_TO_VIDEO_MODELS[activeModel].name,
-            reservationId: input.reservationId,
             limit: hardLimit,
             name: `shorten-motion-prompt-${attempt}`,
           });

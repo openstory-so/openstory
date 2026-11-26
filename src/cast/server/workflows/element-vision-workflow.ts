@@ -4,6 +4,7 @@
 
 import {
   describeElementImage,
+  elementVisionKeys,
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -38,13 +39,15 @@ export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVi
 
     // Step 2: vision call (also returns a vision-suggested token).
     const vision = await step.do('describe-element', async () => {
-      const llmKeyInfo =
-        await scopedDb.credentials.resolveLlmKey(ELEMENT_VISION_MODEL);
+      const elementVisionKey = elementVisionKeys((model) =>
+        scopedDb.credentials.resolveLlmKey(model)
+      );
+      const llmKeyInfo = await elementVisionKey(ELEMENT_VISION_MODEL);
       return await describeElementImage({
         imageUrl,
         filename,
         llmKey: llmKeyInfo,
-        resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),
+        resolveLlmKey: elementVisionKey,
         observability: {
           userId: event.payload.userId,
           sessionId: event.payload.sequenceId,

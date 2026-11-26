@@ -6,6 +6,7 @@
  * any other LLM call.
  */
 
+import { forCall } from '@/gateway/server/text';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { TextModel } from '@/models/models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
@@ -43,7 +44,10 @@ export async function watchClipForOrganization(
       'Only a clip stored in this workspace can be watched: pass an upload value or a media URL read from a tool.'
     );
   }
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL);
+  const llmKey = forCall(
+    await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL),
+    { describe: (answered) => `Watched a clip (${answered})` }
+  );
   if (llmKey.via !== 'google') {
     throw geminiUnavailableError(
       'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'

@@ -195,7 +195,7 @@ export function buildOpenApiDocument(): JsonObject {
       {
         name: 'gateway',
         description:
-          'Run image and video models on platform keys, billed to the organization.',
+          'Run text, image, video and audio models on platform keys, billed to the organization.',
       },
     ],
     paths: {

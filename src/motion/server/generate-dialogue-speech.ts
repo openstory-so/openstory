@@ -318,7 +318,6 @@ async function recordClaimed(
         userId: args.userId,
         sequenceId: args.sequenceId,
         shotId: shot.shotId,
-        reservationId: args.reservationId,
         analysisModelId: args.analysisModelId,
         lines: spoken.filter((line) => line.shotId === shot.shotId),
         measuredSeconds: shot.measured,

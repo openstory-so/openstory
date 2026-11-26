@@ -79,8 +79,7 @@ describe('withPlatformLlmKey (the gateway submit likeness check)', () => {
     const { EventType } = await import('@tanstack/ai');
     const { resolveDebugOption } =
       await import('@tanstack/ai/adapter-internals');
-    const { chargedOnceAs, openstoryText, withTextGateway } =
-      await import('./text');
+    const { forCall, openstoryText, withTextGateway } = await import('./text');
     const { withPlatformLlmKey } = await import('./platform-credentials');
 
     const { db, close } = await createTestDb();
@@ -114,7 +113,10 @@ describe('withPlatformLlmKey (the gateway submit likeness check)', () => {
       expect(key.key).toBe('platform-openrouter');
       expect('uncharged' in key.meter).toBe(false);
 
-      const once = chargedOnceAs(key, 'likeness:https://example.com/a.png');
+      const once = forCall(key, {
+        describe: (m) => `Talent vision (${m})`,
+        chargeKey: 'likeness:https://example.com/a.png',
+      });
       const usage = {
         promptTokens: 1000,
         completionTokens: 100,

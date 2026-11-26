@@ -10,6 +10,8 @@
  * and the server-only API layer, so the client transform drops them.
  */
 
+import { forCall } from '@/gateway/server/text';
+import { UNFUNDED_GENERATION } from '@/models/server/create-adapter';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { longestTakeSeconds } from '@/shots/shot-list-pass';
 import { getEnv } from '#env';
@@ -71,15 +73,18 @@ export async function prepareBilling(
 ): Promise<{ llmKey: ResolvedLlmKey }> {
   const model =
     typeof metadata?.model === 'string' ? metadata.model : undefined;
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
+  const llmKey = forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+    describe: () => description,
+  });
   if (llmKey.source === 'organization') return { llmKey };
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));
-  if (!canAfford && !opts?.allowUnfunded) {
-    throw new InsufficientCreditsError(
-      `Insufficient credits for ${description.toLowerCase()}`
-    );
+  if (canAfford) return { llmKey };
+  if (opts?.allowUnfunded) {
+    return { llmKey: { ...llmKey, meter: UNFUNDED_GENERATION } };
   }
-  return { llmKey };
+  throw new InsufficientCreditsError(
+    `Insufficient credits for ${description.toLowerCase()}`
+  );
 }
 
 /**

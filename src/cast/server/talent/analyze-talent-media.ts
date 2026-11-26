@@ -11,7 +11,7 @@ import {
   TALENT_VISION_MODEL,
   type TalentVisionResult,
 } from '@/cast/server/talent-vision';
-import { chargedOnceAs } from '@/gateway/server/text';
+import { forCall } from '@/gateway/server/text';
 import type { TextModel } from '@/models/models';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -20,6 +20,8 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
  * What a billed vision call reads and writes. Narrow so a request and a
  * workflow (`UploadCheckWorkflow`, through its named hatches) both satisfy it.
  */
+const talentVision = (model: string) => `Talent vision (${model})`;
+
 export type VisionBillingDb = {
   apiKeys: Pick<ScopedDb['apiKeys'], 'resolveLlmKey'>;
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits'>;
@@ -50,10 +52,10 @@ export async function analyzeTalentMediaForOrganization(
   input: AnalyzeTalentMediaForOrganizationInput
 ): Promise<TalentVisionResult> {
   const chargeOnce = async (model: TextModel) =>
-    chargedOnceAs(
-      await input.scopedDb.apiKeys.resolveLlmKey(model),
-      input.idempotencyKey
-    );
+    forCall(await input.scopedDb.apiKeys.resolveLlmKey(model), {
+      describe: talentVision,
+      chargeKey: input.idempotencyKey,
+    });
   const llmKeyInfo = await chargeOnce(TALENT_VISION_MODEL);
   await requireVisionCredits(input.scopedDb, llmKeyInfo);
   const result = await analyzeTalentMedia({
@@ -84,9 +86,9 @@ export async function analyzeTalentClipForOrganization(input: {
   mimeType: string;
   idempotencyKey: string;
 }): Promise<TalentVisionResult> {
-  const llmKey = chargedOnceAs(
+  const llmKey = forCall(
     await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL),
-    input.idempotencyKey
+    { describe: talentVision, chargeKey: input.idempotencyKey }
   );
   if (llmKey.via !== 'google') {
     throw geminiUnavailableError(

@@ -5,6 +5,8 @@
  * described.
  */
 
+import { forCall } from '@/gateway/server/text';
+import type { TextModel } from '@/models/models';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import {
   requireCheckable,
@@ -48,7 +50,11 @@ export async function describeUpload(opts: {
   requireCheckable(opts.url, scopedDb.organizationId);
   await requireUploadRights(scopedDb, [opts.url]);
 
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(DEFAULT_VISION_MODEL);
+  const keyFor = async (model: TextModel) =>
+    forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+      describe: (answered) => `Upload description (${answered})`,
+    });
+  const llmKey = await keyFor(DEFAULT_VISION_MODEL);
   if (
     llmKey.source !== 'organization' &&
     !(await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1)))
@@ -75,7 +81,7 @@ export async function describeUpload(opts: {
     max_tokens: 2048,
     responseSchema,
     apiKey: llmKey,
-    resolveApiKey: (m) => scopedDb.apiKeys.resolveLlmKey(m),
+    resolveApiKey: keyFor,
     observationName: `${opts.subject}-upload-vision`,
     tags: ['vision'],
     userId: opts.userId,

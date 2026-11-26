@@ -23,11 +23,18 @@ import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { isTokenUsage, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
+import { estimateTokens } from '@/platform/tokens';
 import type {
   AdapterYieldChunk,
   AnyTextAdapter,
   TokenUsage,
 } from '@tanstack/ai';
+
+/** Adapter methods that make no provider call, so pass through the meter. */
+const UNMETERED_SAFE_METHODS = new Set([
+  'supportsCombinedToolsAndSchema',
+  'combinedStructuredOutputSource',
+]);
 
 /** A non-text part is held at this many input tokens; the charge reads the real count. */
 const MEDIA_PART_TOKENS = 4096;
@@ -59,6 +66,8 @@ export type TextMeter = {
   readonly oauthClientId: string | null;
   /** One charge per key: a single-call site that repeats for the same thing is charged once. */
   readonly chargeKey: string | null;
+  /** The transaction's description for the model that answered; a call with none is refused before it starts. */
+  readonly describe: ((model: string) => string) | null;
   /** The same resolver, for a re-run on another route or model. */
   readonly resolve: (model: string) => Promise<ResolvedLlmKey>;
 };
@@ -128,6 +137,7 @@ export function withTextGateway<
     model: string | undefined,
     run: TextRun,
     oauthClientId: string | null,
+    describe: ((model: string) => string) | null,
     resolve: (model: string) => Promise<ResolvedLlmKey>
   ): Promise<ResolvedLlmKey> =>
     key.source === 'platform'
@@ -141,6 +151,7 @@ export function withTextGateway<
             run,
             oauthClientId,
             chargeKey: null,
+            describe,
             resolve,
           },
         }
@@ -149,6 +160,7 @@ export function withTextGateway<
     metered(
       await apiKeys.resolveLlmKey(model),
       model,
+      null,
       null,
       null,
       resolveLlmKey
@@ -162,6 +174,8 @@ export function withTextGateway<
       model,
       { runReservationId: reservationId },
       null,
+      // What the durable helpers' deduct step wrote before #2437.
+      (answered) => `LLM analysis (${answered})`,
       (next) => resolveRunLlmKey(next, reservationId)
     );
   const resolvePlatformLlmKey = async (
@@ -170,7 +184,7 @@ export function withTextGateway<
   ): Promise<ResolvedLlmKey | null> => {
     const platform = getPlatformLlmKey(model);
     if (!platform) return null;
-    return metered(platform, model, null, oauthClientId, async (next) => {
+    return metered(platform, model, null, oauthClientId, null, async (next) => {
       const key = await resolvePlatformLlmKey(next, oauthClientId);
       if (!key) throw new Error(`No platform LLM key for ${next}`);
       return key;
@@ -188,15 +202,22 @@ function isMediaPart(value: unknown): boolean {
   );
 }
 
-/** At least one byte per token: the prompt's bytes, with each media part held at a fixed count. */
-function inputTokenBound(parts: unknown): number {
+/** The prompt's tokens, each media part at a fixed count: an upper bound (a token per byte) for the hold, and an estimate for a call cut off uncounted. */
+function inputTokenCounts(parts: unknown): {
+  inputTokens: number;
+  inputEstimate: number;
+} {
   let media = 0;
   const json = JSON.stringify(parts, (_key, value: unknown) => {
     if (!isMediaPart(value)) return value;
     media++;
     return null;
   });
-  return new TextEncoder().encode(json).length + media * MEDIA_PART_TOKENS;
+  const mediaTokens = media * MEDIA_PART_TOKENS;
+  return {
+    inputTokens: new TextEncoder().encode(json).length + mediaTokens,
+    inputEstimate: estimateTokens(json) + mediaTokens,
+  };
 }
 
 /** The request's own output budget, under whichever name its provider uses. */
@@ -276,12 +297,22 @@ function cardUsage(card: Card, usage: TokenUsage): Record<string, unknown> {
   };
 }
 
-/** The key charged once under `chargeKey`, however often the call repeats; for single-call sites only. */
-export function chargedOnceAs(
+/** The key for one call site: what its charge reads on the transaction, and a charge key when a repeat of the same thing is charged once. */
+export function forCall(
   key: ResolvedLlmKey,
-  chargeKey: string
+  site: { describe: (model: string) => string; chargeKey?: string }
 ): ResolvedLlmKey {
-  return key.meter ? { ...key, meter: { ...key.meter, chargeKey } } : key;
+  const { meter } = key;
+  if ('uncharged' in meter) return key;
+  return {
+    ...key,
+    meter: {
+      ...meter,
+      describe: site.describe,
+      chargeKey: site.chargeKey ?? meter.chargeKey,
+      resolve: async (model) => forCall(await meter.resolve(model), site),
+    },
+  };
 }
 
 /** One provider call: what it is priced on, and what it reported. */
@@ -291,7 +322,11 @@ type Call = {
   readonly card: Card | null;
   readonly direct: string | null;
   readonly held: Held | null;
+  /** Upper bound for the hold: a token per byte. */
   readonly inputTokens: number;
+  /** Estimate for a call cut off before the provider counted it. */
+  readonly inputEstimate: number;
+  readonly outputBound: number | undefined;
   usage: TokenUsage | undefined;
   streamedChars: number;
 };
@@ -299,18 +334,30 @@ type Call = {
 function cardCost(card: Card, call: Call): Microdollars | null {
   if (call.usage) return price(card, cardUsage(card, call.usage));
   if (call.streamedChars === 0) return null;
-  // Cut off with no usage: the input bound and what streamed, never above a hold.
+  // Cut off with no usage: estimated tokens, never above what the request's bound would have held.
   const cost = price(card, {
-    input_tokens: call.inputTokens,
-    output_tokens: call.streamedChars,
+    input_tokens: call.inputEstimate,
+    output_tokens: Math.ceil(call.streamedChars / 4),
   });
-  return call.held ? micros(Math.min(cost, call.held.estimateMicros)) : cost;
+  const cap = call.held
+    ? call.held.estimateMicros
+    : call.outputBound === undefined
+      ? null
+      : price(card, {
+          input_tokens: call.inputEstimate,
+          output_tokens: call.outputBound,
+        });
+  return cap === null ? cost : micros(Math.min(cost, cap));
 }
 
 /** Charges the call once: on the card (lines carry the model as sku) or as today; a hold of its own is always released. */
-async function charge(meter: TextMeter, call: Call): Promise<void> {
+async function charge(
+  meter: TextMeter,
+  describe: (model: string) => string,
+  call: Call
+): Promise<void> {
   const idempotencyKey = meter.chargeKey ?? `text:${generateId()}`;
-  const description = `LLM (${call.model})`;
+  const description = describe(call.model);
   const metadata = {
     via: meter.via,
     model: call.model,
@@ -437,13 +484,19 @@ export function openstoryText<A extends AnyTextAdapter>(
   type ChatOptions = Parameters<A['chatStream']>[0];
   type StructuredOptions = Parameters<A['structuredOutput']>[0];
 
+  const named = meter.describe;
+  if (!named) {
+    throw new Error(`An LLM call must name what it is for (${model})`);
+  }
+  const describe: (model: string) => string = named;
+
   const begin = async (
     options: ChatOptions,
     outputSchema?: unknown
   ): Promise<Call> => {
     const direct = directReason(meter, options.modelOptions);
     const card = direct ? null : (meter.card?.model ?? null);
-    const inputTokens = inputTokenBound([
+    const { inputTokens, inputEstimate } = inputTokenCounts([
       options.systemPrompts,
       options.messages,
       options.tools?.map((tool: { name: string; description: string }) => [
@@ -452,33 +505,28 @@ export function openstoryText<A extends AnyTextAdapter>(
       ]),
       outputSchema,
     ]);
+    const outputBound = requestMaxTokens(options.modelOptions);
+    const call = {
+      model,
+      card,
+      direct,
+      held: null,
+      inputTokens,
+      inputEstimate,
+      outputBound,
+      usage: undefined,
+      streamedChars: 0,
+    };
     // Only a request with no run holds; inside a run the run's reservation is the hold.
-    if (!card || meter.run) {
-      return {
-        model,
-        card,
-        direct,
-        held: null,
-        inputTokens,
-        usage: undefined,
-        streamedChars: 0,
-      };
-    }
-    const output = requestMaxTokens(options.modelOptions);
-    if (output === undefined) {
+    if (!card || meter.run) return call;
+    if (outputBound === undefined) {
       throw new Error(
         `An LLM call outside a run must set its output budget (${model})`
       );
     }
-    const held = await hold(meter, card, inputTokens, output);
     return {
-      model,
-      card,
-      direct,
-      held,
-      inputTokens,
-      usage: undefined,
-      streamedChars: 0,
+      ...call,
+      held: await hold(meter, card, inputTokens, outputBound),
     };
   };
 
@@ -496,7 +544,7 @@ export function openstoryText<A extends AnyTextAdapter>(
         yield chunk;
       }
     } finally {
-      await charge(meter, call);
+      await charge(meter, describe, call);
     }
   }
 
@@ -519,7 +567,7 @@ export function openstoryText<A extends AnyTextAdapter>(
       call.usage = errorUsage(error);
       throw error;
     } finally {
-      await charge(meter, call);
+      await charge(meter, describe, call);
     }
   };
 
@@ -532,7 +580,14 @@ export function openstoryText<A extends AnyTextAdapter>(
     get(target, prop) {
       if (prop in overrides) return overrides[prop];
       const value: unknown = Reflect.get(target, prop, target);
-      return typeof value === 'function' ? value.bind(target) : value;
+      if (typeof value !== 'function') return value;
+      // Fail closed: a method the meter cannot charge (e.g. `compact`) is refused, never run free.
+      if (typeof prop !== 'string' || !UNMETERED_SAFE_METHODS.has(prop)) {
+        return () => {
+          throw new Error(`${String(prop)} cannot be metered (${model})`);
+        };
+      }
+      return value.bind(target);
     },
   });
 }

@@ -6,7 +6,7 @@ import {
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
 import { estimateLLMCost } from '@/billing/cost-estimation';
-import { chargedOnceAs } from '@/gateway/server/text';
+import { forCall } from '@/gateway/server/text';
 import type { TextModel } from '@/models/models';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
@@ -107,10 +107,10 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
     const { scopedDb } = context;
     // One charge per upload, however often the draft is described.
     const chargeOnce = async (model: TextModel) =>
-      chargedOnceAs(
-        await scopedDb.apiKeys.resolveLlmKey(model),
-        `draft-vision:${data.publicUrl}`
-      );
+      forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+        describe: (answered) => `Element vision (${answered})`,
+        chargeKey: `draft-vision:${data.publicUrl}`,
+      });
     const llmKeyInfo = await chargeOnce(ELEMENT_VISION_MODEL);
     if (llmKeyInfo.source !== 'organization') {
       const estimatedCost = estimateLLMCost(1);

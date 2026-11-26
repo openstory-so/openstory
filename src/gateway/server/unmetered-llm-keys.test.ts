@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '..', '..', '..');
 
-/** Files that may mint a platform LLM key with no meter (`getPlatformLlmKey`, `NO_ORGANIZATION`). */
+/** Files that may mint a platform LLM key with no meter (`getPlatformLlmKey`, `NO_ORGANIZATION`, `UNFUNDED_GENERATION`). */
 const UNMETERED_ALLOWLIST = [
   // Defines them.
   'src/models/server/create-adapter.ts',
@@ -20,8 +20,10 @@ const UNMETERED_ALLOWLIST = [
   'src/gateway/server/text.ts',
   // A durable call with no scopedDb: no organization to charge.
   'src/models/server/llm-call-helper.ts',
-  // The Google re-run of a call already marked `no organization`.
+  // The Google re-run of a call already marked uncharged.
   'src/models/server/llm-client.ts',
+  // #1567: an unfunded script run's enhancement is free.
+  'src/sequences/server/script-enhancement.ts',
 ];
 
 /** Files that may build the unwrapped `apiKeys` methods. */
@@ -47,7 +49,7 @@ describe('unmetered LLM keys', () => {
   it('only the allowlisted files can mint a platform LLM key with no meter', () => {
     const minting = files
       .filter(({ source }) =>
-        /\bgetPlatformLlmKey\b|(?<!['"])\bNO_ORGANIZATION\b(?!['"])|uncharged:\s*'no organization'/.test(
+        /\bgetPlatformLlmKey\b|(?<!['"])\b(NO_ORGANIZATION|UNFUNDED_GENERATION)\b(?!['"])|uncharged:\s*'(no organization|unfunded generation)'/.test(
           source
         )
       )

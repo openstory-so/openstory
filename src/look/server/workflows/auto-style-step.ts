@@ -32,7 +32,6 @@ export async function deriveAutoStyle(
     script: string;
     aspectRatio: AspectRatio;
     analysisModelId: AnalysisModelId;
-    reservationId?: string;
   }
 ): Promise<StyleConfig> {
   const { scopedDb, sequenceId, styleId } = params;
@@ -58,7 +57,6 @@ export async function deriveAutoStyle(
       sequenceId,
       workflowRunId: params.workflowRunId,
       scopedDb,
-      reservationId: params.reservationId,
     }
   );
 

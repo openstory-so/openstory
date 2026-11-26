@@ -5,6 +5,7 @@
  * @tanstack/ai's OpenRouter adapter.
  */
 
+import { forCall } from '@/gateway/server/text';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
 import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
@@ -31,6 +32,16 @@ export const elementVisionResponseSchema = z.object({
 });
 
 type ElementDescription = z.infer<typeof elementVisionResponseSchema>;
+
+/** An element-vision call site's keys, each charged as `Element vision (model)`. */
+export function elementVisionKeys(
+  resolve: (model: TextModel) => Promise<ResolvedLlmKey>
+) {
+  return async (model: TextModel) =>
+    forCall(await resolve(model), {
+      describe: (answered) => `Element vision (${answered})`,
+    });
+}
 
 export type DescribeElementInput = {
   imageUrl: string;

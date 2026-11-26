@@ -1049,9 +1049,9 @@ function payerOf(key: ResolvedLlmKey): ResolvedLlmKey['source'] {
   return key.source;
 }
 
-/** With no resolver, only a call nobody is charged for re-runs on the platform's own key. */
+/** With no resolver, only an uncharged platform call re-runs on the platform's key; an own key is refused, as before #2437. */
 function unchargedPlatformRerun(key: ResolvedLlmKey, model: string) {
-  return 'uncharged' in key.meter && key.meter.uncharged === 'no organization'
+  return 'uncharged' in key.meter && key.meter.uncharged !== 'own key'
     ? getPlatformLlmKey(model)
     : undefined;
 }

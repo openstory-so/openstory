@@ -33,5 +33,5 @@ export const OAUTH_SCOPE_DESCRIPTIONS: Record<string, string> = {
   'sequences:write': 'Edit sequences and scenes, and start exports',
   generate: 'Start generations that spend your credits',
   'credits:read': 'See your credit balance',
-  'models:invoke': 'Run image and video models that spend your credits',
+  'models:invoke': 'Run AI models that spend your credits',
 };

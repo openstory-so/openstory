@@ -30,7 +30,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { storeGatewayModel } from '@/gateway/server/db/gateway-models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import {
-  chargedOnceAs,
+  forCall,
   openstoryText,
   withTextGateway,
   type TextMeter,
@@ -127,6 +127,7 @@ const meter = (over: Partial<TextMeter> = {}): TextMeter => ({
   run: null,
   oauthClientId: null,
   chargeKey: null,
+  describe: (model) => `LLM analysis (${model})`,
   resolve: () => Promise.reject(new Error('no re-run')),
   ...over,
 });
@@ -182,6 +183,14 @@ const run = (runId = 'r', usage: TokenUsage = USAGE()): AdapterYieldChunk[] => [
     usage,
   },
 ];
+
+async function descriptions() {
+  const rows = await db
+    .select({ description: transactions.description })
+    .from(transactions)
+    .where(eq(transactions.organizationId, organizationId));
+  return rows.map((r) => r.description);
+}
 
 async function ledger() {
   const rows = await db
@@ -265,10 +274,44 @@ describe('openstoryText on the card route', () => {
     ).chatStream(OPTIONS)) {
       if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break;
     }
+    // 'hi' prompt ~9 tokens estimated, 'hello' ~2 tokens out: priced on tokens, not bytes.
     const { charges, held } = await ledger();
     expect(charges).toHaveLength(1);
     expect(charges[0]).toBeGreaterThan(0);
+    expect(charges[0]).toBeLessThan(100);
     expect(held).toBe(0);
+  });
+
+  it('caps a cut-off call inside a run at what its output bound would have held', async () => {
+    const long = 'x'.repeat(40_000);
+    const inner = adapter(() => [
+      { type: EventType.RUN_STARTED, runId: 'r', threadId: 't', timestamp: 0 },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId: 'm',
+        delta: long,
+        timestamp: 0,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId: 'm',
+        delta: long,
+        timestamp: 0,
+      },
+    ]);
+    let seen = 0;
+    for await (const chunk of openstoryText(
+      inner,
+      meter({ run: { runReservationId: null } }),
+      'vendor/model'
+    ).chatStream({ ...OPTIONS, modelOptions: { maxTokens: 100 } })) {
+      if (chunk.type === EventType.TEXT_MESSAGE_CONTENT && ++seen === 2) break;
+    }
+    // 20,000 tokens streamed past a 100-token bound: charged as 100 out (1,000) plus the estimated input.
+    const { charges } = await ledger();
+    expect(charges).toHaveLength(1);
+    expect(charges[0]).toBeGreaterThanOrEqual(1000);
+    expect(charges[0]).toBeLessThan(1100);
   });
 
   it('charges nothing when the provider refuses before any content', async () => {
@@ -449,14 +492,17 @@ describe('openstoryText on the direct route', () => {
   });
 
   it('charges a repeated single-call site once under its charge key', async () => {
-    const charged = chargedOnceAs(
+    const charged = forCall(
       {
         key: 'k',
         source: 'platform',
         via: 'openrouter',
         meter: meter({ card: null }),
       },
-      'likeness:https://example.com/a.png'
+      {
+        describe: (m) => `Talent vision (${m})`,
+        chargeKey: 'likeness:https://example.com/a.png',
+      }
     );
     for (let i = 0; i < 2; i++) {
       const inner = adapter(() => run('r', billed()));
@@ -467,6 +513,61 @@ describe('openstoryText on the direct route', () => {
       );
     }
     expect((await ledger()).charges).toEqual([1500]);
+  });
+});
+
+describe('the transaction description', () => {
+  const platformKey = (over: Partial<TextMeter> = {}): ResolvedLlmKey => ({
+    key: 'k',
+    source: 'platform',
+    via: 'openrouter',
+    meter: meter(over),
+  });
+
+  it("keeps each call site's wording, on both routes", async () => {
+    const shortening = forCall(platformKey(), {
+      describe: () => 'Prompt shortening (vendor/model)',
+    });
+    const assistant = forCall(platformKey({ card: null }), {
+      describe: (m) => `Assistant (${m})`,
+    });
+    for (const key of [shortening, assistant]) {
+      await drain(
+        openstoryText(
+          adapter(() => run('r', { ...USAGE(), cost: 0.0015 })),
+          meterOf(key),
+          'vendor/model'
+        ).chatStream(OPTIONS)
+      );
+    }
+    expect(
+      (await descriptions()).toSorted((a, b) =>
+        (a ?? '').localeCompare(b ?? '')
+      )
+    ).toEqual(['Assistant (vendor/model)', 'Prompt shortening (vendor/model)']);
+  });
+
+  it('keeps the wording on a re-run resolved through the meter', async () => {
+    const key = forCall(platformKey({ resolve: async () => platformKey() }), {
+      describe: (m) => `Watched a clip (${m})`,
+    });
+    const rerun = await meterOf(key).resolve('vendor/model');
+    await drain(
+      openstoryText(
+        adapter(() => run()),
+        meterOf(rerun),
+        'vendor/model'
+      ).chatStream(OPTIONS)
+    );
+    expect(await descriptions()).toEqual(['Watched a clip (vendor/model)']);
+  });
+
+  it('refuses a metered call that names no purpose before the provider call', () => {
+    const inner = adapter(() => run());
+    expect(() =>
+      openstoryText(inner, meter({ describe: null }), 'vendor/model')
+    ).toThrow(/must name what it is for/);
+    expect(inner.calls).toBe(0);
   });
 });
 
@@ -521,6 +622,23 @@ describe('withTextGateway', () => {
     }
   });
 
+  it('routes direct when the snapshot card is for a provider whose platform key this server lacks', async () => {
+    // A Gemini card is held, but with no Google platform key the call resolves on OpenRouter.
+    await storeGatewayModel(
+      db,
+      { ...MODEL, provider: 'gemini', id: 'gemini-3.8-flash' },
+      new Date()
+    );
+    const resolved = await keys(key('platform', 'openrouter')).resolveLlmKey(
+      'google/gemini-3.8-flash'
+    );
+    expect(meterOf(resolved).card).toBeNull();
+    const google = await keys(key('platform', 'google')).resolveLlmKey(
+      'google/gemini-3.8-flash'
+    );
+    expect(meterOf(google).card?.model.provider).toBe('gemini');
+  });
+
   it('meters platform fal, and a model with no card, on the direct route', async () => {
     expect(
       meterOf(await keys(key('platform', 'fal')).resolveLlmKey('vendor/model'))
@@ -531,6 +649,22 @@ describe('withTextGateway', () => {
       'vendor/model'
     );
     expect(meterOf(resolved).card).toBeNull();
+  });
+});
+
+describe('openstoryText fails closed', () => {
+  it('refuses an adapter method it cannot meter, such as compact, without calling it', () => {
+    let compacted = 0;
+    const inner = {
+      ...adapter(() => run()),
+      compact: async () => {
+        compacted++;
+        return [];
+      },
+    };
+    const wrapped = openstoryText(inner, meter(), 'vendor/model');
+    expect(() => wrapped.compact()).toThrow(/compact cannot be metered/);
+    expect(compacted).toBe(0);
   });
 });
 

@@ -301,8 +301,6 @@ export type DurableLLMCallContext = {
   workflowRunId: string;
   /** Scoped DB context for resolving organization API keys + deducting credits. */
   scopedDb?: WorkflowScopedDb;
-  /** Run envelope to capture against when the parent held one (#1310). */
-  reservationId?: string;
 };
 
 export type DurableStreamingLLMCallContext = DurableLLMCallContext & {

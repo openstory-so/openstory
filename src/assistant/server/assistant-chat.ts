@@ -5,6 +5,7 @@
  * (`resolveLlmKey`); a platform key's meter charges each model call (#2437).
  */
 
+import { forCall } from '@/gateway/server/text';
 import {
   chat,
   chatParamsFromRequest,
@@ -235,7 +236,9 @@ export async function handleAssistantChat(
   const { scopedDb } = caller;
   // The composer's pick; the default when it is missing or not selectable.
   const model = chatModelFor(params.forwardedProps.model, getRequestCountry());
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
+  const llmKey = forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+    describe: (answered) => `Assistant (${answered})`,
+  });
   // A restricted account may read but not spend (#1180); the request
   // middleware checked access, this checks generation before any credit.
   await requireGenerationAllowed({

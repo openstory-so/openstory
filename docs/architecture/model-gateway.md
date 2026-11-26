@@ -1179,7 +1179,10 @@ provider's own: `openrouter/<id>`, `grok/<xAI id>` or `gemini/<Gemini id>`.
 The card is read from the snapshot in the step that spends it, like the key:
 it is a platform price, not a row the user writes. This is the text form of
 the routing rule. `resolveGatewayRoute` is for media, whose own-key rule is
-per provider, while text follows `resolveLlmKey`'s order.
+per provider, while text follows `resolveLlmKey`'s order. The card follows
+the key that resolved, so a card for a provider whose platform key this
+server does not have is never used: with no Google key a Gemini model
+resolves on OpenRouter and is priced on OpenRouter's card or direct.
 
 A call goes direct (priced as today) with a reason recorded on its
 transaction:
@@ -1200,15 +1203,30 @@ tier and are priced on the card.
 
 Every LLM key carries its charging mode in the type (`LlmKeyInfo.meter`,
 required): a `TextMeter`, or `{ uncharged: 'own key' }` for an
-organization's own key, or `{ uncharged: 'no organization' }` for a platform
-key with nobody to charge. `createAdapter` and llm-client take the key as a
+organization's own key, `{ uncharged: 'no organization' }` for a platform
+key with nobody to charge, or `{ uncharged: 'unfunded generation' }` for
+#1567 (below). `createAdapter` and llm-client take the key as a
 required argument, so no call builds an adapter on an implicit platform key.
 Only `getPlatformLlmKey` mints a `no organization` key, and
 `unmetered-llm-keys.test.ts` pins the files that may call it: the
 definition; the unwrapped `apiKeys` (which only `scoped.ts` builds, inside
 `withTextGateway`); `text.ts`, which meters it; a durable call with no
-`scopedDb` (an anonymous workflow); and llm-client's Google re-run of a call
-already marked so.
+`scopedDb` (an anonymous workflow); llm-client's Google re-run of a call
+already marked uncharged; and script enhancement for #1567.
+
+**Unfunded script enhancement (#1567).** When the organization cannot cover
+`estimateLLMCost(1)`, enhancement still runs, free, on a key marked
+`unfunded generation`: never refused, never a negative balance. This is the
+only `allowUnfunded` caller. The other `prepareBilling` callers (`ai.fn`:
+prompt shortening, scene duration estimate, style recommendation) refuse
+with `InsufficientCreditsError` as before.
+
+**Google region re-run with no resolver** (the `ai.fn` sites pass none).
+A metered key re-runs through its meter's resolver, so the re-run is
+charged on its own route. A key marked `no organization` or `unfunded
+generation` re-runs uncharged on the platform's key, as it was. An
+organization's own Google key is refused (the error surfaces): it never
+re-runs on a platform key, as before #2437.
 
 The gateway submit's likeness check (`withPlatformLlmKey`) spends the
 platform's key, never the organization's, and is metered like any other
@@ -1227,7 +1245,10 @@ model, inside the same time budget and per-model failure isolation as media.
 `createAdapter` builds the route's adapter as before. When the key carries a
 meter, it returns `openstoryText(adapter, meter, model)`: a proxy whose
 `chatStream`, `structuredOutput` and `structuredOutputStream` each delegate
-and then charge once. Nothing it sends changes, so `chat()` keeps tools,
+and then charge once. It fails closed: any other adapter method that could
+call the provider (`compact`, or one added upstream later) throws rather
+than run free; only `supportsCombinedToolsAndSchema` and
+`combinedStructuredOutputSource`, which call nothing, pass through. Nothing it sends changes, so `chat()` keeps tools,
 structured output, web search, vision input, reasoning and durable streams,
 and the four provider protocols are not re-implemented. Each provider request
 is one charged call: an agent-loop turn, or a separate structured-output
@@ -1268,8 +1289,11 @@ resolver, so the retry is metered on its own route.
   shortfall is reported as a skipped deduction (`reportSkippedDeduction`) and
   the call is not charged for it.
 - **Cut off part way** (an abort, a dropped connection, an error after
-  content): the card is priced on the input bound plus the characters
-  streamed as output tokens, at most the estimate held. A call that streamed
+  content): with no usage reported, the card is priced on estimated tokens
+  (`estimateTokens`, four characters a token) for the prompt and what
+  streamed, capped at what the request's output bound would have held (the
+  hold itself for a request). A call inside a run has no hold, so the cap is
+  the same price computed at charge time. A call that streamed
   nothing and reported no usage (a refusal, a Google location refusal, a
   4xx) is charged nothing, and its own hold is released.
 - **What a charge records:** each charge line's `sku` is
@@ -1279,8 +1303,16 @@ resolver, so the retry is metered on its own route.
   client (`attribution.oauthClientId`).
 - **Idempotency:** each call is charged under `text:<id>`. A single-call
   site that may repeat for the same input passes its own key through
-  `chargedOnceAs`: the likeness check uses `likeness:<url>` and the element
+  `forCall`: the likeness check uses `likeness:<url>` and the element
   draft uses `draft-vision:<url>`.
+- **Description:** every metered call names its purpose (`forCall`'s
+  `describe`, required: an unnamed metered call is refused before the
+  provider call). The wording is the one each site wrote before #2437:
+  `Script enhancement`, `Prompt shortening (m)`, `Scene duration estimate
+  (m)`, `Style recommendation (m)`, `Upload description (m)`, `Talent vision
+  (m)`, `Element vision (m)`, `Studio prompt draft (m)`, `Assistant (m)`,
+  `Watched a clip (m)`, and `LLM analysis (m)` for every durable helper in a
+  run. The public endpoint writes `Gateway chat (m)`.
 
 Output bounds set at call sites that had none (all requests with no run):
 element vision 2,048; talent vision 4,096; studio prompt draft 2,048;
@@ -1291,9 +1323,8 @@ enhancement `min(32,000, model max)` (4,000 truncated, #915); assistant
 
 **Behaviour changes.** An LLM call is charged when it happens, not in a
 deduct step after it, so a run that fails later still pays for the calls it
-made. A retried step that calls the provider again is charged again. A
-transaction's description is now `LLM (<model>)`, without the call site's
-phase or sequence. A run in flight at deploy whose LLM step is cached but
+made. A retried step that calls the provider again is charged again. A run
+in flight at deploy whose LLM step is cached but
 whose old deduct step has not run is not charged for that call.
 
 ### D1 per call

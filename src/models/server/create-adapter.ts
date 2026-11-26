@@ -62,9 +62,15 @@ export type LlmKeyInfo = {
 };
 
 /** A key whose calls are never charged: the organization's own key, or a platform key with no organization to charge. */
-export type Uncharged = { readonly uncharged: 'own key' | 'no organization' };
+export type Uncharged = {
+  readonly uncharged: 'own key' | 'no organization' | 'unfunded generation';
+};
 
 export const OWN_KEY: Uncharged = { uncharged: 'own key' };
+/** #1567: an unfunded script run's enhancement is free on the platform key, never a negative balance or a refusal. */
+export const UNFUNDED_GENERATION: Uncharged = {
+  uncharged: 'unfunded generation',
+};
 /** Only for callers with no organization: `getPlatformLlmKey`'s allowlist is pinned by `platform-llm-key-callers.test.ts`. */
 export const NO_ORGANIZATION: Uncharged = { uncharged: 'no organization' };
 
