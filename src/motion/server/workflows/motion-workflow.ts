@@ -63,6 +63,7 @@ import {
 } from '@/motion/server/motion-generation';
 import {
   pollVideoJob,
+  releaseVideoJob,
   routeVideoJob,
   videoCostFromUsage,
   type VideoGatewayCall,
@@ -1488,9 +1489,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       // Neither completed nor content-rejected → this attempt timed out. A
       // timeout isn't a content flag; reseeding won't help and would burn
       // another full poll budget, so stop here as before.
-      throw new Error(
-        `Motion generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`
+      const timedOut = `Motion generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`;
+      await step.do(`release-motion-job${tag}`, () =>
+        releaseVideoJob(job, scopedDb, timedOut)
       );
+      throw new Error(timedOut);
     }
 
     if (!videoUrl) {

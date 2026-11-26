@@ -59,6 +59,7 @@ import {
 import { studioImageParams } from '@/studio/text-to-video';
 import {
   pollVideoJob,
+  releaseVideoJob,
   routeVideoJob,
   videoCostFromUsage,
   type VideoGatewayCall,
@@ -489,9 +490,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         lastRejection = rejected;
         continue;
       }
-      throw new Error(
-        `Video generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`
+      const timedOut = `Video generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`;
+      await step.do(`release-video-job${tag}`, () =>
+        releaseVideoJob(job, scopedDb, timedOut)
       );
+      throw new Error(timedOut);
     }
 
     if (!videoUrl || !succeededJob) {

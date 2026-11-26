@@ -938,9 +938,11 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
   run goes on. The provider job is not stopped, so the gateway charges it
   when it finishes and the clip is discarded. A provider failure marks the
   job failed (`releaseGatewayRun`) and leaves the run's reservation to the
-  run, which zeroes it at its end; a run that times out after 30 minutes
-  leaves a live job that the stale-job sweep ends (job failed; a borrowed
-  reservation is not on the row, so the sweep cannot zero it). A capture
+  run, which zeroes it at its end. A run that times out after 30 minutes
+  ends its job itself (`releaseVideoJob` → `releaseInProcessJob`, in a
+  `release-motion-job<tag>` step) before it throws; the stale-job sweep is
+  only for a run that died (a borrowed reservation is not on the row, so the
+  sweep cannot zero it). A capture
   renews the reservation's `RESERVATION_TTL_MS` (6 hours), and a 30-minute
   poll window sits well inside it.
 - **Packed clips:** one run, one submit, one gateway job, one charge.

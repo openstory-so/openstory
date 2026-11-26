@@ -15,6 +15,7 @@ import { openstoryVideo, openstoryVideoStatus } from '@/gateway/server/adapter';
 import {
   inProcessGateway,
   inProcessPoller,
+  releaseInProcessJob,
 } from '@/gateway/server/adapter/in-process';
 import type { GatewayStore } from '@/gateway/server/phases';
 import {
@@ -223,6 +224,17 @@ export async function sendVideoJob(params: {
   }
   const job = await params.send();
   return { jobId: job.jobId, via: 'direct' };
+}
+
+/** A run that stops polling ends its gateway job itself; a direct job has nothing held. */
+export async function releaseVideoJob(
+  job: Pick<StampedVideoJob, 'jobId' | 'via'>,
+  scopedDb: WorkflowScopedDb,
+  error: string
+): Promise<void> {
+  if (job.via === 'openstory') {
+    await releaseInProcessJob(scopedDb, job.jobId, error);
+  }
 }
 
 export type StampedVideoJob = {

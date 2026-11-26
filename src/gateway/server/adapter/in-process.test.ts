@@ -56,7 +56,8 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const { inProcessGateway, inProcessPoller } = await import('./in-process');
+const { inProcessGateway, inProcessPoller, releaseInProcessJob } =
+  await import('./in-process');
 const { openstoryAudio, openstoryImage, openstoryVideo, openstoryVideoStatus } =
   await import('./index');
 const submitJob = await import('../submit-job');
@@ -425,6 +426,26 @@ describe('the openstory adapter, in-process', () => {
     expect(hold?.remainingAmount).toBe(0);
   });
 
+  it('releases its own hold when the run gives up on a queued job', async () => {
+    start.mockResolvedValue({ jobId: 'xai-6' });
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-6:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await releaseInProcessJob(workflowDb(), jobId, 'timed out');
+    const job = await onlyJob(VIDEO.id);
+    expect(job.status).toBe('failed');
+    const [hold] = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    expect(hold?.remainingAmount).toBe(0);
+  });
+
   it('returns one stored audio file', async () => {
     start.mockResolvedValue({
       result: {
@@ -555,6 +576,22 @@ describe('on the caller run reservation (#2435)', () => {
     const job = await onlyJob(IMAGE.id);
     expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
     expect(await remainingOf(reservationId)).toBe(10_000);
+  });
+
+  it('a run that gives up ends its job at once and keeps its reservation', async () => {
+    start.mockResolvedValue({ jobId: 'xai-r5' });
+    const reservationId = await runReservation(30_000);
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, reservationId), {
+        idempotencyKey: 'run-r5:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await releaseInProcessJob(workflowDb(), jobId, 'timed out');
+    expect((await onlyJob(VIDEO.id)).status).toBe('failed');
+    expect(await remainingOf(reservationId)).toBe(30_000);
   });
 
   it('leaves the run reservation intact when the job fails', async () => {

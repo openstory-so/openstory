@@ -110,6 +110,16 @@ export function inProcessPoller(params: {
   };
 }
 
+/** Ends a queued job its caller gave up on: failed now, its own hold released, not left to the sweep. */
+export async function releaseInProcessJob(
+  scopedDb: WorkflowScopedDb,
+  handle: string,
+  error: string
+): Promise<void> {
+  const { run } = handleSchema.parse(JSON.parse(handle));
+  await releaseGatewayRun(scopedDb, run, error);
+}
+
 /** Holds, starts and polls in the caller's steps. Stateless: the key comes with each submit. */
 export function inProcessGateway(params: {
   scopedDb: WorkflowScopedDb;
