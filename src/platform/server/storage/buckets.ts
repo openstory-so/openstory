@@ -69,6 +69,14 @@ export const LIKENESS_CHECKED_BUCKETS: ReadonlySet<StorageBucket> = new Set([
   STORAGE_BUCKETS.ELEMENTS,
 ]);
 
+/** A create-only write (`upsert: false`) found an object already at the key; nothing was written. */
+export class StorageFileExistsError extends Error {
+  constructor(key: string) {
+    super(`An object already exists at ${key}`);
+    this.name = 'StorageFileExistsError';
+  }
+}
+
 export type UploadResult = {
   path: string;
   publicUrl: string;

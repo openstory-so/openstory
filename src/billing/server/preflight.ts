@@ -4,7 +4,7 @@
  * before triggering workflows. Skips check if organization has own BYOK keys.
  */
 
-import { remoteGatewayConfigured } from '@/gateway/server/remote-config';
+import { onlyHostedGatewaySpends } from '@/gateway/server/remote-config';
 import { llmtrTextModel } from '@/models/llmtr';
 import type { Microdollars } from '@/billing/money';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -70,8 +70,8 @@ export async function requireCredits(
   } = {}
 ): Promise<void> {
   const providers = opts.providers ?? ['fal'];
-  // The hosted gateway's organization pays for this install's calls: no local check (#2438).
-  if (providers.length > 0 && remoteGatewayConfigured()) return;
+  // No platform key here: each call runs remote, paid there, or is refused before spending (#2438).
+  if (providers.length > 0 && onlyHostedGatewaySpends()) return;
 
   // `hasUsableKey` (not `hasKey`): a key flagged invalid is skipped by
   // resolveKey/resolveLlmKey at call time — the platform key pays — so it
@@ -114,8 +114,8 @@ export async function reserveRunCredits(
   } = {}
 ): Promise<string | undefined> {
   const providers = opts.providers ?? ['fal'];
-  // The hosted gateway's organization pays for this install's calls: no local hold (#2438).
-  if (providers.length > 0 && remoteGatewayConfigured()) return undefined;
+  // No platform key here: each call runs remote, paid there, or is refused before spending (#2438).
+  if (providers.length > 0 && onlyHostedGatewaySpends()) return undefined;
   const keyChecks = await Promise.all(
     providers.map((provider) =>
       coversProvider(scopedDb, provider, opts.llmModel)

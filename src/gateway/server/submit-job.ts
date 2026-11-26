@@ -351,6 +351,18 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
+/** The organization a gateway upload URL belongs to; null for any other URL. */
+function gatewayUploadOwner(url: string): string | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url, 'http://local').pathname;
+  } catch {
+    return null;
+  }
+  const match = /\/gateway-uploads\/([^/]+)\//.exec(pathname);
+  return match?.[1] ?? null;
+}
+
 /** The hold on a card estimate: every line of the charge it would settle to. Pre-flight quotes read this too. */
 export function gatewayHoldMicros(estimate: Microdollars): Microdollars {
   return gatewayCharge({
@@ -399,9 +411,18 @@ export async function holdGatewayJob(
       );
     }
     refuseVoiceClone(model, input);
+    const urls = gatedUrls(input);
+    for (const url of urls) {
+      const owner = gatewayUploadOwner(url);
+      if (owner !== null && owner !== scopedDb.organizationId) {
+        throw new ValidationError(
+          'An uploaded file belongs to another organization'
+        );
+      }
+    }
     await requireCheckedUploadRights(
       withPlatformLlmKey(rights.scopedDb),
-      gatedUrls(input),
+      urls,
       rights.request
     );
   }

@@ -721,6 +721,37 @@ describe('submitGatewayJob', () => {
     expect(replay).toBe(false);
   });
 
+  it("refuses another organization's gateway upload, and accepts the caller's own (#2438)", async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const foreign = {
+      ...VIDEO,
+      body: {
+        ...BODY,
+        image: {
+          url: 'https://openstory.so/r2/gateway-uploads/01OTHERORGANIZATION0000000/01J00000000000000000000000.png',
+        },
+      },
+    };
+    const error = await refused(foreign);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toMatchObject({
+      message: 'An uploaded file belongs to another organization',
+    });
+    expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+
+    const own = {
+      ...VIDEO,
+      body: {
+        ...BODY,
+        image: {
+          url: `https://openstory.so/r2/gateway-uploads/${organizationId}/01J00000000000000000000000.png`,
+        },
+      },
+    };
+    const { replay } = await submitGatewayJob(own, ctx(scopedDb));
+    expect(replay).toBe(false);
+  });
+
   it('refuses a provider with no platform key before the hold, as a 503', async () => {
     configured.mockReturnValueOnce(false);
     const error = await refused(VIDEO);

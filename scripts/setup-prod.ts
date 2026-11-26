@@ -1515,6 +1515,12 @@ export async function runProdSetup(mode: ProdSetupMode) {
     }
   }
 
+  // Gateway uploads (#2438) expire only by a lifecycle rule, which wrangler.jsonc cannot hold.
+  p.note(
+    `npx wrangler r2 bucket lifecycle add ${vars.get('R2_BUCKET_NAME') ?? '<bucket>'} gateway-uploads-1d gateway-uploads/ --expire-days 1`,
+    'Without this rule, hosted gateway uploads are kept forever'
+  );
+
   // Offer to attach custom domains to R2 buckets
   await attachR2Domains();
 

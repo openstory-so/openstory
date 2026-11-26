@@ -1501,10 +1501,16 @@ there.
 - **No local hold, no local debit.** The HTTP transport never touches the
   install's database: no `holdGatewayJob`, no settle, no
   `deductWorkflowCredits` (the call sites skip it on the `openstory` via, which
-  a remote result carries). `requireCredits` and `reserveRunCredits` return
-  before any check when `OPENSTORY_API_KEY` is set, unless the caller asked
-  for platform-only work (`providers: []`), which runs on this server. So a
-  one-key install needs no local balance. `preflight.test.ts` and
+  a remote result carries). The run's preflight (`requireCredits`,
+  `reserveRunCredits`) skips the local check and hold only when no call of
+  the run can spend on this server: an OpenStory key and no platform key at
+  all (`onlyHostedGatewaySpends`), so every paid call is remote or refused
+  before it spends. One platform key (fal, OpenRouter, xAI, Google, Ark,
+  ElevenLabs, Seed) and every run checks and holds as before, its whole
+  estimate, remote calls included; that over-holds and is released at the
+  run's end. Splitting the hold per call needs per-call estimates, which the
+  triggers do not have. Platform-only work (`providers: []`) always holds.
+  `preflight.test.ts` (all remote, mixed, all local) and
   `adapter/http.test.ts` pin it (the transport runs with a `scopedDb` that
   throws on any touch). The hosted charge is shown, never debited: a clip's
   `costMicros` comes from the hosted job document (`remoteJobCharge`), and
@@ -1541,18 +1547,32 @@ place a call site turns a route into a transport (in-process or HTTP), and
 
 `POST /api/v1/gateway/uploads` (`src/gateway/server/uploads.ts`): the body
 is the file, `Content-Type` an image, video or audio type, `Content-Length`
-required (at most 500 MB), `Idempotency-Key` required. It stores under
-`gateway-uploads/<organization>/<sha256 of the key>.<ext>`, runs
-`requireCheckedUploadRights` on the absolute URL it answers (`201 { url }`),
-so a submit finds the verdict; a real person is `400 ATTESTATION_REQUIRED`.
-The key names the file: the same key returns the same URL and never rewrites
-the object, so a retried step sends the same body. The install sends
-`sha256(<call key>:<r2 key>)`. The likeness check is charged to the caller as
-it is on a submit.
+required (at most 500 MB), `Idempotency-Key` required.
 
-**Files expire** by an R2 lifecycle rule on the `gateway-uploads/` prefix, set
-once per bucket (not in `wrangler.jsonc`, which has no lifecycle field):
-`wrangler r2 bucket lifecycle add <bucket> gateway-uploads-1d gateway-uploads/ --expire-days 1`.
+- **A fresh id, written once.** Each file is stored at
+  `gateway-uploads/<organization>/<ULID>.<ext>` with a create-only write
+  (`uploadFile(…, { upsert: false })`, R2 `if-none-match: *`), so no later
+  write can replace the bytes the likeness check classified.
+- **Checked before it is answered.** `requireCheckedUploadRights` runs on
+  that exact URL; a refusal (a real person is `400 ATTESTATION_REQUIRED`)
+  deletes the file and answers nothing. A pass answers `201 { url }`, and a
+  submit finds the verdict. The check is charged to the caller as on a submit.
+- **The key maps to the id.** After a pass, a create-only pointer at
+  `gateway-uploads/<organization>/keys/<sha256 of the key>` records the file.
+  A replay answers that file's URL and never stores again; a concurrent
+  upload that loses the pointer race deletes its own file and answers the
+  winner's. The install sends `sha256(<call key>:<r2 key>)`.
+- **Only the owner's.** A submit naming a `gateway-uploads/<organization>/`
+  URL of another organization is `400` before the check
+  (`gatewayUploadOwner` in `submit-job.ts`).
+
+`uploads.test.ts` and `submit-job.test.ts` pin each.
+
+**Files expire only with a lifecycle rule.** Without it uploads are kept
+forever. R2 lifecycle is not in `wrangler.jsonc`, so it is set once per bucket
+by hand: `wrangler r2 bucket lifecycle add <bucket> gateway-uploads-1d gateway-uploads/ --expire-days 1`.
+`bun setup --prod` prints this command. Needs sign-off: a manual step on the
+production bucket.
 
 ### Rate limit
 
