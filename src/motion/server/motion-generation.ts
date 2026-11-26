@@ -73,6 +73,7 @@ import { buildGeminiVideoRequest } from './build-gemini-video-request';
 import {
   createNativeGeminiVideoAdapter,
   createNativeGrokVideoAdapter,
+  isArkDraftTask,
   resolveFalKey,
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
@@ -488,14 +489,7 @@ export function motionGatewayTarget(
 ): GatewayRouteTarget | null {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
   const provider = videoGatewayProvider(via);
-  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
-  if (
-    !provider ||
-    options.finalFromDraftTaskId ||
-    (options.draft && supportsDraftMode(modelKey))
-  ) {
-    return null;
-  }
+  if (!provider || isArkDraftTask(modelKey, options)) return null;
   return {
     provider,
     modelId: motionEndpoint(modelKey, options, via).endpoint.endpointId,
@@ -647,7 +641,7 @@ async function submitMotionJobOnce(
       modelId: stampedEndpointId,
       threadId,
       gateway: options.gateway,
-      draft: draft || Boolean(options.finalFromDraftTaskId),
+      draft: isArkDraftTask(modelKey, options),
       usedOwnKey: ownKey,
       send: run,
     });

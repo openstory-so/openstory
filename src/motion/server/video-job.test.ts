@@ -298,7 +298,7 @@ describe('a gateway clip after its run gives up or finishes (#2435)', () => {
     expect(releaseInProcessJob).toHaveBeenCalledOnce();
   });
 
-  it('reads the charge off its own job row in its own step, and none for a job that answered at submit', async () => {
+  it('reads the charge off its own job row in its own step, also for a job that answered at submit', async () => {
     const getById = vi.fn(async () => ({ costMicros: 480_000 }));
     const scopedDb = asStub<WorkflowScopedDb>({
       claims: { gatewayJobs: { getById } },
@@ -310,6 +310,15 @@ describe('a gateway clip after its run gives up or finishes (#2435)', () => {
       readGatewayCharge(step, { jobId: '{}', via: 'openstory' }, scopedDb)
     ).resolves.toBe(480_000);
     expect(getById).toHaveBeenCalledWith('gw-1');
+    await expect(
+      readGatewayCharge(
+        step,
+        { jobId: 'done:{"jobId":"gw-2","outputs":[]}', via: 'openstory' },
+        scopedDb
+      )
+    ).resolves.toBe(480_000);
+    expect(getById).toHaveBeenLastCalledWith('gw-2');
+    // A `done:` handle from before #2435 names no job.
     await expect(
       readGatewayCharge(step, { jobId: 'done:[]', via: 'openstory' }, scopedDb)
     ).resolves.toBeNull();

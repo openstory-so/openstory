@@ -16,7 +16,11 @@ import {
   type GatewayJobInput,
   type GatewayProvider,
 } from '@/gateway/schema';
-import { openstoryVideo, openstoryVideoStatus } from '@/gateway/server/adapter';
+import {
+  doneVideoJob,
+  openstoryVideo,
+  openstoryVideoStatus,
+} from '@/gateway/server/adapter';
 import {
   inProcessGateway,
   gatewayRunOf,
@@ -36,7 +40,11 @@ import {
   NATIVE_GEMINI_VIDEO_MODEL,
 } from '@/models/gemini-native';
 import { grokVideoCost, NATIVE_GROK_VIDEO_MODEL } from '@/models/grok-native';
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import {
+  IMAGE_TO_VIDEO_MODELS,
+  supportsDraftMode,
+  type ImageToVideoModel,
+} from '@/models/models';
 import {
   arkAdapterConfig,
   getArkApiKey,
@@ -197,6 +205,17 @@ async function captureVideoBody(send: VideoSend): Promise<GatewayJobInput> {
   return body;
 }
 
+/** An Ark draft or its final: task ids the gateway does not hand out (#1756). */
+export function isArkDraftTask(
+  model: ImageToVideoModel,
+  options: { draft?: boolean; finalFromDraftTaskId?: string }
+): boolean {
+  return (
+    Boolean(options.finalFromDraftTaskId) ||
+    (Boolean(options.draft) && supportsDraftMode(model))
+  );
+}
+
 /**
  * Sends one video job. With a gateway call and a body the gateway can hold,
  * the body the provider adapter would send goes through the `openstory`
@@ -211,7 +230,7 @@ export async function sendVideoJob(params: {
   modelId: string;
   threadId: string;
   gateway: VideoGatewayCall | null;
-  /** An Ark draft or its final: task ids the gateway does not hand out (#1756). */
+  /** `isArkDraftTask`: never sent through the gateway. */
   draft: boolean;
   /** Whether the direct call spends the organization's own key. */
   usedOwnKey: boolean;
@@ -278,7 +297,7 @@ export async function releaseTimedOutVideoJob(
   );
 }
 
-/** What the gateway charged for a finished clip, read back by the run's own job id in its own step; null off the gateway or when the handle names no job. */
+/** What the gateway charged for a finished clip, read back by the run's own job id in its own step; null off the gateway. */
 export async function readGatewayCharge(
   step: WorkflowStep,
   job: Pick<StampedVideoJob, 'jobId' | 'via'>,
@@ -286,10 +305,14 @@ export async function readGatewayCharge(
 ): Promise<Microdollars | null> {
   if (job.via !== 'openstory') return null;
   const charge = await step.do('read-gateway-charge', async () => {
-    const run = gatewayRunOf(job.jobId);
-    if (!run) return null;
+    const done = doneVideoJob(job.jobId);
+    const jobId = done ? done.jobId : (gatewayRunOf(job.jobId)?.jobId ?? null);
+    if (!jobId) {
+      logger.warn('A gateway clip names no job: its charge is not recorded');
+      return null;
+    }
     return (
-      (await scopedDb.claims.gatewayJobs.getById(run.jobId))?.costMicros ?? null
+      (await scopedDb.claims.gatewayJobs.getById(jobId))?.costMicros ?? null
     );
   });
   return charge === null ? null : micros(charge);

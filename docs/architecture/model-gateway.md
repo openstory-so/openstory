@@ -925,7 +925,9 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
   `inProcessGateway`, key `<run>:submit-motion<tag>` (studio
   `submit-video<tag>`). The job is stamped `via: 'openstory'`.
 - **Direct:** own key, a model or body the gateway cannot hold, an Ark draft
-  or its final (Ark task ids the gateway does not hand out), and scripts.
+  or its final (Ark task ids the gateway does not hand out; `isArkDraftTask`,
+  one rule for motion and studio: a draft flag on a model without draft mode
+  is ignored and routes as usual), and scripts.
   The reason is logged (`Video job routed direct`).
 - **Poll follows the stamp.** `openstory` polls `openstoryVideoStatus` over
   `inProcessPoller`; the poll that sees the job finish stores the clip to R2
@@ -949,8 +951,10 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
 - **The charge is recorded.** A studio asset's `costMicros` and the motion
   and studio span cost come from the run's own job row (`readGatewayCharge`,
   a `read-gateway-charge` step, by the id in the handle, through
-  `scopedDb.claims`). The transport's `done` answer carries
-  no cost; #2438 may add one when it designs the HTTP transport.
+  `scopedDb.claims`). A job that answered at submit names its job in the
+  `done:` handle too (`doneVideoJob`); the transport's `done` answer carries
+  the job id (null on the own-key Models-page transport, which holds no job)
+  but no cost; #2438 may add one when it designs the HTTP transport.
 - **Failures read as the provider's.** Seedance's failure handling
   (`isSeedanceInternalServiceError`, `explainSeedanceFailure`) asks
   `videoJobProviderVia(job)`, the provider behind a gateway job (from its

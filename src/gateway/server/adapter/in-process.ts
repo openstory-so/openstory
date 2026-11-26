@@ -111,7 +111,7 @@ export function inProcessPoller(params: {
   };
 }
 
-/** The gateway job and provider a queued handle names; null for a job that answered at submit (`done:`), which carries none. */
+/** The gateway job and provider a queued handle names; null for a `done:` handle (`doneVideoJob`). */
 export function gatewayRunOf(
   handle: string
 ): Pick<GatewayRun, 'jobId' | 'provider'> | null {
@@ -168,7 +168,11 @@ export function inProcessGateway(params: {
       }
       // A replayed job is never started twice: only a queued one starts here.
       if (job.status === 'succeeded') {
-        return { kind: 'done' as const, outputs: storedOutputs(job) };
+        return {
+          kind: 'done' as const,
+          jobId: job.id,
+          outputs: storedOutputs(job),
+        };
       }
       if (job.status === 'failed') {
         throw new NonRetryableError(job.error?.message ?? 'Generation failed');
@@ -201,7 +205,12 @@ export function inProcessGateway(params: {
           throw error;
         }
       );
-      if ('stored' in started) return finish(scopedDb, run, started.stored);
+      if ('stored' in started) {
+        return {
+          ...(await finish(scopedDb, run, started.stored)),
+          jobId: run.jobId,
+        };
+      }
       await scopedDb.gatewayJobs.stampProviderJob(run.jobId, {
         via: GATEWAY_VIA[run.provider],
         providerJobId: started.providerJobId,

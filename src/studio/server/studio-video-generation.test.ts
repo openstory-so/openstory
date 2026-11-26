@@ -1024,4 +1024,13 @@ describe('studioGatewayTarget (#2435)', () => {
       studioGatewayTarget({ model: 'seedance_v2_5', draft: true }, 'byteplus')
     ).toBeNull();
   });
+
+  it('routes a draft flag on a model without draft mode, as motion does', () => {
+    expect(
+      studioGatewayTarget(
+        { model: 'grok_imagine_video_1_5', draft: true },
+        'xai'
+      )
+    ).toEqual({ provider: 'grok', modelId: 'grok-imagine-video-1.5' });
+  });
 });

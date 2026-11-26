@@ -59,8 +59,13 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
 
 const { inProcessGateway, inProcessPoller, releaseInProcessJob } =
   await import('./in-process');
-const { openstoryAudio, openstoryImage, openstoryVideo, openstoryVideoStatus } =
-  await import('./index');
+const {
+  doneVideoJob,
+  openstoryAudio,
+  openstoryImage,
+  openstoryVideo,
+  openstoryVideoStatus,
+} = await import('./index');
 const submitJob = await import('../submit-job');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
@@ -290,6 +295,17 @@ describe('the openstory adapter, in-process', () => {
     expect(store).toHaveBeenCalledTimes(1);
     const job = await onlyJob(VIDEO.id);
     expect(job).toMatchObject({ status: 'succeeded', providerJobId: 'xai-1' });
+    // A submit replayed after the job finished answers `done:`, still naming the job so its charge can be read.
+    const replayed = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-3:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    expect(doneVideoJob(replayed.jobId)?.jobId).toBe(job.id);
+    expect(start).toHaveBeenCalledOnce();
     expect(await chargesFor(job.id)).toEqual({
       debits: 1,
       linesMicros: 20_000,

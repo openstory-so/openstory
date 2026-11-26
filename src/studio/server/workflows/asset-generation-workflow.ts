@@ -76,7 +76,7 @@ function directFal(
       const start = await fal.start(target, body, credentials);
       if ('jobId' in start) return { kind: 'queued', handle: start.jobId };
       const stored = await storeGatewayResult(start.result, store);
-      return { kind: 'done', outputs: stored.outputs };
+      return { kind: 'done', jobId: null, outputs: stored.outputs };
     },
     poll: async (handle) => {
       const polled = await fal.poll(target, handle, credentials);

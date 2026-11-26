@@ -78,6 +78,7 @@ import {
 import {
   createNativeGeminiVideoAdapter,
   createNativeGrokVideoAdapter,
+  isArkDraftTask,
   resolveFalKey,
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
@@ -153,7 +154,7 @@ async function buildStudioImageModeInput(
       generateAudio: options.generateAudio,
     });
     return {
-      endpointId: studioFalEndpointId(modelKey, mode),
+      endpointId: studioVideoEndpointId(modelKey, mode),
       built: {
         ...built,
         modelOptions: {
@@ -215,7 +216,8 @@ async function submitFalStudioVideoJob(
   options: SubmitStudioVideoOptions,
   modelKey: ImageToVideoModel,
   mode: StudioVideoMode,
-  threadId: string
+  threadId: string,
+  arkTask: boolean
 ): Promise<StudioVideoJobSubmission> {
   // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
   // offered where Ark is claimed, so this is a BYOK-fal organization or a bug.
@@ -234,7 +236,7 @@ async function submitFalStudioVideoJob(
     );
     const sent = await sendVideoJob({
       gateway: options.gateway,
-      draft: Boolean(options.draft || options.finalFromDraftTaskId),
+      draft: arkTask,
       provider: 'fal',
       via: 'fal',
       modelId: endpointId,
@@ -261,10 +263,10 @@ async function submitFalStudioVideoJob(
     generateAudio: options.generateAudio,
   });
   const key = await resolveFalKey(options.credentials);
-  const endpointId = studioFalEndpointId(modelKey, mode);
+  const endpointId = studioVideoEndpointId(modelKey, mode);
   const sent = await sendVideoJob({
     gateway: options.gateway,
-    draft: Boolean(options.draft || options.finalFromDraftTaskId),
+    draft: arkTask,
     provider: 'fal',
     via: 'fal',
     modelId: endpointId,
@@ -443,15 +445,8 @@ function studioModelId(
     case 'byteplus':
       return getBytePlusVideoModelId(model);
     case 'fal':
-      return studioFalEndpointId(model, mode);
+      return studioVideoEndpointId(model, mode);
   }
-}
-
-/** The fal endpoint for a studio mode. */
-function studioFalEndpointId(model: ImageToVideoModel, mode: StudioVideoMode) {
-  return mode === 'frames'
-    ? IMAGE_TO_VIDEO_MODELS[model].id
-    : studioVideoEndpointId(model, mode);
 }
 
 /** The model a studio submit on this via would send through the gateway, for the route step; null where it never goes (#2435). */
@@ -463,8 +458,7 @@ export function studioGatewayTarget(
   via: MediaVia
 ): GatewayRouteTarget | null {
   const provider = videoGatewayProvider(via);
-  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
-  if (!provider || options.draft || options.finalFromDraftTaskId) return null;
+  if (!provider || isArkDraftTask(options.model, options)) return null;
   const modelId = studioModelId(options.model, options.mode ?? 'text', via);
   return modelId ? { provider, modelId } : null;
 }
@@ -544,6 +538,7 @@ async function submitStudioVideoJobOnce(
 
   // Draft mode is an Ark feature (#1756) — see `submitMotionJob`.
   const draft = Boolean(options.draft) && supportsDraftMode(modelKey);
+  const arkTask = isArkDraftTask(modelKey, options);
   if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
     throw new Error(
       `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this organization`
@@ -589,7 +584,7 @@ async function submitStudioVideoJobOnce(
         ];
         const sent = await sendVideoJob({
           gateway: options.gateway,
-          draft: Boolean(options.draft || options.finalFromDraftTaskId),
+          draft: arkTask,
           provider: 'grok',
           via: 'xai',
           modelId: NATIVE_GROK_VIDEO_MODEL,
@@ -623,7 +618,7 @@ async function submitStudioVideoJobOnce(
       });
       const sent = await sendVideoJob({
         gateway: options.gateway,
-        draft: Boolean(options.draft || options.finalFromDraftTaskId),
+        draft: arkTask,
         provider: 'grok',
         via: 'xai',
         modelId: NATIVE_GROK_VIDEO_MODEL,
@@ -777,7 +772,7 @@ async function submitStudioVideoJobOnce(
       try {
         const job = await sendVideoJob({
           gateway: options.gateway,
-          draft: Boolean(options.draft || options.finalFromDraftTaskId),
+          draft: arkTask,
           provider: 'byteplus',
           via: 'byteplus',
           modelId,
@@ -827,7 +822,13 @@ async function submitStudioVideoJobOnce(
       }
     }
     case 'fal': {
-      return submitFalStudioVideoJob(options, modelKey, mode, threadId);
+      return submitFalStudioVideoJob(
+        options,
+        modelKey,
+        mode,
+        threadId,
+        arkTask
+      );
     }
   }
 }
