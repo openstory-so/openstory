@@ -19,6 +19,7 @@ import {
   gatewayProviderOfVia,
   type GatewayJobInput,
   type GatewayProvider,
+  jsonObjectSchema,
 } from '@/gateway/schema';
 import {
   doneVideoJob,
@@ -78,7 +79,6 @@ import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { z } from 'zod';
 import { getVideoJobStatus } from './video-job-status';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
 
@@ -206,13 +206,13 @@ export type VideoSend = (
   fetch?: typeof globalThis.fetch
 ) => Promise<{ jobId: string }>;
 
-const jsonBody = z.record(z.string(), z.json());
-
 /** The exact body the provider adapter would send, read off its one request; nothing leaves. */
 async function captureVideoBody(send: VideoSend): Promise<GatewayJobInput> {
   let body: GatewayJobInput | undefined;
   const capture: typeof globalThis.fetch = async (input, init) => {
-    body = jsonBody.parse(JSON.parse(await new Request(input, init).text()));
+    body = jsonObjectSchema.parse(
+      JSON.parse(await new Request(input, init).text())
+    );
     throw new Error('Captured, not sent');
   };
   try {
@@ -258,7 +258,7 @@ export async function sendVideoJob(params: {
   const gateway = params.draft ? null : params.gateway;
   if (gateway) {
     // Held and checked with stored URLs absolute and stable; fal's upload waits for the start.
-    const body = jsonBody.parse(
+    const body = jsonObjectSchema.parse(
       stableMediaBody(
         await captureVideoBody(params.send),
         gateway.scopedDb.organizationId
@@ -287,7 +287,7 @@ export async function sendVideoJob(params: {
         wireBody:
           params.provider === 'fal'
             ? async (held) =>
-                jsonBody.parse(
+                jsonObjectSchema.parse(
                   await fetchableFalBody(held, gateway.scopedDb.organizationId)
                 )
             : async (held) => held,

@@ -3,7 +3,7 @@
 import { authWithOrganizationRequestMiddleware } from '@/platform/middleware.fn';
 import { NotFoundError } from '@/platform/errors';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
-import { isGatewayProvider } from '@/gateway/schema';
+import { isGatewayProvider, jsonObjectSchema } from '@/gateway/schema';
 import { gatewayJobResource } from '@/gateway/server/read-job';
 import { assertGatewayRate } from '@/gateway/server/rate-limit';
 import {
@@ -11,9 +11,6 @@ import {
   submitGatewayJob,
 } from '@/gateway/server/submit-job';
 import { createFileRoute } from '@tanstack/react-router';
-import { z } from 'zod';
-
-const bodySchema = z.record(z.string(), z.json());
 
 export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
   server: {
@@ -35,7 +32,7 @@ export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
               'Request body must be valid JSON.'
             );
           }
-          const body = bodySchema.parse(json);
+          const body = jsonObjectSchema.parse(json);
           await assertGatewayRate(context.organizationId, 'calls');
           const { job } = await submitGatewayJob(
             { provider, modelId, body },

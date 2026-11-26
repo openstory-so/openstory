@@ -8,6 +8,7 @@ import {
   TEXT_GATEWAY_PROVIDERS,
   type GatewayProvider,
   type TextGatewayProvider,
+  jsonObjectSchema,
 } from '@/gateway/schema';
 import { gatewayModels } from '@/platform/server/db/schema';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
@@ -22,7 +23,7 @@ export const storedModelSchema = z.object({
   kind: z.enum(GATEWAY_JOB_KINDS),
   endpointId: z.string(),
   card: rateCardSchema,
-  inputSchema: z.record(z.string(), z.json()),
+  inputSchema: jsonObjectSchema,
 }) satisfies z.ZodType<GatewayModel>;
 
 const storedTextModelSchema = storedModelSchema

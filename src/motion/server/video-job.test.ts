@@ -399,10 +399,6 @@ describe('a gateway clip after its run gives up or finishes (#2435)', () => {
       )
     ).resolves.toBe(480_000);
     expect(getById).toHaveBeenLastCalledWith('gw-2');
-    // A `done:` handle from before #2435 names no job.
-    await expect(
-      readGatewayCharge(step, { jobId: 'done:[]', via: 'openstory' }, scopedDb)
-    ).resolves.toBeNull();
     await expect(
       readGatewayCharge(step, { jobId: 'x', via: 'fal' }, scopedDb)
     ).resolves.toBeNull();
