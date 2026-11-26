@@ -1516,6 +1516,17 @@ there.
   throws on any touch). The hosted charge is shown, never debited: a clip's
   `costMicros` comes from the hosted job document (`remoteJobCharge`), and
   every finished job logs its id and charge.
+- **Stored inputs in their stable form.** Since #2434 a body carries stored
+  media as `stableMediaUrl` writes it: the CDN URL, else the app's absolute
+  `/r2/` URL. `withUploadedMedia` reads a string as this install's file only
+  when it is exactly that form (or a relative `/r2/`) of its own key
+  (`localStorageKey`), so another host with an `/r2/` path is sent as it is.
+  The ownership check, the provenance lookup and the upload all use that key.
+- **Quotes on a remote route.** `withGatewayImageQuotes` adds holds only for
+  `openstory` routes, so a remote still quotes the install's own fal row when
+  it has one and nothing otherwise; the hosted side prices, holds and charges
+  (with its platform fee), and with no platform key here the run's preflight
+  holds nothing.
 - **The handle is opaque.** A queued remote job's handle is `remote:<hosted job
   id>` (`remoteHandle`, `src/gateway/server/remote-config.ts`), never the run
   as JSON. `gatewayPoller(handle)` polls it over HTTP; `gatewayRunOf` answers

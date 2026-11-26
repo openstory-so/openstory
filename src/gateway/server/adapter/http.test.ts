@@ -8,6 +8,7 @@ const KEY = `osk_${'k'.repeat(64)}`;
 const env: Record<string, string | undefined> = {
   OPENSTORY_API_KEY: KEY,
   OPENSTORY_GATEWAY_URL: 'https://hosted.example',
+  VITE_APP_URL: 'https://install.example',
 };
 vi.doMock('#env', () => ({ getEnv: () => env }));
 /** The install's provenance records; every other key reads as a stored image. */
@@ -389,6 +390,58 @@ describe('the HTTP transport', () => {
         server.restore();
       }
     });
+  });
+
+  it('reads stored files in their stable forms (app URL, CDN) as local, and any other host as not', async () => {
+    const forms = [
+      'https://install.example/r2/characters/o/sheet.png',
+      'https://cdn.install.example/characters/o/sheet.png',
+    ];
+    try {
+      for (const [i, local] of forms.entries()) {
+        // The app URL is the stable form only with no CDN.
+        env.R2_PUBLIC_STORAGE_DOMAIN =
+          i === 0 ? undefined : 'cdn.install.example';
+        const server = hosted({
+          '/api/v1/gateway/uploads': [
+            json(
+              { url: 'https://hosted.example/r2/gateway-uploads/o/a.png' },
+              201
+            ),
+          ],
+          '/api/v1/gateway/grok/grok-imagine-image': [json(job('queued'), 202)],
+        });
+        try {
+          const external = 'https://media.example.com/r2/characters/o/x.png';
+          await transport().transport.submit(
+            { image: local, other: external },
+            `run-${i}:still`
+          );
+          const submit = server.calls.at(-1);
+          expect(JSON.parse(z.string().parse(submit?.init.body))).toEqual({
+            image: 'https://hosted.example/r2/gateway-uploads/o/a.png',
+            other: external,
+          });
+        } finally {
+          server.restore();
+        }
+      }
+      env.R2_PUBLIC_STORAGE_DOMAIN = undefined;
+      const server = hosted({});
+      try {
+        await expect(
+          transport().transport.submit(
+            { image: 'https://install.example/r2/characters/other-org/a.png' },
+            'run-3:still'
+          )
+        ).rejects.toThrow('An input file belongs to another organization');
+        expect(server.calls).toHaveLength(0);
+      } finally {
+        server.restore();
+      }
+    } finally {
+      env.R2_PUBLIC_STORAGE_DOMAIN = undefined;
+    }
   });
 
   it('refuses a model id or job id that could retarget the request', async () => {

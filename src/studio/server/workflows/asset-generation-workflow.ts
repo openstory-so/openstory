@@ -137,6 +137,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
                 store,
                 uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
                 reservation: null,
+                wireBody: async (body) => body,
               }
             ).transport
           : directFal(scopedDb, route.endpointId, store);
