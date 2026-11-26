@@ -310,7 +310,10 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    reserved, and the run triggered. The run's payload carries the body, the
    provider endpoint and **the rate card as it read at submit**; the run
    reads no job row and does not fetch modelschemas.
-2. **Run:** `start` sends the body. A provider that answers at once (images
+2. **Run:** `start` claims the row (`markRunning`) and sends the body; a
+   replayed `start` that finds the row already `running` fails and releases
+   rather than send again (`claimAndStartGatewayRun`, shared with the
+   in-process transport). A provider that answers at once (images
    on Grok, BytePlus and Gemini) has its media stored to R2 inside that step
    (#1645). A queued job (fal, Grok and BytePlus video) has its provider id
    stamped on the row, then is polled in batches; the batch that sees it
@@ -324,9 +327,10 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    trigger itself failed). The base class zeroes the hold
    (`ownsReservation`). A settled job is never marked failed.
 
-A provider `4xx` is the answer to that body and is not retried; `408`, `429`
-and `5xx` retry the step. Unlike Studio, a run does not resubmit after a
-content flag or after Ark's InternalServiceError.
+A start's error follows one rule, in § Audio on the gateway (the start-error
+paragraph): only a start the provider answered without running is sent
+again. Unlike Studio, a run does not resubmit after a content flag or after
+Ark's InternalServiceError.
 
 ### Keys and money
 
@@ -1133,17 +1137,21 @@ hold until the hold expired (a settled job now zeroes its own hold in the
 settle step), and the 500 left its job `running` with its hold. Now a
 start's error is read by whether the driver answers at once
 (`answersAtOnce`: Seed, Ark images, Grok images, Gemini, ElevenLabs) or
-queues a job (Ark tasks, Grok video, fal). A 4xx fails and releases. A 429,
-or the origin's own 500 or 503 from a start that answers at once, ran
-nothing: in-process the job goes back to `queued` with its hold and the
-retried step sends it again under the same key. A 500 or 503 from a queued
-start may have queued the job, so it fails and releases at once. A proxy's
-502, 504 or 52x (Cloudflare in front of xAI or the Seed edge) can follow a
-request that finished and was billed, so it is treated like a timeout or a
-dropped connection: the retried step finds the job `running` with no
-provider id and fails closed. fal's SDK errors carry `status`, not
-`statusCode`, so a fal submit error takes that last path and is never
-sent twice.
+queues a job (Ark tasks, Grok video, fal). The rule, for both the public
+run and the in-process transport (`claimAndStartGatewayRun` in
+`phases.ts`):
+
+- A 4xx fails and releases.
+- A 429 from any start, or the origin's own 500 or 503 from a start that
+  answers at once, ran nothing: the job goes back to `queued` with its hold
+  and the retried step sends it again under the same key.
+- Anything else fails and releases, and is never sent twice: any 5xx from a
+  queued start, a proxy's 502, 504 or 52x (Cloudflare in front of xAI or the
+  Seed edge, which can follow a request that finished and was billed), a
+  timeout or a dropped connection. A 500 or 503 from a queued start fails at
+  once; the rest fail when the retried step finds the job `running` with no
+  provider id. fal's SDK errors carry `status`, not `statusCode`, so a fal
+  submit error takes that last path.
 
 ## Not in this stack
 
