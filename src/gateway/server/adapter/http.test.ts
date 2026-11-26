@@ -151,6 +151,8 @@ describe('the HTTP transport', () => {
           `Bearer ${KEY}`
         );
         expect(call.url).not.toContain(KEY);
+        // A redirect would carry the key to another origin: it fails instead.
+        expect(call.init.redirect).toBe('error');
       }
       expect(server.calls[2]?.url).toContain('?wait=');
     } finally {

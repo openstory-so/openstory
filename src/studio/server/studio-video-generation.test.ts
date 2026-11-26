@@ -186,7 +186,7 @@ describe('submitStudioVideoJob', () => {
     expect(result.via).toBe('openstory');
     expect(mockFalVideo).toHaveBeenLastCalledWith(
       target.modelId,
-      expect.objectContaining({ apiKey: 'hosted-gateway' })
+      expect.objectContaining({ apiKey: '' })
     );
     expect(remoteSubmits).toHaveLength(1);
     expect(JSON.stringify(remoteSubmits[0]?.body)).toContain(

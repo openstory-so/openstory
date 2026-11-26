@@ -100,6 +100,8 @@ export async function hostedFetch(
   const response = await fetch(`${base}/api/v1/gateway/${path}`, {
     ...init,
     headers: { ...init.headers, authorization: `Bearer ${key}` },
+    // The hosted API never redirects; a hop must not carry the key.
+    redirect: 'error',
   });
   if (response.ok) return response;
   const text = await response.text();

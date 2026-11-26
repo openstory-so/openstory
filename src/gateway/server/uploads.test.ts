@@ -235,7 +235,8 @@ describe('gateway uploads', () => {
     });
 
     it('when the stream carries more than it declared', async () => {
-      const lying = new Request('https://openstory.so/api/v1/gateway/uploads', {
+      // Node needs `duplex` for a stream body; workerd's RequestInit does not name it.
+      const init = {
         method: 'POST',
         headers: {
           'content-type': 'image/png',
@@ -250,7 +251,11 @@ describe('gateway uploads', () => {
           },
         }),
         duplex: 'half',
-      });
+      };
+      const lying = new Request(
+        'https://openstory.so/api/v1/gateway/uploads',
+        init
+      );
       await expect(storeGatewayUpload(scopedDb, lying)).rejects.toThrow(
         'longer than its Content-Length'
       );

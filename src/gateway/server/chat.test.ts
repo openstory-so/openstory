@@ -52,6 +52,14 @@ describe('streamGatewayChat', () => {
       [big, 'above'],
       [{ type: 'string' }, 'type "object"'],
       [{ type: 'object', properties: { a: { type: 7 } } }, 'not a JSON Schema'],
+      // A remote $ref is never fetched: zod refuses it while compiling.
+      [
+        {
+          type: 'object',
+          properties: { a: { $ref: 'https://example.com/s.json' } },
+        },
+        'not a JSON Schema',
+      ],
     ] as const) {
       const parsed = gatewayChatBodySchema.safeParse({ ...body, outputSchema });
       expect(parsed.success).toBe(false);
@@ -67,5 +75,14 @@ describe('streamGatewayChat', () => {
         },
       }).success
     ).toBe(true);
+    // A self-referencing schema compiles once at the body (zod builds it lazily) and is held as usual.
+    const tree = gatewayChatBodySchema.safeParse({
+      ...body,
+      outputSchema: {
+        type: 'object',
+        properties: { child: { $ref: '#' } },
+      },
+    });
+    expect(tree.success).toBe(true);
   });
 });

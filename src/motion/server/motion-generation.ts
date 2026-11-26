@@ -74,6 +74,7 @@ import {
   createNativeGeminiVideoAdapter,
   createNativeGrokVideoAdapter,
   isArkDraftTask,
+  falApiKey,
   resolveFalKey,
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
@@ -300,9 +301,7 @@ async function prepareFalMotionJob(
     provider: 'fal',
     modelId: endpoint.endpointId,
   });
-  const key = remote
-    ? { key: 'hosted-gateway', source: 'platform' as const }
-    : await resolveFalKey(options.credentials);
+  const key = remote ? null : await resolveFalKey(options.credentials);
 
   // Built on the stored URLs; the send makes them fetchable (`fetchableFalFetch`), so the gateway holds the stored body.
   const modelInput = buildMotionRequest(
@@ -316,21 +315,25 @@ async function prepareFalMotionJob(
   }
 
   return {
-    send: (fetch = fetchableFalFetch(key.key, workersSafeFetch)) =>
-      generateVideo({
+    send: (capture) => {
+      const apiKey = falApiKey(key, capture);
+      return generateVideo({
         adapter: falVideo(endpoint.endpointId, {
-          apiKey: key.key,
+          apiKey,
           // The adapter writes `prompt` back onto the body. Kling rejects that
           // field beside `multi_prompt`, so the queue fetch takes it off (#2271).
-          fetch: stripPackedKlingPrompt(fetch),
+          fetch: stripPackedKlingPrompt(
+            capture ?? fetchableFalFetch(apiKey, workersSafeFetch)
+          ),
         }),
         prompt: optimisedPrompt,
         modelOptions,
         threadId,
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
-      }),
-    usedOwnKey: key.source === 'organization',
+      });
+    },
+    usedOwnKey: key?.source === 'organization',
     endpointId: endpoint.endpointId,
   };
 }

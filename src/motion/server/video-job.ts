@@ -90,6 +90,16 @@ export async function resolveFalKey(
   return { key: getEnv().FAL_KEY, source: 'platform' };
 }
 
+/** A remote route resolves no fal key: its `send` only runs under the body capture, which sends nothing. */
+export function falApiKey(
+  key: ResolvedApiKey | null,
+  capture: typeof globalThis.fetch | undefined
+): string {
+  if (key) return key.key;
+  if (capture) return '';
+  throw new Error('A hosted-gateway clip has no local fal key');
+}
+
 export async function resolveOptionalFalKey(
   credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
@@ -330,8 +340,13 @@ export async function readGatewayCharge(
     const done = doneVideoJob(job.jobId);
     const handle = done ? done.jobId : job.jobId;
     const remote = handle ? remoteJobOf(handle) : null;
-    // The hosted organization paid: shown, never debited here.
-    if (remote) return remoteJobCharge(remote);
+    // The hosted organization paid: shown, never debited here, so an outage reads as unknown.
+    if (remote) {
+      return remoteJobCharge(remote).catch((error: unknown) => {
+        logger.warn('Could not read a hosted clip charge', { error });
+        return null;
+      });
+    }
     const jobId = done ? done.jobId : (gatewayRunOf(job.jobId)?.jobId ?? null);
     if (!jobId) {
       logger.warn('A gateway clip names no job: its charge is not recorded');

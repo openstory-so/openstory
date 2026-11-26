@@ -375,7 +375,7 @@ describe('Motion Service', () => {
       expect(result.via).toBe('openstory');
       expect(mockFalVideo).toHaveBeenLastCalledWith(
         endpointId,
-        expect.objectContaining({ apiKey: 'hosted-gateway' })
+        expect.objectContaining({ apiKey: '' })
       );
       expect(remoteSubmits).toHaveLength(1);
       expect(remoteSubmits[0]?.key).toBe('run-1:submit-motion');

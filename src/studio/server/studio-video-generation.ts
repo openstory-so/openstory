@@ -80,6 +80,7 @@ import {
   createNativeGeminiVideoAdapter,
   createNativeGrokVideoAdapter,
   isArkDraftTask,
+  falApiKey,
   resolveFalKey,
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
@@ -228,9 +229,7 @@ async function submitFalStudioVideoJob(
     provider: 'fal',
     modelId: studioVideoEndpointId(modelKey, mode),
   });
-  const key = remote
-    ? { key: 'hosted-gateway', source: 'platform' as const }
-    : await resolveFalKey(options.credentials);
+  const key = remote ? null : await resolveFalKey(options.credentials);
   if (mode !== 'text') {
     const { endpointId, built } = buildStudioImageModeInput(
       options,
@@ -244,16 +243,21 @@ async function submitFalStudioVideoJob(
       via: 'fal',
       modelId: endpointId,
       threadId,
-      usedOwnKey: key.source === 'organization',
-      send: (fetch = fetchableFalFetch(key.key, workersSafeFetch)) =>
-        generateVideo({
-          adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+      usedOwnKey: key?.source === 'organization',
+      send: (capture) => {
+        const apiKey = falApiKey(key, capture);
+        return generateVideo({
+          adapter: falVideo(endpointId, {
+            apiKey,
+            fetch: capture ?? fetchableFalFetch(apiKey, workersSafeFetch),
+          }),
           prompt: built.prompt,
           modelOptions: built.modelOptions,
           timeout: FAL_REQUEST_TIMEOUT_MS,
           threadId,
           debug: false,
-        }),
+        });
+      },
     });
     return { ...sent, modelKey, endpointId, threadId };
   }
@@ -273,10 +277,10 @@ async function submitFalStudioVideoJob(
     via: 'fal',
     modelId: endpointId,
     threadId,
-    usedOwnKey: key.source === 'organization',
+    usedOwnKey: key?.source === 'organization',
     send: (fetch) =>
       generateVideo({
-        adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+        adapter: falVideo(endpointId, { apiKey: falApiKey(key, fetch), fetch }),
         prompt: built.prompt,
         modelOptions: built.modelOptions,
         timeout: FAL_REQUEST_TIMEOUT_MS,
