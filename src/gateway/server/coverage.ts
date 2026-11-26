@@ -41,6 +41,8 @@ export type Coverage = {
   hold: string | null;
   /** Why the card cannot charge a typical usage, or null. */
   charge: string | null;
+  /** Why the card cannot hold and charge the body the product's own builder sends; null when it can, undefined when no builder body is known. */
+  product?: string | null;
   /** The typical call priced, when there is a card. */
   call: {
     request: Record<string, JsonValue>;
@@ -103,7 +105,7 @@ function sampleValue(def: z.infer<typeof inputDefSchema>): JsonValue {
     case 'boolean':
       return false;
     case 'count':
-      return [];
+      return ['https://media.example.com/reference.png'];
     default:
       return 5;
   }
@@ -136,7 +138,11 @@ function holdFailure(
   return { failure: 'too many required fields', request: filled };
 }
 
-export function modelCoverage(model: RecordedModel): Coverage {
+/** `body` is what the product's builder sends this model, when known. */
+export function modelCoverage(
+  model: RecordedModel,
+  body?: Record<string, JsonValue>
+): Coverage {
   const { provider, id, record, schema } = model;
   const parsed = rateCardSchema.safeParse(record?.pricing);
   const base = {
@@ -148,7 +154,14 @@ export function modelCoverage(model: RecordedModel): Coverage {
   };
   if (!parsed.success) {
     const reason = record ? 'no rate card' : 'not on modelschemas';
-    return { ...base, card: false, hold: reason, charge: reason, call: null };
+    return {
+      ...base,
+      card: false,
+      hold: reason,
+      charge: reason,
+      call: null,
+      ...(body && { product: reason }),
+    };
   }
   const card = parsed.data;
   const typical = typicalCall(card);
@@ -159,13 +172,18 @@ export function modelCoverage(model: RecordedModel): Coverage {
     hold: failure,
     charge: failure ?? chargeFailure(card, request, typical.usage),
     call: { request, usage: typical.usage },
+    ...(body && {
+      product:
+        chargeFailure(card, body) ?? chargeFailure(card, body, typical.usage),
+    }),
   };
 }
 
+/** Why pricing this request (held when `usage` is absent, charged when present) is refused, or null. */
 function chargeFailure(
   card: RateCard,
   request: Record<string, JsonValue>,
-  usage: Record<string, unknown>
+  usage?: Record<string, unknown>
 ): string | null {
   try {
     priceGatewayJob(card, request, usage);
@@ -175,14 +193,24 @@ function chargeFailure(
   }
 }
 
-/** The first thing that stops the gateway serving this model, or null. */
-export function coverageGap(coverage: Coverage): string | null {
+function catalogGap(coverage: Coverage): string | null {
   if (!coverage.found) return 'not on modelschemas';
   if (coverage.answersAs !== coverage.id) {
     return `modelschemas answers as ${coverage.answersAs}`;
   }
   if (!coverage.schema) return 'request schema does not load';
-  return coverage.hold ?? coverage.charge;
+  return null;
+}
+
+/** The first thing that stops the gateway serving a typical request, or null. */
+export function coverageGap(coverage: Coverage): string | null {
+  return catalogGap(coverage) ?? coverage.hold ?? coverage.charge;
+}
+
+/** The same for the product's own body; undefined when no builder body is known. */
+export function productGap(coverage: Coverage): string | null | undefined {
+  if (coverage.product === undefined) return undefined;
+  return catalogGap(coverage) ?? coverage.product;
 }
 
 /** Gaps the doc does not list: a gap's paragraph names the model and its upstream issue. */
@@ -193,7 +221,7 @@ export function unlistedGaps(
   const paragraphs = doc.split(/\n(?=- )|\n\n/);
   return coverages.filter(
     (coverage) =>
-      coverageGap(coverage) !== null &&
+      (coverageGap(coverage) !== null || productGap(coverage)) &&
       !paragraphs.some(
         (paragraph) =>
           paragraph.includes(`\`${coverage.provider}/${coverage.id}\``) &&

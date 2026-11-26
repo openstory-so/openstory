@@ -4,7 +4,12 @@
  *   bun scripts/check-gateway-coverage.ts            # live modelschemas
  *   bun scripts/check-gateway-coverage.ts --record   # live, and rewrite the recorded fixture
  *   bun scripts/check-gateway-coverage.ts --recorded # the recorded fixture, no network
- *   add --json for [{ provider, id, holdable, reason }] on stdout instead of the table
+ *   bun scripts/check-gateway-coverage.ts --drift    # live, and exit 1 where it differs from the fixture
+ *   add --json for [{ provider, id, holdable, reason, product }] on stdout instead of the table
+ *
+ * Two numbers: holdable on a typical request (the card's own example), and
+ * holdable on the body the product's own builder sends, where one is known
+ * (`product`: true, false, or null for no builder body).
  *
  * Two requests a model: set MODELSCHEMAS_API_KEY (anonymous is 60 an hour).
  * Exits 1 when a gap is not listed in docs/architecture/model-gateway.md.
@@ -12,9 +17,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { productGatewayModels } from '@/gateway/product-models';
+import { productBodies } from '@/gateway/server/coverage-bodies';
 import {
   coverageGap,
   modelCoverage,
+  productGap,
   type RecordedModel,
   recordedModelSchema,
   unlistedGaps,
@@ -68,15 +75,48 @@ const models = recorded
 if (process.argv.includes('--record')) {
   writeFileSync(FIXTURE, `${JSON.stringify(models, null, 2)}\n`);
 }
+const drifted = process.argv.includes('--drift')
+  ? (() => {
+      const fixture = new Map(
+        z
+          .array(recordedModelSchema)
+          .parse(JSON.parse(readFileSync(FIXTURE, 'utf8')))
+          .map((m) => [`${m.provider}/${m.id}`, JSON.stringify(m)])
+      );
+      return models
+        .map((m) => `${m.provider}/${m.id}`)
+        .filter((key, i) => fixture.get(key) !== JSON.stringify(models[i]));
+    })()
+  : [];
+for (const key of drifted) {
+  console.error(`Differs from coverage.fixture.json (re-record): ${key}`);
+}
 
-const coverages = models.map(modelCoverage);
+const bodies = productBodies();
+const coverages = models.map((m) =>
+  modelCoverage(m, bodies.get(`${m.provider}/${m.id}`))
+);
 const gaps = coverages.filter((c) => coverageGap(c) !== null);
+const built = coverages.filter((c) => productGap(c) !== undefined);
+const builtHeld = built.filter((c) => productGap(c) === null);
+const summary = [
+  `${coverages.length - gaps.length}/${coverages.length} hold and charge a typical request.`,
+  `${builtHeld.length}/${built.length} hold and charge the product's own body (${coverages.length - built.length} have no builder body here).`,
+];
 if (process.argv.includes('--json')) {
   console.log(
     JSON.stringify(
       coverages.map((c) => {
         const reason = coverageGap(c);
-        return { provider: c.provider, id: c.id, holdable: !reason, reason };
+        const product = productGap(c);
+        return {
+          provider: c.provider,
+          id: c.id,
+          holdable: !reason,
+          reason,
+          product: product === undefined ? null : product === null,
+          productReason: product ?? null,
+        };
       }),
       null,
       2
@@ -84,22 +124,24 @@ if (process.argv.includes('--json')) {
   );
 } else {
   const mark = (ok: boolean) => (ok ? 'yes' : 'no');
-  console.log('| Model | Found | Schema | Card | Hold | Charge |');
-  console.log('| --- | --- | --- | --- | --- | --- |');
+  console.log(
+    '| Model | Found | Schema | Card | Hold | Charge | Product body |'
+  );
+  console.log('| --- | --- | --- | --- | --- | --- | --- |');
   for (const c of coverages) {
+    const product = productGap(c);
     console.log(
-      `| \`${c.provider}/${c.id}\` | ${mark(c.found)} | ${mark(c.schema)} | ${mark(c.card)} | ${c.hold ?? 'yes'} | ${c.charge ?? 'yes'} |`
+      `| \`${c.provider}/${c.id}\` | ${mark(c.found)} | ${mark(c.schema)} | ${mark(c.card)} | ${c.hold ?? 'yes'} | ${c.charge ?? 'yes'} | ${product === undefined ? 'no builder' : (product ?? 'yes')} |`
     );
   }
-  console.log(
-    `\n${coverages.length - gaps.length}/${coverages.length} can be held and charged.`
-  );
+  console.log(`\n${summary.join('\n')}`);
 }
 
+if (process.argv.includes('--json')) console.error(summary.join('\n'));
 const unlisted = unlistedGaps(coverages, readFileSync(DOC, 'utf8'));
 for (const c of unlisted) {
   console.error(
-    `Not listed in model-gateway.md: ${c.provider}/${c.id}: ${coverageGap(c)}`
+    `Not listed in model-gateway.md: ${c.provider}/${c.id}: ${coverageGap(c) ?? productGap(c)}`
   );
 }
-process.exit(unlisted.length > 0 ? 1 : 0);
+process.exit(unlisted.length > 0 || drifted.length > 0 ? 1 : 0);

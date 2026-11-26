@@ -5,12 +5,17 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { productGatewayModels } from '@/gateway/product-models';
 import { z } from 'zod';
+import { usdToMicros } from '@/billing/money';
+import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import {
   coverageGap,
   modelCoverage,
+  productGap,
   recordedModelSchema,
   unlistedGaps,
 } from './coverage';
+import { productBodies } from './coverage-bodies';
+import { priceGatewayJob } from './price';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 const recorded = z
@@ -23,12 +28,16 @@ const recorded = z
       )
     )
   );
-const coverages = recorded.map(modelCoverage);
-const gapOf = (key: string) => {
+const bodies = productBodies();
+const coverages = recorded.map((m) =>
+  modelCoverage(m, bodies.get(`${m.provider}/${m.id}`))
+);
+const coverageOf = (key: string) => {
   const coverage = coverages.find((c) => `${c.provider}/${c.id}` === key);
   if (!coverage) throw new Error(`${key} is not recorded`);
-  return coverageGap(coverage);
+  return coverage;
 };
+const gapOf = (key: string) => coverageGap(coverageOf(key));
 
 describe('gateway coverage', () => {
   it('has a recording for every product model; re-record when the list changes', () => {
@@ -68,5 +77,31 @@ describe('gateway coverage', () => {
       'input_images'
     );
     expect(gapOf('fal/google/nano-banana-2.1')).toContain('evaluated to 0');
+  });
+
+  it('refuses the body the product sends where the card types a field differently (TanStack/schemas#766)', () => {
+    const refused = {
+      'fal/xai/grok-imagine-video/v1.5/image-to-video': /image_url.*boolean/,
+      'fal/fal-ai/kling-video/v3/pro/image-to-video': /generate_audio.*true/,
+      'fal/minimax/h3-max/image-to-video': /resolution.*"768P"/,
+      'fal/minimax/h3-max/text-to-video': /resolution.*"768P"/,
+      'fal/minimax/h3-max/reference-to-video': /resolution.*"768P"/,
+    };
+    for (const [key, reason] of Object.entries(refused)) {
+      expect([key, gapOf(key)]).toEqual([key, null]);
+      expect(productGap(coverageOf(key))).toMatch(reason);
+    }
+  });
+
+  it('holds native Grok video 1.5 at the 480p rate whatever size the product asks (TanStack/schemas#767)', () => {
+    const record = recorded.find((m) => m.id === 'grok-imagine-video-1.5');
+    const card = rateCardSchema.parse(record?.record?.pricing);
+    const body = bodies.get('grok/grok-imagine-video-1.5');
+    if (!body) throw new Error('no Grok video body');
+    expect(body.size).toBe('16:9_720p');
+    expect(priceGatewayJob(card, body)).toBe(usdToMicros(0.4));
+    expect(priceGatewayJob(card, { ...body, size: '16:9_480p' })).toBe(
+      priceGatewayJob(card, body)
+    );
   });
 });

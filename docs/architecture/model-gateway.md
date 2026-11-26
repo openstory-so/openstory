@@ -187,9 +187,14 @@ Not served, and why:
 
 ### Product models that cannot be held (#2432)
 
-`bun scripts/check-gateway-coverage.ts` prices a typical request for every
-model the product uses (`productGatewayModels()`) against its card; `--json`
-prints `{ provider, id, holdable, reason }` for each, and `--recorded` reads
+`bun scripts/check-gateway-coverage.ts` prices two bodies for every model the
+product uses (`productGatewayModels()`) against its card: a typical request
+(the card's own example) and, where a builder is wired
+(`coverage-bodies.ts`: fal stills and motion, native Grok video), the body
+the product sends. On the recording: 43 of 75 hold a typical request; 23 of
+57 hold the product's body. `--json` prints
+`{ provider, id, holdable, reason, product, productReason }` for each, and
+`--recorded` reads
 `src/gateway/server/coverage.fixture.json` (recorded 2026-11-26) with no
 network. `coverage.test.ts` fails when a gap is not listed here with its
 upstream issue. Each stays refused until its card is
@@ -223,7 +228,7 @@ fixed upstream; no local estimate, sibling price or guess stands in.
   `byteplus/dreamina-seedance-2-0-mini-260615`: `input_video` has no
   estimate. TanStack/schemas#764
 - `fal/fal-ai/sync-lipsync/v3` (`minutes`), `gemini/gemini-omni-1.2-flash`
-  (`input_tokens`): usage-only cards with no estimate. TanStack/schemas#764
+  (`input_tokens`): usage-only cards with no estimate. TanStack/schemas#765
 
 Holdable on a typical request but refused when the product sends a field the
 card types differently from the schema (TanStack/schemas#766):
@@ -236,6 +241,17 @@ at the 480p rate (TanStack/schemas#767). Text cards have no service-tier
 lever (TanStack/schemas#768). Outside the gateway's providers:
 ElevenLabs (TanStack/schemas#756, TanStack/schemas#757) and the Grok image
 edits endpoint (TanStack/schemas#758).
+
+Holdable on a typical request but refused on the product's body because the
+card lists fewer values than the schema accepts (TanStack/schemas#769):
+`fal/fal-ai/nano-banana-pro`, `fal/fal-ai/nano-banana-pro/edit` (`2K`),
+`fal/xai/grok-imagine-image/v2.0/text-to-image`,
+`fal/xai/grok-imagine-image/v2.0/edit`,
+`fal/xai/grok-imagine-image/quality/text-to-image`,
+`fal/xai/grok-imagine-image/quality/edit` (`2k`),
+`fal/bytedance/seedream/v5/pro/text-to-image`,
+`fal/bytedance/seedream/v5/pro/edit`, `fal/fal-ai/flux-2/flash/edit`
+(`image_size` presets).
 
 - **A BytePlus endpoint with no driver.** `catalog.ts` serves only
   `BYTEPLUS_ENDPOINTS`: Ark video tasks, Ark images and Seed Audio
