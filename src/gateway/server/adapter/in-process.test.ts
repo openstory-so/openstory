@@ -16,6 +16,7 @@ import {
 } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { NonRetryableError } from 'cloudflare:workflows';
 import {
   generateAudio,
   generateImage,
@@ -160,6 +161,14 @@ async function chargesFor(jobId: string) {
   };
 }
 
+async function holdLeft(jobId: string) {
+  const [hold] = await db
+    .select()
+    .from(creditReservations)
+    .where(eq(creditReservations.idempotencyKey, `gateway:${jobId}`));
+  return hold?.remainingAmount;
+}
+
 async function onlyJob(modelKey: string) {
   const rows = await db
     .select()
@@ -227,6 +236,82 @@ describe('the openstory adapter, in-process', () => {
       usageRows: 1,
       balanceDrop: 20_000,
     });
+    // What the charge did not capture goes back at once, not at the hold's TTL.
+    expect(await holdLeft(job.id)).toBe(0);
+  });
+
+  it('gives back what a usage-priced job did not spend once it is charged', async () => {
+    // Held at the 120 second estimate ($0.30), billed for 8 seconds ($0.02).
+    const card = rateCardSchema.parse({
+      inputs: {
+        original_duration: {
+          param: 'original_duration',
+          bound: 'usage',
+          kind: 'number',
+          estimate: { inputs: {}, value: 120, source: SOURCE },
+        },
+      },
+      tables: {},
+      price: { '*': [{ var: 'original_duration' }, 0.0025] },
+      examples: [],
+      source: SOURCE,
+    });
+    start.mockResolvedValueOnce({
+      result: { ...answered.result, usage: { original_duration: 8 } },
+    });
+    const usageImage = { ...IMAGE, id: 'grok-usage-image', card };
+    await generateImage({
+      threadId: 'thread-1',
+      adapter: openstoryImage(usageImage.id, transport(usageImage), {
+        idempotencyKey: 'run-7:image',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    const job = await onlyJob(usageImage.id);
+    expect(await chargesFor(job.id)).toMatchObject({ balanceDrop: 20_000 });
+    expect(await holdLeft(job.id)).toBe(0);
+  });
+
+  it('fails at once and lets the hold go when the provider answers the start with an error', async () => {
+    start.mockRejectedValueOnce(
+      Object.assign(new Error('Provider refused the request (500): busy'), {
+        statusCode: 500,
+      })
+    );
+    const submit = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-5:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('failed');
+    expect(await holdLeft(job.id)).toBe(0);
+    // A retried step reads the failed job and never sends it again.
+    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the hold on a start that may have reached the provider', async () => {
+    start.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-6:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      })
+    ).rejects.not.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('running');
+    expect(await holdLeft(job.id)).toBeGreaterThan(0);
   });
 
   it('never charges twice when the step is retried', async () => {

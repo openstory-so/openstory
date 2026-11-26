@@ -143,16 +143,26 @@ export async function startGatewayRun(
   credentials: GatewayCredentials,
   store: GatewayStore
 ): Promise<GatewayStarted> {
-  const start = await GATEWAY_DRIVERS[run.provider].start(
-    run.target,
-    run.input,
-    credentials
-  );
+  const start = await GATEWAY_DRIVERS[run.provider]
+    .start(run.target, run.input, credentials)
+    .catch((error: unknown) => {
+      throw answeredStart(error) ? new NonRetryableError(error.message) : error;
+    });
   return 'jobId' in start
     ? { providerJobId: start.jobId }
     : {
         stored: await storeGatewayResult(heldResult(run, start.result), store),
       };
+}
+
+/** A start the provider answered with an error never ran; a timeout or rate limit may have, or may pass. */
+function answeredStart(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number' &&
+    ![408, 429, 504].includes(error.statusCode)
+  );
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */
@@ -233,7 +243,10 @@ export async function finishGatewayRun(
     via: GATEWAY_VIA[run.provider],
     data: storedData(stored),
   });
-  return settleGatewayRun(scopedDb, run, stored, idempotencyKey);
+  const charged = await settleGatewayRun(scopedDb, run, stored, idempotencyKey);
+  // The hold is the job's own: what the charge did not capture goes back now, not at its TTL.
+  await scopedDb.billing.zeroReservation(run.reservationId);
+  return charged;
 }
 
 /** Ends a failed run: its own hold zeroed first (safe once the run is over), then the job failed; a charged job stays succeeded. */

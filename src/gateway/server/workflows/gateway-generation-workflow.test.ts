@@ -181,6 +181,9 @@ function makeScopedDb() {
       }
     ),
     checkAutoTopUp: vi.fn(async () => undefined),
+    zeroReservation: vi.fn(async () => {
+      order.push(`${currentStep}:zeroReservation`);
+    }),
   };
   // Organization credentials throw: a gateway run must never reach them.
   const refuse = () => {
@@ -397,6 +400,8 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
       'settle:recordOutputs',
       'settle:settleReservation',
       'settle:markSucceeded',
+      // The rest of the hold goes back in the same step.
+      'settle:zeroReservation',
     ]);
     expect(mockRecordProvenance).toHaveBeenCalledTimes(2);
     expect(mockRecordProvenance).toHaveBeenCalledWith(
