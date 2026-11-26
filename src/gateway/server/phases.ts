@@ -105,12 +105,22 @@ export async function storeGatewayResult(
 }
 
 /** Only the outputs the hold covers are stored and charged; extras are dropped. */
+/** A usage lever that grows with what the model returns: output tokens, megapixels, seconds, generated images; never an input. */
+function isOutputLever(name: string): boolean {
+  return (
+    !/input|cached|reference|prompt/i.test(name) &&
+    /output|generated|completion|megapixel|^tokens$|duration|seconds|minutes/i.test(
+      name
+    )
+  );
+}
+
 function heldResult(
   run: GatewayRun,
   result: GatewayRunResult
 ): GatewayRunResult {
-  // A card that charges from usage pays for every output it returns.
-  if (cardParams(run.card).usage.length > 0) return result;
+  // A card that charges each output from usage pays for every output it returns.
+  if (cardParams(run.card).usage.some(isOutputLever)) return result;
   const held = heldOutputs(run.input);
   if (result.media.length <= held) return result;
   logger.warn('gateway model returned more outputs than were held', {

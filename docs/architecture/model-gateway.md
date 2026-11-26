@@ -177,8 +177,10 @@ POST /api/v1/gateway/grok/grok-imagine-video-1.5
   with a property named `n` passes.
 - On a card priced from the request alone, only as many outputs as the
   request's count (else one) are stored and charged; extras a model returns
-  are dropped with a warning. A card that charges from usage keeps and
-  charges every output it returns (`heldResult` in `phases.ts`).
+  are dropped with a warning. A card that charges each output from usage
+  (an output lever: output tokens, megapixels, seconds, generated images)
+  keeps and charges every output it returns; an input-only usage lever does
+  not count (`heldResult` in `phases.ts`).
 - A media string must be a plain `http(s)` URL, or one of our own `/r2/`
   paths. It must read back from the URL parser as written, up to scheme and
   host case, the root slash and percent-encoding; the parser's href is what

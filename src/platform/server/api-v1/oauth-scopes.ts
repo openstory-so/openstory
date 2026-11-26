@@ -49,7 +49,7 @@ function routerPath(path: string): string {
     .replace(/\/{2,}/g, '/');
 }
 
-/** As router-core's `decodePath`: a malformed escape leaves the valid ones around it decoded. */
+/** As router-core's `decodePath`; defence in depth, since Start already answers 400 to a path `decodeURI` refuses. */
 function decodeLikeRouter(path: string): string {
   try {
     return decodeURI(path);

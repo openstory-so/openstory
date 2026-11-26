@@ -70,6 +70,23 @@ const PER_MEGAPIXEL = rateCardSchema.parse({
   source: PER_TOKEN.source,
 });
 
+// $0.04 a request plus $0.01 an input image: outputs are priced per request.
+const PER_INPUT_IMAGE = rateCardSchema.parse({
+  inputs: {
+    n: { param: 'n', bound: 'request', kind: 'number' },
+    input_images: { param: 'input_images', bound: 'usage', kind: 'number' },
+  },
+  tables: {},
+  price: {
+    '+': [
+      { '*': [{ var: 'n' }, 0.04] },
+      { '*': [{ var: 'input_images' }, 0.01] },
+    ],
+  },
+  examples: [],
+  source: PER_TOKEN.source,
+});
+
 describe('startGatewayRun', () => {
   it('stores and charges only the outputs the request held when the model returns more', async () => {
     const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
@@ -130,6 +147,32 @@ describe('startGatewayRun', () => {
     expect(settleGatewayJob).toHaveBeenLastCalledWith(
       expect.objectContaining({ costMicros: micros(90_000) })
     );
+  });
+
+  it('drops extra outputs when the only usage lever is an input quantity', async () => {
+    const media = { url: 'https://a.example/1.png', contentType: 'image/png' };
+    start.mockResolvedValue({
+      result: {
+        media: [media, media, media],
+        usage: { input_images: 2 },
+        requestId: null,
+      },
+    });
+    const store = vi.fn(async (_media: unknown, index: number) => ({
+      url: `/r2/output-${index}.png`,
+      path: `output-${index}.png`,
+      contentType: 'image/png',
+    }));
+    const run = {
+      ...RUN,
+      card: PER_INPUT_IMAGE,
+      input: { ...RUN.input, n: 1 },
+    };
+
+    const started = await startGatewayRun(run, CREDENTIALS, store);
+    expect(store).toHaveBeenCalledTimes(1);
+    if (!('stored' in started)) throw new Error('not stored');
+    expect(started.stored.outputs).toHaveLength(1);
   });
 });
 
