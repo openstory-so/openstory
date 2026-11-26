@@ -327,14 +327,20 @@ changing the area, and update it in the same PR.**
 - **Model gateway** — `docs/architecture/model-gateway.md`. The body is the
   provider's own, checked against its modelschemas schema and sent as it is;
   never normalise, default or rename a field. The price is the model's rate
-  card, never the provider's billed units, and a request the card cannot
-  price is refused. A gateway job spends platform keys only
-  (`platformOnlyCredentials`, never `scopedDb.credentials`) and is always
-  billed: hold at submit, charge in `settleGatewayJob`, release on failure. A margin is never a
-  request parameter; it lives on the app row. A charge's lines always sum to
-  its wallet debit, written in one batch (`billing.settleReservation`).
-  Nothing runs after the `settle` step, which also marks the job succeeded: a
-  charged job never reads failed.
+  card from the stored snapshot, never the provider's billed units; a request
+  the card cannot price is refused, never guessed. The route is decided once
+  at the trigger (own key → direct; platform key and a holdable card →
+  `openstory`; no key here and `OPENSTORY_API_KEY` → remote; else direct
+  with a reason) and the poll follows the stamp. A gateway job spends
+  platform keys only (`platformOnlyCredentials`); the own-key Models page and
+  the remote route are the two exceptions, and neither is billed here. Hold
+  at submit or charge the run's own reservation (never a second hold),
+  charge in `settleGatewayJob`, release on failure. A charge's lines always
+  sum to its wallet debit, written in one batch; the platform fee is its own
+  line, read only through `gatewayPlatformFeeBps` (`GATEWAY_PLATFORM_FEE_BPS`,
+  unset is 0). Nothing runs after `settle`: a charged job never reads failed.
+  An LLM call on a platform key is charged by its key's meter
+  (`withTextGateway`), never by a call site.
 - **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
   runs `MCP_TOOLS` through `chat()` under the session; never add an
   assistant-only tool, add an MCP tool. Only a delete
@@ -405,7 +411,7 @@ Read the via's doc before touching it, and update it in the same PR:
 - **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth. Pre-flight estimates read the stored modelschemas rate card on that row (#1605); a refusal stays null and never copies a sibling endpoint's price.
 - **Lip-sync (#2263)** — `docs/architecture/media-vias.md` (Sync lipsync). A finished clip plus its dialogue section through `fal-ai/sync-lipsync/v3` (`sync-lipsync-3`, `source: 'lipsync'`). Motion runs it after the clip when the model cannot take an audio upload (Kling, Omni Flash, Grok), including a packed clip against its one spanning dialogue file. Update all lip-syncs when only the audio moved on a single-shot clip.
 
-**Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it.
+**Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it. The gateway snapshot refresh rides `FAL_PRICING_CRON` and the stuck-job sweep the 5-minute sweep; neither has an expression of its own.
 
 ---
 

@@ -1,6 +1,6 @@
 /**
  * The run of a held gateway job as phases a caller runs in its own steps:
- * start, poll, finish, release (docs/architecture/model-gateway.md § Phases).
+ * start, poll, finish, release (docs/architecture/model-gateway.md § Job lifecycle).
  * The hold is `holdGatewayJob` in submit-job.ts.
  */
 
