@@ -36,6 +36,7 @@ import {
 import type { GatewayModel } from '@/gateway/server/catalog';
 import type { GatewayPoll, GatewayStart } from '@/gateway/server/providers';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
+import { micros } from '@/billing/money';
 
 let db: Database;
 let closeDb: () => Promise<void>;
@@ -110,13 +111,14 @@ const store = vi.fn(async (_media: unknown, index: number) => ({
 const workflowDb = () =>
   toWorkflowScopedDb(createScopedDb(organizationId, userId));
 
-function transport(model: GatewayModel) {
+function transport(model: GatewayModel, reservationId: string | null = null) {
   return inProcessGateway({
     scopedDb: workflowDb(),
     model,
     runId: 'image_run-1',
     store,
     uploadRightsChecked: submitJob.UPLOAD_RIGHTS_CHECKED,
+    reservation: reservationId ? { id: reservationId } : null,
   });
 }
 
@@ -475,5 +477,104 @@ describe('the openstory adapter, in-process', () => {
       })
     ).rejects.toThrow('Put size in the provider');
     expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('on the caller run reservation (#2435)', () => {
+  beforeEach(async () => {
+    await db.delete(creditReservations);
+  });
+
+  async function runReservation(amount: number) {
+    const held = await createScopedDb(
+      organizationId,
+      userId
+    ).billing.createReservation(micros(amount), {
+      idempotencyKey: `run:${generateId()}`,
+    });
+    if (!held.ok) throw new Error('no run reservation');
+    return held.reservationId;
+  }
+
+  const remainingOf = async (id: string) =>
+    (
+      await db
+        .select()
+        .from(creditReservations)
+        .where(eq(creditReservations.id, id))
+    )[0]?.remainingAmount;
+
+  const image = (reservationId: string | null, key: string) =>
+    generateImage({
+      threadId: 'thread-1',
+      adapter: openstoryImage(IMAGE.id, transport(IMAGE, reservationId), {
+        idempotencyKey: key,
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+
+  it('holds nothing of its own and charges the run reservation once', async () => {
+    start.mockResolvedValue(answered);
+    const reservationId = await runReservation(30_000);
+    await image(reservationId, 'run-r1:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(await db.select().from(creditReservations)).toHaveLength(1);
+    expect(await chargesFor(job.id)).toEqual({
+      debits: 1,
+      linesMicros: 20_000,
+      usageRows: 1,
+      balanceDrop: 20_000,
+    });
+    expect(await remainingOf(reservationId)).toBe(10_000);
+  });
+
+  it('runs when the balance covers the run reservation but not a second hold', async () => {
+    start.mockResolvedValue(answered);
+    await db
+      .update(credits)
+      .set({ balance: 30_000 })
+      .where(eq(credits.organizationId, organizationId));
+    const reservationId = await runReservation(30_000);
+    await expect(image(null, 'run-r2:own')).rejects.toThrow(
+      'Insufficient credits'
+    );
+    await db.delete(gatewayJobs);
+    await image(reservationId, 'run-r2:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('succeeded');
+    expect(await remainingOf(reservationId)).toBe(10_000);
+  });
+
+  it('reuses the job and charges once when the step is replayed', async () => {
+    start.mockResolvedValue(answered);
+    const reservationId = await runReservation(30_000);
+    await image(reservationId, 'run-r3:image');
+    await image(reservationId, 'run-r3:image');
+    expect(start).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(IMAGE.id);
+    expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
+    expect(await remainingOf(reservationId)).toBe(10_000);
+  });
+
+  it('leaves the run reservation intact when the job fails', async () => {
+    start.mockResolvedValue({ jobId: 'xai-r4' });
+    poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
+    const reservationId = await runReservation(30_000);
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, reservationId), {
+        idempotencyKey: 'run-r4:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await getVideoJobStatus({ adapter: statusAdapter(VIDEO), jobId });
+    const job = await onlyJob(VIDEO.id);
+    expect(job.status).toBe('failed');
+    // Off the row, so the stale-job sweep cannot zero it either.
+    expect(job.reservationId).toBeNull();
+    expect(await chargesFor(job.id)).toMatchObject({ debits: 0 });
+    expect(await remainingOf(reservationId)).toBe(30_000);
   });
 });

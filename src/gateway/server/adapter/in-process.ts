@@ -48,6 +48,7 @@ const handleSchema = z.object({
     platformFeeBps: z.number(),
     oauthClientId: z.string().nullable(),
     reservationId: z.string(),
+    ownsReservation: z.boolean(),
   }),
   providerJobId: z.string(),
 });
@@ -120,6 +121,8 @@ export function inProcessGateway(params: {
   store: GatewayStore;
   /** The caller ran `requireUploadRights` on every URL in the body before the run. */
   uploadRightsChecked: typeof UPLOAD_RIGHTS_CHECKED;
+  /** The caller's run reservation: jobs charge it instead of holding their own; null holds per job. */
+  reservation: { readonly id: string } | null;
 }): GatewayTransport {
   const { scopedDb, store } = params;
   const credentials = platformOnlyCredentials(scopedDb);
@@ -134,6 +137,7 @@ export function inProcessGateway(params: {
           rights: params.uploadRightsChecked,
           idempotencyKey,
           oauthClientId: null,
+          runReservationId: params.reservation?.id ?? null,
         }));
       } catch (error) {
         // A refusal (body, price, credits, key reused for another body) is the answer, not a blip to retry.
@@ -161,8 +165,9 @@ export function inProcessGateway(params: {
         await releaseGatewayRun(scopedDb, run, error);
         throw new NonRetryableError(error);
       }
+      // A borrowed hold stays off the row, so the stale-job sweep never zeroes the caller's reservation.
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
-        reservationId: run.reservationId,
+        reservationId: run.ownsReservation ? run.reservationId : null,
         workflowRunId: params.runId,
       });
       if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {

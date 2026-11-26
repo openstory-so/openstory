@@ -321,6 +321,8 @@ export async function holdGatewayJob(
     rights: GatewayRights;
     idempotencyKey: string | null;
     oauthClientId: string | null;
+    /** The trusted caller's own run reservation to charge against, or null to hold here. */
+    runReservationId: string | null;
   }
 ): Promise<{ job: GatewayJob; created: boolean; run: GatewayRun }> {
   const { scopedDb, rights } = ctx;
@@ -373,12 +375,16 @@ export async function holdGatewayJob(
   }
 
   // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
-  const reserved = await scopedDb.billing.createReservation(hold, {
-    idempotencyKey: `gateway:${job.id}`,
-  });
-  if (!reserved.ok) {
-    if (created) await scopedDb.gatewayJobs.deleteUnstarted(job.id);
-    throw new InsufficientCreditsError('Insufficient credits for this model');
+  let reservationId = ctx.runReservationId;
+  if (!reservationId) {
+    const reserved = await scopedDb.billing.createReservation(hold, {
+      idempotencyKey: `gateway:${job.id}`,
+    });
+    if (!reserved.ok) {
+      if (created) await scopedDb.gatewayJobs.deleteUnstarted(job.id);
+      throw new InsufficientCreditsError('Insufficient credits for this model');
+    }
+    reservationId = reserved.reservationId;
   }
   return {
     job,
@@ -393,7 +399,8 @@ export async function holdGatewayJob(
       estimateMicros: estimate,
       platformFeeBps,
       oauthClientId: ctx.oauthClientId,
-      reservationId: reserved.reservationId,
+      reservationId,
+      ownsReservation: !ctx.runReservationId,
     },
   };
 }
@@ -429,6 +436,8 @@ export async function submitGatewayJob(
     rights: { scopedDb, request: ctx.request },
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
+    // The public endpoint always holds its own.
+    runReservationId: null,
   });
   if (!created) return { job, replay: true };
   const { reservationId } = run;

@@ -119,6 +119,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
             runId: event.instanceId,
             store,
             uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+            reservation: null,
           })
         : directFal(scopedDb, route.endpointId, store);
     // The click held under this key: the run finds that job and its hold.
@@ -276,7 +277,12 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     const { assetId, route } = event.payload;
     await scopedDb.generatedAssets.markFailed(assetId, error);
     if (route.via === 'openstory') {
-      await releaseGatewayRun(scopedDb, route.hold, error);
+      // The click held this job's own reservation.
+      await releaseGatewayRun(
+        scopedDb,
+        { ...route.hold, ownsReservation: true },
+        error
+      );
     }
     if (isContentRejectionError(error)) {
       logger.warn(`Asset ${assetId} failed: ${error}`);

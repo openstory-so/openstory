@@ -48,6 +48,7 @@ const RUN = {
   platformFeeBps: 0,
   oauthClientId: null,
   reservationId: 'res-1',
+  ownsReservation: true,
 } as const;
 
 // $0.04 an image, priced off the request's `n`.

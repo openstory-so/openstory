@@ -702,6 +702,18 @@ skip. `adapter/in-process.test.ts` fails if a generation is charged twice
 (a retried step, a replayed poll) or zero times, or if the wallet drops by
 anything but the charge.
 
+A run that already holds credits for its work (motion, studio video) passes
+its reservation as `inProcessGateway({ reservation: { id } })` (#2435). The
+hold still prices the card and refuses what it cannot price, and still
+writes the job row, but takes no second reservation: the settle captures
+the card's charge against the run's, under the same `gateway:<job>:settle`
+key, so a balance that covers the run is not asked to cover the job again.
+Such a run carries `ownsReservation: false`: a failed job is marked failed
+without zeroing the run's reservation, and the job row records no
+reservation, so the stale-job sweep cannot zero it either. Only an
+in-process caller can pass one; the public submit always holds its own
+(`runReservationId: null`), and the Models page passes none.
+
 ### The Models page
 
 `createGeneratedAsset` (`src/models/server/generated-assets.ts`) picks the

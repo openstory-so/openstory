@@ -96,6 +96,7 @@ export async function createGeneratedAsset(
         rights: { scopedDb, request },
         idempotencyKey: `asset:${assetId}`,
         oauthClientId: null,
+        runReservationId: null,
       });
       route = {
         via: 'openstory',
