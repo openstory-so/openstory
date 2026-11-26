@@ -49,6 +49,42 @@ describe('gateway coverage', () => {
     expect(recorded).toHaveLength(productGatewayModels().length);
   });
 
+  it('builds the product body for every model but these 18; a builder that starts throwing fails here', () => {
+    expect(
+      coverages
+        .filter((c) => productGap(c) === undefined)
+        .map((c) => `${c.provider}/${c.id}`)
+        .sort()
+    ).toEqual(
+      [
+        'fal/xai/grok-imagine-video/v1.5/text-to-video',
+        'fal/fal-ai/kling-video/v3/pro/text-to-video',
+        'fal/xai/grok-imagine-video/v1.5/reference-to-video',
+        'fal/fal-ai/ace-step-1.5',
+        'fal/fal-ai/ace-step/prompt-to-audio',
+        'fal/fal-ai/sync-lipsync/v3',
+        'byteplus/dola-seedream-5-0-pro-260628',
+        'byteplus/dreamina-seedance-2-0-260128',
+        'byteplus/dreamina-seedance-2-5-260628',
+        'byteplus/dreamina-seedance-2-0-mini-260615',
+        'byteplus/seed-audio-1.0',
+        'grok/grok-imagine-image-2.0',
+        'grok/grok-imagine-image-quality',
+        'gemini/gemini-nano-banana-2.1',
+        'gemini/gemini-3.1-flash-image',
+        'gemini/gemini-3.1-flash-lite-image',
+        'gemini/gemini-3-pro-image',
+        'gemini/gemini-omni-1.2-flash',
+      ].sort()
+    );
+  });
+
+  it('prices a reference-to-video endpoint on the body that carries a reference', () => {
+    expect(bodies.get('fal/kling/v4/reference-to-video')).toMatchObject({
+      image_urls: ['https://media.example.com/mara-sheet.png'],
+    });
+  });
+
   it('lists every gap in model-gateway.md with its upstream issue', () => {
     const doc = readFileSync(
       resolve(ROOT, 'docs/architecture/model-gateway.md'),

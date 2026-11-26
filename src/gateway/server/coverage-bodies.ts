@@ -5,6 +5,7 @@ import {
   getTextToImageModelId,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
 } from '@/models/models';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';
 import { buildMotionRequest } from '@/motion/server/build-model-input';
@@ -32,14 +33,8 @@ function json(input: unknown): Body {
     .parse(JSON.parse(JSON.stringify(input)));
 }
 
-/** A builder that refuses this model (no route on that via) contributes no body. */
-function attempt(build: () => { endpointId: string; input: unknown }) {
-  try {
-    const { endpointId, input } = build();
-    return [[endpointId, json(input)] as const];
-  } catch {
-    return [];
-  }
+function built({ endpointId, input }: { endpointId: string; input: unknown }) {
+  return [endpointId, json(input)] as const;
 }
 
 /**
@@ -53,10 +48,7 @@ export function productBodies(): Map<string, Body> {
     ...typedEntries(IMAGE_MODELS).flatMap(([model]) =>
       getTextToImageModelId(model)
         ? [
-            ...attempt(() =>
-              buildImageRequest({ model, prompt: PROMPT, numImages: 1 })
-            ),
-            ...attempt(() =>
+            built(
               buildImageRequest({
                 model,
                 prompt: PROMPT,
@@ -64,6 +56,7 @@ export function productBodies(): Map<string, Body> {
                 referenceImageUrls: [REFERENCE.referenceImageUrl],
               })
             ),
+            built(buildImageRequest({ model, prompt: PROMPT, numImages: 1 })),
           ]
         : []
     ),
@@ -74,37 +67,50 @@ export function productBodies(): Map<string, Body> {
         aspectRatio: '16:9',
         model,
       } as const;
+      // With references first: the first body an endpoint gets is the one kept.
       return [
-        ...attempt(() =>
-          buildMotionRequest({ ...base, imageUrl: STILL }, model)
-        ),
-        ...attempt(() =>
+        built(
           buildMotionRequest(
             { ...base, imageUrl: STILL, referenceImages: [REFERENCE] },
             model
           )
         ),
-        ...attempt(() =>
-          buildMotionRequest(
-            { ...base, referenceOnly: true, referenceImages: [REFERENCE] },
-            model
-          )
-        ),
-        ...attempt(() =>
-          buildMotionRequest({ ...base, referenceOnly: true }, model)
-        ),
+        built(buildMotionRequest({ ...base, imageUrl: STILL }, model)),
+        // Reference-only exists only where the model has a reference route.
+        ...(supportsReferenceOnlyMotion(model)
+          ? [
+              built(
+                buildMotionRequest(
+                  {
+                    ...base,
+                    referenceOnly: true,
+                    referenceImages: [REFERENCE],
+                  },
+                  model
+                )
+              ),
+              built(
+                buildMotionRequest({ ...base, referenceOnly: true }, model)
+              ),
+            ]
+          : []),
       ];
     }),
   ];
-  const bodies = new Map(fal.map(([id, body]) => [`fal/${id}`, body]));
-  const [grok] = attempt(() =>
-    buildGrokVideoRequest({
-      prompt: PROMPT,
-      imageUrl: STILL,
-      duration: 5,
-      aspectRatio: '16:9',
-    })
+  const bodies = new Map<string, Body>();
+  for (const [id, body] of fal) {
+    if (!bodies.has(`fal/${id}`)) bodies.set(`fal/${id}`, body);
+  }
+  bodies.set(
+    `grok/${NATIVE_GROK_VIDEO_MODEL}`,
+    built(
+      buildGrokVideoRequest({
+        prompt: PROMPT,
+        imageUrl: STILL,
+        duration: 5,
+        aspectRatio: '16:9',
+      })
+    )[1]
   );
-  if (grok) bodies.set(`grok/${NATIVE_GROK_VIDEO_MODEL}`, grok[1]);
   return bodies;
 }
