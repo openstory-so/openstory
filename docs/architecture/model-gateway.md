@@ -210,14 +210,15 @@ Not served, and why:
 product uses (`productGatewayModels()`) against its card: a typical request
 (the card's own example) and, where a builder is wired
 (`coverage-bodies.ts`: fal stills and motion, native Grok video), the body
-the product sends. On the recording: 43 of 75 hold a typical request; 23 of
-57 hold the product's body. The 18 with no builder in the check (pinned
+the product sends. On the recording: 43 of 76 hold a typical request; 23 of
+57 hold the product's body. The 19 with no builder in the check (pinned
 in `coverage.test.ts`): the fal routes the product's builders never pick
 (`fal/xai/grok-imagine-video/v1.5/text-to-video`,
 `fal/xai/grok-imagine-video/v1.5/reference-to-video`,
 `fal/fal-ai/kling-video/v3/pro/text-to-video`), audio and lip-sync
 (`fal/fal-ai/ace-step-1.5`, `fal/fal-ai/ace-step/prompt-to-audio`,
-`fal/fal-ai/sync-lipsync/v3`, `byteplus/seed-audio-1.0`), Ark
+`fal/fal-ai/sync-lipsync/v3`, `byteplus/seed-audio-1.0`,
+`elevenlabs/music_v2_5`), Ark
 (`byteplus/dola-seedream-5-0-pro-260628`,
 `byteplus/dreamina-seedance-2-0-260128`,
 `byteplus/dreamina-seedance-2-5-260628`,
@@ -262,6 +263,9 @@ fixed upstream; no local estimate, sibling price or guess stands in.
   estimate. TanStack/schemas#764
 - `fal/fal-ai/sync-lipsync/v3` (`minutes`), `gemini/gemini-omni-1.2-flash`
   (`input_tokens`): usage-only cards with no estimate. TanStack/schemas#765
+- `elevenlabs/music_v2_5`: no rate card. The only ElevenLabs model the
+  gateway serves (`ELEVENLABS_GATEWAY_MODELS`); voice design, dialogue and
+  speech-to-speech stay direct. TanStack/schemas#756
 
 Holdable on a typical request but refused when the product sends a field the
 card types differently from the schema (TanStack/schemas#766):

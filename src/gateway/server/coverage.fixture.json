@@ -1601,7 +1601,7 @@
               "reference_image_urls": ["https://example.com/ref.jpg"]
             },
             "usd": 0.09,
-            "quote": "Each reference image adds $0.01 (1\u20137 supported)"
+            "quote": "Each reference image adds $0.01 (1–7 supported)"
           }
         ],
         "source": {
@@ -2062,7 +2062,7 @@
                 {
                   "var": "extra_reference_tokens"
                 },
-                2e-5
+                0.00002
               ]
             }
           ]
@@ -2397,7 +2397,7 @@
                 {
                   "var": "text_output_tokens"
                 },
-                1.875e-6
+                0.000001875
               ]
             },
             {
@@ -2413,7 +2413,7 @@
                 {
                   "var": "image_output_tokens"
                 },
-                3.75e-5
+                0.0000375
               ]
             }
           ]
@@ -3220,7 +3220,7 @@
               "image_size": "1536x1536"
             },
             "usd": 0.0675,
-            "quote": "Tentative pricing is $0.0675 per output image for an area up to and including 1536 \u00d7 1536 pixels"
+            "quote": "Tentative pricing is $0.0675 per output image for an area up to and including 1536 × 1536 pixels"
           },
           {
             "params": {
@@ -3228,7 +3228,7 @@
               "image_size": "2048x2048"
             },
             "usd": 0.135,
-            "quote": "$0.135 per output image for an area above 1536 \u00d7 1536 and up to 2048 \u00d7 2048 pixels"
+            "quote": "$0.135 per output image for an area above 1536 × 1536 and up to 2048 × 2048 pixels"
           },
           {
             "params": {
@@ -3236,7 +3236,7 @@
               "image_size": "1536x1536"
             },
             "usd": 0.135,
-            "quote": "For example, 2 images at 1536 \u00d7 1536 would cost $0.135"
+            "quote": "For example, 2 images at 1536 × 1536 would cost $0.135"
           }
         ],
         "source": {
@@ -3461,7 +3461,7 @@
                 {
                   "var": "text_input_tokens"
                 },
-                1.764e-6
+                0.000001764
               ]
             },
             {
@@ -3469,7 +3469,7 @@
                 {
                   "var": "text_output_tokens"
                 },
-                8.823e-6
+                0.000008823
               ]
             },
             {
@@ -3477,7 +3477,7 @@
                 {
                   "var": "image_input_tokens"
                 },
-                1.764e-6
+                0.000001764
               ]
             },
             {
@@ -3485,7 +3485,7 @@
                 {
                   "var": "image_output_tokens"
                 },
-                3.5294e-5
+                0.000035294
               ]
             }
           ]
@@ -3733,7 +3733,7 @@
                 {
                   "var": "text_output_tokens"
                 },
-                1.875e-6
+                0.000001875
               ]
             },
             {
@@ -3749,7 +3749,7 @@
                 {
                   "var": "image_output_tokens"
                 },
-                3.75e-5
+                0.0000375
               ]
             }
           ]
@@ -6443,9 +6443,9 @@
         "tables": {
           "rate": {
             "base": {
-              "input_tokens": 1.5e-6,
-              "output_tokens": 7.5e-6,
-              "image_output_tokens": 3e-5
+              "input_tokens": 0.0000015,
+              "output_tokens": 0.0000075,
+              "image_output_tokens": 0.00003
             }
           }
         },
@@ -6571,8 +6571,8 @@
           "rate": {
             "base": {
               "input_tokens": 5e-7,
-              "output_tokens": 3e-6,
-              "image_output_tokens": 6e-5
+              "output_tokens": 0.000003,
+              "image_output_tokens": 0.00006
             }
           }
         },
@@ -6698,8 +6698,8 @@
           "rate": {
             "base": {
               "input_tokens": 2.5e-7,
-              "output_tokens": 1.5e-6,
-              "image_output_tokens": 3e-5
+              "output_tokens": 0.0000015,
+              "image_output_tokens": 0.00003
             }
           }
         },
@@ -6824,8 +6824,8 @@
         "tables": {
           "rate": {
             "base": {
-              "input_tokens": 2e-6,
-              "output_tokens": 1.2e-5,
+              "input_tokens": 0.000002,
+              "output_tokens": 0.000012,
               "image_output_tokens": 0.00012
             }
           }
@@ -6951,9 +6951,9 @@
         "tables": {
           "rate": {
             "base": {
-              "input_tokens": 1.5e-6,
-              "output_tokens": 9e-6,
-              "video_output_tokens": 1.2e-5
+              "input_tokens": 0.0000015,
+              "output_tokens": 0.000009,
+              "video_output_tokens": 0.000012
             }
           }
         },
@@ -7046,6 +7046,17 @@
           "extractedAt": "2026-11-16T20:15:25.290Z"
         }
       }
+    },
+    "schema": true
+  },
+  {
+    "provider": "elevenlabs",
+    "id": "music_v2_5",
+    "record": {
+      "rawId": "music_v2_5",
+      "activity": "audio",
+      "schemaEndpointId": "v1/music",
+      "pricing": null
     },
     "schema": true
   }
