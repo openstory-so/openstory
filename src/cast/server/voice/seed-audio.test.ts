@@ -37,7 +37,12 @@ const start = vi.fn<(...args: unknown[]) => Promise<GatewayStart>>();
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: {
-    byteplus: { configured: () => true, start, poll: vi.fn() },
+    byteplus: {
+      configured: () => true,
+      answersAtOnce: () => true,
+      start,
+      poll: vi.fn(),
+    },
   },
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({

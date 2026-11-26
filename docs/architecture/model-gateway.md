@@ -1124,14 +1124,18 @@ and charged $0.11975 once (47.9 s), one debit and one line. The run booked
 Scribe ($0.0029) and isolation ($0.0718) and no `seed-audio` line. That run
 found two hold bugs, both fixed since: the charged take kept $0.18025 of its
 hold until the hold expired (a settled job now zeroes its own hold in the
-settle step), and the 500 left its job `running` with its hold (a start the
-provider answered with an error, other than 408, 429 or 504, now fails the
-job and releases at once; only a timeout or a dropped connection stays
-`running`). fal's SDK errors carry `status`, not `statusCode`, and a fal
-5xx on queue submit does not prove nothing was queued, so it stays
-retryable; in-process the retried submit finds the job `running` with no
-provider id and fails closed, releasing the hold, so it is never sent
-twice.
+settle step), and the 500 left its job `running` with its hold. Now a
+start's error is read by whether the driver answers at once
+(`answersAtOnce`: Seed, Ark images, Grok images, Gemini, ElevenLabs) or
+queues a job (Ark tasks, Grok video, fal). A 4xx fails and releases. A 429,
+or a 5xx from a start that answers at once, ran nothing: in-process the job
+goes back to `queued` with its hold and the retried step sends it again
+under the same key. A 5xx from a queued start may have queued the job, so
+it fails and releases at once. A timeout or dropped connection may have
+reached the provider: the retried step finds the job `running` with no
+provider id and fails closed. fal's SDK errors carry `status`, not
+`statusCode`, so a fal submit error takes that last path and is never
+sent twice.
 
 ## Not in this stack
 
