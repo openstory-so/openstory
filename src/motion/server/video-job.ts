@@ -43,7 +43,7 @@ import {
 } from '@/models/server/fal-deadline-fetch';
 import { resolveGoogleKeyForStampedJob } from '@/models/server/google-key';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
-import { assertMediaVia, type MediaVia } from '@/models/via';
+import { assertMediaVia, type MediaVia, type ProductVia } from '@/models/via';
 import { getLogger } from '@/platform/logger';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type {
@@ -149,6 +149,21 @@ export async function routeVideoJob(
   );
 }
 
+/** Stores a gateway clip with the caller's upload, inside the poll that saw it (#1645). */
+export function videoGatewayStore(
+  upload: (
+    videoUrl: string
+  ) => Promise<{ url: string; path: string; contentType: string }>
+): GatewayStore {
+  return async (media) => {
+    if (!('url' in media)) {
+      throw new Error('The gateway returned an inline video');
+    }
+    const { url, path, contentType } = await upload(media.url);
+    return { url, path, contentType };
+  };
+}
+
 /** A provider call; `fetch` is passed only to capture the body it would send. */
 export type VideoSend = (
   fetch?: typeof globalThis.fetch
@@ -180,13 +195,19 @@ async function captureVideoBody(send: VideoSend): Promise<GatewayJobInput> {
  */
 export async function sendVideoJob(params: {
   provider: GatewayProvider;
+  /** The via stamped when the job goes direct. */
+  via: MediaVia;
   /** The provider's own model id: a fal endpoint, the xAI or Ark model. */
   modelId: string;
   threadId: string;
   gateway: VideoGatewayCall | null;
+  /** An Ark draft or its final: task ids the gateway does not hand out (#1756). */
+  draft: boolean;
+  /** Whether the direct call spends the organization's own key. */
+  usedOwnKey: boolean;
   send: VideoSend;
-}): Promise<{ jobId: string; via: 'openstory' | 'direct' }> {
-  const { gateway } = params;
+}): Promise<{ jobId: string; via: ProductVia; usedOwnKey: boolean }> {
+  const gateway = params.draft ? null : params.gateway;
   if (gateway) {
     const body = await captureVideoBody(params.send);
     const route = gatewayRunRoute(
@@ -219,11 +240,15 @@ export async function sendVideoJob(params: {
         threadId: params.threadId,
         debug: false,
       });
-      return { jobId: job.jobId, via: 'openstory' };
+      return { jobId: job.jobId, via: 'openstory', usedOwnKey: false };
     }
   }
   const job = await params.send();
-  return { jobId: job.jobId, via: 'direct' };
+  return {
+    jobId: job.jobId,
+    via: params.via,
+    usedOwnKey: params.usedOwnKey,
+  };
 }
 
 /** A run that stops polling ends its gateway job itself; a direct job has nothing held. */

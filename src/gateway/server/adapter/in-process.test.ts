@@ -601,6 +601,36 @@ describe('on the caller run reservation (#2435)', () => {
     expect(await remainingOf(reservationId)).toBe(10_000);
   });
 
+  it('grows a borrowed reservation the charge outruns when the balance covers it', async () => {
+    start.mockResolvedValue(answered);
+    const reservationId = await runReservation(5_000);
+    await image(reservationId, 'run-r6:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(await chargesFor(job.id)).toEqual({
+      debits: 1,
+      linesMicros: 20_000,
+      usageRows: 1,
+      balanceDrop: 20_000,
+    });
+    expect(await remainingOf(reservationId)).toBe(0);
+  });
+
+  it('captures only what the balance holds past a borrowed reservation, lines summing to the debit', async () => {
+    start.mockResolvedValue(answered);
+    await db
+      .update(credits)
+      .set({ balance: 5_000 })
+      .where(eq(credits.organizationId, organizationId));
+    const reservationId = await runReservation(5_000);
+    await image(reservationId, 'run-r7:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('succeeded');
+    const charged = await chargesFor(job.id);
+    expect(charged).toMatchObject({ debits: 1, linesMicros: 5_000 });
+    expect(job.costMicros).toBe(5_000);
+    expect(await remainingOf(reservationId)).toBe(0);
+  });
+
   it('reuses the job and charges once when the step is replayed', async () => {
     start.mockResolvedValue(answered);
     const reservationId = await runReservation(30_000);

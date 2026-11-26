@@ -934,7 +934,7 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
 - **Price:** `videoCostFromUsage` runs only on a direct via, on the endpoint
   stamped on the job. A gateway clip skips `price-motion-generation` and
   `deduct-credits`, and its version records no provider request id.
-- **Cancel** is data-only, as before: the version is marked cancelled and the
+- **A cancelled clip is still charged, as before.** Cancel is data-only: the version is marked cancelled and the
   run goes on. The provider job is not stopped, so the gateway charges it
   when it finishes and the clip is discarded. A provider failure marks the
   job failed (`releaseGatewayRun`) and leaves the run's reservation to the

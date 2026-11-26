@@ -635,21 +635,22 @@ async function submitMotionJobOnce(
   let usedOwnKey: boolean;
   let stampedVia: ProductVia = endpoint.via;
   let stampedEndpointId = endpoint.endpointId;
-  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
-  const gateway =
-    draft || options.finalFromDraftTaskId ? null : options.gateway;
   /** Direct, or the same body through the gateway when it can hold it. */
-  const send = async (provider: GatewayProvider, run: VideoSend) => {
-    const sent = await sendVideoJob({
+  const send = async (
+    provider: GatewayProvider,
+    ownKey: boolean,
+    run: VideoSend
+  ) =>
+    sendVideoJob({
       provider,
+      via: endpoint.via,
       modelId: stampedEndpointId,
       threadId,
-      gateway,
+      gateway: options.gateway,
+      draft: draft || Boolean(options.finalFromDraftTaskId),
+      usedOwnKey: ownKey,
       send: run,
     });
-    if (sent.via === 'openstory') stampedVia = 'openstory';
-    return sent;
-  };
 
   switch (endpoint.via) {
     case 'xai': {
@@ -673,7 +674,11 @@ async function submitMotionJobOnce(
         referenceImages,
         model: modelKey,
       });
-      const job = await send('grok', (fetch) =>
+      ({
+        jobId,
+        via: stampedVia,
+        usedOwnKey,
+      } = await send('grok', xaiKey.source === 'organization', (fetch) =>
         generateVideo({
           adapter: createNativeGrokVideoAdapter(xaiKey.key, fetch),
           prompt: input.prompt,
@@ -686,9 +691,7 @@ async function submitMotionJobOnce(
           timeout: FAL_REQUEST_TIMEOUT_MS,
           debug: false,
         })
-      );
-      jobId = job.jobId;
-      usedOwnKey = job.via === 'direct' && xaiKey.source === 'organization';
+      ));
       break;
     }
     case 'google': {
@@ -732,9 +735,11 @@ async function submitMotionJobOnce(
     case 'fal': {
       const fal = await prepareFalMotionJob(options, modelKey, threadId);
       stampedEndpointId = fal.endpointId;
-      const job = await send('fal', fal.send);
-      jobId = job.jobId;
-      usedOwnKey = job.via === 'direct' && fal.usedOwnKey;
+      ({
+        jobId,
+        via: stampedVia,
+        usedOwnKey,
+      } = await send('fal', fal.usedOwnKey, fal.send));
       break;
     }
     case 'byteplus': {
@@ -793,7 +798,11 @@ async function submitMotionJobOnce(
       );
       const createBytePlusVideo = await loadBytePlusVideo();
       try {
-        const job = await send('byteplus', (fetch = config.fetch) =>
+        ({
+          jobId,
+          via: stampedVia,
+          usedOwnKey,
+        } = await send('byteplus', false, (fetch = config.fetch) =>
           withBytePlusQuotaRetry('motion submit', () =>
             generateVideo({
               adapter: createBytePlusVideo(endpoint.endpointId, apiKey, {
@@ -811,9 +820,7 @@ async function submitMotionJobOnce(
               debug: false,
             })
           )
-        );
-        jobId = job.jobId;
-        usedOwnKey = false;
+        ));
       } catch (error) {
         // No fal fallback (#1519): the job was routed to Ark, so an Ark
         // rejection is the failure the user sees and retries against.

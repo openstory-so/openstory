@@ -62,9 +62,9 @@ import {
   releaseVideoJob,
   routeVideoJob,
   videoCostFromUsage,
+  videoGatewayStore,
   type VideoGatewayCall,
 } from '@/motion/server/video-job';
-import type { GatewayStore } from '@/gateway/server/phases';
 import { uploadStudioImage, uploadStudioVideo } from '@/studio/server/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
@@ -237,21 +237,9 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     let succeededJob: Awaited<ReturnType<typeof submitStudioVideoJob>> | null =
       null;
     // The `openstory` via stores the clip where upload-video would, inside the poll that saw it (#1645).
-    const gatewayStore: GatewayStore = async (media) => {
-      if (!('url' in media)) {
-        throw new Error('The gateway returned an inline video');
-      }
-      const stored = await uploadStudioVideo({
-        videoUrl: media.url,
-        organizationId,
-        assetId,
-      });
-      return {
-        url: stored.url,
-        path: stored.path,
-        contentType: stored.contentType,
-      };
-    };
+    const gatewayStore = videoGatewayStore((videoUrl) =>
+      uploadStudioVideo({ videoUrl, organizationId, assetId })
+    );
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;

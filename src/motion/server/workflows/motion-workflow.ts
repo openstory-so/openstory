@@ -66,6 +66,7 @@ import {
   releaseVideoJob,
   routeVideoJob,
   videoCostFromUsage,
+  videoGatewayStore,
   type VideoGatewayCall,
 } from '@/motion/server/video-job';
 import type { GatewayStore } from '@/gateway/server/phases';
@@ -894,12 +895,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const { shotId: gatewayShotId, sequenceId: gatewaySequenceId } = input;
     const gatewayStore: GatewayStore | null =
       gatewayShotId && gatewaySequenceId
-        ? async (media) => {
-            if (!('url' in media)) {
-              throw new Error('The gateway returned an inline video');
-            }
+        ? videoGatewayStore(async (videoUrl) => {
             const stored = await uploadVideoToStorage({
-              videoUrl: media.url,
+              videoUrl,
               organizationId: input.organizationId,
               sequenceId: gatewaySequenceId,
               shotId: gatewayShotId,
@@ -912,7 +910,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               path: stored.path,
               contentType: 'video/mp4',
             };
-          }
+          })
         : null;
     const gatewayCall = (
       idempotencyKey: string,

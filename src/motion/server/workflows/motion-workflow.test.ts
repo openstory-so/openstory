@@ -65,6 +65,7 @@ const mockVideoCost = vi.fn(async () => ({
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
   releaseVideoJob: vi.fn(async () => {}),
+  videoGatewayStore: (upload: unknown) => upload,
   routeVideoJob: mockRouteVideoJob,
   videoCostFromUsage: mockVideoCost,
 }));

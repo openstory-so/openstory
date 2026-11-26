@@ -45,7 +45,6 @@ import {
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
-import type { GatewayProvider } from '@/gateway/schema';
 import type { GatewayRouteTarget } from '@/gateway/server/route';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -85,7 +84,6 @@ import {
   sendVideoJob,
   videoGatewayProvider,
   type VideoGatewayCall,
-  type VideoSend,
 } from '@/motion/server/video-job';
 
 type StudioVideoJobOptions = {
@@ -155,7 +153,7 @@ async function buildStudioImageModeInput(
       generateAudio: options.generateAudio,
     });
     return {
-      endpointId: studioVideoEndpointId(modelKey, mode),
+      endpointId: studioFalEndpointId(modelKey, mode),
       built: {
         ...built,
         modelOptions: {
@@ -234,7 +232,9 @@ async function submitFalStudioVideoJob(
       mode,
       key.key
     );
-    const sent = await sendStudioJob(options, {
+    const sent = await sendVideoJob({
+      gateway: options.gateway,
+      draft: Boolean(options.draft || options.finalFromDraftTaskId),
       provider: 'fal',
       via: 'fal',
       modelId: endpointId,
@@ -261,8 +261,10 @@ async function submitFalStudioVideoJob(
     generateAudio: options.generateAudio,
   });
   const key = await resolveFalKey(options.credentials);
-  const endpointId = studioVideoEndpointId(modelKey);
-  const sent = await sendStudioJob(options, {
+  const endpointId = studioFalEndpointId(modelKey, mode);
+  const sent = await sendVideoJob({
+    gateway: options.gateway,
+    draft: Boolean(options.draft || options.finalFromDraftTaskId),
     provider: 'fal',
     via: 'fal',
     modelId: endpointId,
@@ -427,34 +429,29 @@ export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
   gateway: VideoGatewayCall | null;
 };
 
-/** Direct, or the same body through the gateway when it can hold it; the via to stamp. */
-async function sendStudioJob(
-  options: SubmitStudioVideoOptions,
-  job: {
-    provider: GatewayProvider;
-    via: MediaVia;
-    modelId: string;
-    threadId: string;
-    usedOwnKey: boolean;
-    send: VideoSend;
+/** The provider model a studio submit on this via sends to; the submit and the route step both read it. */
+function studioModelId(
+  model: ImageToVideoModel,
+  mode: StudioVideoMode,
+  via: MediaVia
+): string | undefined {
+  switch (via) {
+    case 'xai':
+      return NATIVE_GROK_VIDEO_MODEL;
+    case 'google':
+      return NATIVE_GEMINI_VIDEO_MODEL;
+    case 'byteplus':
+      return getBytePlusVideoModelId(model);
+    case 'fal':
+      return studioFalEndpointId(model, mode);
   }
-) {
-  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
-  const gateway =
-    options.draft || options.finalFromDraftTaskId ? null : options.gateway;
-  const sent = await sendVideoJob({
-    provider: job.provider,
-    modelId: job.modelId,
-    threadId: job.threadId,
-    gateway,
-    send: job.send,
-  });
-  const onGateway = sent.via === 'openstory';
-  return {
-    jobId: sent.jobId,
-    via: onGateway ? ('openstory' as const) : job.via,
-    usedOwnKey: !onGateway && job.usedOwnKey,
-  };
+}
+
+/** The fal endpoint for a studio mode. */
+function studioFalEndpointId(model: ImageToVideoModel, mode: StudioVideoMode) {
+  return mode === 'frames'
+    ? IMAGE_TO_VIDEO_MODELS[model].id
+    : studioVideoEndpointId(model, mode);
 }
 
 /** The model a studio submit on this via would send through the gateway, for the route step; null where it never goes (#2435). */
@@ -468,15 +465,7 @@ export function studioGatewayTarget(
   const provider = videoGatewayProvider(via);
   // A draft and its final are Ark task ids the gateway does not hand out (#1756).
   if (!provider || options.draft || options.finalFromDraftTaskId) return null;
-  const mode = options.mode ?? 'text';
-  const modelId =
-    provider === 'grok'
-      ? NATIVE_GROK_VIDEO_MODEL
-      : provider === 'byteplus'
-        ? getBytePlusVideoModelId(options.model)
-        : mode === 'frames'
-          ? IMAGE_TO_VIDEO_MODELS[options.model].id
-          : studioVideoEndpointId(options.model, mode);
+  const modelId = studioModelId(options.model, options.mode ?? 'text', via);
   return modelId ? { provider, modelId } : null;
 }
 
@@ -598,7 +587,9 @@ async function submitStudioVideoJobOnce(
             }))
           )),
         ];
-        const sent = await sendStudioJob(options, {
+        const sent = await sendVideoJob({
+          gateway: options.gateway,
+          draft: Boolean(options.draft || options.finalFromDraftTaskId),
           provider: 'grok',
           via: 'xai',
           modelId: NATIVE_GROK_VIDEO_MODEL,
@@ -630,7 +621,9 @@ async function submitStudioVideoJobOnce(
         resolution: options.resolution,
         generateAudio: options.generateAudio,
       });
-      const sent = await sendStudioJob(options, {
+      const sent = await sendVideoJob({
+        gateway: options.gateway,
+        draft: Boolean(options.draft || options.finalFromDraftTaskId),
         provider: 'grok',
         via: 'xai',
         modelId: NATIVE_GROK_VIDEO_MODEL,
@@ -737,7 +730,7 @@ async function submitStudioVideoJobOnce(
       if (!arkKey) {
         throw new Error('ARK_API_KEY is required for the BytePlus studio via');
       }
-      const modelId = getBytePlusVideoModelId(modelKey);
+      const modelId = studioModelId(modelKey, mode, 'byteplus');
       if (!modelId) {
         throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
       }
@@ -782,7 +775,9 @@ async function submitStudioVideoJobOnce(
       );
       const createBytePlusVideo = await loadBytePlusVideo();
       try {
-        const job = await sendStudioJob(options, {
+        const job = await sendVideoJob({
+          gateway: options.gateway,
+          draft: Boolean(options.draft || options.finalFromDraftTaskId),
           provider: 'byteplus',
           via: 'byteplus',
           modelId,

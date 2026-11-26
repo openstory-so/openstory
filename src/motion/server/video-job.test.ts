@@ -53,7 +53,7 @@ vi.doMock('@/gateway/server/adapter/in-process', () => ({
 }));
 vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'platform-fal' }) }));
 
-const { pollVideoJob, routeVideoJob, sendVideoJob } =
+const { pollVideoJob, routeVideoJob, sendVideoJob, videoGatewayStore } =
   await import('./video-job');
 
 /** A provider call that sends `{ duration: 5 }`; counts the calls that reached the provider. */
@@ -99,12 +99,19 @@ describe('sendVideoJob', () => {
     const { send, sent } = provider();
     const job = await sendVideoJob({
       provider: 'grok',
+      via: 'xai',
       modelId: GROK.id,
       threadId: 't',
+      draft: false,
+      usedOwnKey: false,
       gateway: await gateway(true),
       send,
     });
-    expect(job).toEqual({ jobId: 'provider-job', via: 'direct' });
+    expect(job).toEqual({
+      jobId: 'provider-job',
+      via: 'xai',
+      usedOwnKey: false,
+    });
     expect(sent).toHaveBeenCalledOnce();
     expect(mockGenerateVideo).not.toHaveBeenCalled();
   });
@@ -115,12 +122,19 @@ describe('sendVideoJob', () => {
     const { send, sent } = provider();
     const job = await sendVideoJob({
       provider: 'grok',
+      via: 'xai',
       modelId: GROK.id,
       threadId: 't',
+      draft: false,
+      usedOwnKey: false,
       gateway: await gateway(false),
       send,
     });
-    expect(job).toEqual({ jobId: 'gateway-job', via: 'openstory' });
+    expect(job).toEqual({
+      jobId: 'gateway-job',
+      via: 'openstory',
+      usedOwnKey: false,
+    });
     expect(transport).toHaveBeenCalledWith(
       expect.objectContaining({ reservation: { id: 'run-reservation' } })
     );
@@ -135,12 +149,33 @@ describe('sendVideoJob', () => {
     const { send, sent } = provider();
     const job = await sendVideoJob({
       provider: 'grok',
+      via: 'xai',
       modelId: GROK.id,
       threadId: 't',
+      draft: false,
+      usedOwnKey: false,
       gateway: await gateway(false, 'another-model'),
       send,
     });
-    expect(job.via).toBe('direct');
+    expect(job.via).toBe('xai');
+    expect(sent).toHaveBeenCalledOnce();
+    expect(mockGenerateVideo).not.toHaveBeenCalled();
+  });
+
+  it('keeps an Ark draft or its final direct, whatever the route', async () => {
+    mockGenerateVideo.mockClear();
+    const { send, sent } = provider();
+    const job = await sendVideoJob({
+      provider: 'byteplus',
+      via: 'byteplus',
+      modelId: GROK.id,
+      threadId: 't',
+      gateway: await gateway(false),
+      draft: true,
+      usedOwnKey: false,
+      send,
+    });
+    expect(job.via).toBe('byteplus');
     expect(sent).toHaveBeenCalledOnce();
     expect(mockGenerateVideo).not.toHaveBeenCalled();
   });
@@ -149,12 +184,15 @@ describe('sendVideoJob', () => {
     const { send, sent } = provider();
     const job = await sendVideoJob({
       provider: 'grok',
+      via: 'xai',
       modelId: GROK.id,
       threadId: 't',
+      draft: false,
+      usedOwnKey: false,
       gateway: null,
       send,
     });
-    expect(job.via).toBe('direct');
+    expect(job.via).toBe('xai');
     expect(sent).toHaveBeenCalledOnce();
   });
 });
@@ -209,5 +247,26 @@ describe('pollVideoJob', () => {
         { credentials: undefined, gateway: null }
       )
     ).rejects.toThrow(/without its store/);
+  });
+});
+
+describe('videoGatewayStore', () => {
+  it('uploads a clip by URL and refuses inline bytes', async () => {
+    const upload = vi.fn(async (url: string) => ({
+      url: `/r2/${url.length}.mp4`,
+      path: 'p.mp4',
+      contentType: 'video/mp4',
+    }));
+    const store = videoGatewayStore(upload);
+    await expect(
+      store({ url: 'https://x/a.mp4', contentType: 'video/mp4' }, 0)
+    ).resolves.toEqual({
+      url: '/r2/15.mp4',
+      path: 'p.mp4',
+      contentType: 'video/mp4',
+    });
+    await expect(
+      store({ base64: 'AAAA', contentType: 'video/mp4' }, 0)
+    ).rejects.toThrow('inline video');
   });
 });
