@@ -91,6 +91,10 @@ export function inProcessPoller(params: {
       // A retried poll whose job already ended answers from the row: no second store, no second charge.
       const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
       if (job?.status === 'succeeded') {
+        // The settle step may have died before its zero: a replay finishes it.
+        if (run.ownsReservation) {
+          await scopedDb.billing.zeroReservation(run.reservationId);
+        }
         return {
           kind: 'done' as const,
           outputs: storedOutputs(job),
@@ -175,6 +179,10 @@ export function inProcessGateway(params: {
       }
       // A replayed job is never started twice: only a queued one starts here.
       if (job.status === 'succeeded') {
+        // The settle step may have died before its zero: a replay finishes it.
+        if (run.ownsReservation) {
+          await scopedDb.billing.zeroReservation(run.reservationId);
+        }
         return {
           kind: 'done' as const,
           jobId: job.id,

@@ -353,6 +353,29 @@ describe('the openstory adapter, in-process', () => {
     expect(await holdLeft(job.id)).toBeGreaterThan(0);
   });
 
+  it('gives back the rest of the hold on a replay when the settle step died before its zero', async () => {
+    start.mockResolvedValue(answered);
+    const submit = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-8:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await submit();
+    const job = await onlyJob(IMAGE.id);
+    // As if the zero after the charge had thrown.
+    await db
+      .update(creditReservations)
+      .set({ remainingAmount: 5_000 })
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    await submit();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(await holdLeft(job.id)).toBe(0);
+  });
+
   it('never charges twice when the step is retried', async () => {
     start.mockResolvedValue(answered);
     for (let attempt = 0; attempt < 2; attempt++) {
