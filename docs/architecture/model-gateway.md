@@ -650,6 +650,55 @@ adapter's first product caller and the own-key path needs a run too.
 `extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
 bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
+## Every model can be priced (#2432)
+
+### The stored snapshot
+
+The gateway reads a model, its request schema and its rate card from
+`gateway_models` (`src/platform/server/db/schema/gateway-models.ts`), never
+from modelschemas on a request.
+
+- **Product models are served from the snapshot; anything else is a live
+  read and fails when modelschemas is down.** `getGatewayModel` answers from
+  the stored row; on a miss it reads modelschemas through the catalog's
+  bounded TTL cache, writes nothing, and refuses an answer under another id
+  than the one asked for. Only the scheduled refresh writes rows, so a caller
+  cannot grow the table by inventing ids (`catalog.test.ts`). Live reads
+  spend the refresh's modelschemas quota, so they are bounded per isolate: a
+  refused id is remembered for ten minutes, and past 30 live reads a minute
+  the answer is `429 RATE_LIMITED`.
+- The snapshot holds exactly `productGatewayModels()`
+  (`src/gateway/product-models.ts`). `GET /api/v1/gateway/models` and the
+  Models page lists still read modelschemas' lists.
+- `refreshGatewayModels` (`src/gateway/server/refresh-models.ts`) re-reads
+  every product model under a 5 minute budget, each request cut off at 30
+  seconds (`fetchCatalogJson`). Rows are keyed by the model's own id. Only a
+  row no longer in the product list, or whose key is not its model's id or
+  that no longer parses, is dropped (by the row's key). A refusal, an answer
+  under another id, an outage, a rate limit or the budget keeps the stored
+  row and logs an error, so a bad modelschemas deploy cannot empty the
+  snapshot; a run that could read nothing throws.
+- It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
+  pricing refresh and in its own `try`, so a failure or the budget never
+  stops fal pricing; no new cron expression. `bun scripts/refresh-fal-pricing.ts`
+  runs both against local D1. `MODELSCHEMAS_API_KEY` is required in
+  production (`scripts/push-secrets.ts`): a refresh is two requests a model,
+  past the anonymous 60 an hour, and a production refresh without it logs
+  an error.
+- The fal pricing refresh takes its cards from this snapshot
+  (`listStoredGatewayModels(db)`); its own modelschemas fetcher
+  (`fetch-rate-cards.ts`) is gone. A used fal endpoint the snapshot does not
+  hold (no request schema, or not a product model) keeps the card it had on
+  `model_pricing.rate_card`, and the refresh logs it as a warning. The card is
+  stored twice (`gateway_models.model.card` and `model_pricing.rate_card`)
+  until the estimate readers move to the snapshot (#2439).
+- Why a table of its own: a `model_pricing` row is a fal unit price keyed by
+  unit, with a required price; a gateway model is keyed by provider and model
+  id and carries a schema. One row is the whole `GatewayModel`, parsed on
+  read, so a row an older deploy wrote is checked, not trusted.
+- The lists read modelschemas: an outage hides them, and stops generation
+  for every model outside the snapshot.
+
 ## Not in this stack
 
 - Moving the main app's own workflows onto the gateway. Roughly twenty

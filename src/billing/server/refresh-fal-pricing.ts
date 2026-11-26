@@ -12,8 +12,9 @@
  *    preserves the stored value rather than nulling it.
  * 3. `model_usage_observations` — median units per image from our own
  *    generations, the preferred estimation signal.
- * 4. modelschemas rate cards for endpoints we use (#1605). A missing card
- *    or a failed fetch leaves the stored card in place.
+ * 4. modelschemas rate cards for endpoints we use (#1605), read from the
+ *    gateway's stored snapshot (`refreshGatewayModels` runs first). A model
+ *    with no stored card leaves the card already on the row in place.
  *
  * Also appends `model_pricing_history` rows on price changes (and first
  * sight). Billing reads these prices, so a fal price move reaches real
@@ -34,7 +35,7 @@ import {
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
 } from './fal-pricing-fetch';
-import { fetchFalRateCards } from './fetch-rate-cards';
+import { listStoredGatewayModels } from '@/gateway/server/db/gateway-models';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
@@ -591,11 +592,23 @@ export async function refreshFalPricing(
     apiKey,
     usedPrices
   );
-  // Same endpoint set as the historical estimate. A miss keeps yesterday's
-  // card; the gate must not call modelschemas itself.
-  const rateCards = await fetchFalRateCards(
-    usedPrices.map((p) => p.endpointId)
+  // The gateway snapshot's cards; a miss keeps yesterday's card on the row.
+  const storedModels = new Map(
+    (await listStoredGatewayModels(db)).flatMap(({ provider, model }) =>
+      provider === 'fal' && model ? [[model.id, model] as const] : []
+    )
   );
+  const unrefreshedCards = usedPrices
+    .map((p) => p.endpointId)
+    .filter((id) => !storedModels.has(id));
+  if (unrefreshedCards.length > 0) {
+    logger.warn(
+      'fal endpoints not in the gateway snapshot keep their stored rate card',
+      {
+        endpoints: unrefreshedCards,
+      }
+    );
+  }
   const storedCardByEndpoint = new Map(
     existing.flatMap((row) =>
       row.rateCard ? [[row.endpointId, row.rateCard] as const] : []
@@ -645,7 +658,9 @@ export async function refreshFalPricing(
       observedMedianUnits: obs?.medianUnits ?? null,
       observedSampleCount: obs?.sampleCount ?? 0,
       rateCard:
-        rateCards.get(p.endpointId) ??
+        (usedSet.has(p.endpointId)
+          ? storedModels.get(p.endpointId)?.card
+          : undefined) ??
         storedCardByEndpoint.get(p.endpointId) ??
         null,
       fetchedAt: now,

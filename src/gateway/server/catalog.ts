@@ -1,5 +1,6 @@
 /** What the gateway serves: modelschemas models that have a request schema and a rate card. */
 
+import { getDb } from '#db-client';
 import { fetchCatalogJson, CatalogApiError } from '@/models/catalog';
 import {
   NotFoundError,
@@ -9,14 +10,15 @@ import {
 import type { JsonValue } from '@/platform/server/db/schema';
 import {
   BYTEPLUS_ENDPOINTS,
-  GATEWAY_JOB_KINDS,
   GATEWAY_PROVIDERS,
+  GATEWAY_JOB_KINDS,
   type GatewayJobKind,
   type GatewayProvider,
 } from '@/gateway/schema';
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import { z } from 'zod';
+import { getStoredGatewayModel } from '@/gateway/server/db/gateway-models';
 
 const MODEL_TTL_MS = 5 * 60 * 1000;
 const SCHEMA_TTL_MS = 30 * 60 * 1000;
@@ -76,8 +78,8 @@ async function getJson(path: string, ttlMs: number): Promise<unknown> {
   }
 }
 
-/** The model with its schema and card, or a refusal: a model with either missing is not runnable. */
-export async function getGatewayModel(
+/** The model from modelschemas, or a refusal: a model with no schema or no card is not runnable. */
+export async function fetchGatewayModel(
   provider: GatewayProvider,
   id: string
 ): Promise<GatewayModel> {
@@ -114,6 +116,56 @@ export async function getGatewayModel(
     card: card.data,
     inputSchema: schema.schema,
   };
+}
+
+// ponytail: per isolate, not global; the refresh's modelschemas quota is what this protects.
+const LIVE_READS_PER_MINUTE = 30;
+const REFUSED_TTL_MS = 10 * 60 * 1000;
+const REFUSED_MAX = 500;
+const liveReads = { windowStart: 0, count: 0 };
+const refusedLive = new Map<string, { error: OpenStoryError; until: number }>();
+
+/**
+ * Product models are served from the snapshot; anything else is a live read
+ * through the catalog's bounded TTL cache, writes nothing, and fails when
+ * modelschemas is down. A live answer under another id is refused. Live reads
+ * are bounded so unknown ids cannot spend the refresh's quota: a refusal is
+ * remembered for ten minutes, and an isolate makes at most 30 a minute.
+ */
+export async function getGatewayModel(
+  provider: GatewayProvider,
+  id: string
+): Promise<GatewayModel> {
+  const stored = await getStoredGatewayModel(getDb(), provider, id);
+  if (stored) return stored;
+  const key = `${provider}/${id}`;
+  const now = Date.now();
+  const refused = refusedLive.get(key);
+  if (refused && refused.until > now) throw refused.error;
+  if (now - liveReads.windowStart >= 60_000 || now < liveReads.windowStart) {
+    liveReads.windowStart = now;
+    liveReads.count = 0;
+  }
+  if (++liveReads.count > LIVE_READS_PER_MINUTE) {
+    throw new OpenStoryError(
+      'Too many lookups of models outside the catalog snapshot. Retry shortly.',
+      'RATE_LIMITED',
+      429
+    );
+  }
+  try {
+    const model = await fetchGatewayModel(provider, id);
+    if (model.id !== id) {
+      throw new NotFoundError(`Unknown model; did you mean ${model.id}?`);
+    }
+    return model;
+  } catch (error) {
+    if (error instanceof OpenStoryError && error.statusCode < 500) {
+      if (refusedLive.size >= REFUSED_MAX) refusedLive.clear();
+      refusedLive.set(key, { error, until: now + REFUSED_TTL_MS });
+    }
+    throw error;
+  }
 }
 
 /** Why the hold cannot price this card before a run, or null: a usage lever with no estimate (#2432). */
