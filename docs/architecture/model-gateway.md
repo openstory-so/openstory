@@ -946,10 +946,20 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
   sweep cannot zero it). A capture
   renews the reservation's `RESERVATION_TTL_MS` (6 hours), and a 30-minute
   poll window sits well inside it.
-- **Studio records the charge.** A gateway asset's `costMicros` and span
-  cost come from its own job row (`read-gateway-charge`, by the id in the
-  handle, through `scopedDb.claims`). The transport's `done` answer carries
+- **The charge is recorded.** A studio asset's `costMicros` and the motion
+  and studio span cost come from the run's own job row (`readGatewayCharge`,
+  a `read-gateway-charge` step, by the id in the handle, through
+  `scopedDb.claims`). The transport's `done` answer carries
   no cost; #2438 may add one when it designs the HTTP transport.
+- **Failures read as the provider's.** Seedance's failure handling
+  (`isSeedanceInternalServiceError`, `explainSeedanceFailure`) asks
+  `videoJobProviderVia(job)`, the provider behind a gateway job (from its
+  handle), not the stamped `openstory`. The in-process poll passes the
+  provider's own `code: message` through, so an Ark `InternalServiceError`
+  still gets one new job (a `-internal` route step and submit key; the
+  failed job's own hold was released by the poll), `QuotaSharedPoolExceeded`
+  still reads as busy, and a stored URL is still stripped. On fal these
+  helpers do nothing, gateway or not.
 - **Packed clips:** one run, one submit, one gateway job, one charge.
 - **Upload rights:** `video-job.ts` passes `UPLOAD_RIGHTS_CHECKED`. Studio
   checks every upload at the click (`requireCheckedUploadRights`); motion's

@@ -17,7 +17,9 @@ const mockGenerateImageWithProvider = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
 const mockRecordProvenance = vi.fn();
 const mockSubmit = vi.fn();
-const mockGatewayCharge = vi.fn(async () => 480_000);
+const mockGatewayCharge = vi.fn(async (_step: unknown, job: { via?: string }) =>
+  job.via === 'openstory' ? 480_000 : null
+);
 const mockPoll = vi.fn();
 const mockCost = vi.fn();
 const mockRecordMediaGenerationSpan = vi.fn();
@@ -58,7 +60,9 @@ vi.doMock('@/studio/server/studio-video-generation', () => ({
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
   releaseTimedOutVideoJob: vi.fn(async () => {}),
-  gatewayVideoCharge: mockGatewayCharge,
+  readGatewayCharge: mockGatewayCharge,
+  videoJobProviderVia: (job: { via?: string }) =>
+    job.via === 'openstory' ? 'byteplus' : job.via,
   videoGatewayStore: (upload: unknown) => upload,
   routeVideoJob: async () => ({}),
   videoCostFromUsage: mockCost,
@@ -272,6 +276,29 @@ describe('StudioGenerationWorkflow image', () => {
 });
 
 describe('StudioGenerationWorkflow video', () => {
+  it('a gateway job on Ark gets one new job after InternalServiceError (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: '{"run":{}}',
+      modelKey: 'seedance_v2_5',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      via: 'openstory',
+      usedOwnKey: false,
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.names).toContain('submit-video-internal');
+  });
+
   it('records the gateway job charge on a gateway asset, with no deduct (#2435)', async () => {
     mockSubmit.mockResolvedValue({
       jobId: '{"run":{}}',
@@ -285,7 +312,6 @@ describe('StudioGenerationWorkflow video', () => {
 
     await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
 
-    expect(step.names).toContain('read-gateway-charge');
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
     expect(generatedAssets.markCompleted).toHaveBeenCalledWith(
       'asset-1',

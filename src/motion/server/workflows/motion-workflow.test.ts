@@ -21,7 +21,9 @@ import { UnusableReferencesError } from '@/motion/reference-support';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
-const mockGatewayCharge = vi.fn(async () => 480_000);
+const mockGatewayCharge = vi.fn(async (_step: unknown, job: { via?: string }) =>
+  job.via === 'openstory' ? 480_000 : null
+);
 const mockGatewayTarget = vi.fn((options: { model: string }, via: string) => ({
   provider: via,
   modelId: options.model,
@@ -66,7 +68,10 @@ const mockVideoCost = vi.fn(async () => ({
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
   releaseTimedOutVideoJob: vi.fn(async () => {}),
-  gatewayVideoCharge: mockGatewayCharge,
+  readGatewayCharge: mockGatewayCharge,
+  // A gateway job here stands for one run on Ark.
+  videoJobProviderVia: (job: { via?: string }) =>
+    job.via === 'openstory' ? 'byteplus' : job.via,
   videoGatewayStore: (upload: unknown) => upload,
   routeVideoJob: mockRouteVideoJob,
   videoCostFromUsage: mockVideoCost,
@@ -343,6 +348,61 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
     expect(step.names).toContain('motion-poll-batch-0-0-internal');
   });
 
+  it('a gateway job on Ark also gets one new job, under a new key (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      ...job(),
+      via: 'openstory',
+      modelKey: 'seedance_v2_5',
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion-internal',
+        }),
+      })
+    );
+    expect(step.names).toContain('route-motion-internal');
+  });
+
+  it('a gateway job on Ark says the provider is busy, not its raw error (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error: 'QuotaSharedPoolExceeded: shared pool exhausted',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toBeInstanceOf(NonRetryableError);
+    await expect(run).rejects.not.toThrow(/QuotaSharedPoolExceeded/);
+  });
+
+  it('a gateway job on Ark never shows the stored url behind a refused reference (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error:
+        'InvalidParameter: the image could not be decoded (/r2/stills/secret.png)',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toThrow(/You were not charged/);
+    await expect(run).rejects.not.toThrow(/secret\.png/);
+  });
+
   it('stops at once when the references cannot be used, with no step retry', async () => {
     mockSubmit.mockRejectedValue(
       new UnusableReferencesError(
@@ -453,6 +513,17 @@ describe('MotionWorkflow on the openstory via (#2435)', () => {
     );
     expect(mockVideoCost).not.toHaveBeenCalled();
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+  });
+
+  it('records the gateway charge on the span (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openstory', costMicros: 480_000 })
+    );
   });
 
   it('still prices and deducts a direct clip', async () => {

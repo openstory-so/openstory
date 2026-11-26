@@ -111,10 +111,13 @@ export function inProcessPoller(params: {
   };
 }
 
-/** The gateway job a queued handle names; null for a job that answered at submit (`done:`), which carries none. */
-export function gatewayJobIdOf(handle: string): string | null {
+/** The gateway job and provider a queued handle names; null for a job that answered at submit (`done:`), which carries none. */
+export function gatewayRunOf(
+  handle: string
+): Pick<GatewayRun, 'jobId' | 'provider'> | null {
   if (handle.startsWith('done:')) return null;
-  return handleSchema.parse(JSON.parse(handle)).run.jobId;
+  const { run } = handleSchema.parse(JSON.parse(handle));
+  return { jobId: run.jobId, provider: run.provider };
 }
 
 /** Ends a queued job its caller gave up on: failed now, its own hold released, not left to the sweep. */

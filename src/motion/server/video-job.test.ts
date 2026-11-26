@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type { WorkflowStep } from 'cloudflare:workers';
 import { asStub } from '@/test/as-stub';
 import {
   mockFalVideo,
@@ -43,8 +44,8 @@ const poller = vi.fn();
 const transport = vi.fn();
 const releaseInProcessJob = vi.fn(async () => {});
 vi.doMock('@/gateway/server/adapter/in-process', () => ({
-  gatewayJobIdOf: (handle: string) =>
-    handle.startsWith('done:') ? null : 'gw-1',
+  gatewayRunOf: (handle: string) =>
+    handle.startsWith('done:') ? null : { jobId: 'gw-1', provider: 'byteplus' },
   releaseInProcessJob,
   inProcessGateway: (params: unknown) => {
     transport(params);
@@ -60,12 +61,13 @@ vi.doMock('#env', () => ({
 }));
 
 const {
-  gatewayVideoCharge,
+  readGatewayCharge,
   pollVideoJob,
   releaseTimedOutVideoJob,
   routeVideoJob,
   sendVideoJob,
   videoGatewayStore,
+  videoJobProviderVia,
 } = await import('./video-job');
 
 /** A provider call that sends `{ duration: 5 }`; counts the calls that reached the provider. */
@@ -296,17 +298,33 @@ describe('a gateway clip after its run gives up or finishes (#2435)', () => {
     expect(releaseInProcessJob).toHaveBeenCalledOnce();
   });
 
-  it('reads the charge off its own job row, and none for a job that answered at submit', async () => {
+  it('reads the charge off its own job row in its own step, and none for a job that answered at submit', async () => {
     const getById = vi.fn(async () => ({ costMicros: 480_000 }));
     const scopedDb = asStub<WorkflowScopedDb>({
       claims: { gatewayJobs: { getById } },
     });
-    await expect(gatewayVideoCharge({ jobId: '{}' }, scopedDb)).resolves.toBe(
-      480_000
-    );
+    const step = asStub<WorkflowStep>({
+      do: (_name: string, fn: () => Promise<unknown>) => fn(),
+    });
+    await expect(
+      readGatewayCharge(step, { jobId: '{}', via: 'openstory' }, scopedDb)
+    ).resolves.toBe(480_000);
     expect(getById).toHaveBeenCalledWith('gw-1');
     await expect(
-      gatewayVideoCharge({ jobId: 'done:[]' }, scopedDb)
+      readGatewayCharge(step, { jobId: 'done:[]', via: 'openstory' }, scopedDb)
     ).resolves.toBeNull();
+    await expect(
+      readGatewayCharge(step, { jobId: 'x', via: 'fal' }, scopedDb)
+    ).resolves.toBeNull();
+  });
+
+  it('answers for the provider behind a gateway job, so Ark failures read as Ark', () => {
+    expect(videoJobProviderVia({ jobId: '{}', via: 'openstory' })).toBe(
+      'byteplus'
+    );
+    expect(videoJobProviderVia({ jobId: 'x', via: 'fal' })).toBe('fal');
+    expect(videoJobProviderVia({ jobId: 'done:[]', via: 'openstory' })).toBe(
+      'openstory'
+    );
   });
 });

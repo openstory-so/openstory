@@ -8,13 +8,18 @@ import { getEnv } from '#env';
 import { billedFields } from '@/billing/billed-quantity';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
-import { ZERO_MICROS } from '@/billing/money';
+import { type Microdollars, micros, ZERO_MICROS } from '@/billing/money';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
-import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
+import {
+  GATEWAY_VIA,
+  gatewayProviderOfVia,
+  type GatewayJobInput,
+  type GatewayProvider,
+} from '@/gateway/schema';
 import { openstoryVideo, openstoryVideoStatus } from '@/gateway/server/adapter';
 import {
   inProcessGateway,
-  gatewayJobIdOf,
+  gatewayRunOf,
   inProcessPoller,
   releaseInProcessJob,
 } from '@/gateway/server/adapter/in-process';
@@ -55,6 +60,7 @@ import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
+import type { WorkflowStep } from 'cloudflare:workers';
 import { z } from 'zod';
 import { getVideoJobStatus } from './video-job-status';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
@@ -122,15 +128,18 @@ export type VideoGatewayCall = {
   reservation: { readonly id: string } | null;
 };
 
-const GATEWAY_PROVIDER_OF_VIA: Partial<Record<MediaVia, GatewayProvider>> = {
-  xai: 'grok',
-  fal: 'fal',
-  byteplus: 'byteplus',
-};
-
 /** The gateway provider for a video via; null where the gateway is not used (native Google). */
 export function videoGatewayProvider(via: MediaVia): GatewayProvider | null {
-  return GATEWAY_PROVIDER_OF_VIA[via] ?? null;
+  return via === 'google' ? null : gatewayProviderOfVia(via);
+}
+
+/** The via of the provider that ran the job: a gateway job answers for the provider behind it, so an Ark failure reads as Ark's. */
+export function videoJobProviderVia(
+  job: Pick<StampedVideoJob, 'jobId' | 'via'>
+): string | undefined {
+  if (job.via !== 'openstory') return job.via;
+  const run = gatewayRunOf(job.jobId);
+  return run ? GATEWAY_VIA[run.provider] : job.via;
 }
 
 /** The route step's body: the own-key check through the BYOK charge-gate hatch, the stored snapshot, no body yet. */
@@ -269,14 +278,21 @@ export async function releaseTimedOutVideoJob(
   );
 }
 
-/** What the gateway charged for a finished clip, read back by the run's own job id; null when the handle names none. */
-export async function gatewayVideoCharge(
-  job: Pick<StampedVideoJob, 'jobId'>,
+/** What the gateway charged for a finished clip, read back by the run's own job id in its own step; null off the gateway or when the handle names no job. */
+export async function readGatewayCharge(
+  step: WorkflowStep,
+  job: Pick<StampedVideoJob, 'jobId' | 'via'>,
   scopedDb: WorkflowScopedDb
-): Promise<number | null> {
-  const jobId = gatewayJobIdOf(job.jobId);
-  if (!jobId) return null;
-  return (await scopedDb.claims.gatewayJobs.getById(jobId))?.costMicros ?? null;
+): Promise<Microdollars | null> {
+  if (job.via !== 'openstory') return null;
+  const charge = await step.do('read-gateway-charge', async () => {
+    const run = gatewayRunOf(job.jobId);
+    if (!run) return null;
+    return (
+      (await scopedDb.claims.gatewayJobs.getById(run.jobId))?.costMicros ?? null
+    );
+  });
+  return charge === null ? null : micros(charge);
 }
 
 export type StampedVideoJob = {

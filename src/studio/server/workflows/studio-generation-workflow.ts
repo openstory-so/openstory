@@ -32,7 +32,7 @@ import {
 } from '@/motion/seedance-edit';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 import type { MediaVia } from '@/models/via';
-import { micros, ZERO_MICROS } from '@/billing/money';
+import { ZERO_MICROS } from '@/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -59,7 +59,8 @@ import {
 import { studioImageParams } from '@/studio/text-to-video';
 import {
   pollVideoJob,
-  gatewayVideoCharge,
+  readGatewayCharge,
+  videoJobProviderVia,
   releaseTimedOutVideoJob,
   routeVideoJob,
   videoCostFromUsage,
@@ -442,13 +443,16 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           // One new job, not a Cloudflare retry of the failed task (#2036).
           if (
             !seedanceInternalRetried &&
-            isSeedanceInternalServiceError(poll.error, job.via)
+            isSeedanceInternalServiceError(poll.error, videoJobProviderVia(job))
           ) {
             retrySeedanceInternal = true;
             internalError = poll.error;
             break;
           }
-          const explained = explainSeedanceFailure(poll.error, job.via);
+          const explained = explainSeedanceFailure(
+            poll.error,
+            videoJobProviderVia(job)
+          );
           if (explained) {
             logger.warn(
               `[StudioGenerationWorkflow] Ark job ${job.jobId} failed for ${assetId}: ${poll.error}`
@@ -545,12 +549,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           );
     const videoCost = billing?.cost ?? ZERO_MICROS;
     // The gateway's charge for the asset and telemetry: its own job row, by id (#2435).
-    const gatewayCharge =
-      jobVia === 'openstory'
-        ? await step.do('read-gateway-charge', () =>
-            gatewayVideoCharge(job, scopedDb)
-          )
-        : null;
+    const gatewayCharge = await readGatewayCharge(step, job, scopedDb);
 
     if (billing?.recordFalUsage) {
       await recordFalUsageStep(
@@ -623,7 +622,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           unitsBilled: billing.unitsBilled,
           billedUnit: billing.billedUnit,
         }),
-        ...(gatewayCharge !== null && { costMicros: micros(gatewayCharge) }),
+        ...(gatewayCharge !== null && { costMicros: gatewayCharge }),
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,

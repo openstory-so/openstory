@@ -63,10 +63,12 @@ import {
 } from '@/motion/server/motion-generation';
 import {
   pollVideoJob,
+  readGatewayCharge,
   releaseTimedOutVideoJob,
   routeVideoJob,
   videoCostFromUsage,
   videoGatewayStore,
+  videoJobProviderVia,
   type VideoGatewayCall,
 } from '@/motion/server/video-job';
 import type { GatewayStore } from '@/gateway/server/phases';
@@ -1422,13 +1424,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           if (
             !seedanceInternalRetried &&
             !isRescue &&
-            isSeedanceInternalServiceError(poll.error, job.via)
+            isSeedanceInternalServiceError(poll.error, videoJobProviderVia(job))
           ) {
             retrySeedanceInternal = true;
             internalError = poll.error;
             break;
           }
-          const explained = explainSeedanceFailure(poll.error, job.via);
+          const explained = explainSeedanceFailure(
+            poll.error,
+            videoJobProviderVia(job)
+          );
           if (explained) {
             logger.warn(
               `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}: ${poll.error}`
@@ -1588,6 +1593,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             videoCostFromUsage({ ...job, via: jobVia }, billedUsage, 'motion')
           );
     const actualCost = billing?.cost ?? ZERO_MICROS;
+    // The gateway's charge, for the span (#2435).
+    const gatewayCharge = await readGatewayCharge(step, job, scopedDb);
 
     // Motion is submitted to an async queue and collected by polling, so the
     // `generateVideo()` call returns before the video exists — a middleware
@@ -1604,6 +1611,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           unitsBilled: billing.unitsBilled,
           billedUnit: billing.billedUnit,
         }),
+        ...(gatewayCharge !== null && { costMicros: gatewayCharge }),
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,
