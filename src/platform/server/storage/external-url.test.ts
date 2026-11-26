@@ -16,6 +16,7 @@ vi.doMock('@fal-ai/client', () => ({ createFalClient }));
 const {
   ensureExternallyFetchableUrl,
   ensureExternallyFetchableUrls,
+  fetchableFalFetch,
   toVisionImageSource,
 } = await import('./external-url');
 
@@ -322,6 +323,36 @@ describe('toVisionImageSource', () => {
       type: 'data',
       value: payload,
       mimeType: 'image/png',
+    });
+  });
+});
+
+describe('fetchableFalFetch (the direct fal send)', () => {
+  it('uploads the stored URLs in a JSON body as it sends, and nothing else', async () => {
+    setEnv({ FAL_KEY: 'test-key' });
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/png',
+    });
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.png');
+    const base = vi.fn<typeof fetch>(async () => new Response('{}'));
+
+    await fetchableFalFetch('own-key', base)('https://queue.fal.run/x', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Mara turns at the door',
+        image_urls: ['/r2/thumbnails/organization/shot.png'],
+        duration: 5,
+      }),
+    });
+
+    expect(createFalClient).toHaveBeenCalledWith({ credentials: 'own-key' });
+    const init = base.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      prompt: 'Mara turns at the door',
+      image_urls: ['https://v3.fal.media/files/b/abc/shot.png'],
+      duration: 5,
     });
   });
 });

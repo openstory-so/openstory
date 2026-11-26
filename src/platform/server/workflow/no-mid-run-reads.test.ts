@@ -41,6 +41,8 @@ const WORKFLOW_PATHS = [
   'src/motion/server/generate-dialogue-speech.ts',
   // The video route step's body: motion and studio call it in their own step (#2435).
   'src/motion/server/video-job.ts',
+  // The still step's body: its gateway path checks upload rights in the step (#2434).
+  'src/stills/server/image-generation.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -93,6 +95,13 @@ function isHatch(s: string): s is Hatch {
   return (HATCHES as readonly string[]).includes(s);
 }
 
+/**
+ * A helper handed a hatch, `requireCredits(scopedDb.liveRead, …)`: the reads
+ * happen inside it, so the call site files them under `<helper>(liveRead)`.
+ */
+const HANDED_HATCH =
+  /\b([A-Za-z0-9_]+)\s*\([^()]*?\bscopedDb\s*\.\s*(liveRead|claims)\s*[,)]/g;
+
 /** Local credential-resolution indirection in llm-call-helper. */
 const RESOLVE_CALL_KEY = /\bresolveCallKey\s*\(/;
 
@@ -128,6 +137,11 @@ function scanFileDetailed(file: string): ScannedRead[] {
     const read = second ? `${first}.${second}` : (first ?? '');
     const leaf = second ?? first ?? '';
     if (read && READ_METHOD.test(leaf)) hits.set(read, hatch);
+  }
+  for (const [, helper, rawHatch] of text.matchAll(HANDED_HATCH)) {
+    if (helper && rawHatch && isHatch(rawHatch)) {
+      hits.set(`${helper}(${rawHatch})`, rawHatch);
+    }
   }
   // The local credential indirection in llm-call-helper; it wraps a
   // `scopedDb.credentials` call, so it files under the same hatch.
@@ -217,6 +231,20 @@ type SanctionedRead = {
  * entry may not read at all.
  */
 const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
+  'analyze-script-workflow.ts': [
+    {
+      read: 'waitForElementVision(liveRead)',
+      bucket: 'WAIT-GATE',
+      why: 'Polls for the element-vision siblings to write their descriptions; a snapshot would defeat the wait.',
+    },
+  ],
+  'image-generation.ts': [
+    {
+      read: 'requireUploadRights(liveRead)',
+      bucket: 'BILLING-GUARD',
+      why: 'An upload reference with no cleared or signed likeness verdict (one saved before #1581) is refused before the gateway sends it.',
+    },
+  ],
   'motion-batch-workflow.ts': [
     {
       read: 'bytePlusAssets.getAdmission',
@@ -344,6 +372,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   ],
   'lipsync-workflow.ts': [
     {
+      read: 'requireCredits(liveRead)',
+      bucket: 'BALANCE',
+      why: 'The balance gate before a platform-key lip-sync spends; the balance moving since the trigger is the point.',
+    },
+    {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
       why: 'The fal key, resolved inside the step that submits and the step that charges. BYOK is pinned on the check-credits result.',
@@ -435,6 +468,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   'motion-workflow.ts': [
+    {
+      read: 'requireUploadRights(liveRead)',
+      bucket: 'BILLING-GUARD',
+      why: 'A reference clip upload is refused unless its likeness verdict is cleared or signed, in the step that sends it (#2153).',
+    },
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
@@ -570,6 +608,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   // compute-plan now runs at the trigger, so the plan arrives on the payload.
   'update-stale-shots-workflow.ts': [
     {
+      read: 'requireCredits(liveRead)',
+      bucket: 'BALANCE',
+      why: 'Balance gates before sheets, dialogue audio, voiced motion and lip-sync spend; the balance moving since the trigger is the point.',
+    },
+    {
       read: 'compliance.listEnforcementFor',
       bucket: 'BILLING-GUARD',
       why: 'Spawn-time enforcement for independent fresh-run framing grids, as in ShotImagesWorkflow.',
@@ -616,6 +659,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   'upscale-shot-variant-workflow.ts': [
+    {
+      read: 'getAnchorImageUrl(liveRead)',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'After a failed upscale, reports the still the shot shows now; a snapshot would repaint one the user has since replaced.',
+    },
     {
       read: 'frameVariants.getById',
       bucket: 'CLAIM-BY-ID',

@@ -106,6 +106,56 @@ export async function ensureExternallyFetchableUrls(
   );
 }
 
+/** Every stored-media string in a JSON body made fetchable by fal; everything else as it was. */
+export async function fetchableFalBody(
+  body: unknown,
+  falApiKey?: string
+): Promise<unknown> {
+  if (typeof body === 'string') {
+    return ensureExternallyFetchableUrl(body, falApiKey);
+  }
+  if (Array.isArray(body)) {
+    return Promise.all(body.map((item) => fetchableFalBody(item, falApiKey)));
+  }
+  if (body !== null && typeof body === 'object') {
+    return Object.fromEntries(
+      await Promise.all(
+        Object.entries(body).map(async ([field, value]) => [
+          field,
+          await fetchableFalBody(value, falApiKey),
+        ])
+      )
+    );
+  }
+  return body;
+}
+
+/**
+ * A fetch that makes a JSON body's stored-media URLs fetchable as it sends:
+ * the direct fal path, so a builder keeps the stored URLs and the gateway
+ * holds those (`fetchableFalBody` runs only when a job starts).
+ */
+export function fetchableFalFetch(
+  falApiKey: string | undefined,
+  base: typeof fetch
+): typeof fetch {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    if (!request.headers.get('content-type')?.includes('application/json')) {
+      return base(request);
+    }
+    const body = await fetchableFalBody(await request.json(), falApiKey);
+    const headers = new Headers(request.headers);
+    headers.delete('content-length');
+    return base(request.url, {
+      method: request.method,
+      headers,
+      body: JSON.stringify(body),
+      signal: request.signal,
+    });
+  };
+}
+
 /**
  * Fetchable image URL for a provider that accepts `data:` URIs (xAI's Imagine
  * API). Unlike {@link ensureExternallyFetchableUrl} this needs no fal key —

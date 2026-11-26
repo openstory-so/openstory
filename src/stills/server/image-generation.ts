@@ -70,6 +70,7 @@ import {
 } from '@/platform/server/observability/ai-otel';
 import {
   ensureExternallyFetchableUrls,
+  fetchableFalBody,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 import {
@@ -274,19 +275,17 @@ export function gatewayImageRequest(
   return { model: route.model, body };
 }
 
-/** References a provider can fetch: fal reads URLs (a local `/r2/` is uploaded), xAI takes data URIs. */
-async function fetchableReferences(
-  params: ImageGenerationParams,
-  provider: GatewayModel['provider']
+/** xAI takes references as data or CDN URIs. */
+async function inlinedReferences(
+  params: ImageGenerationParams
 ): Promise<ImageGenerationParams> {
   const urls = params.referenceImageUrls;
   if (!urls?.length) return params;
   return {
     ...params,
-    referenceImageUrls:
-      provider === 'fal'
-        ? await ensureExternallyFetchableUrls(urls)
-        : await Promise.all(urls.map((url) => toDataOrCdnUrl(url))),
+    referenceImageUrls: await Promise.all(
+      urls.map((url) => toDataOrCdnUrl(url))
+    ),
   };
 }
 
@@ -327,11 +326,12 @@ async function generateOnGateway(
     // A run that holds its own estimate is charged against it: no second hold.
     reservation: call.runReservationId ? { id: call.runReservationId } : null,
     // Held with the stored URLs; sent with ones the provider can fetch, made only when it starts.
-    wireBody: async () =>
-      imageGatewayTarget(
-        await fetchableReferences(params, request.model.provider),
-        call.routes
-      ).body,
+    wireBody:
+      request.model.provider === 'fal'
+        ? async (held) => jsonBody.parse(await fetchableFalBody(held))
+        : async () =>
+            imageGatewayTarget(await inlinedReferences(params), call.routes)
+              .body,
   });
   const result = await generateImage({
     adapter: openstoryImage(request.model.id, transport, {

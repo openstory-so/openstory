@@ -41,13 +41,16 @@ vi.doMock('@/gateway/server/catalog', () => ({
   getSnapshotGatewayModel: async () => GROK,
 }));
 const poller = vi.fn();
-const transport = vi.fn();
+type TransportParams = Parameters<
+  typeof import('@/gateway/server/adapter/in-process').inProcessGateway
+>[0];
+const transport = vi.fn<(params: TransportParams) => void>();
 const releaseInProcessJob = vi.fn(async () => {});
 vi.doMock('@/gateway/server/adapter/in-process', () => ({
   gatewayRunOf: (handle: string) =>
     handle.startsWith('done:') ? null : { jobId: 'gw-1', provider: 'byteplus' },
   releaseInProcessJob,
-  inProcessGateway: (params: unknown) => {
+  inProcessGateway: (params: TransportParams) => {
     transport(params);
     return { submit: vi.fn(), status: vi.fn() };
   },
@@ -55,6 +58,17 @@ vi.doMock('@/gateway/server/adapter/in-process', () => ({
     poller();
     return { status: vi.fn() };
   },
+}));
+const actualExternalUrl = await vi.importActual<
+  typeof import('@/platform/server/storage/external-url')
+>('@/platform/server/storage/external-url');
+vi.doMock('@/platform/server/storage/external-url', () => ({
+  ...actualExternalUrl,
+  // Each call is a new upload, as fal storage gives without a CDN.
+  fetchableFalBody: async (body: unknown) =>
+    JSON.parse(
+      JSON.stringify(body).replaceAll('/r2/', 'https://fal.media/upload-')
+    ),
 }));
 vi.doMock('#env', () => ({
   getEnv: () => ({ FAL_KEY: 'platform-fal', XAI_API_KEY: 'platform-xai' }),
@@ -156,6 +170,56 @@ describe('sendVideoJob', () => {
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: '', modelOptions: { duration: 5 } })
     );
+  });
+
+  it('holds a fal clip on its stored URLs and sends fetchable ones only when the job starts', async () => {
+    mockGenerateVideo.mockClear();
+    mockGenerateVideo.mockResolvedValue({ jobId: 'gateway-job' });
+    transport.mockClear();
+    const scopedDb = asStub<WorkflowScopedDb>({
+      liveRead: { apiKeys: { hasUsableKey: vi.fn(async () => false) } },
+    });
+    const routes = await routeVideoJob(scopedDb, {
+      provider: 'fal',
+      modelId: 'fal-ai/kling-video/o3/reference-to-video',
+    });
+    const held = {
+      duration: 5,
+      image_urls: ['/r2/talent/org-1/sheets/mara.png'],
+    };
+    const job = await sendVideoJob({
+      provider: 'fal',
+      via: 'fal',
+      modelId: 'fal-ai/kling-video/o3/reference-to-video',
+      threadId: 't',
+      draft: false,
+      usedOwnKey: false,
+      gateway: {
+        scopedDb,
+        runId: 'run-1',
+        idempotencyKey: 'run-1:submit-motion',
+        store: vi.fn(),
+        routes,
+        reservation: null,
+      },
+      send: async (fetch = globalThis.fetch) => {
+        await fetch('https://queue.fal.run/x', {
+          method: 'POST',
+          body: JSON.stringify(held),
+        });
+        return { jobId: 'provider-job' };
+      },
+    });
+    expect(job.via).toBe('openstory');
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({ modelOptions: held })
+    );
+    const params = transport.mock.calls[0]?.[0];
+    if (!params) throw new Error('expected a gateway transport');
+    await expect(params.wireBody(held)).resolves.toEqual({
+      duration: 5,
+      image_urls: ['https://fal.media/upload-talent/org-1/sheets/mara.png'],
+    });
   });
 
   it('goes direct when the submit target is not the one the route step routed', async () => {

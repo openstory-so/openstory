@@ -818,10 +818,15 @@ anything else goes direct as before.
   made fetchable with the platform fal key (`ensureExternallyFetchableUrls`),
   as the direct path does; xAI gets a data or CDN URL (`toDataOrCdnUrl`).
   The job is held and replayed on the stored `/r2/` body; the fetchable
-  body is made only when the job starts (`inProcessGateway`'s `wireBody`).
-  Without a storage CDN (Deploy-button workers, e2e record) each fal
-  upload is a new URL, so holding the sent body would make a retried step
-  conflict with its own job after it was charged.
+  body is made only when the job starts (`inProcessGateway`'s `wireBody`,
+  `fetchableFalBody` for fal). Without a storage CDN (Deploy-button
+  workers, e2e record) each fal upload is a new URL, so holding the sent
+  body would make a retried step conflict with its own job after it was
+  charged. Video does the same: the motion and Studio fal builders keep the
+  stored URLs, the direct send uploads them in its fetch
+  (`fetchableFalFetch`), and `sendVideoJob` holds the stored body. xAI data
+  URIs, Ark asset ids and Seed's inline audio do not change between
+  attempts.
 - Rights: the step passes `UPLOAD_RIGHTS_CHECKED`. A still's references are
   uploads classified when saved (`requireUploadRights` in `media-upload.ts`,
   location and element attach, describe upload), Studio uploads checked at

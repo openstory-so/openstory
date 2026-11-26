@@ -272,6 +272,47 @@ describe('the openstory adapter, in-process', () => {
     expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
   });
 
+  it('replays a retried video submit whose references were uploaded again: one provider start', async () => {
+    const withRefs: GatewayModel = {
+      ...VIDEO,
+      id: 'grok-video-refs',
+      inputSchema: {
+        ...SCHEMA,
+        properties: {
+          ...SCHEMA.properties,
+          image_urls: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    };
+    let upload = 0;
+    const wireBody = vi.fn(async (body: GatewayJobInput) => ({
+      ...body,
+      image_urls: [`https://fal.media/files/${++upload}.png`],
+    }));
+    start.mockResolvedValue({ jobId: 'provider-video-1' });
+    const submit = () =>
+      generateVideo({
+        threadId: 'thread-1',
+        adapter: openstoryVideo(
+          withRefs.id,
+          transport(withRefs, null, wireBody),
+          { idempotencyKey: 'run-10:submit' }
+        ),
+        prompt: '',
+        modelOptions: { ...BODY, image_urls: ['/r2/talent/org/sheets/a.png'] },
+      });
+    const first = await submit();
+    const retried = await submit();
+
+    expect(retried.jobId).toBe(first.jobId);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(wireBody).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(withRefs.id);
+    expect(job.input).toMatchObject({
+      image_urls: ['/r2/talent/org/sheets/a.png'],
+    });
+  });
+
   it('charges one image exactly once, at the card price', async () => {
     start.mockResolvedValue(answered);
     const result = await generateImage({

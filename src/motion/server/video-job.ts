@@ -4,6 +4,7 @@
  * (docs/architecture/media-vias.md § The openstory via).
  */
 
+import { fetchableFalBody } from '@/platform/server/storage/external-url';
 import { getEnv } from '#env';
 import { billedFields } from '@/billing/billed-quantity';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
@@ -259,7 +260,11 @@ export async function sendVideoJob(params: {
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
         uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
         reservation: gateway.reservation,
-        wireBody: async (body) => body,
+        // Held with the stored URLs; fal gets fetchable ones when the job starts.
+        wireBody:
+          params.provider === 'fal'
+            ? async (held) => jsonBody.parse(await fetchableFalBody(held))
+            : async (held) => held,
       });
       const job = await generateVideo({
         adapter: openstoryVideo(route.model.id, transport, {
