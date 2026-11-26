@@ -32,6 +32,7 @@ import {
   type SeedRecorder,
 } from './seed-audio';
 import { WORD_LEAD_SECONDS } from './take-check';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
 export type RangeScript = Record<SeedVoiceMood, string>;
@@ -83,7 +84,8 @@ export async function recordRangeRead(input: {
   }
   if (!take) throw new Error('Seed range read recorded no take');
   if (!take.check.ok) {
-    throw new Error(
+    // Every retake already ran in this step: a step retry would only record more.
+    throw new NonRetryableError(
       `Seed range read did not say its script: ${take.check.problem}`
     );
   }

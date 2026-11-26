@@ -155,7 +155,7 @@ function gatewaySeedRecorder(call: AudioGatewayCall): SeedRecorder {
   };
 }
 
-/** Each take goes where the run's routes send its body; `idempotencyKey` must hold the step's attempt. */
+/** Each take goes where the run's routes send its body; `idempotencyKey` is the step's, with no attempt, so a retry replays its takes. */
 export function seedRecorderFor(params: AudioRun): SeedRecorder {
   const { routes, ...call } = params;
   return async (body, take) => {

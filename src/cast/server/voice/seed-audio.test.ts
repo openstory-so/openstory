@@ -14,6 +14,7 @@ import {
   vi,
 } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { micros } from '@/billing/money';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
@@ -250,6 +251,38 @@ describe('a Seed take on the gateway', () => {
     expect(start).toHaveBeenCalledTimes(3);
     expect(await balanceDrop()).toBe(60_000);
   });
+
+  it.each(['gateway', 'direct'] as const)(
+    'stops a range read after three failed checks on the %s path: three Seed calls, no step retry',
+    async (path) => {
+      vi.stubEnv('SEED_SPEECH_API_KEY', 'seed-test');
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ audio: btoa('direct-take'), original_duration: 4 })
+          )
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      transcribeSpeech.mockResolvedValue({ text: '', words: [], seconds: 1 });
+      const error = await recordRangeRead({
+        record: recorder(
+          `voice_run-${path}:seed-range-read-1`,
+          path === 'gateway' ? ROUTES : {}
+        ),
+        elevenLabsKey: 'el-key',
+        voiceId: 'seed:v-2',
+        description: 'Mara, gravelly',
+        script: { normal: 'Engine.', quiet: 'Done.', loud: 'For.' },
+      }).catch((e: unknown) => e);
+      vi.unstubAllGlobals();
+      expect(error).toBeInstanceOf(NonRetryableError);
+      const seedCalls =
+        path === 'gateway'
+          ? start.mock.calls.length
+          : fetchMock.mock.calls.length;
+      expect(seedCalls).toBe(3);
+    }
+  );
 
   it('records a retake as a new job', async () => {
     const record = recorder('run-2:read:1');
