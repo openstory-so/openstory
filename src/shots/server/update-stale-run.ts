@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
@@ -129,6 +130,8 @@ export async function prepareUpdateStale(args: {
  * instance lives.
  */
 export async function launchUpdateStale(input: {
+  /** Resolves the run's gateway routes at the trigger. */
+  scopedDb: Pick<ScopedDb, 'apiKeys'>;
   userId: string;
   organizationId: string;
   sequenceId: string;
@@ -142,6 +145,7 @@ export async function launchUpdateStale(input: {
       organizationId: input.organizationId,
       sequenceId: input.sequenceId,
       plan: input.plan,
+      gatewayRoutes: await imageGatewayRoutes(input.scopedDb),
     },
     { deduplicationId: input.runKey }
   );

@@ -124,6 +124,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         credentials: scopedDb.credentials,
         gateway: {
           routes: event.payload.gatewayRoutes,
+          runReservationId: event.payload.reservationId,
           scopedDb,
           runId: event.instanceId,
           idempotencyKey: `${event.instanceId}:generate-image`,

@@ -48,6 +48,7 @@ import {
 } from '@/motion/server/resolve-motion-prompt';
 import type { VariantType } from '@/platform/server/db/schema/shot-variants';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -712,6 +713,7 @@ export async function addModelToSequence(
   // and its onFailure marks it failed — so there's nothing to pre-write here.
   let workflowRunId = '';
   let triggered = 0;
+  const gatewayRoutes = await imageGatewayRoutes(scopedDb);
   for (const input of inputs) {
     let reservationId: string | undefined;
     try {
@@ -732,7 +734,7 @@ export async function addModelToSequence(
     try {
       workflowRunId = await triggerWorkflow(
         '/image',
-        { ...input, reservationId, ownsReservation: true },
+        { ...input, reservationId, ownsReservation: true, gatewayRoutes },
         {
           deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
         }

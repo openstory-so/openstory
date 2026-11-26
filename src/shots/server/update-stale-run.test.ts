@@ -7,6 +7,9 @@ const emit = vi.fn();
 const history = vi.fn();
 const getWorkflowRunOutcome = vi.fn();
 
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: async () => ({}),
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit }),

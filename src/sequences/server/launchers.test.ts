@@ -27,6 +27,9 @@ vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
 beforeEach(() => {
   getRequestHeader.mockReset();
 });
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: async () => ({}),
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
 }));
@@ -278,6 +281,8 @@ describe('triggerStoryboard', () => {
       // No stopAt on the trigger and no generationStopAt on the row → flags
       // collapse to images (legacy stills-only).
       stopAt: 'images',
+      // Resolved at the trigger, never mid-run (#2434).
+      gatewayRoutes: {},
     });
   });
 

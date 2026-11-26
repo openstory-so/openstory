@@ -331,6 +331,7 @@ async function prepareGeneration(
       launch: async (runKey, onLaunched) => {
         await onLaunched(
           await launchUpdateStale({
+            scopedDb,
             userId: actor.userId,
             organizationId: actor.organizationId,
             sequenceId: sequence.id,

@@ -683,6 +683,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
     }
     // launchUpdateStale → triggerWorkflow, which runs the generation gate.
     const workflowRunId = await launchUpdateStale({
+      scopedDb,
       userId: user.id,
       organizationId,
       sequenceId: sequence.id,

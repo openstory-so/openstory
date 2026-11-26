@@ -215,6 +215,7 @@ async function generateOnce(
         credentials: scopedDb.credentials,
         gateway: {
           routes: input.gatewayRoutes,
+          runReservationId: input.reservationId,
           scopedDb,
           runId: args.workflowRunId,
           // Each attempt is its own gateway job and hold.

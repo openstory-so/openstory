@@ -4,6 +4,9 @@ import { ZERO_MICROS } from '@/billing/money';
 import { asStub } from '@/test/as-stub';
 
 const triggerWorkflow = vi.fn(async () => 'wf_image');
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: async () => ({}),
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => TEST_FAL_PRICING,

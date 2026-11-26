@@ -85,6 +85,7 @@ import {
 } from '@/platform/server/workflow/client';
 import { simpleHash } from '@/platform/hash';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import {
   notifySequenceReady,
   sequenceScenesUrl,
@@ -496,6 +497,7 @@ export async function executeSmartRetry(
         organizationId,
         reservationId,
         ownsReservation: true,
+        gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
         prompt,
         model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),

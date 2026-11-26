@@ -67,6 +67,7 @@ import {
 } from '@/sequences/pipeline';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
@@ -225,6 +226,7 @@ async function resolveStoryboardPayload(
     ...input,
     userCountry,
     sequenceId,
+    gatewayRoutes: await imageGatewayRoutes(scopedDb),
     cast,
     suggestedLocationIds,
     suggestedLocations: suggestedLocationRows.map((l) => ({

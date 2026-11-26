@@ -312,6 +312,7 @@ export async function generateImageSoftening(
           credentials: scopedDb.credentials,
           gateway: {
             routes: args.gatewayRoutes,
+            runReservationId: args.reservationId,
             scopedDb,
             runId: args.workflowRunId,
             // Each attempt is its own gateway job and hold.

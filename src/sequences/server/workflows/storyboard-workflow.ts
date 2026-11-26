@@ -301,6 +301,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           organizationId: input.organizationId,
           sequenceId,
           reservationId: input.reservationId,
+          gatewayRoutes: input.gatewayRoutes,
           plan,
           freshRun: !input.plan,
           announcePhases: true,

@@ -82,6 +82,8 @@ const logger = getLogger(['openstory', 'stills', 'image-generation']);
 type ImageGatewayCall = {
   /** The payload's routes; absent on a run triggered before #2434, which stays direct. */
   readonly routes: GatewayRoutes | undefined;
+  /** The run's own hold (#2435 seam): the gateway job will draw on it instead of holding again. */
+  readonly runReservationId: string | undefined;
   readonly scopedDb: WorkflowScopedDb;
   readonly runId: string;
   /** Unique per attempt (`${instanceId}:${stepName}`): a retried step reuses the job and its hold. */
@@ -255,6 +257,7 @@ async function generateOnGateway(
       }),
     // Product refs are our own stored uploads, classified when they were uploaded.
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+    // ponytail: call.runReservationId is not passed yet; until #2435's core commit a pipeline still is held twice (run envelope + job hold).
   });
   const result = await generateImage({
     adapter: openstoryImage(request.model.id, transport, {
