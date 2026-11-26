@@ -21,11 +21,13 @@ import {
 import type { GatewayStore } from '@/gateway/server/phases';
 import {
   hostedFetch,
+  hostedModelPath,
   remoteHandle,
   remoteJobOf,
 } from '@/gateway/server/remote-config';
 import type { GatewayCallRoute } from '@/gateway/server/route';
 import type { JsonValue } from '@/platform/server/db/schema';
+import { isCheckable } from '@/cast/server/upload-rights';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { getLogger } from '@/platform/logger';
@@ -53,7 +55,8 @@ const uploadAnswer = z.object({ url: z.string() });
  */
 async function withUploadedMedia(
   body: GatewayJobInput,
-  idempotencyKey: string
+  idempotencyKey: string,
+  organizationId: string
 ): Promise<GatewayJobInput> {
   const uploaded = new Map<string, Promise<string>>();
   const upload = (url: string, key: string) => {
@@ -67,7 +70,14 @@ async function withUploadedMedia(
   const walk = async (value: JsonValue): Promise<JsonValue> => {
     if (typeof value === 'string') {
       const key = value.startsWith('/r2/') ? r2KeyFromUrl(value) : null;
-      return key === null ? value : upload(value, key);
+      if (key === null) return value;
+      // Only the run's own files leave this install; checked before anything is read.
+      if (!isCheckable(value, organizationId)) {
+        throw new NonRetryableError(
+          'An input file belongs to another organization'
+        );
+      }
+      return upload(value, key);
     }
     if (Array.isArray(value)) return Promise.all(value.map(walk));
     if (value !== null && typeof value === 'object') {
@@ -160,19 +170,22 @@ function httpPoller(store: GatewayStore): GatewayPoller {
 function httpGateway(params: {
   provider: GatewayProvider;
   modelId: string;
+  organizationId: string;
   store: GatewayStore;
 }): GatewayTransport {
   return {
     ...httpPoller(params.store),
     submit: async (body, idempotencyKey) => {
       const job = gatewayJobResourceSchema.parse(
-        await callGateway(`${params.provider}/${params.modelId}`, {
+        await callGateway(hostedModelPath(params.provider, params.modelId), {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
             'idempotency-key': idempotencyKey,
           },
-          body: JSON.stringify(await withUploadedMedia(body, idempotencyKey)),
+          body: JSON.stringify(
+            await withUploadedMedia(body, idempotencyKey, params.organizationId)
+          ),
         })
       );
       if (job.status === 'succeeded') {
@@ -203,7 +216,11 @@ export function gatewayTransport(
   if (route.via === 'remote') {
     return {
       modelId: route.target.modelId,
-      transport: httpGateway({ ...route.target, store: params.store }),
+      transport: httpGateway({
+        ...route.target,
+        organizationId: params.scopedDb.organizationId,
+        store: params.store,
+      }),
     };
   }
   return {

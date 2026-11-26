@@ -5,7 +5,7 @@
  * are refused here, never degraded.
  */
 
-import { hostedFetch } from '@/gateway/server/remote-config';
+import { hostedFetch, hostedModelPath } from '@/gateway/server/remote-config';
 import { requestMaxTokens } from '@/gateway/server/text';
 import type { GatewayChatBody } from '@/gateway/chat-schema';
 import type {
@@ -93,15 +93,12 @@ class HostedTextAdapter extends BaseTextAdapter<
   async *chatStream(
     options: TextOptions<Record<string, unknown>>
   ): AsyncIterable<AdapterYieldChunk> {
-    const response = await hostedFetch(
-      `chat/${this.model.split('/').map(encodeURIComponent).join('/')}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(hostedChatBody(options)),
-        signal: options.abortController?.signal,
-      }
-    );
+    const response = await hostedFetch(hostedModelPath('chat', this.model), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(hostedChatBody(options)),
+      signal: options.abortController?.signal,
+    });
     if (!response.body) throw new Error('The hosted gateway sent no stream');
     yield* readEvents(response.body);
   }

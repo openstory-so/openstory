@@ -1,6 +1,7 @@
 /** Whether this install runs providers it has no key for on the hosted gateway (#2438). */
 
 import { getEnv } from '#env';
+import { HOSTED_MODEL_ID } from '@/gateway/schema';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
@@ -39,12 +40,34 @@ const REMOTE = 'remote:';
 
 /** A hosted job's handle on this install: the prefix and the hosted job id, opaque here. */
 export function remoteHandle(jobId: string): string {
-  return `${REMOTE}${jobId}`;
+  return `${REMOTE}${hostedJobId(jobId)}`;
+}
+
+/** `<prefix>/<model id>` for a hosted gateway path; refuses an id that could retarget the request. */
+export function hostedModelPath(prefix: string, modelId: string): string {
+  if (modelId.length > 200 || !HOSTED_MODEL_ID.test(modelId)) {
+    throw new NonRetryableError(
+      `Not a model id the hosted gateway takes: ${modelId}`
+    );
+  }
+  return `${encodeURIComponent(prefix)}/${modelId.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/** A hosted job id is a ULID; anything else is refused before it reaches a URL. */
+function hostedJobId(jobId: string): string {
+  if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(jobId)) {
+    throw new NonRetryableError(
+      'The hosted gateway answered a job id that is not a ULID'
+    );
+  }
+  return jobId;
 }
 
 /** The hosted job a handle names, or null for an in-process handle. */
 export function remoteJobOf(handle: string): string | null {
-  return handle.startsWith(REMOTE) ? handle.slice(REMOTE.length) : null;
+  return handle.startsWith(REMOTE)
+    ? hostedJobId(handle.slice(REMOTE.length))
+    : null;
 }
 
 /** Read inside the call that spends it: never on a payload, a URL or a log. */

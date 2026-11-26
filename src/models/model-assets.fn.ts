@@ -1,6 +1,6 @@
 /** Create, list and get `generated_assets`, the Models page runs (#458, #2433); see `@/models/server/generated-assets`. */
 
-import { GATEWAY_PROVIDERS } from '@/gateway/schema';
+import { GATEWAY_PROVIDERS, HOSTED_MODEL_ID } from '@/gateway/schema';
 import { assertModelsEnabled } from '@/platform/flags';
 import {
   GENERATED_ASSET_ACTIVITIES,
@@ -35,7 +35,7 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 const createGeneratedAssetInputSchema = z.object({
   provider: z.enum(GATEWAY_PROVIDERS),
   /** fal endpoint id (`fal-ai/flux-1/dev`), or the provider's model id. */
-  endpointId: z.string().min(1).max(200),
+  endpointId: z.string().min(1).max(200).regex(HOSTED_MODEL_ID),
   activity: z.enum(GENERATED_ASSET_ACTIVITIES),
   /** Catalog display name, stored for listing. */
   modelName: z.string().min(1).max(200),

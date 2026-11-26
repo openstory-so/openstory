@@ -55,6 +55,14 @@ const grokConfigured = vi.fn(() => true);
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: { grok: { configured: grokConfigured } },
 }));
+const mockRequireCheckedUploadRights = vi.fn();
+const actualUploadCheck = await vi.importActual<
+  typeof import('@/cast/server/upload-check')
+>('@/cast/server/upload-check');
+vi.doMock('@/cast/server/upload-check', () => ({
+  ...actualUploadCheck,
+  requireCheckedUploadRights: mockRequireCheckedUploadRights,
+}));
 const remoteConfigured = vi.fn(() => false);
 const actualRemote = await vi.importActual<
   typeof import('@/gateway/server/remote-config')
@@ -134,6 +142,7 @@ beforeEach(async () => {
   mockGetGatewayModel.mockResolvedValue(GROK);
   grokConfigured.mockReturnValue(true);
   remoteConfigured.mockReturnValue(false);
+  mockRequireCheckedUploadRights.mockResolvedValue(undefined);
 });
 
 function scoped(ownFalKey: boolean) {
@@ -274,6 +283,42 @@ describe('createGeneratedAsset', () => {
       }),
       { deduplicationId: `asset-${result.id}` }
     );
+  });
+
+  it('runs the rights check on a remote click before anything ships (#2438)', async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const image = `/r2/characters/${ORGANIZATION_ID}/sheet.png`;
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({ prompt: 'Mara at the dryer', image }),
+      REQUEST
+    );
+    expect(result.ok).toBe(true);
+    expect(mockRequireCheckedUploadRights).toHaveBeenCalledWith(
+      expect.anything(),
+      [image],
+      REQUEST
+    );
+  });
+
+  it("refuses another organization's stored file on a remote click, leaving no row (#2438)", async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({
+        prompt: 'Mara at the dryer',
+        image: '/r2/characters/other-org/sheet.png',
+      }),
+      REQUEST
+    );
+    expect(result).toEqual({
+      ok: false,
+      issues: [{ path: '', message: 'This file is not an upload of yours' }],
+    });
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 
   it('shows the charge on the run once its gateway job settles', async () => {

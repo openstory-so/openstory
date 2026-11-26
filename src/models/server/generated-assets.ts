@@ -5,6 +5,8 @@ import { micros, microsToDisplayUsd } from '@/billing/money';
 import { releaseReservationOnThrow } from '@/billing/server/preflight';
 import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
+import { requireCheckable } from '@/cast/server/upload-rights';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
@@ -69,40 +71,41 @@ export async function createGeneratedAsset(
   let route: AssetGenerationWorkflowInput['route'];
   let activity: GeneratedAssetActivity;
   try {
-    // Own keys stay on today's direct path, unbilled (#2439 moves them).
-    if (
-      data.provider === 'fal' &&
-      (await scopedDb.apiKeys.hasUsableKey('fal'))
-    ) {
-      const validation = validateAssetInput(
-        await fetchModelInputSchema(data.endpointId, data.activity),
-        data.input
-      );
-      if (!validation.success) return { ok: false, issues: validation.issues };
+    // Own keys stay on today's direct path, unbilled (#2439 moves them); no key here goes to the hosted gateway (#2438).
+    const direct =
+      data.provider === 'fal' && (await scopedDb.apiKeys.hasUsableKey('fal'));
+    const remote =
+      !direct &&
+      hostedRouteFor({ provider: data.provider, modelId: data.endpointId });
+    if (direct || remote) {
+      // The hosted side checks again; this install still gates what it ships.
+      if (data.provider === 'fal') {
+        const validation = validateAssetInput(
+          await fetchModelInputSchema(data.endpointId, data.activity),
+          data.input
+        );
+        if (!validation.success) {
+          return { ok: false, issues: validation.issues };
+        }
+      }
       await requireGenerationAllowed({
         userId: scopedDb.userId,
         organizationId: scopedDb.organizationId,
       });
-      await requireCheckedUploadRights(
-        scopedDb,
-        gatedUrls(data.input),
-        request
-      );
-      route = { via: 'fal', endpointId: data.endpointId };
-      activity = data.activity;
-    } else if (
-      hostedRouteFor({ provider: data.provider, modelId: data.endpointId })
-    ) {
-      // No key here: the hosted gateway checks, prices, holds and refuses (#2438).
-      await requireGenerationAllowed({
-        userId: scopedDb.userId,
-        organizationId: scopedDb.organizationId,
-      });
-      route = {
-        via: 'remote',
-        provider: data.provider,
-        endpointId: data.endpointId,
-      };
+      const urls = gatedUrls(data.input);
+      for (const url of urls) {
+        if (r2KeyFromUrl(url) !== null) {
+          requireCheckable(url, scopedDb.organizationId);
+        }
+      }
+      await requireCheckedUploadRights(scopedDb, urls, request);
+      route = direct
+        ? { via: 'fal', endpointId: data.endpointId }
+        : {
+            via: 'remote',
+            provider: data.provider,
+            endpointId: data.endpointId,
+          };
       activity = data.activity;
     } else {
       const model = await getGatewayModel(data.provider, data.endpointId);

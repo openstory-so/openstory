@@ -1542,6 +1542,14 @@ place a call site turns a route into a transport (in-process or HTTP), and
   sends the body as it is over HTTP under `asset:<assetId>` and records the
   asset as `openstory`. The activity is the client's word on this route (no
   local model row); the hosted side runs the model it names.
+- **Only the run's own files leave.** A local `/r2/` key whose owner segment
+  is not the run's organization is refused before storage is read
+  (`isCheckable`), for every caller. The Models page click also runs the
+  rights check and, for fal, the input schema, as the direct path does.
+- **No path can be retargeted.** A model id must match `HOSTED_MODEL_ID`
+  (`src/gateway/schema.ts`; the Models page input schema uses it too) and
+  each segment is encoded (`hostedModelPath`); a job id must be a ULID, both
+  when the hosted side answers it and when a handle is polled.
 - **Submit:** every local `/r2/` string in the body is uploaded first, then
   `POST /api/v1/gateway/{provider}/{model}` with the call's Idempotency-Key.
 - **Poll:** `GET /api/v1/gateway/jobs/{id}?wait=20s`.

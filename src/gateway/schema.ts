@@ -14,6 +14,10 @@ export const GATEWAY_PROVIDERS = [
 ] as const;
 export type GatewayProvider = (typeof GATEWAY_PROVIDERS)[number];
 
+/** A model id a gateway URL can carry: slash-separated segments, each starting with a letter or digit, so no `.`, `..`, `?`, `#` or `%`. */
+export const HOSTED_MODEL_ID =
+  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+
 export function isGatewayProvider(value: string): value is GatewayProvider {
   return GATEWAY_PROVIDERS.some((provider) => provider === value);
 }
