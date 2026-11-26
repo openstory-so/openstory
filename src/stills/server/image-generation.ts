@@ -79,6 +79,10 @@ import {
 import { falImage } from '@tanstack/ai-fal';
 import { ThinkingLevel, createGeminiImage } from '@tanstack/ai-gemini';
 import { createGrokImage } from '@tanstack/ai-grok';
+import { NonRetryableError } from 'cloudflare:workflows';
+import { requireUploadRights } from '@/cast/server/upload-rights';
+import { needsLikenessCheck } from '@/cast/upload-rights';
+import { AttestationRequiredError } from '@/platform/errors';
 import { z } from 'zod';
 
 export type { ImageGenerationParams } from '@/stills/build-image-request';
@@ -293,6 +297,18 @@ async function generateOnGateway(
   call: ImageGatewayCall
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
+  // Backstop for uploads saved before the ledger (#1581): one with no verdict is refused, not sent.
+  const gated = (params.referenceImageUrls ?? []).filter(needsLikenessCheck);
+  if (gated.length > 0) {
+    await requireUploadRights(call.scopedDb.liveRead, gated).catch(
+      (error: unknown) => {
+        if (error instanceof AttestationRequiredError) {
+          throw new NonRetryableError(error.message);
+        }
+        throw error;
+      }
+    );
+  }
   const folder = `gateway/${generateId()}`;
   const transport = inProcessGateway({
     scopedDb: call.scopedDb,
@@ -310,18 +326,19 @@ async function generateOnGateway(
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
     // A run that holds its own estimate is charged against it: no second hold.
     reservation: call.runReservationId ? { id: call.runReservationId } : null,
+    // Held with the stored URLs; sent with ones the provider can fetch, made only when it starts.
+    wireBody: async () =>
+      imageGatewayTarget(
+        await fetchableReferences(params, request.model.provider),
+        call.routes
+      ).body,
   });
-  // Judged on the stored URLs at the trigger; sent with ones the provider can fetch.
-  const body = imageGatewayTarget(
-    await fetchableReferences(params, request.model.provider),
-    call.routes
-  ).body;
   const result = await generateImage({
     adapter: openstoryImage(request.model.id, transport, {
       idempotencyKey: call.idempotencyKey,
     }),
     prompt: '',
-    modelOptions: body,
+    modelOptions: request.body,
     threadId: call.runId,
   });
   const imageUrls = result.images.flatMap((image) =>

@@ -2,6 +2,7 @@
 
 import * as tanstackAi from '@tanstack/ai';
 import { describe, expect, it, vi } from 'vitest';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { asStub } from '@/test/as-stub';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayModel } from '@/gateway/server/catalog';
@@ -261,12 +262,18 @@ describe('a fal still', () => {
     expect(gatewayImageRequest(withRefs, routes)).toBeNull();
   });
 
-  it('is quoted at exactly its hold, with and without references', () => {
-    const pricing = withGatewayImageQuotes({}, FAL_ROUTES);
+  // The fal rows exist; their prices are not what an openstory shape quotes.
+  const FAL_ROWS = {
+    [NANO.id]: { unitPrice: micros(1), unit: 'images' },
+    [NANO_EDIT.id]: { unitPrice: micros(1), unit: 'images' },
+  };
+
+  it('is quoted at exactly the hold of the body it sends, references and count included', () => {
+    const pricing = withGatewayImageQuotes(FAL_ROWS, FAL_ROUTES);
     for (const params of [falStill, withRefs]) {
       for (const resolution of [undefined, '720p', '4k'] as const) {
         const request = gatewayImageRequest(
-          { ...params, ...(resolution && { resolution }) },
+          { ...params, numImages: 2, ...(resolution && { resolution }) },
           FAL_ROUTES
         );
         if (!request) throw new Error('expected an openstory request');
@@ -276,11 +283,52 @@ describe('a fal still', () => {
           edit: params === withRefs,
         });
         expect(quote).toBe(
-          2 *
-            gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
+          gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
         );
       }
     }
+  });
+
+  it('quotes a count the endpoint refuses at the fal price, as the run sends it direct', () => {
+    const schema = nanoSchema(false);
+    const one: GatewayModel = {
+      ...NANO,
+      inputSchema: {
+        ...schema,
+        properties: {
+          ...schema.properties,
+          num_images: { type: 'integer', maximum: 1 },
+        },
+      },
+    };
+    const routes: GatewayRoutes = {
+      ...FAL_ROUTES,
+      [gatewayRouteKey('fal', NANO.id)]: {
+        via: 'openstory',
+        model: JSON.stringify(one),
+      },
+    };
+    const pricing = withGatewayImageQuotes(FAL_ROWS, routes);
+    expect(
+      gatewayImageRequest({ ...falStill, numImages: 2 }, routes)
+    ).toBeNull();
+    const request = gatewayImageRequest(falStill, routes);
+    if (!request) throw new Error('expected an openstory request');
+    expect(estimateImageCost('nano_banana_2', '16:9', 1, { pricing })).toBe(
+      gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
+    );
+    const direct = withGatewayImageQuotes(FAL_ROWS, {});
+    expect(estimateImageCost('nano_banana_2', '16:9', 2, { pricing })).toBe(
+      estimateImageCost('nano_banana_2', '16:9', 2, { pricing: direct })
+    );
+  });
+
+  it('refuses a quote with no fal row on either route, never $0', () => {
+    const pricing = withGatewayImageQuotes({}, FAL_ROUTES);
+    expect(pricing[NANO.id]).toBeUndefined();
+    expect(
+      estimateImageCost('nano_banana_2', '16:9', 1, { pricing })
+    ).toBeNull();
   });
 });
 
@@ -311,5 +359,32 @@ describe('a pipeline still on the openstory route', () => {
     expect(inProcessGateway).toHaveBeenCalledWith(
       expect.objectContaining({ reservation: null })
     );
+  });
+});
+
+describe('an upload reference with no likeness verdict', () => {
+  it('is refused before the gateway sees it', async () => {
+    inProcessGateway.mockClear();
+    const error = await generateImageWithProvider(
+      { ...withRefs, referenceImageUrls: ['/r2/talent/org-1/uploads/old.jpg'] },
+      {
+        gateway: {
+          routes: FAL_ROUTES,
+          runReservationId: undefined,
+          scopedDb: asStub<WorkflowScopedDb>({
+            organizationId: 'org-1',
+            liveRead: {
+              compliance: {
+                attestations: { listForSubject: async () => [] },
+              },
+            },
+          }),
+          runId: 'run-1',
+          idempotencyKey: 'run-1:image',
+        },
+      }
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NonRetryableError);
+    expect(inProcessGateway).not.toHaveBeenCalled();
   });
 });

@@ -20,11 +20,25 @@ import {
 import { ASPECT_RATIOS, aspectRatioToImageSize } from '@/models/aspect-ratios';
 import { RESOLUTIONS } from '@/models/resolutions';
 import { gatewayHoldKey } from '@/billing/cost-estimation';
-import { micros, type Microdollars } from '@/billing/money';
+import type { Microdollars } from '@/billing/money';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getEditEndpoint, IMAGE_MODELS } from '@/models/models';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { ApiKeyProvider } from '@/platform/server/db/schema';
 import { typedEntries } from '@/platform/typed-object';
+
+/** The most images one still request asks for (variants, Studio). */
+const MAX_IMAGES = 4;
+
+/** One read per provider for a whole route resolve, however many models ask. */
+function oncePerProvider<P, R>(read: (provider: P) => Promise<R>) {
+  const seen = new Map<P, Promise<R>>();
+  return (provider: P): Promise<R> => {
+    const hit = seen.get(provider) ?? read(provider);
+    seen.set(provider, hit);
+    return hit;
+  };
+}
 
 /**
  * The gateway targets of every still model, on the via the direct path would
@@ -38,9 +52,12 @@ export async function imageRouteTargets(
 ): Promise<GatewayRouteTarget[]> {
   const credentials: CredentialScopedDb = {
     userId: scopedDb.userId,
-    resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
-    resolveOptionalKey: (provider) =>
-      scopedDb.apiKeys.resolveOptionalKey(provider),
+    resolveKey: oncePerProvider((provider) =>
+      scopedDb.apiKeys.resolveKey(provider)
+    ),
+    resolveOptionalKey: oncePerProvider((provider) =>
+      scopedDb.apiKeys.resolveOptionalKey(provider)
+    ),
   };
   const perModel = await Promise.all(
     typedEntries(IMAGE_MODELS).map(
@@ -68,7 +85,13 @@ export async function imageRouteTargets(
 export async function imageGatewayRoutes(
   scopedDb: Pick<ScopedDb, 'userId' | 'apiKeys'>
 ): Promise<GatewayRoutes> {
-  return resolveGatewayRoutes(scopedDb, await imageRouteTargets(scopedDb));
+  const hasUsableKey = oncePerProvider((provider: ApiKeyProvider) =>
+    scopedDb.apiKeys.hasUsableKey(provider)
+  );
+  return resolveGatewayRoutes(
+    { apiKeys: { hasUsableKey } },
+    await imageRouteTargets(scopedDb)
+  );
 }
 
 /**
@@ -86,32 +109,33 @@ export function withGatewayImageQuotes(
     const endpoints: [string, string[]][] = [[model.id, []]];
     if (editId) endpoints.push([editId, ['/r2/quote.png']]);
     for (const [endpointId, referenceImageUrls] of endpoints) {
+      // No fal row, no quote: a missing row refuses on either route.
+      const row = pricing[endpointId];
+      if (!row) continue;
       const holds: Record<string, Microdollars> = {};
       for (const { value: aspectRatio } of ASPECT_RATIOS) {
         for (const resolution of [undefined, ...RESOLUTIONS]) {
-          const { route, body } = imageGatewayRoute(
-            {
-              model: key,
-              prompt: 'quote',
-              imageSize: aspectRatioToImageSize(aspectRatio),
-              numImages: 1,
-              ...(resolution && { resolution }),
-              referenceImageUrls,
-            },
-            routes
-          );
-          if (route.via !== 'openstory') continue;
-          holds[gatewayHoldKey(aspectRatio, resolution)] = gatewayHoldMicros(
-            priceGatewayJob(route.model.card, body)
-          );
+          for (let numImages = 1; numImages <= MAX_IMAGES; numImages++) {
+            const { route, body } = imageGatewayRoute(
+              {
+                model: key,
+                prompt: 'quote',
+                imageSize: aspectRatioToImageSize(aspectRatio),
+                numImages,
+                ...(resolution && { resolution }),
+                referenceImageUrls,
+              },
+              routes
+            );
+            if (route.via !== 'openstory') continue;
+            holds[gatewayHoldKey(aspectRatio, resolution, numImages)] =
+              gatewayHoldMicros(priceGatewayJob(route.model.card, body));
+          }
         }
       }
       if (Object.keys(holds).length === 0) continue;
-      // A shape the gateway does not run keeps the fal price below.
-      quoted[endpointId] = {
-        ...(pricing[endpointId] ?? { unitPrice: micros(0), unit: 'images' }),
-        gatewayHolds: holds,
-      };
+      // A shape the gateway does not run keeps the fal price.
+      quoted[endpointId] = { ...row, gatewayHolds: holds };
     }
   }
   return quoted;

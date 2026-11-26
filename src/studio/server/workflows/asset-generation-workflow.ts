@@ -120,6 +120,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
             store,
             uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
             reservation: null,
+            wireBody: async (body) => body,
           })
         : directFal(scopedDb, route.endpointId, store);
     // The click held under this key: the run finds that job and its hold.

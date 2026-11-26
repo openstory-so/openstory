@@ -153,6 +153,8 @@ export function inProcessGateway(params: {
   uploadRightsChecked: typeof UPLOAD_RIGHTS_CHECKED;
   /** The caller's run reservation: jobs charge it instead of holding their own; null holds per job. */
   reservation: { readonly id: string } | null;
+  /** The body as sent, from the one held: a replay compares the held body, so a re-uploaded URL never conflicts. */
+  wireBody: (body: GatewayJobInput) => Promise<GatewayJobInput>;
 }): GatewayTransport {
   const { scopedDb, store } = params;
   const credentials = platformOnlyCredentials(scopedDb);
@@ -205,7 +207,7 @@ export function inProcessGateway(params: {
       // Started but never stamped: `claimAndStartGatewayRun` fails it rather than send again.
       const started = await claimAndStartGatewayRun(
         scopedDb,
-        run,
+        { ...run, input: await params.wireBody(run.input) },
         credentials,
         store
       );

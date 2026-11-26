@@ -259,6 +259,7 @@ export async function sendVideoJob(params: {
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
         uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
         reservation: gateway.reservation,
+        wireBody: async (body) => body,
       });
       const job = await generateVideo({
         adapter: openstoryVideo(route.model.id, transport, {

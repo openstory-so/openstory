@@ -144,12 +144,13 @@ export function gateEstimate(
   return floored;
 }
 
-/** The shape a gateway hold is priced for: the request fields a still's price can read. */
+/** The shape a gateway hold is priced for: the request fields a still's route and price can read. */
 export function gatewayHoldKey(
   aspectRatio: AspectRatio,
-  resolution: Resolution | undefined
+  resolution: Resolution | undefined,
+  numImages: number
 ): string {
-  return `${aspectRatio}|${resolution ?? ''}`;
+  return `${aspectRatio}|${resolution ?? ''}|${numImages}`;
 }
 
 /**
@@ -176,12 +177,11 @@ export function estimateImageCost(
   // no call site has to know the route.
   const endpointId =
     (opts.edit ? getEditEndpoint(model) : null) ?? IMAGE_MODELS[model].id;
-  // The gateway hold is per image: every holdable card multiplies by the count.
   const hold =
     opts.pricing[endpointId]?.gatewayHolds?.[
-      gatewayHoldKey(aspectRatio, opts.resolution)
+      gatewayHoldKey(aspectRatio, opts.resolution, numImages)
     ];
-  if (hold !== undefined) return multiplyMicros(hold, numImages);
+  if (hold !== undefined) return hold;
   return estimateFalCost(
     endpointId,
     {

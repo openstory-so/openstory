@@ -817,14 +817,19 @@ anything else goes direct as before.
 - References: a fal body carries URLs. Before sending, a local `/r2/` URL is
   made fetchable with the platform fal key (`ensureExternallyFetchableUrls`),
   as the direct path does; xAI gets a data or CDN URL (`toDataOrCdnUrl`).
-  Locally each fal storage upload is a new URL, so a retried step sends a
-  different body and the gateway refuses the reused key. Production URLs
-  are the CDN's and do not change.
+  The job is held and replayed on the stored `/r2/` body; the fetchable
+  body is made only when the job starts (`inProcessGateway`'s `wireBody`).
+  Without a storage CDN (Deploy-button workers, e2e record) each fal
+  upload is a new URL, so holding the sent body would make a retried step
+  conflict with its own job after it was charged.
 - Rights: the step passes `UPLOAD_RIGHTS_CHECKED`. A still's references are
   uploads classified when saved (`requireUploadRights` in `media-upload.ts`,
   location and element attach, describe upload), Studio uploads checked at
   the click (`requireCheckedUploadRights` in `create-studio-asset`), or media
-  we generated (sheets, earlier stills), which is never classified.
+  we generated (sheets, earlier stills), which is never classified. An
+  upload saved before the ledger (#1581) has no verdict: the gateway step
+  refuses it (`requireUploadRights` on `needsLikenessCheck` refs). The
+  direct path still sends it unchecked (#2439).
 
 Routed today, when the snapshot holds the card and the body passes:
 
@@ -872,13 +877,15 @@ children, shot previews and Replace element's children.
 
 Quotes: `imageQuotePricing` gives a trigger the fal map with each endpoint
 on an `openstory` route carrying `gatewayHolds`: the hold
-(`gatewayHoldMicros` of its card on the product's real body, one image) per
-shape, keyed `gatewayHoldKey(aspectRatio, resolution)`, for every aspect
-ratio and resolution, the generation endpoint with no references and the
-edit endpoint with one. `estimateImageCost` reads the hold for the request's
-shape and multiplies by the image count (every holdable card is linear in
-count); a shape with no hold is a direct route and keeps the fal price. So
-quote equals hold for every routed still. Signed-in pages read the same map
+(`gatewayHoldMicros` of its card on the product's real body) per shape,
+keyed `gatewayHoldKey(aspectRatio, resolution, numImages)`, for every aspect
+ratio, resolution and count up to 4, the generation endpoint with no
+references and the edit endpoint with one. `estimateImageCost` reads the
+hold for the request's shape; a shape with no hold runs direct and keeps the
+fal price. So quote equals hold for every routed still. An endpoint with no
+fal row is never given one: its quote is refused on either route, as
+before. Keys are read once per provider and a snapshot model is parsed once
+per isolate, so a quote's few thousand shape checks stay cheap. Signed-in pages read the same map
 through `getOrganizationFalPricingFn` (`useOrganizationFalPricing`): Studio,
 the character and location sheets, the scene list and the shot prompts. The
 public `getCatalogFalPricingFn` is for signed-out pages only.
@@ -890,7 +897,10 @@ on the `openstory` route) holds per job.
 
 Known differences from direct:
 
-- A transient provider 5xx fails an `openstory` still; the direct path retried it.
+- A transient provider 5xx fails an `openstory` still, also on a queued
+  fal start; the direct path retried it.
+- `openstory` fal stills write no `model_usage_observations`, so they no
+  longer feed the medians direct fal quotes read.
 - A still is written to R2 twice: the gateway stores its output under
   `gateway/<id>/`, then the step copies it to the still's own key. The
   product's store callbacks take a URL, not media, so passing the final key

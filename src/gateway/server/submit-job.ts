@@ -172,6 +172,17 @@ async function requireSameRequest(
   }
 }
 
+const bodySchemas = new WeakMap<object, z.ZodType>();
+
+/** The schema's validator, built once per schema object. */
+function bodySchema(inputSchema: GatewayModel['inputSchema']): z.ZodType {
+  const hit = bodySchemas.get(inputSchema);
+  if (hit) return hit;
+  const schema = z.fromJSONSchema(inputSchema);
+  bodySchemas.set(inputSchema, schema);
+  return schema;
+}
+
 export function validatedBody(
   model: GatewayModel,
   raw: GatewayJobInput
@@ -194,7 +205,7 @@ export function validatedBody(
       );
     }
   }
-  const parsed = z.fromJSONSchema(model.inputSchema).safeParse(body);
+  const parsed = bodySchema(model.inputSchema).safeParse(body);
   if (!parsed.success) {
     throw new ValidationError('The body does not match the model schema', {
       issues: parsed.error.issues.map((issue) => ({

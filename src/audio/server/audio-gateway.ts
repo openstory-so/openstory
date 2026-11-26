@@ -52,6 +52,7 @@ export function runAudioOnGateway(
       }),
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
     reservation: call.reservationId ? { id: call.reservationId } : null,
+    wireBody: async (body) => body,
   });
   return runGatewayToEnd(
     gateway,
