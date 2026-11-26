@@ -33,6 +33,7 @@ import {
 } from '@/platform/api-keys.fn';
 import { initiateOpenRouterOAuthFn } from '@/platform/openrouter-oauth.fn';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
+import { ORGANIZATION_PRICING_QUERY_KEY } from '@/billing/ui/use-fal-pricing';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -147,6 +148,9 @@ function ApiKeySettingsContent({
       queryKey: ['apiKeyStatus', organizationId],
     });
     void queryClient.invalidateQueries({ queryKey: [...BILLING_GATE_KEY] });
+    void queryClient.invalidateQueries({
+      queryKey: [...ORGANIZATION_PRICING_QUERY_KEY],
+    });
     // The Download menu's "Publish to social…" follows the Upload-Post key.
     void queryClient.invalidateQueries({
       queryKey: ['social-publishing', organizationId],

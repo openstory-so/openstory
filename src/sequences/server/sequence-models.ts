@@ -737,7 +737,12 @@ export async function addModelToSequence(
     try {
       workflowRunId = await triggerWorkflow(
         '/image',
-        { ...input, reservationId, ownsReservation: true, gatewayRoutes },
+        {
+          ...input,
+          reservationId,
+          ownsReservation: true,
+          gatewayRoutes: { ...input.gatewayRoutes, ...gatewayRoutes },
+        },
         {
           deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
         }

@@ -226,7 +226,10 @@ async function resolveStoryboardPayload(
     ...input,
     userCountry,
     sequenceId,
-    gatewayRoutes: await imageGatewayRoutes(scopedDb),
+    gatewayRoutes: {
+      ...input.gatewayRoutes,
+      ...(await imageGatewayRoutes(scopedDb)),
+    },
     cast,
     suggestedLocationIds,
     suggestedLocations: suggestedLocationRows.map((l) => ({

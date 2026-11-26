@@ -126,8 +126,6 @@ export type ImageGenerationResult = {
     /** Images this one call rendered. `unitsBilled` covers all of them, so the
      * cron divides by it to get a per-image median (#1069). */
     numImages?: number;
-    dimensions: { width: number; height: number }[];
-    file_sizes: number[];
     seed?: number;
     has_nsfw_concepts?: boolean[];
     cost?: Microdollars;
@@ -255,7 +253,7 @@ async function generateOnGateway(
         folder,
         index,
       }),
-    // Product refs are our own stored uploads, classified when they were uploaded.
+    // No media to check: a still with references fails the body check and stays direct.
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
     // A run that holds its own estimate is charged against it: no second hold.
     reservation: call.runReservationId ? { id: call.runReservationId } : null,
@@ -285,8 +283,6 @@ async function generateOnGateway(
       model: params.model,
       endpointId: request.model.endpointId,
       numImages: imageUrls.length,
-      dimensions: imageUrls.map(() => ({ width: 0, height: 0 })),
-      file_sizes: imageUrls.map(() => 0),
       seed: params.seed,
       usedOwnKey: false,
     },
@@ -609,8 +605,6 @@ async function generateImageInternal(
       // recorded as 4 biases the per-image figure LOW — the direction that
       // under-gates, which is #1069's failure mode.
       numImages: imageUrls.length || params.numImages,
-      dimensions: imageUrls.map(() => ({ width: 0, height: 0 })),
-      file_sizes: imageUrls.map(() => 0),
       seed: params.seed,
       cost,
       // The adapter sets `id` to fal's request id — the join key to the

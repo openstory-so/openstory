@@ -62,8 +62,6 @@ function okResult(p: ImageGenerationParams): ImageGenerationResult {
       prompt: p.prompt,
       model: p.model,
       endpointId: 'fal-ai/nano-banana-2',
-      dimensions: [],
-      file_sizes: [],
       usedOwnKey: false,
     },
   };

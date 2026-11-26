@@ -770,8 +770,9 @@ The trigger decides the route and puts it on the payload as
 `gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`):
 one `resolveGatewayRoute` per Grok image model, so a run that falls back to
 another Grok model mid-run still has its answer. It reads the stored
-snapshot only (`getSnapshotGatewayModel`): a miss is direct, and a
-modelschemas outage cannot stop a trigger. The run reads its route only
+snapshot only (`getSnapshotGatewayModel`): a miss is direct, a provider
+with no platform key on this server (`GATEWAY_DRIVERS[provider].configured`)
+is direct, and a modelschemas outage cannot stop a trigger. The run reads its route only
 through `gatewayRunRoute`, the snapshot plus the pure body check, so a step
 retry takes the same route. A run triggered before
 #2434 has no routes and stays direct. `generateImageWithProvider` is the one
@@ -796,8 +797,11 @@ over `inProcessGateway`; anything else goes direct as before.
 Routed today: Studio images; shot image and variant regenerations; character
 and location sheet regenerations; the sequence pipeline (storyboard and
 continue, Update stale, smart retry, add model), each child inheriting
-`gatewayRoutes` from its parent like `reservationId`. Shot previews render
-Nano Banana, which the gateway does not hold. Stay direct:
+`gatewayRoutes` from its parent like `reservationId`. A root merges its
+image routes into any it was given (`{ ...input.gatewayRoutes, ...image }`).
+Shot previews render Nano Banana, which the gateway does not hold. These
+children carry no routes and go direct: Recast location's `RegenerateShots`
+children, shot previews and Replace element's children. Stay direct:
 
 - Grok stills with reference images: modelschemas has no `v1/images/edits`
   for Grok ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)).
@@ -818,6 +822,18 @@ No double hold: a run that owns a reservation (the pipeline envelope, a
 shot or sheet trigger) passes it as `runReservationId`, and the gateway job
 charges that reservation instead of holding its own. A run with none (Studio
 on the `openstory` route) holds per job.
+
+Known differences from direct:
+
+- A transient xAI 5xx fails an `openstory` still; the direct path retried it.
+- A still is written to R2 twice: the gateway stores its output under
+  `gateway/<id>/`, then the step copies it to the still's own key. The
+  product's store callbacks take a URL, not media, so passing the final key
+  into the transport changes every still's store; the gateway copy stays as
+  the job's output record.
+- Every quote reads the same map: preflight, Continue, Update stale, smart
+  retry, sheet references and the freeze-plan gate (from the payload's
+  routes, no read), so the run envelope reserves what the gateway charges.
 
 ## Every model can be priced (#2432)
 
