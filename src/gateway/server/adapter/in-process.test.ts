@@ -265,10 +265,39 @@ describe('the openstory adapter, in-process', () => {
     expect(start.mock.calls[0]?.[1]).toMatchObject({
       image_urls: ['https://fal.media/files/1.png'],
     });
-    expect(wireBody).toHaveBeenCalledTimes(1);
     expect(replay.images).toEqual([{ url: '/r2/out-0.png' }]);
     const job = await onlyJob(withRefs.id);
     expect(job.input).toMatchObject({ image_urls: ['/r2/uploads/a.png'] });
+    expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
+  });
+
+  it('wireBody failing leaves nothing held; the retry holds and starts the job once', async () => {
+    const wireBody = vi
+      .fn<(body: GatewayJobInput) => Promise<GatewayJobInput>>()
+      .mockRejectedValueOnce(new Error('fal storage is down'))
+      .mockImplementation(async (body) => body);
+    start.mockResolvedValue(answered);
+    const attempt = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE, null, wireBody), {
+          idempotencyKey: 'run-11:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await expect(attempt()).rejects.toThrow('fal storage is down');
+    // No job, so no hold (`gateway:<job>`) and nothing for the sweep.
+    expect(
+      await db
+        .select()
+        .from(gatewayJobs)
+        .where(eq(gatewayJobs.modelKey, IMAGE.id))
+    ).toEqual([]);
+
+    await attempt();
+    expect(start).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(IMAGE.id);
     expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
   });
 
@@ -306,7 +335,6 @@ describe('the openstory adapter, in-process', () => {
 
     expect(retried.jobId).toBe(first.jobId);
     expect(start).toHaveBeenCalledTimes(1);
-    expect(wireBody).toHaveBeenCalledTimes(1);
     const job = await onlyJob(withRefs.id);
     expect(job.input).toMatchObject({
       image_urls: ['/r2/talent/org/sheets/a.png'],

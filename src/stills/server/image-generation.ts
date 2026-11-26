@@ -71,6 +71,7 @@ import {
 import {
   ensureExternallyFetchableUrls,
   fetchableFalBody,
+  stableMediaBody,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 import {
@@ -240,14 +241,14 @@ function imageGatewayTarget(
   if (grokId && routes?.[gatewayRouteKey('grok', grokId)]) {
     return {
       target: { provider: 'grok', modelId: grokId },
-      body: buildGrokImageBody(params, grokId),
+      body: jsonBody.parse(stableMediaBody(buildGrokImageBody(params, grokId))),
     };
   }
   const { endpointId, input } = buildImageRequest(params);
   return {
     target: { provider: 'fal', modelId: endpointId },
-    // As fal receives it: JSON, so an undefined option is dropped.
-    body: jsonBody.parse(JSON.parse(JSON.stringify(input))),
+    // As fal receives it (JSON drops an undefined option), stored URLs absolute and stable.
+    body: jsonBody.parse(stableMediaBody(JSON.parse(JSON.stringify(input)))),
   };
 }
 

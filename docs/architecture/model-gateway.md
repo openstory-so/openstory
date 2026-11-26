@@ -817,9 +817,12 @@ anything else goes direct as before.
 - References: a fal body carries URLs. Before sending, a local `/r2/` URL is
   made fetchable with the platform fal key (`ensureExternallyFetchableUrls`),
   as the direct path does; xAI gets a data or CDN URL (`toDataOrCdnUrl`).
-  The job is held and replayed on the stored `/r2/` body; the fetchable
-  body is made only when the job starts (`inProcessGateway`'s `wireBody`,
-  `fetchableFalBody` for fal). Without a storage CDN (Deploy-button
+  The job is held, checked and replayed on a body whose stored URLs are
+  absolute and the same on every attempt (`stableMediaBody`: the CDN URL,
+  else the app's own `/r2/` route), so a `format: uri` field validates (no
+  snapshot schema declares one today). The fal upload is `wireBody`
+  (`fetchableFalBody`), made just before the hold so a failing upload
+  strands no hold. Without a storage CDN (Deploy-button
   workers, e2e record) each fal upload is a new URL, so holding the sent
   body would make a retried step conflict with its own job after it was
   charged. Video does the same: the motion and Studio fal builders keep the

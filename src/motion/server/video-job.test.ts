@@ -212,7 +212,14 @@ describe('sendVideoJob', () => {
     });
     expect(job.via).toBe('openstory');
     expect(mockGenerateVideo).toHaveBeenCalledWith(
-      expect.objectContaining({ modelOptions: held })
+      expect.objectContaining({
+        modelOptions: {
+          ...held,
+          image_urls: [
+            actualExternalUrl.stableMediaUrl(held.image_urls[0] ?? ''),
+          ],
+        },
+      })
     );
     const params = transport.mock.calls[0]?.[0];
     if (!params) throw new Error('expected a gateway transport');

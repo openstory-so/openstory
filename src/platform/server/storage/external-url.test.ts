@@ -356,4 +356,14 @@ describe('fetchableFalFetch (the direct fal send)', () => {
       duration: 5,
     });
   });
+
+  it('passes a bodyless GET through, though fal sets a JSON content type on it', async () => {
+    const base = vi.fn<typeof fetch>(async () => new Response('{}'));
+    await fetchableFalFetch('own-key', base)('https://queue.fal.run/x/status', {
+      method: 'GET',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(base).toHaveBeenCalledOnce();
+    expect(createFalClient).not.toHaveBeenCalled();
+  });
 });

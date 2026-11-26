@@ -4,7 +4,10 @@
  * (docs/architecture/media-vias.md § The openstory via).
  */
 
-import { fetchableFalBody } from '@/platform/server/storage/external-url';
+import {
+  fetchableFalBody,
+  stableMediaBody,
+} from '@/platform/server/storage/external-url';
 import { getEnv } from '#env';
 import { billedFields } from '@/billing/billed-quantity';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
@@ -239,7 +242,10 @@ export async function sendVideoJob(params: {
 }): Promise<{ jobId: string; via: ProductVia; usedOwnKey: boolean }> {
   const gateway = params.draft ? null : params.gateway;
   if (gateway) {
-    const body = await captureVideoBody(params.send);
+    // Held and checked with stored URLs absolute and stable; fal's upload waits for the start.
+    const body = jsonBody.parse(
+      stableMediaBody(await captureVideoBody(params.send))
+    );
     const route = gatewayRunRoute(
       gateway.routes,
       { provider: params.provider, modelId: params.modelId },

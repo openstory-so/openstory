@@ -106,6 +106,34 @@ export async function ensureExternallyFetchableUrls(
   );
 }
 
+/**
+ * A stored-media URL as an absolute address that is the same on every
+ * attempt: the CDN's, else the app's own `/r2/` route. What the gateway holds
+ * and checks against `format: uri`; the fal upload waits for the send.
+ */
+export function stableMediaUrl(url: string): string {
+  if (r2KeyFromUrl(url) === null || isReplayMode()) return url;
+  const cdnUrl = toCdnUrl(url);
+  if (cdnUrl) return cdnUrl;
+  const appUrl = getEnv().VITE_APP_URL;
+  return appUrl && url.startsWith('/') ? new URL(url, appUrl).href : url;
+}
+
+/** {@link stableMediaUrl} on every string in a JSON body. */
+export function stableMediaBody(body: unknown): unknown {
+  if (typeof body === 'string') return stableMediaUrl(body);
+  if (Array.isArray(body)) return body.map(stableMediaBody);
+  if (body !== null && typeof body === 'object') {
+    return Object.fromEntries(
+      Object.entries(body).map(([field, value]) => [
+        field,
+        stableMediaBody(value),
+      ])
+    );
+  }
+  return body;
+}
+
 /** Every stored-media string in a JSON body made fetchable by fal; everything else as it was. */
 export async function fetchableFalBody(
   body: unknown,
@@ -141,7 +169,12 @@ export function fetchableFalFetch(
 ): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, init);
-    if (!request.headers.get('content-type')?.includes('application/json')) {
+    if (
+      request.method === 'GET' ||
+      request.method === 'HEAD' ||
+      request.body === null ||
+      !request.headers.get('content-type')?.includes('application/json')
+    ) {
       return base(request);
     }
     const body = await fetchableFalBody(await request.json(), falApiKey);

@@ -11,6 +11,7 @@ import { estimateImageCost } from '@/billing/cost-estimation';
 import { micros } from '@/billing/money';
 import { priceGatewayJob } from '@/gateway/server/price';
 import { gatewayHoldMicros } from '@/gateway/server/submit-job';
+import { stableMediaUrl } from '@/platform/server/storage/external-url';
 
 const inProcessGateway = vi.fn(() => ({}));
 vi.doMock('@/gateway/server/adapter/in-process', () => ({ inProcessGateway }));
@@ -234,6 +235,9 @@ const falStill = {
   numImages: 1,
 };
 const withRefs = { ...falStill, referenceImageUrls: ['/r2/characters/a.png'] };
+const FAL_ROWS_EDIT = {
+  [NANO_EDIT.id]: { unitPrice: micros(1), unit: 'images' },
+};
 
 describe('a fal still', () => {
   it('runs on the gateway with no references', () => {
@@ -246,7 +250,7 @@ describe('a fal still', () => {
     const request = gatewayImageRequest(withRefs, FAL_ROUTES);
     expect(request?.model.id).toBe(NANO_EDIT.id);
     expect(request?.body).toMatchObject({
-      image_urls: ['/r2/characters/a.png'],
+      image_urls: [stableMediaUrl('/r2/characters/a.png')],
     });
   });
 
@@ -360,6 +364,63 @@ describe('a pipeline still on the openstory route', () => {
       expect.objectContaining({ reservation: null })
     );
   });
+});
+
+describe('a stored relative reference on a `format: uri` field', () => {
+  const uriEdit = (): GatewayModel => {
+    const schema = nanoSchema(true);
+    return {
+      ...NANO_EDIT,
+      inputSchema: {
+        ...schema,
+        properties: {
+          ...schema.properties,
+          image_urls: {
+            type: 'array',
+            items: { type: 'string', format: 'uri' },
+          },
+        },
+      },
+    };
+  };
+  const routes = (): GatewayRoutes => ({
+    ...FAL_ROUTES,
+    [gatewayRouteKey('fal', NANO_EDIT.id)]: {
+      via: 'openstory',
+      model: JSON.stringify(uriEdit()),
+    },
+  });
+
+  it.each([
+    [
+      'with a CDN',
+      { R2_PUBLIC_STORAGE_DOMAIN: 'media.example.com' },
+      'https://media.example.com/characters/a.png',
+    ],
+    [
+      'without one',
+      { R2_PUBLIC_STORAGE_DOMAIN: '' },
+      'https://app.example.com/r2/characters/a.png',
+    ],
+  ])(
+    'routes openstory %s, on the same absolute URL every attempt',
+    (_, env, held) => {
+      vi.stubEnv('VITE_APP_URL', 'https://app.example.com');
+      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+      try {
+        const first = gatewayImageRequest(withRefs, routes());
+        const retried = gatewayImageRequest(withRefs, routes());
+        expect(first?.model.id).toBe(NANO_EDIT.id);
+        expect(first?.body).toMatchObject({ image_urls: [held] });
+        expect(retried?.body).toEqual(first?.body);
+        // The quote makes the same decision.
+        const pricing = withGatewayImageQuotes(FAL_ROWS_EDIT, routes());
+        expect(pricing[NANO_EDIT.id]?.gatewayHolds?.['16:9||1']).toBeDefined();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  );
 });
 
 describe('an upload reference with no likeness verdict', () => {
