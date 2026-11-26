@@ -43,7 +43,7 @@ export type TextMeterBilling = Pick<
 >;
 
 /** A workflow run (drawing on its reservation when it has one), or null for a request with no run. */
-type TextRun = { readonly reservationId: string | null } | null;
+type TextRun = { readonly runReservationId: string | null } | null;
 
 /** Charges every provider call a platform key makes, on the gateway's card or as today (#2437). */
 export type TextMeter = {
@@ -160,7 +160,7 @@ export function withTextGateway<
     metered(
       await apiKeys.resolveLlmKey(model),
       model,
-      { reservationId },
+      { runReservationId: reservationId },
       null,
       (next) => resolveRunLlmKey(next, reservationId)
     );
@@ -328,7 +328,7 @@ async function charge(meter: TextMeter, call: Call): Promise<void> {
       idempotencyKey,
       metadata,
     });
-  const runReservation = meter.run?.reservationId ?? null;
+  const runReservation = meter.run?.runReservationId ?? null;
   try {
     if (call.card) {
       const cost = cardCost(call.card, call);

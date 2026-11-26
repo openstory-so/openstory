@@ -1,5 +1,6 @@
 import { createBillingMethods } from '@/billing/server/db/billing';
 import type { GatewayTextModel } from '@/gateway/server/catalog';
+import { micros } from '@/billing/money';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
@@ -329,7 +330,7 @@ describe('openstoryText on the card route', () => {
   });
 
   it('draws on the run reservation with no hold of its own, and leaves it open', async () => {
-    const reserved = await billing.createReservation(50_000, {
+    const reserved = await billing.createReservation(micros(50_000), {
       idempotencyKey: 'run',
     });
     if (!reserved.ok) throw new Error('no run reservation');
@@ -337,7 +338,7 @@ describe('openstoryText on the card route', () => {
     await drain(
       openstoryText(
         inner,
-        meter({ run: { reservationId: reserved.reservationId } }),
+        meter({ run: { runReservationId: reserved.reservationId } }),
         'vendor/model'
       ).chatStream({ ...OPTIONS, modelOptions: {} })
     );
@@ -349,7 +350,7 @@ describe('openstoryText on the card route', () => {
     await drain(
       openstoryText(
         inner,
-        meter({ run: { reservationId: null } }),
+        meter({ run: { runReservationId: null } }),
         'vendor/model'
       ).chatStream({ ...OPTIONS, modelOptions: {} })
     );
@@ -413,7 +414,7 @@ describe('openstoryText on the direct route', () => {
   });
 
   it('captures against the run reservation', async () => {
-    const reserved = await billing.createReservation(50_000, {
+    const reserved = await billing.createReservation(micros(50_000), {
       idempotencyKey: 'run',
     });
     if (!reserved.ok) throw new Error('no run reservation');
@@ -421,7 +422,10 @@ describe('openstoryText on the direct route', () => {
     await drain(
       openstoryText(
         inner,
-        meter({ card: null, run: { reservationId: reserved.reservationId } }),
+        meter({
+          card: null,
+          run: { runReservationId: reserved.reservationId },
+        }),
         'vendor/model'
       ).chatStream(OPTIONS)
     );
@@ -489,7 +493,7 @@ describe('withTextGateway', () => {
       'vendor/model',
       'res-1'
     );
-    expect(resolved.meter?.run).toEqual({ reservationId: 'res-1' });
+    expect(resolved.meter?.run).toEqual({ runReservationId: 'res-1' });
   });
 
   it('leaves own keys and LLMTR unmetered, so they are never charged', async () => {
