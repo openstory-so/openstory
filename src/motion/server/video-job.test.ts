@@ -55,7 +55,9 @@ vi.doMock('@/gateway/server/adapter/in-process', () => ({
     return { status: vi.fn() };
   },
 }));
-vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'platform-fal' }) }));
+vi.doMock('#env', () => ({
+  getEnv: () => ({ FAL_KEY: 'platform-fal', XAI_API_KEY: 'platform-xai' }),
+}));
 
 const {
   gatewayVideoCharge,
