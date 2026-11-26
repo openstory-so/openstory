@@ -34,9 +34,10 @@ describe('gateway coverage', () => {
   it('has a recording for every product model; re-record when the list changes', () => {
     const key = (m: { provider: string; id: string }) =>
       `${m.provider}/${m.id}`;
-    expect(recorded.map(key).toSorted()).toEqual(
-      productGatewayModels().map(key).toSorted()
+    expect(new Set(recorded.map(key))).toEqual(
+      new Set(productGatewayModels().map(key))
     );
+    expect(recorded).toHaveLength(productGatewayModels().length);
   });
 
   it('lists every gap in model-gateway.md with its upstream issue', () => {
