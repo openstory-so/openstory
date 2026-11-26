@@ -959,6 +959,25 @@ With platform keys the product sends Grok to xAI, Seedance to Ark and Omni
 Flash to Google, so today only Grok and the fal Kling and Seedance models
 reach the gateway. The upstream card issues are not filed yet (see the PR).
 
+### Real run (bun dev, 2026-11-26)
+
+One shot through `generate_shot_video` → `MotionWorkflow`, Grok Imagine
+Video 1.5, 2 s asked (6 s rendered), 720p, platform keys:
+
+| Path      | Hold  | Charge | Lines | Output    |
+| --------- | ----- | ------ | ----- | --------- |
+| openstory | $0.48 | $0.48  | $0.48 | MP4 in R2 |
+
+One gateway job, one hold settled to zero, one debit; no `deduct-credits`.
+The run's own $0.05 reservation was zeroed at the batch's end.
+
+**Needs sign-off:** the same request on the direct path was billed $0.84 by
+xAI. The Grok video card prices `duration` only ($0.08/s, the 480p rate) and
+has no resolution lever, so a 720p clip is charged about $0.36 under cost.
+
+A first attempt went direct: the local snapshot was empty and the live
+catalog read got a 429, which `resolveGatewayRoute` reads as a refusal.
+
 ### Lip-sync
 
 `LipsyncWorkflow` stays on the direct fal path: its card has no estimate.
