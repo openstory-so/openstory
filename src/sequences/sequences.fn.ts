@@ -12,6 +12,7 @@ import {
   safeTextToImageModel,
 } from '@/models/models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import { generateMusic } from '@/audio/server/music-edit';
 import {
   releaseReservationOnThrow,
@@ -165,6 +166,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
       ),
       generateStartFrames: data.generateStartFrames,
       draftMotion: data.draftMotion,
+      scopedDb,
     });
     return { estimateMicros: estimate.priced ? Number(estimate.micros) : null };
   });
@@ -421,7 +423,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
             generateVoices: sequence.generateVoices,
             draftMotion: sequence.draftMotion,
             targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-            pricing: await getEffectiveFalPricing(),
+            pricing: await imageQuotePricing(context.scopedDb),
           }),
           {
             providers: ['fal', 'openrouter'],

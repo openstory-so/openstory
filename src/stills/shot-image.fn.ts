@@ -5,7 +5,7 @@ import {
   safeTextToImageModel,
 } from '@/models/models';
 import { estimateStoryboardCost } from '@/billing/cost-estimation';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -53,7 +53,7 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
         // is the right question here: without start frames the image line is
         // zero and motion prices the reference-to-video route.
         referenceOnly: !sequence.generateStartFrames,
-        pricing: await getEffectiveFalPricing(),
+        pricing: await imageQuotePricing(context.scopedDb),
       }),
       {
         providers: ['fal', 'openrouter'],

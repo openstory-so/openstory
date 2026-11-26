@@ -33,7 +33,7 @@ import type {
 import type { PlanUnitRef } from '@/sequences/generation-plan';
 import { estimateReferenceSheetCost } from '@/billing/cost-estimation';
 import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import { multiplyMicros, type Microdollars } from '@/billing/money';
 
 export type PlanReferences = {
@@ -205,7 +205,7 @@ export async function buildPlanReferences(args: {
       characterSheets: characterSheets.length + lookSheetsAfterDefault.length,
       locationSheets: locationSheets.length,
       elementSheets: owedElements.length,
-      pricing: await getEffectiveFalPricing(),
+      pricing: await imageQuotePricing(scopedDb),
     }),
     voices: multiplyMicros(VOICE_ESTIMATE_COST, voices.length),
   };

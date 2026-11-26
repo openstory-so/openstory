@@ -56,7 +56,6 @@ import {
   loadVoiceMovedShotIds,
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -334,7 +333,7 @@ export async function executeSmartRetry(
       generateVoices: sequence.generateVoices,
       draftMotion: sequence.draftMotion,
       targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-      pricing: await getEffectiveFalPricing(),
+      pricing: await imageQuotePricing(context.scopedDb),
     });
     creditProviders = ['fal', 'openrouter'];
     const fullResult = {
@@ -448,6 +447,7 @@ export async function executeSmartRetry(
     // reported as retried (and must not clear the failed flag on their own).
     let triggeredImages = 0;
     const styleConfig = lazySequenceStyle(context.scopedDb, sequence);
+    const gatewayRoutes = await imageGatewayRoutes(context.scopedDb);
     for (const shot of failedImageShots) {
       const scene = sceneOf(shot);
       const promptVersion = shot.imagePromptVersion;
@@ -500,7 +500,7 @@ export async function executeSmartRetry(
         organizationId,
         reservationId,
         ownsReservation: true,
-        gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
+        gatewayRoutes,
         prompt,
         model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),

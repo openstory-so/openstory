@@ -27,7 +27,7 @@ import { resolveModelForCountry } from '@/models/region-policy';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import { resolveImageModels } from '@/models/resolve-image-models';
 import { resolveVideoModels } from '@/models/resolve-video-models';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -270,7 +270,7 @@ export const createSequences = createServerOnlyFn(
       // Align with Generate ActionCost (Enhance target when set; otherwise
       // the script's own length).
       targetDurationSeconds,
-      pricing: await getEffectiveFalPricing(),
+      pricing: await imageQuotePricing(context.scopedDb),
     });
 
     // Organization characters the script references (#2050) are checked before any

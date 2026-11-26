@@ -56,8 +56,8 @@ vi.mock('@/cast/server/sheets/location-sheet-trigger', () => ({
 vi.mock('@/billing/cost-estimation', () => ({
   estimateReferenceSheetCost: estimateSheets,
 }));
-vi.mock('@/billing/server/fal-pricing-live', () => ({
-  getEffectiveFalPricing: vi.fn(async () => ({})),
+vi.mock('@/stills/server/image-gateway-routes', () => ({
+  imageQuotePricing: vi.fn(async () => ({})),
 }));
 vi.mock('@/models/server/seed-speech-config', () => ({
   newVoiceProvider: () => 'elevenlabs',

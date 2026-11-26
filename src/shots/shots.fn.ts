@@ -1,5 +1,5 @@
 import { usesStartFrame } from './use-start-frame';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import { requireCredits } from '@/billing/server/preflight';
 import type { NewShot } from '@/platform/server/db/schema';
 import { loadStalenessForShots } from '@/shots/server/shot-staleness-batch';
@@ -785,7 +785,7 @@ export const getUpdateStalePreviewFn = createServerFn({ method: 'GET' })
     });
     return buildUpdateStalePreview(
       plan,
-      await getEffectiveFalPricing(),
+      await imageQuotePricing(scopedDb),
       sequence.musicModel,
       await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials)
     );
