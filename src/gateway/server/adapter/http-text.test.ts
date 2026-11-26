@@ -16,25 +16,29 @@ const { hostedTextAdapter } = await import('./http-text');
 const MODEL = 'anthropic/claude-haiku-4.5';
 
 /** What the hosted endpoint writes: its own `chat()` stream as SSE, split mid-event. */
-function hostedStream(): Response {
-  const events = [
+const FINISHED = {
+  type: 'RUN_FINISHED',
+  runId: 'r1',
+  threadId: 't1',
+  finishReason: 'stop',
+  timestamp: 2,
+};
+
+function hostedStream(
+  events: readonly object[] = [
     {
       type: 'TEXT_MESSAGE_CONTENT',
       messageId: 'm1',
       delta: 'Hello',
       timestamp: 1,
     },
-    {
-      type: 'RUN_FINISHED',
-      runId: 'r1',
-      threadId: 't1',
-      finishReason: 'stop',
-      timestamp: 2,
-    },
+    FINISHED,
   ]
+): Response {
+  const wire = events
     .map((event) => `data: ${JSON.stringify(event)}\n\n`)
     .join('');
-  const bytes = new TextEncoder().encode(events);
+  const bytes = new TextEncoder().encode(wire);
   return new Response(
     new ReadableStream({
       start(controller) {
@@ -106,7 +110,7 @@ describe('hosted text', () => {
     );
   });
 
-  it('refuses tools, structured output and images before sending anything', async () => {
+  it('refuses tools and images before sending anything', async () => {
     const calls = hosted(hostedStream);
     await expect(
       chat({
@@ -138,9 +142,67 @@ describe('hosted text', () => {
         ],
       })
     ).rejects.toThrow('An image, file or empty turn cannot run');
-    await expect(
-      chat({ ...text('Hi'), outputSchema: z.object({ a: z.string() }) })
-    ).rejects.toThrow('Structured output cannot run on the hosted gateway');
     expect(calls).toHaveLength(0);
+  });
+
+  it('runs structured output on the hosted endpoint: the schema goes in the body, the parsed object comes back', async () => {
+    const calls = hosted(() =>
+      hostedStream([
+        {
+          type: 'TEXT_MESSAGE_CONTENT',
+          messageId: 'm1',
+          delta: '{"name":"Mara"}',
+          timestamp: 1,
+        },
+        {
+          type: 'CUSTOM',
+          name: 'structured-output.complete',
+          value: { object: { name: 'Mara' }, raw: '{"name":"Mara"}' },
+          timestamp: 2,
+        },
+        FINISHED,
+      ])
+    );
+    const result = await chat({
+      ...text('Name the baker'),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', content: 'Name' },
+            { type: 'text', content: 'the baker' },
+          ],
+        },
+      ],
+      outputSchema: z.object({ name: z.string() }),
+    });
+    expect(result).toEqual({ name: 'Mara' });
+    const sent = JSON.parse(z.string().parse(calls[0]?.init.body));
+    expect(sent.messages).toEqual([
+      { role: 'user', content: 'Name\nthe baker' },
+    ]);
+    expect(sent.outputSchema).toMatchObject({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    });
+    expect(sent.maxTokens).toBe(16);
+  });
+
+  it("surfaces the hosted provider's schema refusal unchanged", async () => {
+    hosted(() =>
+      hostedStream([
+        {
+          type: 'RUN_ERROR',
+          runId: 'r1',
+          message: 'Provider refused the output schema: unsupported keyword',
+          timestamp: 1,
+        },
+      ])
+    );
+    await expect(
+      chat({ ...text('Hi'), outputSchema: z.object({ name: z.string() }) })
+    ).rejects.toThrow(
+      'Provider refused the output schema: unsupported keyword'
+    );
   });
 });

@@ -35,7 +35,7 @@ vi.doMock('@/models/server/gemini-files', () => ({
   releaseGeminiFiles,
 }));
 
-const { streamScriptEnhancement, enhanceScriptToString } =
+const { streamScriptEnhancement, enhanceScriptToString, prepareBilling } =
   await import('./script-enhancement');
 
 function context() {
@@ -166,6 +166,26 @@ describe('Enhance on an unfunded script (#1567)', () => {
         typeof meter.describe === 'function' &&
         meter.describe('x-ai/grok-4.7')
     ).toBe('Script enhancement');
+    expect(hasEnoughCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe('a hosted gateway key (#2438)', () => {
+  it('skips the local balance check: the hosted side checks and charges', async () => {
+    const hasEnoughCredits = vi.fn(async () => false);
+    const hosted = {
+      key: '',
+      source: 'platform',
+      via: 'openstory',
+      meter: { uncharged: 'hosted gateway' },
+    };
+    const scopedDb = asStub<ScopedDb>({
+      apiKeys: { resolveLlmKey: vi.fn(async () => hosted) },
+      billing: { hasEnoughCredits },
+    });
+    expect(
+      (await prepareBilling(scopedDb, 'Prompt shortening')).llmKey
+    ).toEqual(hosted);
     expect(hasEnoughCredits).not.toHaveBeenCalled();
   });
 });

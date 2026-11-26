@@ -409,6 +409,29 @@ describe('openstoryText on the card route', () => {
     expect((await ledger()).charges).toEqual([2000]);
   });
 
+  it('charges a streamed structured run once, as the hosted chat endpoint runs it (#2438)', async () => {
+    const inner = adapter(() => []);
+    const structured = {
+      ...inner,
+      async *structuredOutputStream() {
+        inner.calls++;
+        yield* run();
+      },
+    };
+    await drain(
+      chat({
+        adapter: openstoryText(structured, meter(), 'vendor/model'),
+        messages: OPTIONS.messages,
+        modelOptions: OPTIONS.modelOptions,
+        threadId: 't',
+        outputSchema: { type: 'object', properties: {} },
+        stream: true,
+      })
+    );
+    expect(inner.calls).toBe(1);
+    expect((await ledger()).charges).toEqual([2000]);
+  });
+
   it('refuses before the provider call when the organization cannot cover the hold', async () => {
     await db
       .update(credits)

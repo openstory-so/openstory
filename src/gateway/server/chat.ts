@@ -39,13 +39,17 @@ export async function streamGatewayChat(
     throw new ValidationError('This model cannot be priced yet');
   }
   const abortController = new AbortController();
-  const stream = chat({
+  const options = {
     adapter: createAdapter(model, key),
     messages: body.messages,
     ...(body.system && { systemPrompts: [body.system] }),
     modelOptions: chatModelOptionsForCall(model, key, false, body.maxTokens),
     threadId: generateId(),
     abortController,
-  });
+  };
+  // The meter wraps `structuredOutputStream` too, so a structured run is held and charged once.
+  const stream = body.outputSchema
+    ? chat({ ...options, outputSchema: body.outputSchema, stream: true })
+    : chat(options);
   return toServerSentEventsResponse(stream, { abortController });
 }

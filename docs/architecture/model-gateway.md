@@ -1573,10 +1573,23 @@ arrive.
   no local hold or debit can run (`text.test.ts` pins it). The hosted side
   holds and charges the key's organization; its refusal (`402`, `400`, ...)
   is the error the caller sees.
-- **Plain text only.** A call with tools, a tool turn, an image or file part,
-  or structured output is refused before anything is sent, naming what to
-  set. Most pipeline calls use structured output, so a sequence still needs
-  an LLM key on the install until the hosted endpoint takes them.
+- **Text and structured output.** A turn is a string or text-only parts
+  (joined by a line break). Structured output sends the call's JSON Schema
+  as `outputSchema`; the hosted run streams the JSON and ends with
+  `structured-output.complete`, which this install validates again. The
+  hosted endpoint refuses a schema over 16 KB, without `type: "object"` at
+  the root, or not a JSON Schema, at the body, before any hold
+  (`chat-schema.ts`); the meter charges a structured run once
+  (`text.test.ts`). A provider's refusal of the schema arrives as the run's
+  `RUN_ERROR` and surfaces unchanged.
+- **Tools and media are refused** before anything is sent, naming what to
+  set: a public endpoint taking tool definitions or media is a bigger
+  decision. A vision call whose images were all `gateway-uploads` URLs of the
+  caller's organization (rights-checked when uploaded) could be allowed
+  later without new trust: the hosted side would only need `gatedUrls` and
+  the owner check it already runs on a media submit. Not built.
+- **No local credit check.** `prepareBilling` skips its balance check for a
+  hosted key, as the run preflight does when no platform key can spend.
 - **The budget is required.** The call's own `max_tokens` (any spelling
   `requestMaxTokens` reads) becomes the body's `maxTokens`.
 
@@ -1625,18 +1638,17 @@ second) still applies.
 
 ### Not remote yet
 
-| Call                                                          | Why                                                                                        | Where it runs                         |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- |
-| Every ElevenLabs call                                         | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`    |
-| Scribe, isolation, mic take                                   | multipart bodies; ElevenLabs                                                               | direct                                |
-| Seed takes cloned from a voice clip                           | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                        |
-| Real people in any input                                      | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED` |
-| Gemini images                                                 | TanStack/schemas#755                                                                       | direct; needs a Google key            |
-| fal Flux, Seedream, Nano Banana stills                        | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key               |
-| A model the hosted card cannot price                          | the hosted side refuses                                                                    | hosted refusal                        |
-| LLM calls with tools                                          | the hosted chat endpoint takes no tools                                                    | refused at the call                   |
-| Structured output (script analysis, shot specs, most prompts) | the hosted chat endpoint answers text only                                                 | refused at the call                   |
-| Vision (an image or file in a turn)                           | the hosted chat endpoint takes string content only                                         | refused at the call                   |
+| Call                                                                                                                             | Why                                                                                        | Where it runs                         |
+| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- |
+| Every ElevenLabs call                                                                                                            | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`    |
+| Scribe, isolation, mic take                                                                                                      | multipart bodies; ElevenLabs                                                               | direct                                |
+| Seed takes cloned from a voice clip                                                                                              | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                        |
+| Real people in any input                                                                                                         | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED` |
+| Gemini images                                                                                                                    | TanStack/schemas#755                                                                       | direct; needs a Google key            |
+| fal Flux, Seedream, Nano Banana stills                                                                                           | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key               |
+| A model the hosted card cannot price                                                                                             | the hosted side refuses                                                                    | hosted refusal                        |
+| LLM calls with tools (script enhancement's web search, the assistant)                                                            | the hosted chat endpoint takes no tools                                                    | refused at the call                   |
+| Vision (upload descriptions, element and talent vision, Studio prompt drafts with references, watch_clip, enhance with elements) | the hosted chat endpoint takes text only                                                   | refused at the call                   |
 
 ### Proof (2026-11-26)
 
@@ -1645,11 +1657,12 @@ key on a test organization funded with $2. The install side was the HTTP
 transport run from a test harness with no provider keys and a `scopedDb`
 that throws on any touch, so no local hold or debit was possible.
 
-| Model                                                 | Hosted jobs | Hold         | Debit          | Lines          | Copied here           |
-| ----------------------------------------------------- | ----------- | ------------ | -------------- | -------------- | --------------------- |
-| `grok-imagine-image`                                  | 1           | $0.02        | $0.02          | $0.02          | JPEG, 408,922 bytes   |
-| `seed-audio-1.0`                                      | 1           | $0.30        | $0.004906      | $0.004906      | WAV, 188,428 bytes    |
-| `anthropic/claude-sonnet-5.5` (text, 16-token budget) | 2 calls     | not recorded | $0.000076 each | $0.000076 each | streamed text "ready" |
+| Model                                                                           | Hosted jobs | Hold         | Debit          | Lines                | Copied here            |
+| ------------------------------------------------------------------------------- | ----------- | ------------ | -------------- | -------------------- | ---------------------- |
+| `grok-imagine-image`                                                            | 1           | $0.02        | $0.02          | $0.02                | JPEG, 408,922 bytes    |
+| `seed-audio-1.0`                                                                | 1           | $0.30        | $0.004906      | $0.004906            | WAV, 188,428 bytes     |
+| `anthropic/claude-sonnet-5.5` (text, 16-token budget)                           | 2 calls     | not recorded | $0.000076 each | $0.000076 each       | streamed text "ready"  |
+| `anthropic/claude-sonnet-5.5` (structured, `{ name: string }`, 32-token budget) | 1 call      | not recorded | $0.000542      | $0.000542 (one line) | `{"name":"Hollywood"}` |
 
 The Grok call ran twice under one key: one hosted job, one debit. The text
 call ran from a harness with an empty in-memory D1 and no LLM key:
