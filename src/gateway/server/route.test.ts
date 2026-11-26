@@ -180,7 +180,10 @@ describe('the stored snapshot only', () => {
 describe('gatewayRunRoute', () => {
   const target = { provider: 'grok', modelId: HOLDABLE.id } as const;
   const routes = {
-    'grok/grok-imagine-image': { via: 'openstory' as const, model: HOLDABLE },
+    'grok/grok-imagine-image': {
+      via: 'openstory' as const,
+      model: JSON.stringify(HOLDABLE),
+    },
   };
 
   it('runs a payload from before routes existed direct', () => {
