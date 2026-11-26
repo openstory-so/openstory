@@ -47,9 +47,11 @@ let closeDb: () => Promise<void>;
 const start = vi.fn<(...args: unknown[]) => Promise<GatewayStart>>();
 const poll = vi.fn<(...args: unknown[]) => Promise<GatewayPoll>>();
 vi.doMock('#db-client', () => ({ getDb: () => db }));
-vi.doMock('#env', () => ({
-  getEnv: () => ({ XAI_API_KEY: 'platform-xai', E2E_TEST: undefined }),
-}));
+const env: Record<string, string | undefined> = {
+  XAI_API_KEY: 'platform-xai',
+  E2E_TEST: undefined,
+};
+vi.doMock('#env', () => ({ getEnv: () => env }));
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: {
     grok: {
@@ -210,6 +212,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  env.GATEWAY_PLATFORM_FEE_BPS = undefined;
   await db.delete(chargeLines);
   await db.delete(gatewayJobs);
   await db
@@ -368,6 +371,52 @@ describe('the openstory adapter, in-process', () => {
     // What the charge did not capture goes back at once, not at the hold's TTL.
     expect(await holdLeft(job.id)).toBe(0);
   });
+
+  it.each([
+    [undefined, 20_000, []],
+    ['250', 20_500, [{ kind: 'platform_fee', amountMicros: 500 }]],
+  ])(
+    'at fee %s bps the hold, the quote and the debit are the estimate plus the fee',
+    async (fee, total, feeLines) => {
+      env.GATEWAY_PLATFORM_FEE_BPS = fee;
+      start.mockResolvedValue(answered);
+      await generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: `run-fee-${fee}:image`,
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+      const job = await onlyJob(IMAGE.id);
+      const [hold] = await db
+        .select()
+        .from(creditReservations)
+        .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+      expect(hold?.originalAmount).toBe(total);
+      expect(submitJob.gatewayHoldMicros(micros(20_000))).toBe(total);
+      const lines = await db
+        .select({
+          kind: chargeLines.kind,
+          amountMicros: chargeLines.amountMicros,
+        })
+        .from(chargeLines)
+        .where(eq(chargeLines.gatewayJobId, job.id));
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          { kind: 'provider_cost', amountMicros: 20_000 },
+          ...feeLines,
+        ])
+      );
+      expect(lines).toHaveLength(1 + feeLines.length);
+      expect(await chargesFor(job.id)).toEqual({
+        debits: 1,
+        linesMicros: total,
+        usageRows: 1,
+        balanceDrop: total,
+      });
+    }
+  );
 
   it('gives back what a usage-priced job did not spend once it is charged', async () => {
     // Held at the 120 second estimate ($0.30), billed for 8 seconds ($0.02).

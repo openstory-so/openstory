@@ -26,7 +26,15 @@ import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
 import { createOpenRouterText } from '@tanstack/ai-openrouter';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { storeGatewayModel } from '@/gateway/server/db/gateway-models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { OwnKeyVia } from '@/models/server/create-adapter';
@@ -238,6 +246,28 @@ describe('openstoryText on the card route', () => {
     const lines = await db.select().from(chargeLines);
     expect(lines.map((l) => l.sku)).toEqual(
       lines.map(() => 'openrouter/vendor/model')
+    );
+  });
+
+  it('adds the platform fee as its own line on the hold and the charge', async () => {
+    vi.stubEnv('GATEWAY_PLATFORM_FEE_BPS', '500');
+    try {
+      const inner = adapter(() => run());
+      await drain(
+        openstoryText(inner, meter(), 'vendor/model').chatStream(OPTIONS)
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(await ledger()).toEqual({ charges: [2100], held: 0, holds: 1 });
+    const lines = await db
+      .select({ kind: chargeLines.kind, amount: chargeLines.amountMicros })
+      .from(chargeLines);
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        { kind: 'provider_cost', amount: 2000 },
+        { kind: 'platform_fee', amount: 100 },
+      ])
     );
   });
 

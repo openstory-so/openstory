@@ -7,13 +7,11 @@ import {
 import { micros, type Microdollars } from '@/billing/money';
 import type { createBillingMethods } from '@/billing/server/db/billing';
 import type { PricingRefreshDb } from '@/billing/server/refresh-fal-pricing';
-import {
-  GATEWAY_PLATFORM_FEE_BPS,
-  gatewayCharge,
-} from '@/gateway/charge-lines';
+import { gatewayCharge } from '@/gateway/charge-lines';
 import type { TextGatewayProvider } from '@/gateway/schema';
 import type { GatewayTextModel } from '@/gateway/server/catalog';
 import { getStoredTextModel } from '@/gateway/server/db/gateway-models';
+import { gatewayPlatformFeeBps } from '@/gateway/server/platform-fee';
 import { priceGatewayJob } from '@/gateway/server/price';
 import { normalizeUsage } from '@modelschemas/rate-card/evaluator';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
@@ -269,7 +267,7 @@ async function hold(
   const reserved = await meter.billing.createReservation(
     gatewayCharge({
       providerCostMicros: estimateMicros,
-      platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+      platformFeeBps: gatewayPlatformFeeBps(),
     }).totalMicros,
     { idempotencyKey: `text:${generateId()}` }
   );
@@ -414,7 +412,7 @@ async function charge(
       const sku = `${call.card.provider}/${call.card.id}`;
       const { lines, totalMicros } = gatewayCharge({
         providerCostMicros: cost,
-        platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+        platformFeeBps: gatewayPlatformFeeBps(),
       });
       let reservationId = runReservation ?? call.held?.reservationId ?? null;
       let ownHold = false;

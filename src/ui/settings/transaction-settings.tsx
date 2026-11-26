@@ -19,6 +19,7 @@ type TransactionData = {
   description: string | null;
   metadata?: { receiptUrl?: string } | null;
   createdAt: string | Date;
+  platformFee: string | null;
 };
 
 const PAGE_SIZE = 50;
@@ -33,6 +34,11 @@ function TransactionRow({ tx }: { tx: TransactionData }) {
         <p className="text-xs text-muted-foreground">
           {new Date(tx.createdAt).toLocaleString()}
         </p>
+        {tx.platformFee !== null && (
+          <p className="text-xs text-muted-foreground tabular-nums">
+            Includes platform fee {tx.platformFee}
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-2 ml-4">
         <span

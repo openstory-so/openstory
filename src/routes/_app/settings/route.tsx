@@ -16,7 +16,7 @@ import {
   Outlet,
   useLocation,
 } from '@tanstack/react-router';
-import { Fingerprint, Key, Terminal, Users } from 'lucide-react';
+import { ChartColumn, Fingerprint, Key, Terminal, Users } from 'lucide-react';
 
 export const Route = createFileRoute('/_app/settings')({
   component: SettingsLayout,
@@ -48,6 +48,12 @@ const tabs = [
     label: 'Passkeys',
     href: '/settings/passkeys',
     icon: <Fingerprint className="h-4 w-4" />,
+  },
+  {
+    value: 'usage',
+    label: 'Usage',
+    href: '/settings/usage',
+    icon: <ChartColumn className="h-4 w-4" />,
   },
   {
     value: 'developer',

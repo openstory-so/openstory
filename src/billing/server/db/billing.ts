@@ -50,6 +50,7 @@ import type { BatchItem } from 'drizzle-orm/batch';
 import { generateId } from '@/platform/id';
 import {
   chargeLines,
+  gatewayJobs,
   giftTokenRedemptions,
   giftTokens,
 } from '@/platform/server/db/schema';
@@ -299,6 +300,8 @@ function createBillingReadMethods(db: Database, organizationId: string) {
       description: string | null;
       metadata: unknown;
       createdAt: Date;
+      /** The gateway platform fee inside this debit, or null when it has none. */
+      platformFeeMicros: number | null;
     }>;
     hasMore: boolean;
   }> {
@@ -314,6 +317,9 @@ function createBillingReadMethods(db: Database, organizationId: string) {
         description: transactions.description,
         metadata: transactions.metadata,
         createdAt: transactions.createdAt,
+        platformFeeMicros: sql<
+          number | null
+        >`(select sum(${chargeLines.amountMicros}) from ${chargeLines} where ${chargeLines.transactionId} = ${transactions.id} and ${chargeLines.organizationId} = ${organizationId} and ${chargeLines.kind} = 'platform_fee')`,
       })
       .from(transactions)
       .where(
@@ -329,6 +335,40 @@ function createBillingReadMethods(db: Database, organizationId: string) {
       .offset(offset);
 
     return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
+  }
+
+  /**
+   * Gateway spend since `since`, from the charge lines this organization paid:
+   * one row per UTC day and model (a text line's `sku`, else its job's model).
+   */
+  async function getGatewaySpend(since: Date): Promise<GatewaySpendRow[]> {
+    const day = sql<string>`date(${chargeLines.createdAt}, 'unixepoch')`;
+    const model = sql<string>`coalesce(${chargeLines.sku}, ${gatewayJobs.modelKey}, 'unknown')`;
+    const sumOf = (kind: ChargeLineKind) =>
+      sql<number>`coalesce(sum(case when ${chargeLines.kind} = ${kind} then ${chargeLines.amountMicros} end), 0)`;
+    const rows = await db
+      .select({
+        day,
+        model,
+        totalMicros: sql<number>`sum(${chargeLines.amountMicros})`,
+        platformFeeMicros: sumOf('platform_fee'),
+        calls: sql<number>`count(distinct ${chargeLines.transactionId})`,
+      })
+      .from(chargeLines)
+      .leftJoin(gatewayJobs, eq(gatewayJobs.id, chargeLines.gatewayJobId))
+      .where(
+        and(
+          eq(chargeLines.organizationId, organizationId),
+          gte(chargeLines.createdAt, since)
+        )
+      )
+      .groupBy(day, model)
+      .orderBy(desc(day), model);
+    return rows.map((row) => ({
+      ...row,
+      totalMicros: micros(row.totalMicros),
+      platformFeeMicros: micros(row.platformFeeMicros),
+    }));
   }
 
   async function getBillingSettings(): Promise<OrganizationBillingSetting> {
@@ -369,9 +409,20 @@ function createBillingReadMethods(db: Database, organizationId: string) {
     getAvailable,
     hasEnoughCredits,
     getTransactionHistory,
+    getGatewaySpend,
     getBillingSettings,
   };
 }
+
+type GatewaySpendRow = {
+  /** `YYYY-MM-DD`, UTC. */
+  readonly day: string;
+  readonly model: string;
+  readonly totalMicros: Microdollars;
+  readonly platformFeeMicros: Microdollars;
+  /** Debits on that day for that model. */
+  readonly calls: number;
+};
 
 /**
  * Full billing methods — extends read methods with writes that auto-inject userId.

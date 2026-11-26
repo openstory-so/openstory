@@ -24,6 +24,7 @@ import {
   MIN_TOPUP_AMOUNT_USD,
   totalCheckoutCents,
 } from './constants';
+import { gatewayUsageDaysSchema } from './gateway-usage';
 import { micros, microsToDisplayUsd, microsToUsd, usdToMicros } from './money';
 import type { TransactionType } from '@/platform/server/db/schema/credits';
 import { ValidationError } from '@/platform/errors';
@@ -532,6 +533,7 @@ type Transaction = {
   description: string | null;
   metadata: TransactionMetadata;
   createdAt: Date;
+  platformFee: string | null;
 };
 
 export const getTransactionsFn = createServerFn({ method: 'GET' })
@@ -554,16 +556,88 @@ export const getTransactionsFn = createServerFn({ method: 'GET' })
         ...(type && { type }),
       });
 
-      const transactions = result.transactions.map((tx) => ({
-        ...tx,
-        amount: microsToUsd(micros(tx.amount)),
-        balanceAfter: microsToUsd(micros(tx.balanceAfter)),
-        metadata: parseTransactionMetadata(tx.metadata),
-      }));
+      const transactions = result.transactions.map(
+        ({ platformFeeMicros, ...tx }) => ({
+          ...tx,
+          platformFee:
+            platformFeeMicros === null
+              ? null
+              : microsToDisplayUsd(micros(platformFeeMicros)),
+          amount: microsToUsd(micros(tx.amount)),
+          balanceAfter: microsToUsd(micros(tx.balanceAfter)),
+          metadata: parseTransactionMetadata(tx.metadata),
+        })
+      );
 
       return { transactions, hasMore: result.hasMore };
     }
   );
+
+// ============================================================================
+// Gateway usage
+// ============================================================================
+
+type UsageTotal = { totalMicros: number; platformFeeMicros: number };
+
+/** Gateway spend over the last `days`, by model and by UTC day, from the charge lines. */
+export const getGatewayUsageFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        days: gatewayUsageDaysSchema,
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const since = new Date(Date.now() - data.days * 86_400_000);
+    const rows = await context.scopedDb.billing.getGatewaySpend(since);
+    const byModel = new Map<string, UsageTotal & { calls: number }>();
+    const byDay = new Map<string, UsageTotal>();
+    for (const row of rows) {
+      const model = byModel.get(row.model) ?? {
+        totalMicros: 0,
+        platformFeeMicros: 0,
+        calls: 0,
+      };
+      model.totalMicros += row.totalMicros;
+      model.platformFeeMicros += row.platformFeeMicros;
+      model.calls += row.calls;
+      byModel.set(row.model, model);
+      const day = byDay.get(row.day) ?? {
+        totalMicros: 0,
+        platformFeeMicros: 0,
+      };
+      day.totalMicros += row.totalMicros;
+      day.platformFeeMicros += row.platformFeeMicros;
+      byDay.set(row.day, day);
+    }
+    const usd = (total: UsageTotal) => ({
+      total: microsToDisplayUsd(micros(total.totalMicros)),
+      platformFee:
+        total.platformFeeMicros > 0
+          ? microsToDisplayUsd(micros(total.platformFeeMicros))
+          : null,
+    });
+    const all = rows.reduce<UsageTotal>(
+      (sum, row) => ({
+        totalMicros: sum.totalMicros + row.totalMicros,
+        platformFeeMicros: sum.platformFeeMicros + row.platformFeeMicros,
+      }),
+      { totalMicros: 0, platformFeeMicros: 0 }
+    );
+    return {
+      ...usd(all),
+      byModel: [...byModel]
+        .sort(([, a], [, b]) => b.totalMicros - a.totalMicros)
+        .map(([model, total]) => ({
+          model,
+          calls: total.calls,
+          ...usd(total),
+        })),
+      byDay: [...byDay].map(([day, total]) => ({ day, ...usd(total) })),
+    };
+  });
 
 // ============================================================================
 // Auto Top-Up

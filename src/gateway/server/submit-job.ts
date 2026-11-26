@@ -27,10 +27,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import {
-  GATEWAY_PLATFORM_FEE_BPS,
-  gatewayCharge,
-} from '@/gateway/charge-lines';
+import { gatewayCharge } from '@/gateway/charge-lines';
 import {
   BYTEPLUS_ENDPOINTS,
   GATEWAY_ERROR_MESSAGES,
@@ -40,6 +37,7 @@ import {
 } from '@/gateway/schema';
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
+import { gatewayPlatformFeeBps } from '@/gateway/server/platform-fee';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import type { GatewayRun } from '@/gateway/server/phases';
 import {
@@ -440,7 +438,7 @@ async function ownHostedOutputs(
 export function gatewayHoldMicros(estimate: Microdollars): Microdollars {
   return gatewayCharge({
     providerCostMicros: estimate,
-    platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+    platformFeeBps: gatewayPlatformFeeBps(),
   }).totalMicros;
 }
 
@@ -513,7 +511,7 @@ export async function holdGatewayJob(
     );
   }
 
-  const platformFeeBps = GATEWAY_PLATFORM_FEE_BPS;
+  const platformFeeBps = gatewayPlatformFeeBps();
   const hold = gatewayHoldMicros(estimate);
 
   const { job, created } = await scopedDb.gatewayJobs.create({
