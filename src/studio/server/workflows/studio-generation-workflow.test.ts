@@ -17,6 +17,7 @@ const mockGenerateImageWithProvider = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
 const mockRecordProvenance = vi.fn();
 const mockSubmit = vi.fn();
+const mockGatewayCharge = vi.fn(async () => 480_000);
 const mockPoll = vi.fn();
 const mockCost = vi.fn();
 const mockRecordMediaGenerationSpan = vi.fn();
@@ -56,7 +57,8 @@ vi.doMock('@/studio/server/studio-video-generation', () => ({
 }));
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
-  releaseVideoJob: vi.fn(async () => {}),
+  releaseTimedOutVideoJob: vi.fn(async () => {}),
+  gatewayVideoCharge: mockGatewayCharge,
   videoGatewayStore: (upload: unknown) => upload,
   routeVideoJob: async () => ({}),
   videoCostFromUsage: mockCost,
@@ -270,6 +272,30 @@ describe('StudioGenerationWorkflow image', () => {
 });
 
 describe('StudioGenerationWorkflow video', () => {
+  it('records the gateway job charge on a gateway asset, with no deduct (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: '{"run":{}}',
+      modelKey: 'grok_imagine_video_1_5',
+      endpointId: 'grok-imagine-video-1.5',
+      via: 'openstory',
+      usedOwnKey: false,
+    });
+    const step = makeStep();
+    const { scopedDb, generatedAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(step.names).toContain('read-gateway-charge');
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+    expect(generatedAssets.markCompleted).toHaveBeenCalledWith(
+      'asset-1',
+      expect.objectContaining({ costMicros: 480_000, provider: 'openstory' })
+    );
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({ costMicros: 480_000 })
+    );
+  });
+
   it('resubmits on a content flag, then bills and persists', async () => {
     mockSubmit
       .mockRejectedValueOnce(new Error('flagged by a content checker'))

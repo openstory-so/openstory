@@ -939,12 +939,17 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
   when it finishes and the clip is discarded. A provider failure marks the
   job failed (`releaseGatewayRun`) and leaves the run's reservation to the
   run, which zeroes it at its end. A run that times out after 30 minutes
-  ends its job itself (`releaseVideoJob` → `releaseInProcessJob`, in a
-  `release-motion-job<tag>` step) before it throws; the stale-job sweep is
+  ends its job itself (`releaseTimedOutVideoJob` → `releaseInProcessJob`, in
+  a `release-motion-job<tag>` step) before it throws; a release that fails is
+  logged, never thrown, so the run still reports the timeout; the stale-job sweep is
   only for a run that died (a borrowed reservation is not on the row, so the
   sweep cannot zero it). A capture
   renews the reservation's `RESERVATION_TTL_MS` (6 hours), and a 30-minute
   poll window sits well inside it.
+- **Studio records the charge.** A gateway asset's `costMicros` and span
+  cost come from its own job row (`read-gateway-charge`, by the id in the
+  handle, through `scopedDb.claims`). The transport's `done` answer carries
+  no cost; #2438 may add one when it designs the HTTP transport.
 - **Packed clips:** one run, one submit, one gateway job, one charge.
 - **Upload rights:** `video-job.ts` passes `UPLOAD_RIGHTS_CHECKED`. Studio
   checks every upload at the click (`requireCheckedUploadRights`); motion's

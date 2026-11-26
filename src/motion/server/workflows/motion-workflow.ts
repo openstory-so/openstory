@@ -63,7 +63,7 @@ import {
 } from '@/motion/server/motion-generation';
 import {
   pollVideoJob,
-  releaseVideoJob,
+  releaseTimedOutVideoJob,
   routeVideoJob,
   videoCostFromUsage,
   videoGatewayStore,
@@ -1489,7 +1489,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       // another full poll budget, so stop here as before.
       const timedOut = `Motion generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`;
       await step.do(`release-motion-job${tag}`, () =>
-        releaseVideoJob(job, scopedDb, timedOut)
+        releaseTimedOutVideoJob(job, scopedDb, timedOut)
       );
       throw new Error(timedOut);
     }

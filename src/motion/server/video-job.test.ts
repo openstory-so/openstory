@@ -41,7 +41,11 @@ vi.doMock('@/gateway/server/catalog', () => ({
 }));
 const poller = vi.fn();
 const transport = vi.fn();
+const releaseInProcessJob = vi.fn(async () => {});
 vi.doMock('@/gateway/server/adapter/in-process', () => ({
+  gatewayJobIdOf: (handle: string) =>
+    handle.startsWith('done:') ? null : 'gw-1',
+  releaseInProcessJob,
   inProcessGateway: (params: unknown) => {
     transport(params);
     return { submit: vi.fn(), status: vi.fn() };
@@ -53,8 +57,14 @@ vi.doMock('@/gateway/server/adapter/in-process', () => ({
 }));
 vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'platform-fal' }) }));
 
-const { pollVideoJob, routeVideoJob, sendVideoJob, videoGatewayStore } =
-  await import('./video-job');
+const {
+  gatewayVideoCharge,
+  pollVideoJob,
+  releaseTimedOutVideoJob,
+  routeVideoJob,
+  sendVideoJob,
+  videoGatewayStore,
+} = await import('./video-job');
 
 /** A provider call that sends `{ duration: 5 }`; counts the calls that reached the provider. */
 function provider() {
@@ -268,5 +278,33 @@ describe('videoGatewayStore', () => {
     await expect(
       store({ base64: 'AAAA', contentType: 'video/mp4' }, 0)
     ).rejects.toThrow('inline video');
+  });
+});
+
+describe('a gateway clip after its run gives up or finishes (#2435)', () => {
+  it('still lets the timeout surface when the release throws', async () => {
+    releaseInProcessJob.mockRejectedValueOnce(new Error('D1 is down'));
+    await expect(
+      releaseTimedOutVideoJob(
+        { jobId: '{}', via: 'openstory' },
+        asStub<WorkflowScopedDb>({}),
+        'timed out'
+      )
+    ).resolves.toBeUndefined();
+    expect(releaseInProcessJob).toHaveBeenCalledOnce();
+  });
+
+  it('reads the charge off its own job row, and none for a job that answered at submit', async () => {
+    const getById = vi.fn(async () => ({ costMicros: 480_000 }));
+    const scopedDb = asStub<WorkflowScopedDb>({
+      claims: { gatewayJobs: { getById } },
+    });
+    await expect(gatewayVideoCharge({ jobId: '{}' }, scopedDb)).resolves.toBe(
+      480_000
+    );
+    expect(getById).toHaveBeenCalledWith('gw-1');
+    await expect(
+      gatewayVideoCharge({ jobId: 'done:[]' }, scopedDb)
+    ).resolves.toBeNull();
   });
 });

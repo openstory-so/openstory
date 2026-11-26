@@ -377,6 +377,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'BILLING-GUARD',
       why: 'An own key keeps the clip on the direct path, unbilled by the gateway; read in the route step, whose checkpoint every submit retry reuses (#2435).',
     },
+    {
+      read: 'gatewayJobs.getById',
+      bucket: 'CLAIM-BY-ID',
+      why: "This run's own gateway job, by the id in its handle: what the gateway charged, for the studio asset and its span (#2435).",
+    },
   ],
   'llm-call-helper.ts': [
     {

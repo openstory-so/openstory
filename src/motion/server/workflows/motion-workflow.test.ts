@@ -21,6 +21,7 @@ import { UnusableReferencesError } from '@/motion/reference-support';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
+const mockGatewayCharge = vi.fn(async () => 480_000);
 const mockGatewayTarget = vi.fn((options: { model: string }, via: string) => ({
   provider: via,
   modelId: options.model,
@@ -64,7 +65,8 @@ const mockVideoCost = vi.fn(async () => ({
 }));
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
-  releaseVideoJob: vi.fn(async () => {}),
+  releaseTimedOutVideoJob: vi.fn(async () => {}),
+  gatewayVideoCharge: mockGatewayCharge,
   videoGatewayStore: (upload: unknown) => upload,
   routeVideoJob: mockRouteVideoJob,
   videoCostFromUsage: mockVideoCost,

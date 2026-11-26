@@ -14,6 +14,7 @@ import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
 import { openstoryVideo, openstoryVideoStatus } from '@/gateway/server/adapter';
 import {
   inProcessGateway,
+  gatewayJobIdOf,
   inProcessPoller,
   releaseInProcessJob,
 } from '@/gateway/server/adapter/in-process';
@@ -260,6 +261,30 @@ export async function releaseVideoJob(
   if (job.via === 'openstory') {
     await releaseInProcessJob(scopedDb, job.jobId, error);
   }
+}
+
+/**
+ * The release step before a timeout throws: never fails, so the run still
+ * says it timed out; the sweep and the run's own end are the backstop.
+ */
+export async function releaseTimedOutVideoJob(
+  job: Pick<StampedVideoJob, 'jobId' | 'via'>,
+  scopedDb: WorkflowScopedDb,
+  error: string
+): Promise<void> {
+  await releaseVideoJob(job, scopedDb, error).catch((err: unknown) => {
+    logger.error('Releasing a timed-out gateway video job failed', { err });
+  });
+}
+
+/** What the gateway charged for a finished clip, read back by the run's own job id; null when the handle names none. */
+export async function gatewayVideoCharge(
+  job: Pick<StampedVideoJob, 'jobId'>,
+  scopedDb: WorkflowScopedDb
+): Promise<number | null> {
+  const jobId = gatewayJobIdOf(job.jobId);
+  if (!jobId) return null;
+  return (await scopedDb.claims.gatewayJobs.getById(jobId))?.costMicros ?? null;
 }
 
 export type StampedVideoJob = {

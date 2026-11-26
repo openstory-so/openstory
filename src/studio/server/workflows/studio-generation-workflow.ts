@@ -32,7 +32,7 @@ import {
 } from '@/motion/seedance-edit';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 import type { MediaVia } from '@/models/via';
-import { ZERO_MICROS } from '@/billing/money';
+import { micros, ZERO_MICROS } from '@/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -59,7 +59,8 @@ import {
 import { studioImageParams } from '@/studio/text-to-video';
 import {
   pollVideoJob,
-  releaseVideoJob,
+  gatewayVideoCharge,
+  releaseTimedOutVideoJob,
   routeVideoJob,
   videoCostFromUsage,
   videoGatewayStore,
@@ -480,7 +481,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       }
       const timedOut = `Video generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`;
       await step.do(`release-video-job${tag}`, () =>
-        releaseVideoJob(job, scopedDb, timedOut)
+        releaseTimedOutVideoJob(job, scopedDb, timedOut)
       );
       throw new Error(timedOut);
     }
@@ -543,6 +544,13 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             )
           );
     const videoCost = billing?.cost ?? ZERO_MICROS;
+    // The gateway's charge for the asset and telemetry: its own job row, by id (#2435).
+    const gatewayCharge =
+      jobVia === 'openstory'
+        ? await step.do('read-gateway-charge', () =>
+            gatewayVideoCharge(job, scopedDb)
+          )
+        : null;
 
     if (billing?.recordFalUsage) {
       await recordFalUsageStep(
@@ -615,6 +623,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           unitsBilled: billing.unitsBilled,
           billedUnit: billing.billedUnit,
         }),
+        ...(gatewayCharge !== null && { costMicros: micros(gatewayCharge) }),
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,
@@ -647,8 +656,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     await step.do('persist-result', async () => {
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
-        // Null on the gateway: the charge is the gateway job's.
-        costMicros: billing ? videoCost : null,
+        costMicros: billing ? videoCost : gatewayCharge,
         provider: job.via,
         // The handle "Render at quality" renders the final from (#1756).
         draftTaskId: job.draftTaskId,
