@@ -253,8 +253,10 @@ export async function finishGatewayRun(
     data: storedData(stored),
   });
   const charged = await settleGatewayRun(scopedDb, run, stored, idempotencyKey);
-  // The hold is the job's own: what the charge did not capture goes back now, not at its TTL.
-  await scopedDb.billing.zeroReservation(run.reservationId);
+  // A job's own hold gives back what the charge did not capture now, not at its TTL; a run's keeps it for the run.
+  if (run.ownsReservation) {
+    await scopedDb.billing.zeroReservation(run.reservationId);
+  }
   return charged;
 }
 
