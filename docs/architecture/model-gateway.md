@@ -1098,9 +1098,11 @@ A Seed take is recorded by a `SeedRecorder` (`seedRecorderFor` in
 adapter, `platformSeedRecorder` calls Seed Speech on the platform key and the
 caller books `seed-audio` itself (`seedCharge`). The body is the same.
 
-- **One key per take.** `${runId}:${step}:${ctx.attempt}:${take}`: a step
-  retried after a crash reuses its take, but a take that failed the
-  transcription check is a new job, because the retake must be new audio.
+- **One key per take.** `${runId}:${step}:${take}`, with no attempt: a
+  step retried after Scribe, isolation, R2 or D1 throws gets its charged
+  takes back and records nothing new. A take that fails the transcription
+  check is retaken inside the step under the next take number (the range
+  read up to three takes, dialogue and mic takes in their own loops).
 - **Every take is charged.** On the platform key only the kept take is
   billed and the platform absorbs the rest; on the gateway every take that
   answered is charged. Needs sign-off.

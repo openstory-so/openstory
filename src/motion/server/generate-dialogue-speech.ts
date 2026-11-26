@@ -223,71 +223,68 @@ async function recordClaimed(
         call.shotIds.includes(line.shotId)
       );
       const stepName = `${args.stepPrefix}-chunk-${call.index}${suffix}`;
-      const result = await step.do(
-        stepName,
-        async (ctx): Promise<SpeechCall> => {
-          const eleven =
-            await args.scopedDb.credentials.resolveKey('elevenlabs');
-          // A Seed voice is recorded by Seed, an ElevenLabs voice by
-          // ElevenLabs (#1765) — `chunkTakeLines` never puts both in a call.
-          const made = callLines.some(
-            (line) => voiceProviderOf(line.voiceId) === 'seed'
-          )
-            ? await generateSeedDialogueSpeech({
-                record: seedRecorderFor({
-                  routes: args.gatewayRoutes,
-                  scopedDb: args.scopedDb,
-                  runId: args.workflowRunId,
-                  reservationId: args.reservationId,
-                  idempotencyKey: `${args.workflowRunId}:${stepName}:${ctx.attempt}`,
-                }),
-                elevenLabsKey: eleven.key,
-                organizationId: args.organizationId,
-                sequenceId: args.sequenceId,
-                lines: callLines,
-              })
-            : await generateDialogueSpeechCall({
-                apiKey: eleven.key,
-                organizationId: args.organizationId,
-                sequenceId: args.sequenceId,
-                lines: callLines,
-              });
-          // One ledger line per provider, so a Seed call's Scribe pass is
-          // booked as ElevenLabs spend.
-          const callKey = `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`;
-          for (const [at, charge] of made.charges.entries()) {
-            // The call's main charge keeps the key it had before #1765, so a
-            // step retried across the deploy is not billed twice.
-            const isMainCharge = at === 0;
-            await deductWorkflowCredits({
-              scopedDb: args.scopedDb,
-              costMicros: charge.costMicros,
-              usedOwnKey: false,
-              description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
-              idempotencyKey: isMainCharge
-                ? callKey
-                : `${callKey}:${charge.endpointId}`,
-              reservationId: args.reservationId,
-              metadata: {
-                endpointId: charge.endpointId,
-                model: charge.model,
-                characterCount: made.characterCount,
-                clipCount: 1,
-                attempt,
-              },
-              workflowName: args.workflowName,
+      const result = await step.do(stepName, async (): Promise<SpeechCall> => {
+        const eleven = await args.scopedDb.credentials.resolveKey('elevenlabs');
+        // A Seed voice is recorded by Seed, an ElevenLabs voice by
+        // ElevenLabs (#1765) — `chunkTakeLines` never puts both in a call.
+        const made = callLines.some(
+          (line) => voiceProviderOf(line.voiceId) === 'seed'
+        )
+          ? await generateSeedDialogueSpeech({
+              record: seedRecorderFor({
+                routes: args.gatewayRoutes,
+                scopedDb: args.scopedDb,
+                runId: args.workflowRunId,
+                reservationId: args.reservationId,
+                // No attempt: a retried step gets its charged takes back, never new ones.
+                idempotencyKey: `${args.workflowRunId}:${stepName}`,
+              }),
+              elevenLabsKey: eleven.key,
+              organizationId: args.organizationId,
+              sequenceId: args.sequenceId,
+              lines: callLines,
+            })
+          : await generateDialogueSpeechCall({
+              apiKey: eleven.key,
+              organizationId: args.organizationId,
+              sequenceId: args.sequenceId,
+              lines: callLines,
             });
-          }
-          // Section ids are minted with the speech, inside this step: the
-          // clip and the row have to agree on them across a persist retry.
-          return {
-            ...made,
-            sectionIdByShotId: Object.fromEntries(
-              made.windows.map((window) => [window.shotId, generateId()])
-            ),
-          };
+        // One ledger line per provider, so a Seed call's Scribe pass is
+        // booked as ElevenLabs spend.
+        const callKey = `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`;
+        for (const [at, charge] of made.charges.entries()) {
+          // The call's main charge keeps the key it had before #1765, so a
+          // step retried across the deploy is not billed twice.
+          const isMainCharge = at === 0;
+          await deductWorkflowCredits({
+            scopedDb: args.scopedDb,
+            costMicros: charge.costMicros,
+            usedOwnKey: false,
+            description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
+            idempotencyKey: isMainCharge
+              ? callKey
+              : `${callKey}:${charge.endpointId}`,
+            reservationId: args.reservationId,
+            metadata: {
+              endpointId: charge.endpointId,
+              model: charge.model,
+              characterCount: made.characterCount,
+              clipCount: 1,
+              attempt,
+            },
+            workflowName: args.workflowName,
+          });
         }
-      );
+        // Section ids are minted with the speech, inside this step: the
+        // clip and the row have to agree on them across a persist retry.
+        return {
+          ...made,
+          sectionIdByShotId: Object.fromEntries(
+            made.windows.map((window) => [window.shotId, generateId()])
+          ),
+        };
+      });
       recorded.set(call.index, withSpeechId(result));
     }
 

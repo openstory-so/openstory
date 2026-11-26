@@ -26,6 +26,7 @@ import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { readStorageObject, uploadFile } from '#storage';
 import { isolateVoice } from './elevenlabs-voice';
 import {
+  type CheckedTake,
   recordCheckedTake,
   SEED_BOOTH_PROMPT,
   type SeedRecorder,
@@ -58,6 +59,9 @@ function rangeReadPrompt(description: string, script: RangeScript): string {
   return `${SEED_BOOTH_PROMPT} Speaker: ${description} They speak in three parts, at a natural conversational pace. First, relaxed and conversational: "${script.normal}" Then they drop to a whisper: "${script.quiet}" Then, raised and annoyed: "${script.loud}"`;
 }
 
+/** A read that misses its script is retaken in the step, up to this many takes. */
+const RANGE_READ_TAKES = 3;
+
 export async function recordRangeRead(input: {
   record: SeedRecorder;
   elevenLabsKey: string;
@@ -65,14 +69,19 @@ export async function recordRangeRead(input: {
   description: string;
   script: RangeScript;
 }): Promise<RecordedRangeRead> {
-  const take = await recordCheckedTake({
-    record: input.record,
-    take: 1,
-    elevenLabsKey: input.elevenLabsKey,
-    prompt: rangeReadPrompt(input.description, input.script),
-    references: [],
-    parts: SEED_VOICE_MOODS.map((mood) => input.script[mood]),
-  });
+  let take: CheckedTake | null = null;
+  // Retakes are numbered here, so a retried step replays the same takes rather than recording new ones.
+  for (let n = 1; n <= RANGE_READ_TAKES && !take?.check.ok; n++) {
+    take = await recordCheckedTake({
+      record: input.record,
+      take: n,
+      elevenLabsKey: input.elevenLabsKey,
+      prompt: rangeReadPrompt(input.description, input.script),
+      references: [],
+      parts: SEED_VOICE_MOODS.map((mood) => input.script[mood]),
+    });
+  }
+  if (!take) throw new Error('Seed range read recorded no take');
   if (!take.check.ok) {
     throw new Error(
       `Seed range read did not say its script: ${take.check.problem}`

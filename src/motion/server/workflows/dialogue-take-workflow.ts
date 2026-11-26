@@ -57,7 +57,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
     }
 
     try {
-      const take = await step.do('record-take', async (ctx) => {
+      const take = await step.do('record-take', async () => {
         const eleven = await scopedDb.credentials.resolveKey('elevenlabs');
         const seed =
           voiceProviderOf(input.line.voiceId) === 'seed'
@@ -66,7 +66,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
                 scopedDb,
                 runId: workflowRunId,
                 reservationId: input.reservationId,
-                idempotencyKey: `${workflowRunId}:record-take:${ctx.attempt}`,
+                idempotencyKey: `${workflowRunId}:record-take`,
               })
             : null;
         const made = await recordDialogueTake({

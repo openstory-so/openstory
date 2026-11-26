@@ -76,7 +76,16 @@ vi.doMock('@/models/server/byteplus-governor', () => ({
   acquireSeedSpeechToken: vi.fn(async () => undefined),
 }));
 
+const transcribeSpeech = vi.fn();
+vi.doMock('./elevenlabs-voice', async () => ({
+  ...(await vi.importActual<typeof import('./elevenlabs-voice')>(
+    './elevenlabs-voice'
+  )),
+  transcribeSpeech,
+}));
+
 const { seedRecorderFor, seedCharge } = await import('./seed-audio');
+const { recordRangeRead } = await import('./seed-voice');
 const { gatewayRouteKey } = await import('@/gateway/server/route');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
@@ -220,6 +229,26 @@ describe('a Seed take on the gateway', () => {
       holds.find((hold) => hold.id === held.reservationId)?.remainingAmount
     ).toBe(30_000);
     expect(await balanceDrop()).toBe(20_000);
+  });
+
+  it('replays a charged take when the step is retried after Scribe throws, and retakes only in the step', async () => {
+    const read = () =>
+      recordRangeRead({
+        // The workflow's key: no attempt in it.
+        record: recorder('voice_run-1:seed-range-read-1'),
+        elevenLabsKey: 'el-key',
+        voiceId: 'seed:v-1',
+        description: 'Mara, gravelly',
+        script: { normal: 'Engine.', quiet: 'Done.', loud: 'For.' },
+      });
+    transcribeSpeech.mockRejectedValueOnce(new Error('Scribe is down'));
+    await expect(read()).rejects.toThrow('Scribe is down');
+    expect(start).toHaveBeenCalledTimes(1);
+    // The retried step: take 1 comes back from its job; takes 2 and 3 are the in-step retakes.
+    transcribeSpeech.mockResolvedValue({ text: '', words: [], seconds: 1 });
+    await expect(read()).rejects.toThrow('did not say its script');
+    expect(start).toHaveBeenCalledTimes(3);
+    expect(await balanceDrop()).toBe(60_000);
   });
 
   it('records a retake as a new job', async () => {
