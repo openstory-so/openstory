@@ -77,32 +77,43 @@ export type CatalogFalPricingRow = {
 
 export type CatalogFalPricingMap = Record<string, CatalogFalPricingRow>;
 
-/** Public GET — catalog endpoints only (not the full fal table). */
-export const getCatalogFalPricingFn = createServerFn({ method: 'GET' }).handler(
-  async (): Promise<CatalogFalPricingMap> => {
-    const full = await getEffectiveFalPricing();
-    const out: CatalogFalPricingMap = {};
-    for (const endpointId of catalogFalEndpointIds()) {
-      const row = full[endpointId];
-      if (!row) continue;
-      out[endpointId] = {
-        unitPriceMicros: Number(row.unitPrice),
-        unit: row.unit,
-        ...(row.typicalUnitsPerCall != null && {
-          typicalUnitsPerCall: row.typicalUnitsPerCall,
-        }),
-        ...(row.observed && {
-          observed: {
-            medianUnits: row.observed.medianUnits,
-            sampleCount: row.observed.sampleCount,
-          },
-        }),
-        ...(row.rateCard && { rateCardJson: JSON.stringify(row.rateCard) }),
-      };
-    }
-    return out;
+function toCatalogRows(
+  full: Awaited<ReturnType<typeof getEffectiveFalPricing>>
+): CatalogFalPricingMap {
+  const out: CatalogFalPricingMap = {};
+  for (const endpointId of catalogFalEndpointIds()) {
+    const row = full[endpointId];
+    if (!row) continue;
+    out[endpointId] = {
+      unitPriceMicros: Number(row.unitPrice),
+      unit: row.unit,
+      ...(row.typicalUnitsPerCall != null && {
+        typicalUnitsPerCall: row.typicalUnitsPerCall,
+      }),
+      ...(row.observed && {
+        observed: {
+          medianUnits: row.observed.medianUnits,
+          sampleCount: row.observed.sampleCount,
+        },
+      }),
+      ...(row.rateCard && { rateCardJson: JSON.stringify(row.rateCard) }),
+    };
   }
+  return out;
+}
+
+/** Public GET — catalog endpoints only (not the full fal table). Signed-out pages only. */
+export const getCatalogFalPricingFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<CatalogFalPricingMap> =>
+    toCatalogRows(await getEffectiveFalPricing())
 );
+
+/** The signed-in organization's catalog pricing: its `openstory` stills at the gateway hold (#2434). */
+export const getOrganizationFalPricingFn = createServerFn({ method: 'GET' })
+  .middleware([authWithOrganizationMiddleware])
+  .handler(async ({ context }): Promise<CatalogFalPricingMap> =>
+    toCatalogRows(await imageQuotePricing(context.scopedDb))
+  );
 
 const estimateDraftGenerationInputSchema = z.object({
   // Same ceiling as the analysis path (models/ai.fn.ts); the create schema

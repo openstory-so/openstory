@@ -9,6 +9,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   getCatalogFalPricingFn,
+  getOrganizationFalPricingFn,
   type CatalogFalPricingMap,
 } from '@/billing/pricing.fn';
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
@@ -57,12 +58,27 @@ function hydratePricingMap(
   return map;
 }
 
+/** Public catalog prices: signed-out pages. A signed-in page uses `useOrganizationFalPricing`. */
 export function useFalPricing() {
   const query = useQuery({
     queryKey: [...FAL_PRICING_QUERY_KEY],
     queryFn: async () => hydratePricingMap(await getCatalogFalPricingFn()),
     staleTime: 5 * 60 * 1000,
     // Pricing is public — no session required (signed-out generate CTA).
+  });
+
+  return {
+    ...query,
+    pricing: query.data ?? null,
+  };
+}
+
+/** The organization's prices: a still the gateway runs is quoted at its hold, not the fal price. */
+export function useOrganizationFalPricing() {
+  const query = useQuery({
+    queryKey: ['fal-organization-pricing'],
+    queryFn: async () => hydratePricingMap(await getOrganizationFalPricingFn()),
+    staleTime: 5 * 60 * 1000,
   });
 
   return {

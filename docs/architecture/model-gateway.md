@@ -808,9 +808,11 @@ Nano Banana, which the gateway does not hold. Stay direct:
 Quotes: `imageQuotePricing` gives a trigger the fal map with each
 `openstory` Grok still priced at `gatewayHoldMicros` of its card estimate,
 the number the hold takes ($0.06 for Grok 2.0 at `quality: medium`, where
-the fal map says $0.04). Direct routes keep the fal map. The public catalog
-pricing the composers read in the browser is not organization-aware and
-still shows the fal price.
+the fal map says $0.04). Direct routes keep the fal map. Signed-in pages
+read the same map through `getOrganizationFalPricingFn`
+(`useOrganizationFalPricing`): Studio, the character and location sheets,
+the scene list and the shot prompts. The public `getCatalogFalPricingFn` is
+for signed-out pages only.
 
 No double hold: a run that owns a reservation (the pipeline envelope, a
 shot or sheet trigger) passes it as `runReservationId`, and the gateway job
