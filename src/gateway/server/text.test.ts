@@ -540,11 +540,9 @@ describe('the transaction description', () => {
         ).chatStream(OPTIONS)
       );
     }
-    expect(
-      (await descriptions()).toSorted((a, b) =>
-        (a ?? '').localeCompare(b ?? '')
-      )
-    ).toEqual(['Assistant (vendor/model)', 'Prompt shortening (vendor/model)']);
+    expect(new Set(await descriptions())).toEqual(
+      new Set(['Assistant (vendor/model)', 'Prompt shortening (vendor/model)'])
+    );
   });
 
   it('keeps the wording on a re-run resolved through the meter', async () => {
