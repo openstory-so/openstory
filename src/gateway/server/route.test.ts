@@ -45,6 +45,18 @@ vi.doMock('./catalog', () => ({
   ...actual,
   getSnapshotGatewayModel: snapshot,
 }));
+const providers =
+  await vi.importActual<typeof import('./providers')>('./providers');
+const configured = vi.fn((_endpointId: string) => true);
+vi.doMock('./providers', () => ({
+  ...providers,
+  GATEWAY_DRIVERS: Object.fromEntries(
+    Object.entries(providers.GATEWAY_DRIVERS).map(([provider, driver]) => [
+      provider,
+      { ...driver, configured },
+    ])
+  ),
+}));
 const {
   gatewayCannotRun,
   gatewayRunRoute,
@@ -110,6 +122,21 @@ describe('resolveGatewayRoute', () => {
       body: null,
     });
     expect(route.via).toBe('openstory');
+  });
+
+  it('keeps a model whose provider has no platform key here on the direct path', async () => {
+    configured.mockReturnValueOnce(false);
+    const route = await resolveGatewayRoute({
+      scopedDb: scopedDb(false),
+      provider: 'grok',
+      modelId: HOLDABLE.id,
+      body: { n: 1 },
+    });
+    expect(route).toEqual({
+      via: 'direct',
+      reason: 'not configured on this server',
+    });
+    expect(configured).toHaveBeenCalledWith(HOLDABLE.endpointId);
   });
 
   it('never checks an own key for platform-only BytePlus', async () => {
