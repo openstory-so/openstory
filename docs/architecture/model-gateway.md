@@ -781,18 +781,29 @@ over `inProcessGateway`; anything else goes direct as before.
   the route read from the stored snapshot (after `bun
   scripts/refresh-fal-pricing.ts`): the same, once.
 
-Routed today: Studio images, shot image and variant regenerations, character
-and location sheet regenerations. Stay direct:
+Routed today: Studio images; shot image and variant regenerations; character
+and location sheet regenerations; the sequence pipeline (storyboard and
+continue, Update stale, smart retry, add model), each child inheriting
+`gatewayRoutes` from its parent like `reservationId`. Shot previews render
+Nano Banana, which the gateway does not hold. Stay direct:
 
 - Grok stills with reference images: modelschemas has no `v1/images/edits`
   for Grok ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)).
 - Upscales (an edit), sheet portraits that edit, posters (fal).
 - fal Flux and Seedream: the cards have a usage lever with no estimate
   (#2432). Gemini images: TanStack/schemas#755.
-- Runs from the sequence pipeline (storyboard, continue, update stale, smart
-  retry, add model, shot preview): their triggers do not carry routes yet.
-- Pre-flight quotes still read the fal pricing map: Grok 2.0 shows $0.04, the
-  card holds and charges $0.06 at `quality: medium`.
+
+Quotes: `imageQuotePricing` gives a trigger the fal map with each
+`openstory` Grok still priced at `gatewayHoldMicros` of its card estimate,
+the number the hold takes ($0.06 for Grok 2.0 at `quality: medium`, where
+the fal map says $0.04). Direct routes keep the fal map. The public catalog
+pricing the composers read in the browser is not organization-aware and
+still shows the fal price.
+
+Double hold: a run that owns a reservation (the pipeline envelope, a shot or
+sheet trigger) still holds its estimate while each gateway job holds again,
+until the run zeroes what it did not spend. `runReservationId` on the image
+gateway call is where the run's hold goes once the transport can draw on it.
 
 ## Every model can be priced (#2432)
 
