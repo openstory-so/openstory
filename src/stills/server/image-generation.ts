@@ -52,7 +52,7 @@ import type { GatewayJobInput } from '@/gateway/schema';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
-import { resolveOptionalXaiKey } from '@/motion/server/video-job';
+import { resolveOptionalXaiKey } from '@/models/server/optional-keys';
 import type {
   CredentialScopedDb,
   WorkflowScopedDb,

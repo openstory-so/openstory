@@ -1,3 +1,7 @@
+import {
+  resolveOptionalFalKey,
+  resolveOptionalXaiKey,
+} from '@/models/server/optional-keys';
 /**
  * Submit/poll for studio clips. `mode` picks the endpoint: the family's T2V
  * sibling, its reference-to-video sibling, or the sequence image-to-video
@@ -82,8 +86,6 @@ import {
   isArkDraftTask,
   falApiKey,
   resolveFalKey,
-  resolveOptionalFalKey,
-  resolveOptionalXaiKey,
   sendVideoJob,
   videoGatewayProvider,
   type VideoGatewayCall,

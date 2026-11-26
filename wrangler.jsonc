@@ -136,6 +136,11 @@
       "simple": { "limit": 120, "period": 60 },
     },
   ],
+  // The gateway's platform fee in basis points of provider cost, 0-10000
+  // (model-gateway.md § The platform fee). Not inherited — redeclared below.
+  "vars": {
+    "GATEWAY_PLATFORM_FEE_BPS": "0",
+  },
   "workflows": [
     // All durable async work runs on Cloudflare Workflows. Each class is
     // re-exported from src/server.ts (so it lands in the Worker bundle) and
@@ -466,6 +471,9 @@
           "simple": { "limit": 120, "period": 60 },
         },
       ],
+      "vars": {
+        "GATEWAY_PLATFORM_FEE_BPS": "0",
+      },
       // Workflow bindings are NOT inherited from the top-level block, so
       // they must be redeclared here. Keep this list in sync with the
       // top-level workflows[] (the wiring-consistency test enforces parity).
@@ -725,6 +733,7 @@
         "E2E_TEST": "true",
         // The admin e2e user (createTestUser({ admin: true })).
         "ADMIN_EMAILS": "e2e-admin@e2e.test",
+        "GATEWAY_PLATFORM_FEE_BPS": "0",
         // Note: a developer's .env.local R2_PUBLIC_STORAGE_DOMAIN could leak
         // into this worker env via the env-file merge, but it can't break
         // e2e: isLocalStorageServing() (src/platform/server/storage/buckets.ts) forces

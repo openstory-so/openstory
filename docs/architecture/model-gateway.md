@@ -634,18 +634,36 @@ error.
 
 `GATEWAY_PLATFORM_FEE_BPS` is configuration: basis points of provider cost,
 read by `gatewayPlatformFeeBps` (`src/gateway/server/platform-fee.ts`). A whole
-number from 0 to 10000; unset or empty is 0; anything else throws. It is an
-optional secret in `scripts/push-secrets.ts`, typed in
-`src/platform/server/env/env.d.ts` and listed in `.env.example`. The value is
-the maintainer's; it ships at 0.
+number from 0 to 10000; anything else throws. It is a wrangler var in all
+three blocks of `wrangler.jsonc` (default, production, test; vars are not
+inherited), typed by `worker-configuration.d.ts`; unset only in unit tests,
+where it is 0. `platform-fee.test.ts` parses every block's value, so a bad one
+fails CI before a deploy. The value is the maintainer's; it ships at 0.
 
 - **Applied in one place.** `gatewayCharge` computes every charge's lines from
   the provider cost and the fee. A media hold reads the fee once
-  (`holdGatewayJob`) and snapshots it on the run payload (`platformFeeBps`), so
-  the settle charges at the fee the hold was taken at. The text meter reads it
-  at the hold and at the charge. Quotes read `gatewayHoldMicros`, which
-  includes it. So hold = estimate + fee and quote = hold on every route, public
-  and in-process.
+  (`holdGatewayJob`), stores it on the job row (`gateway_jobs.platform_fee_bps`)
+  and snapshots it on the run payload (`platformFeeBps`), so a replayed key
+  and the settle both use the fee the hold was taken at, never the current
+  setting. The text meter reads it at the hold and at the charge.
+- **Quote, hold and run envelope.** `gatewayHoldMicros` (estimate + fee) is the
+  hold on every gateway job, public and in-process. Quote = hold holds only for
+  stills: `withGatewayImageQuotes` prices the body each still shape would send
+  and quotes its hold. Video, audio and text quotes do not, and their run
+  envelope (`reserveRunCredits`) carries no fee:
+  - Video decides its route in the run's `route-motion` step, after the
+    envelope is taken.
+  - Audio routes are snapshotted at the trigger, but the body (the music
+    prompt, the dialogue lines) is written in the run, and `gatewayRunRoute`
+    can still send it direct.
+  - Text resolves its route per call (`withTextGateway`), and its envelope
+    share is the flat `estimateLLMCost` stand-in, not a card price.
+  - In all three the pre-flight estimate is the fal or static rate table, not
+    the card, so it never equals the hold anyway. A charge above what is left
+    of a borrowed envelope grows it from the free balance; only when the
+    balance cannot cover it do the lines fill in `inFillOrder` (provider cost
+    first, so the fee is what goes unfunded, reported as a skipped deduction).
+    At fee 0 nothing differs.
 - **Shown as its own line** wherever a charge is shown: the job document's
   `platform_fee` line, the Models page ("Includes platform fee $x" under
   "Charged"), Settings → Transactions (per debit, from its charge lines) and
@@ -653,8 +671,11 @@ the maintainer's; it ships at 0.
 - A remote job is charged by the hosted side at the hosted fee.
 - The 7% top-up fee (`PLATFORM_FEE_PERCENT`) is separate: it applies to the
   money that funds the wallet.
-- Tests: `platform-fee.test.ts`; `in-process.test.ts` ("at fee %s bps the hold,
-  the quote and the debit are the estimate plus the fee", at 0 and 250);
+- Tests: `platform-fee.test.ts` (including "every wrangler block sets a fee the
+  worker accepts"); `in-process.test.ts` ("at fee %s bps the hold, the quote
+  and the debit are the estimate plus the fee", at 0 and 250);
+  `submit-job.test.ts` ("holds a replayed key at the fee its job was submitted
+  at, not the current one");
   `text.test.ts` ("adds the platform fee as its own line on the hold and the
   charge").
 
@@ -662,7 +683,8 @@ the maintainer's; it ships at 0.
 
 Settings → Usage (`/settings/usage?days=7|30|90`, default 30) shows an
 organization's gateway spend by model and by UTC day, with call counts and any
-platform fee.
+platform fee. The range is whole UTC days, today included
+(`gatewayUsageSince`), read through `idx_charge_lines_organization_created`.
 
 - `scopedDb.billing.getGatewaySpend(since)` (`src/billing/server/db/billing.ts`)
   groups the charge lines this organization paid by day and model: a text
@@ -845,6 +867,9 @@ hosted gateway made back by its hosted URL, never as an upload.
   (`storeGatewayOutput`, `upsert: false`), once, by that job.
 - **Not covered.** A file the install derives (a dialogue section cut from a
   hosted take, a re-encoded still) has no record and is gated as an upload.
+- **Expiry.** Hosted outputs are not expired today. If a lifecycle rule ever
+  removes one, the stored-object check fails and the URL falls back to the
+  upload gate, never trusted.
 
 ### Rate limits
 

@@ -327,7 +327,8 @@ changing the area, and update it in the same PR.**
 - **Model gateway** — `docs/architecture/model-gateway.md`. The body is the
   provider's own, checked against its modelschemas schema and sent as it is;
   never normalise, default or rename a field. The price is the model's rate
-  card from the stored snapshot, never the provider's billed units; a request
+  card (from the stored snapshot for product models; the public endpoint and
+  the Models page read the live card), never the provider's billed units; a request
   the card cannot price is refused, never guessed. The route is decided once
   at the trigger (own key → direct; platform key and a holdable card →
   `openstory`; no key here and `OPENSTORY_API_KEY` → remote; else direct

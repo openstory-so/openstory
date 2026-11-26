@@ -27,7 +27,6 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { gatewayCharge } from '@/gateway/charge-lines';
 import {
   BYTEPLUS_ENDPOINTS,
   GATEWAY_ERROR_MESSAGES,
@@ -37,7 +36,10 @@ import {
 } from '@/gateway/schema';
 import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
-import { gatewayPlatformFeeBps } from '@/gateway/server/platform-fee';
+import {
+  gatewayHoldMicros,
+  gatewayPlatformFeeBps,
+} from '@/gateway/server/platform-fee';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import type { GatewayRun } from '@/gateway/server/phases';
 import {
@@ -434,14 +436,6 @@ async function ownHostedOutputs(
   return own;
 }
 
-/** The hold on a card estimate: every line of the charge it would settle to. Pre-flight quotes read this too. */
-export function gatewayHoldMicros(estimate: Microdollars): Microdollars {
-  return gatewayCharge({
-    providerCostMicros: estimate,
-    platformFeeBps: gatewayPlatformFeeBps(),
-  }).totalMicros;
-}
-
 /**
  * Validate and hold: the platform key, the body, the account, the media,
  * the price, the row and the reservation. A refused request leaves no row and
@@ -511,9 +505,6 @@ export async function holdGatewayJob(
     );
   }
 
-  const platformFeeBps = gatewayPlatformFeeBps();
-  const hold = gatewayHoldMicros(estimate);
-
   const { job, created } = await scopedDb.gatewayJobs.create({
     kind: model.kind,
     modelKey: model.id,
@@ -521,10 +512,14 @@ export async function holdGatewayJob(
     input: await rowBody(input),
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
+    platformFeeBps: gatewayPlatformFeeBps(),
   });
   if (!created) {
     await requireSameRequest(job, GATEWAY_VIA[model.provider], model.id, input);
   }
+  // A replay holds and settles at the fee its job was submitted at.
+  const { platformFeeBps } = job;
+  const hold = gatewayHoldMicros(estimate, platformFeeBps);
 
   // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
   let reservationId = ctx.runReservationId;

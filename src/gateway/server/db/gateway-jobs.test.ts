@@ -49,6 +49,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: null,
       oauthClientId: 'client-1',
+      platformFeeBps: 0,
     });
     expect(created).toBe(true);
     expect(job).toMatchObject({
@@ -79,11 +80,13 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     const again = await own.create({
       ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     expect(again).toEqual({ job: first.job, created: false });
     expect((await own.getByIdempotencyKey('key-1'))?.id).toBe(first.job.id);
@@ -93,6 +96,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: 'key-1',
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     expect(theirs.created).toBe(true);
     expect(theirs.job.id).not.toBe(first.job.id);
@@ -102,11 +106,13 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     const b = await own.create({
       ...model,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     expect(a.created && b.created).toBe(true);
   });
@@ -117,6 +123,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     await own.attachRun(job.id, {
       reservationId: 'res-1',
@@ -154,6 +161,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: 'drop-me',
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     await own.deleteUnstarted(unstarted.job.id);
     expect(await own.getById(unstarted.job.id)).toBeNull();
@@ -163,6 +171,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     await own.attachRun(started.job.id, {
       reservationId: null,
@@ -179,6 +188,7 @@ describe('gateway jobs rows', () => {
       ...model,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     await own.markRunning(job.id);
     const outputs = [

@@ -58,10 +58,11 @@ const DONE = 'done:';
 const outputsSchema = z.array(
   z.object({ url: z.string(), path: z.string(), contentType: z.string() })
 );
-const doneSchema = z.object({
-  jobId: z.string().nullable(),
-  outputs: outputsSchema,
-});
+// A `done:` handle from before #2435 is the bare outputs, with no job id. Drop once the whole stack has been deployed longer than one run.
+const doneSchema = z.union([
+  z.object({ jobId: z.string().nullable(), outputs: outputsSchema }),
+  outputsSchema.transform((outputs) => ({ jobId: null, outputs })),
+]);
 
 /** A video job that answered at submit: its gateway job and stored outputs; null for a queued handle. */
 export function doneVideoJob(handle: string) {

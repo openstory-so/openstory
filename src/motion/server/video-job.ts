@@ -9,6 +9,7 @@ import {
   stableMediaBody,
 } from '@/platform/server/storage/external-url';
 import { getEnv } from '#env';
+import { resolveOptionalXaiKey } from '@/models/server/optional-keys';
 import { billedFields } from '@/billing/billed-quantity';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
@@ -99,23 +100,6 @@ export function falApiKey(
   if (key) return key.key;
   if (capture) return '';
   throw new NonRetryableError('A hosted-gateway clip has no local fal key');
-}
-
-export async function resolveOptionalFalKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('fal');
-  const platformKey = getEnv().FAL_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
-/** Undefined when no xAI key exists. */
-export async function resolveOptionalXaiKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('xai');
-  const platformKey = getEnv().XAI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 /** `fetch` is set only to capture the body (`sendVideoJob`). */

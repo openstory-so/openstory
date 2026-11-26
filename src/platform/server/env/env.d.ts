@@ -23,8 +23,6 @@ declare namespace Cloudflare {
     SEED_SPEECH_QPM?: string;
     /** A self-hosted install's `osk_` key: providers with no key here run on the hosted gateway (#2438). */
     OPENSTORY_API_KEY?: string;
-    /** The gateway's fee on provider cost in basis points; unset is 0. */
-    GATEWAY_PLATFORM_FEE_BPS?: string;
     /** Served at /.well-known/openai-apps-challenge (#2138). */
     OPENAI_APPS_CHALLENGE?: string;
     /** Storage CDN domain; unset means the worker's `/r2/$` route serves. */

@@ -50,7 +50,8 @@ const handleSchema = z.object({
     platformFeeBps: z.number(),
     oauthClientId: z.string().nullable(),
     reservationId: z.string(),
-    ownsReservation: z.boolean(),
+    // A handle from before #2435 always owned its hold. Drop once the whole stack has been deployed longer than one run.
+    ownsReservation: z.boolean().default(true),
   }),
   providerJobId: z.string(),
 });

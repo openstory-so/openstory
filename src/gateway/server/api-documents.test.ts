@@ -25,6 +25,7 @@ const job: GatewayJob = {
   workflowRunId: null,
   idempotencyKey: null,
   oauthClientId: null,
+  platformFeeBps: 0,
   createdAt: new Date(0),
   updatedAt: new Date(0),
   completedAt: null,

@@ -153,6 +153,7 @@ export function createGatewayJobsMethods(
       input: GatewayJobInput;
       idempotencyKey: string | null;
       oauthClientId: string | null;
+      platformFeeBps: number;
     }): Promise<{ job: GatewayJob; created: boolean }> => {
       const [row] = await db
         .insert(gatewayJobs)

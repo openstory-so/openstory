@@ -24,7 +24,7 @@ import {
   MIN_TOPUP_AMOUNT_USD,
   totalCheckoutCents,
 } from './constants';
-import { gatewayUsageDaysSchema } from './gateway-usage';
+import { gatewayUsageDaysSchema, gatewayUsageSince } from './gateway-usage';
 import { micros, microsToDisplayUsd, microsToUsd, usdToMicros } from './money';
 import type { TransactionType } from '@/platform/server/db/schema/credits';
 import { ValidationError } from '@/platform/errors';
@@ -590,7 +590,7 @@ export const getGatewayUsageFn = createServerFn({ method: 'GET' })
     )
   )
   .handler(async ({ data, context }) => {
-    const since = new Date(Date.now() - data.days * 86_400_000);
+    const since = gatewayUsageSince(data.days, new Date());
     const rows = await context.scopedDb.billing.getGatewaySpend(since);
     const byModel = new Map<string, UsageTotal & { calls: number }>();
     const byDay = new Map<string, UsageTotal>();

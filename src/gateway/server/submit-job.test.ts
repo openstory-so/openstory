@@ -636,6 +636,35 @@ describe('submitGatewayJob', () => {
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
   });
 
+  it('holds a replayed key at the fee its job was submitted at, not the current one', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const hold = () =>
+      holdGatewayJob(
+        model,
+        { text_prompt: 'The port engine is done for', duration: 5 },
+        {
+          scopedDb,
+          rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+          idempotencyKey: 'fee-replay-1',
+          oauthClientId: null,
+          runReservationId: null,
+        }
+      );
+    vi.stubEnv('GATEWAY_PLATFORM_FEE_BPS', '250');
+    const first = await hold();
+    vi.stubEnv('GATEWAY_PLATFORM_FEE_BPS', '500');
+    try {
+      const replay = await hold();
+      expect(replay.created).toBe(false);
+      expect(replay.job.platformFeeBps).toBe(250);
+      expect(replay.run.platformFeeBps).toBe(250);
+      expect(replay.run.reservationId).toBe(first.run.reservationId);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('keeps a digest of inline media on the row, sends the provider the whole body, and still refuses a changed clip', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
     const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
