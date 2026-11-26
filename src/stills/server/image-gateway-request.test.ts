@@ -141,6 +141,25 @@ describe('withGatewayImageQuotes', () => {
     expect(quote).toBe(hold);
   });
 
+  it('quotes a still with references at the direct edit price, as the run routes it', () => {
+    const EDIT_ID = 'xai/grok-imagine-image/v2.0/edit';
+    const quote = estimateImageCost('grok_imagine_image', '16:9', 1, {
+      pricing: withGatewayImageQuotes(
+        {
+          ...fal,
+          [EDIT_ID]: {
+            unitPrice: micros(40_000),
+            unit: 'images',
+            typicalUnitsPerCall: 1,
+          },
+        },
+        OPENSTORY
+      ),
+      edit: true,
+    });
+    expect(quote).toBe(40_000);
+  });
+
   it('leaves a direct-route quote on the fal map', () => {
     const direct = withGatewayImageQuotes(fal, {});
     expect(direct[FAL_ID]).toEqual(fal[FAL_ID]);

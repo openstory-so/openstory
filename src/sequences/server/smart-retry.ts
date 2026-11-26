@@ -476,6 +476,7 @@ export async function executeSmartRetry(
         estimateImageCost(imageModel, sequence.aspectRatio, 1, {
           pricing,
           resolution: sequence.resolution,
+          edit: referenceImages.length > 0,
         }),
         { model: imageModel, operation: 'smart-retry:image' }
       );

@@ -699,13 +699,16 @@ export async function addModelToSequence(
     throw new ValidationError('No shots have a prompt to generate from');
   }
 
-  const perShotCost = gateEstimate(
-    estimateImageCost(model, sequence.aspectRatio, 1, {
-      pricing: await imageQuotePricing(scopedDb),
-      resolution: sequence.resolution,
-    }),
-    { model, operation: 'add-image-model' }
-  );
+  const pricing = await imageQuotePricing(scopedDb);
+  const shotCost = (edit: boolean) =>
+    gateEstimate(
+      estimateImageCost(model, sequence.aspectRatio, 1, {
+        pricing,
+        resolution: sequence.resolution,
+        edit,
+      }),
+      { model, operation: 'add-image-model' }
+    );
 
   // Trigger one image workflow per shot, each with its own hold. A shared
   // envelope would let the first child to finish zero leftover for siblings.
@@ -720,10 +723,14 @@ export async function addModelToSequence(
   for (const input of inputs) {
     let reservationId: string | undefined;
     try {
-      reservationId = await reserveRunCredits(scopedDb, perShotCost, {
-        errorMessage: 'Insufficient credits to add this image model',
-        sequenceId: sequence.id,
-      });
+      reservationId = await reserveRunCredits(
+        scopedDb,
+        shotCost((input.referenceImages?.length ?? 0) > 0),
+        {
+          errorMessage: 'Insufficient credits to add this image model',
+          sequenceId: sequence.id,
+        }
+      );
     } catch (error) {
       logger.error('add-model: insufficient credits for remaining shots', {
         err: error,

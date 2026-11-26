@@ -834,6 +834,16 @@ Known differences from direct:
 - Every quote reads the same map: preflight, Continue, Update stale, smart
   retry, sheet references and the freeze-plan gate (from the payload's
   routes, no read), so the run envelope reserves what the gateway charges.
+- The map prices both endpoints a still can take by the run's own decision
+  (`gatewayImageRequest`): the generation endpoint with no references, the
+  edit endpoint with one. A quote that knows its references passes
+  `edit`: shot image, variants (always an edit of the current still), smart
+  retry, add model per shot, Studio, and the sheet pages. Update stale's
+  floor takes the cheaper of the two. Plan envelopes (storyboard, Continue,
+  freeze-plan) price every still with no references, because which shots
+  carry references is not known per unit; today that is the higher of the
+  two for Grok ($0.06 hold against $0.04 edit), so a cast-heavy plan
+  reserves more than it spends and settle releases the rest.
 
 ## Every model can be priced (#2432)
 

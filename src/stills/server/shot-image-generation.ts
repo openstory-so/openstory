@@ -215,6 +215,8 @@ export async function generateShotImageVariants(
         {
           pricing: await imageQuotePricing(context.scopedDb),
           resolution: sequence.resolution,
+          // A variant always edits the shot's current still.
+          edit: true,
         }
       ),
       {

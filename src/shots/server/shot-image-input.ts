@@ -274,6 +274,11 @@ export async function prepareShotImageWorkflowInput(args: {
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await imageQuotePricing(scopedDb),
         resolution: sequence.resolution,
+        edit:
+          characterReferences.length +
+            locationReferences.length +
+            elementReferences.length >
+          0,
       }),
       { model, operation: 'shot-image' }
     ),
