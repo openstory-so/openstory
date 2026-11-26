@@ -127,7 +127,7 @@ const ROUTES = {
 function recorder(
   idempotencyKey: string,
   routes = ROUTES,
-  reservationId: string | undefined = undefined
+  reservationId?: string
 ) {
   return seedRecorderFor({
     routes,

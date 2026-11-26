@@ -1130,7 +1130,11 @@ hold until the hold expired (a settled job now zeroes its own hold in the
 settle step), and the 500 left its job `running` with its hold (a start the
 provider answered with an error, other than 408, 429 or 504, now fails the
 job and releases at once; only a timeout or a dropped connection stays
-`running`).
+`running`). fal's SDK errors carry `status`, not `statusCode`, and a fal
+5xx on queue submit does not prove nothing was queued, so it stays
+retryable; in-process the retried submit finds the job `running` with no
+provider id and fails closed, releasing the hold, so it is never sent
+twice.
 
 ## Not in this stack
 

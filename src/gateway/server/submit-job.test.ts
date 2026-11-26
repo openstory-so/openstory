@@ -585,10 +585,11 @@ describe('submitGatewayJob', () => {
   });
 
   it('refuses ElevenLabs on the public endpoint, where a voice_id could reach a voice saved by another organization', async () => {
-    for (const body of [
+    const bodies: GatewayJobInput[] = [
       { prompt: 'a sea shanty' },
       { prompt: 'a sea shanty', voice_id: 'another-orgs-voice' },
-    ]) {
+    ];
+    for (const body of bodies) {
       const error = await refused({
         provider: 'elevenlabs',
         modelId: 'music_v2_5',
@@ -614,6 +615,7 @@ describe('submitGatewayJob', () => {
         rights: submitJob.UPLOAD_RIGHTS_CHECKED,
         idempotencyKey: 'seed-clone-1',
         oauthClientId: null,
+        runReservationId: null,
       }
     );
     expect(job.status).toBe('queued');
@@ -1003,6 +1005,7 @@ describe('the charge', () => {
     await run.gatewayJobs.recordOutputs(payload.jobId, {
       outputs: [OUTPUT],
       via: 'xai',
+      data: null,
     });
     return settleGatewayJob({
       scopedDb: run,
@@ -1094,6 +1097,7 @@ describe('the charge', () => {
     await scopedDb.gatewayJobs.recordOutputs(job.id, {
       outputs: [OUTPUT],
       via: 'xai',
+      data: null,
     });
     await scopedDb.billing.settleReservation(
       payload.reservationId,
@@ -1126,6 +1130,7 @@ describe('the charge', () => {
     await scopedDb.gatewayJobs.recordOutputs(job.id, {
       outputs: [OUTPUT],
       via: 'xai',
+      data: null,
     });
     await scopedDb.gatewayJobs.markFailed(job.id, {
       code: 'GENERATION_FAILED',

@@ -20,6 +20,7 @@ const job: GatewayJob = {
   providerJobId: null,
   outputs: [{ url: '/r2/a.png', path: 'a.png', contentType: 'image/png' }],
   error: null,
+  data: null,
   costMicros: null,
   reservationId: null,
   workflowRunId: null,
