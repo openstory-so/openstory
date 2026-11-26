@@ -91,12 +91,21 @@ export function gatewayErrorCode(message: string): GatewayErrorCode {
 
 const usageSchema = z.record(z.string(), z.unknown());
 
+/** `data` holds a voice id or a transcript, never media. */
+export const MAX_DATA_CHARS = 8192;
+
 export async function storeGatewayResult(
   result: GatewayRunResult,
   store: GatewayStore
 ): Promise<GatewayStored> {
   if (result.media.length === 0) {
     throw new NonRetryableError('The model returned no output files');
+  }
+  const dataJson = result.data ? JSON.stringify(result.data) : undefined;
+  if (dataJson && dataJson.length > MAX_DATA_CHARS) {
+    throw new NonRetryableError(
+      `The answer's JSON is ${dataJson.length} characters; a job keeps at most ${MAX_DATA_CHARS}`
+    );
   }
   const outputs: GatewayJobOutput[] = [];
   for (const [index, media] of result.media.entries()) {
@@ -106,7 +115,7 @@ export async function storeGatewayResult(
     outputs,
     usageJson: result.usage ? JSON.stringify(result.usage) : null,
     requestId: result.requestId,
-    ...(result.data && { dataJson: JSON.stringify(result.data) }),
+    ...(dataJson && { dataJson }),
   };
 }
 

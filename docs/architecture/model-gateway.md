@@ -1051,14 +1051,23 @@ the day its card does.
   `data`.
 - **JSON result.** `gateway_jobs.data` holds that rest (null when the
   provider sent only files); the transport's `done` carries it, and the
-  public job document shows it once the job succeeded.
+  public job document shows it once the job succeeded. It is for a voice id
+  or a transcript, never media: an answer whose JSON is over
+  `MAX_DATA_CHARS` (8 KB) fails before anything is stored.
 - **A body is JSON only.** A query parameter has no place in it, and the
   driver never moves a field out of the body. Voice design needs
   `output_format=mp3_44100_128` (the 192 kbps default needs the Creator
   tier) and dialogue needs `output_format=wav_44100` (the ranges are cut
   from PCM WAV), so neither is routed even once a card exists. Scribe,
   isolation and speech-to-speech take a multipart file, which a gateway
-  body cannot carry either.
+  body cannot carry either. Both are limits of our gateway's design (a JSON
+  body, sent as it is), not gaps in modelschemas.
+- **Routes.** Seed takes and Music read the run's `gatewayRoutes`
+  (`gatewayRunRoute`); the audio root triggers resolve
+  `AUDIO_ROUTE_TARGETS` (`src/audio/gateway-targets.ts`) and children
+  inherit them. A payload with no routes runs direct, so a run queued
+  before the deploy finishes on its old path. Both callers go through
+  `runAudioOnGateway` (`src/audio/server/audio-gateway.ts`).
 
 | Product call               | modelschemas                                                                                                            | Card                       | Where it runs                                |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
@@ -1076,7 +1085,8 @@ does not call it.
 
 ### Seed takes
 
-A Seed take is recorded by a `SeedRecorder` (`seed-audio.ts`):
+A Seed take is recorded by a `SeedRecorder` (`seedRecorderFor` in
+`seed-audio.ts`, which picks per take from the run's routes):
 `gatewaySeedRecorder` holds and charges each take through the in-process
 adapter, `platformSeedRecorder` calls Seed Speech on the platform key and the
 caller books `seed-audio` itself (`seedCharge`). The body is the same.
@@ -1093,7 +1103,7 @@ caller books `seed-audio` itself (`seedCharge`). The body is the same.
 - **Cloning.** `references[]` with `audio_url` or `audio_data` is refused on
   the public endpoint (the likeness check cannot hear whose voice a clip
   is) and held for an in-process caller. `seed-audio.ts` is on the
-  `UPLOAD_RIGHTS_CHECKED` allowlist: its clips are the organization's Seed
+  `UPLOAD_RIGHTS_CHECKED` allowlist (through `audio-gateway.ts`): its clips are the organization's Seed
   voice clips, made from text, and a mic take is the user's own recording
   made in the app.
 - Pacing stays on the BytePlus governor: the Seed Audio driver calls
@@ -1104,9 +1114,13 @@ Real run on `bun dev` (2026-11-26): Generate voice, one Seed take, routed
 `openstory`. The first attempt's Seed call answered 500 (`audio risk audit`),
 so the step retried under attempt 2 and a new key; that take was held $0.30
 and charged $0.11975 once (47.9 s), one debit and one line. The run booked
-Scribe ($0.0029) and isolation ($0.0718) and no `seed-audio` line. The first
-attempt's job stays `running` with its $0.30 hold until the stale-job sweep
-ends it after the run is over.
+Scribe ($0.0029) and isolation ($0.0718) and no `seed-audio` line. That run
+found two hold bugs, both fixed since: the charged take kept $0.18025 of its
+hold until the hold expired (a settled job now zeroes its own hold in the
+settle step), and the 500 left its job `running` with its hold (a start the
+provider answered with an error, other than 408, 429 or 504, now fails the
+job and releases at once; only a timeout or a dropped connection stays
+`running`).
 
 ## Not in this stack
 
