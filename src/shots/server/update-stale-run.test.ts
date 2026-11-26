@@ -15,7 +15,7 @@ const history = vi.fn();
 const getWorkflowRunOutcome = vi.fn();
 
 vi.doMock('@/stills/server/image-gateway-routes', () => ({
-  imageGatewayRoutes: async () => ({}),
+  imageRouteTargets: () => [],
   imageQuotePricing: async () => TEST_FAL_PRICING,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));

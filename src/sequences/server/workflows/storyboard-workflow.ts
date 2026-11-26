@@ -306,7 +306,6 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           freshRun: !input.plan,
           announcePhases: true,
           leftoverGrokShotIds: input.leftoverGrokShotIds,
-          gatewayRoutes: input.gatewayRoutes,
         },
         spawnStepName: 'spawn-continue',
         awaitStepName: 'await-continue',

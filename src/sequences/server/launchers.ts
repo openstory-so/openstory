@@ -69,7 +69,7 @@ import {
 } from '@/sequences/pipeline';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import { imageRouteTargets } from '@/stills/server/image-gateway-routes';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
@@ -230,7 +230,10 @@ async function resolveStoryboardPayload(
     sequenceId,
     gatewayRoutes: {
       ...input.gatewayRoutes,
-      ...(await imageGatewayRoutes(scopedDb)),
+      ...(await resolveGatewayRoutes(scopedDb, [
+        ...imageRouteTargets(),
+        ...AUDIO_ROUTE_TARGETS,
+      ])),
     },
     cast,
     suggestedLocationIds,
@@ -326,19 +329,9 @@ export async function triggerStoryboard(
   // 'failed' on the next acquire and the slot recovers.
   let workflowRunId: string;
   try {
-    workflowRunId = await triggerWorkflow(
-      '/storyboard',
-      {
-        ...payload,
-        gatewayRoutes: {
-          ...payload.gatewayRoutes,
-          ...(await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS)),
-        },
-      },
-      {
-        deduplicationId: claimId,
-      }
-    );
+    workflowRunId = await triggerWorkflow('/storyboard', payload, {
+      deduplicationId: claimId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {

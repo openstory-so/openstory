@@ -1036,6 +1036,7 @@ Kept only for own keys and unholdable models: the direct submit branches in
 `pollVideoJob`, `videoCostFromUsage`, the motion and studio
 `deduct-credits` / `price-motion-generation` / `price-video-generation`
 steps, `recordFalUsageStep` for video, and `lipsyncFalClient`.
+
 ## Audio on the gateway (#2436)
 
 ### Coverage (read 2026-11-26)

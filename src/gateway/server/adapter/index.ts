@@ -24,19 +24,15 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
-type GatewayDone = {
-  kind: 'done';
-  // The gateway job that charged it; null on a transport that holds no job (an own key).
-  jobId: string | null;
-  outputs: GatewayJobOutput[];
-};
-
-type GatewaySubmitted = { kind: 'queued'; handle: string } | GatewayDone;
+type GatewaySubmitted =
+  | { kind: 'queued'; handle: string }
+  // `jobId`: the gateway job that charged it; null on a transport that holds no job (an own key).
+  | { kind: 'done'; jobId: string | null; outputs: GatewayJobOutput[] };
 
 type GatewayPollResult =
   | { kind: 'pending' }
   | { kind: 'failed'; error: string }
-  | GatewayDone;
+  | { kind: 'done'; outputs: GatewayJobOutput[] };
 
 /** One poll; the poll that sees the job finish stores and charges it. */
 export type GatewayPoller = {
@@ -104,7 +100,7 @@ export async function runGatewayToEnd(
   call: GatewayCall,
   body: GatewayJobInput,
   signal?: AbortSignal
-): Promise<GatewayDone> {
+): Promise<{ outputs: GatewayJobOutput[] }> {
   const submitted = await transport.submit(body, call.idempotencyKey);
   if (submitted.kind === 'done') return submitted;
   for (;;) {
