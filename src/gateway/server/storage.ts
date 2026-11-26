@@ -1,8 +1,11 @@
 /** R2 keys for gateway outputs: `teams/<organizationId>/<folder>/output-<n>.<ext>`. */
 
 import {
+  buildR2Key,
+  getPublicUrl,
   organizationKeyPrefix,
   STORAGE_BUCKETS,
+  StorageFileExistsError,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
 import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
@@ -80,11 +83,22 @@ export async function storeGatewayOutput(params: {
   }
   const extension = outputExtension('url' in media ? media.url : '', known);
   const contentType = known ?? getMimeTypeFromExtension(extension);
-  const uploaded = await uploadResponse(
-    response,
-    ACTIVITY_BUCKETS[params.kind],
-    `${organizationKeyPrefix(params.organizationId)}/${params.folder}/output-${params.index}.${extension}`,
-    { contentType }
-  );
-  return { url: uploaded.publicUrl, path: uploaded.path, contentType };
+  const bucket = ACTIVITY_BUCKETS[params.kind];
+  const path = `${organizationKeyPrefix(params.organizationId)}/${params.folder}/output-${params.index}.${extension}`;
+  // Create-only: one job writes its output once, so its URL names those bytes (#2438).
+  try {
+    const uploaded = await uploadResponse(response, bucket, path, {
+      contentType,
+      upsert: false,
+    });
+    return { url: uploaded.publicUrl, path: uploaded.path, contentType };
+  } catch (error) {
+    if (!(error instanceof StorageFileExistsError)) throw error;
+    // A retried store step: the first attempt's output stands.
+    return {
+      url: getPublicUrl(bucket, path),
+      path: buildR2Key(bucket, path),
+      contentType,
+    };
+  }
 }

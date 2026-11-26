@@ -6,7 +6,7 @@ import { env as workerEnv } from 'cloudflare:workers';
 /** Throws a ready 429 in the `RATE_LIMITED` shape, which `runApiV1Handler` passes through. */
 export async function assertGatewayRate(
   organizationId: string,
-  bucket: 'calls' | 'uploads' = 'calls'
+  bucket: 'calls' | 'uploads'
 ): Promise<void> {
   const limiter =
     bucket === 'uploads'

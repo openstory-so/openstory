@@ -20,6 +20,7 @@ import {
   toShareableUrl,
 } from '@/platform/server/storage/buckets';
 import { storageObjectSize } from '#storage';
+import { decodeTime } from 'ulid';
 import { sha256Hex } from '@/platform/compliance/hash';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -372,6 +373,30 @@ function gatewayFileOwner(url: string): string | null {
   return match?.[1] ?? null;
 }
 
+/** How long a gateway upload serves as an input; `requireStorageRoom` deletes it after, the R2 lifecycle rule in bulk. */
+export const GATEWAY_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** A gateway upload's file (`<ULID>.<ext>`) is past its expiry, read off the ULID's time. */
+export function gatewayUploadExpired(file: string): boolean {
+  return Date.now() - decodeTime(file.slice(0, 26)) > GATEWAY_UPLOAD_TTL_MS;
+}
+
+/** The caller's own gateway upload, refused once expired or gone, so the caller sends it again rather than the provider failing on it. */
+async function requireLiveGatewayUpload(url: string): Promise<void> {
+  const stored = fromShareableUrl(url);
+  const match =
+    /^\/r2\/gateway-uploads\/[^/]+\/([0-9A-HJKMNP-TV-Z]{26}\.[a-z0-9]+)$/.exec(
+      stored
+    );
+  if (!match?.[1]) return;
+  if (
+    gatewayUploadExpired(match[1]) ||
+    (await storageObjectSize(stored.slice('/r2/'.length))) === null
+  ) {
+    throw new ValidationError('Upload expired; send it again');
+  }
+}
+
 /** `/r2/<bucket>/org/<organization>/gateway/<job id>/output-<n>.<ext>`: where the public endpoint's workflow stores a job's outputs. */
 const HOSTED_OUTPUT =
   /^\/r2\/[a-z0-9-]+\/org\/([^/]+)\/gateway\/([0-9A-HJKMNP-TV-Z]{26})\/output-\d+\.[a-z0-9]+$/;
@@ -467,6 +492,7 @@ export async function holdGatewayJob(
           'An uploaded file belongs to another organization'
         );
       }
+      await requireLiveGatewayUpload(url);
     }
     const generated = await ownHostedOutputs(rights, urls);
     await requireCheckedUploadRights(

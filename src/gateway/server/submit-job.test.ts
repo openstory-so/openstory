@@ -17,6 +17,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
+import { ulid } from 'ulid';
 import type { Database } from '@/platform/server/db/client';
 import {
   chargeLines,
@@ -249,6 +250,13 @@ const VIDEO = {
   modelId: 'grok-imagine-video',
   body: BODY,
 } as const;
+
+/** A live gateway upload of the organization: stored now, so within its expiry. */
+function liveUpload(orgId: string): string {
+  const key = `gateway-uploads/${orgId}/${generateId()}.png`;
+  storedKeys.add(key);
+  return `${ORIGIN}/r2/${key}`;
+}
 
 function ctx(
   scopedDb: ReturnType<typeof createScopedDb>,
@@ -752,9 +760,7 @@ describe('submitGatewayJob', () => {
       ...VIDEO,
       body: {
         ...BODY,
-        image: {
-          url: `https://openstory.so/r2/gateway-uploads/${organizationId}/01J00000000000000000000000.png`,
-        },
+        image: { url: liveUpload(organizationId) },
       },
     };
     const { replay } = await submitGatewayJob(own, ctx(scopedDb));
@@ -832,12 +838,22 @@ describe('submitGatewayJob', () => {
       requireCheckedUploadRights.mockRejectedValueOnce(
         new AttestationRequiredError('needs a portrait attestation')
       );
-      const error = await refused(
-        withImage(
-          `${ORIGIN}/r2/gateway-uploads/${organizationId}/01J00000000000000000000000.png`
-        )
-      );
+      const error = await refused(withImage(liveUpload(organizationId)));
       expect(error).toBeInstanceOf(AttestationRequiredError);
+    });
+
+    it('refuses an expired or deleted upload cleanly, so the caller sends it again', async () => {
+      const expired = `${ORIGIN}/r2/gateway-uploads/${organizationId}/${ulid(Date.now() - 25 * 60 * 60 * 1000)}.png`;
+      storedKeys.add(expired.slice(`${ORIGIN}/r2/`.length));
+      const deleted = `${ORIGIN}/r2/gateway-uploads/${organizationId}/${generateId()}.png`;
+      for (const url of [expired, deleted]) {
+        const error = await refused(withImage(url));
+        expect(error).toBeInstanceOf(ValidationError);
+        expect(error).toMatchObject({
+          message: 'Upload expired; send it again',
+        });
+      }
+      expect(requireCheckedUploadRights).not.toHaveBeenCalled();
     });
   });
 

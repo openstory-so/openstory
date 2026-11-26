@@ -5,8 +5,13 @@ import { AttestationRequiredError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { StorageFileExistsError } from '@/platform/server/storage/buckets';
 import { asStub } from '@/test/as-stub';
+import { ulid } from 'ulid';
 
-type Stored = { bytes: Uint8Array; contentType: string | undefined };
+type Stored = {
+  bytes: Uint8Array;
+  contentType: string | undefined;
+  uploaded?: Date;
+};
 
 /** An in-memory R2 binding: `put` honours `if-none-match: *` atomically, as R2 does. */
 const r2 = vi.hoisted(() => {
@@ -43,8 +48,12 @@ const r2 = vi.hoisted(() => {
           httpMetadata: { contentType: object.contentType },
         };
       },
-      async delete(key: string) {
-        objects.delete(key);
+      async delete(keys: string | string[]) {
+        for (const key of [keys].flat()) objects.delete(key);
+      },
+      async head(key: string) {
+        const object = objects.get(key);
+        return object ? { size: object.bytes.byteLength } : null;
       },
       async list(options: { prefix: string; limit: number }) {
         const listed = [...objects.entries()]
@@ -52,7 +61,7 @@ const r2 = vi.hoisted(() => {
           .map(([key, object]) => ({
             key,
             size: object.bytes.byteLength,
-            uploaded: new Date(0),
+            uploaded: object.uploaded ?? new Date(),
             httpMetadata: { contentType: object.contentType },
           }));
         return {
@@ -267,6 +276,7 @@ describe('gateway uploads', () => {
         r2.objects.set(`gateway-uploads/${ORG}/${i}.png`, {
           bytes: new Uint8Array([1]),
           contentType: 'image/png',
+          uploaded: new Date(),
         });
       }
       await expect(
@@ -274,6 +284,53 @@ describe('gateway uploads', () => {
       ).rejects.toThrow('at most 500 gateway uploads');
       expect(r2.objects.size).toBe(500);
       expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('expiry: the cap holds what is live, never a lifetime count', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+
+    it('the 501st upload succeeds once the older ones are past expiry, and they and their pointers are gone', async () => {
+      const old = new Date(Date.now() - DAY - 1);
+      for (let i = 0; i < 500; i++) {
+        r2.objects.set(`gateway-uploads/${ORG}/${i}.png`, {
+          bytes: new Uint8Array([1]),
+          contentType: 'image/png',
+          uploaded: old,
+        });
+      }
+      r2.objects.set(`gateway-uploads/${ORG}/keys/old`, {
+        bytes: new TextEncoder().encode('0.png'),
+        contentType: 'text/plain',
+        uploaded: old,
+      });
+      const { url } = await storeGatewayUpload(scopedDb, uploadRequest('png'));
+      expect(url).toContain(`/gateway-uploads/${ORG}/`);
+      expect(mediaKeys()).toHaveLength(1);
+      expect(r2.objects.has(`gateway-uploads/${ORG}/keys/old`)).toBe(false);
+    });
+
+    it('a key whose file expired stores the file again instead of answering the dead URL', async () => {
+      const first = await storeGatewayUpload(scopedDb, uploadRequest('png'));
+      // Age the stored file: its ULID carries its time.
+      const [oldKey] = mediaKeys();
+      const stale = `${ulid(Date.now() - DAY - 1000)}.png`;
+      const object = r2.objects.get(oldKey ?? '');
+      if (!oldKey || !object) throw new Error('nothing stored');
+      r2.objects.delete(oldKey);
+      r2.objects.set(`gateway-uploads/${ORG}/${stale}`, object);
+      for (const [key, value] of r2.objects) {
+        if (key.includes('/keys/')) {
+          r2.objects.set(key, {
+            ...value,
+            bytes: new TextEncoder().encode(stale),
+          });
+        }
+      }
+      const again = await storeGatewayUpload(scopedDb, uploadRequest('png'));
+      expect(again.url).not.toBe(first.url);
+      expect(again.url).not.toContain(stale);
+      expect(mediaKeys()).toHaveLength(1);
     });
   });
 });

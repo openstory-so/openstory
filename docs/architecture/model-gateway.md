@@ -1605,8 +1605,9 @@ required, `Idempotency-Key` required.
   organization, its own bucket, `429 RATE_LIMITED`). A new file is also
   refused when the organization cannot pay for its check
   (`hasEnoughCredits(estimateLLMCost(1))`, `402`) or already keeps 500
-  uploads or 2 GB here. A replay of a stored key skips those two: it spends
-  nothing.
+  live uploads or 2 GB here. A replay of a stored key skips those two: it
+  spends nothing. The cap is read off one list page before the write, so
+  concurrent uploads can overshoot it by at most one rate window (120 files).
 - **Size per kind.** 20 MB an image (the product's own image cap), 100 MB a
   clip, 25 MB audio. Checked on `Content-Length` and again on the stream: a
   body longer than it declared is cut off, its partial file deleted, `400`.
@@ -1627,15 +1628,25 @@ required, `Idempotency-Key` required.
   winner's. The install sends `sha256(<call key>:<r2 key>)`.
 - **Only the owner's.** A submit naming a `gateway-uploads/<organization>/`
   URL of another organization is `400` before the check
-  (`gatewayUploadOwner` in `submit-job.ts`).
+  (`gatewayFileOwner` in `submit-job.ts`).
 
 `uploads.test.ts` and `submit-job.test.ts` pin each.
 
-**Files expire only with a lifecycle rule.** Without it uploads are kept
-forever. R2 lifecycle is not in `wrangler.jsonc`, so it is set once per bucket
-by hand: `wrangler r2 bucket lifecycle add <bucket> gateway-uploads-1d gateway-uploads/ --expire-days 1`.
-`bun setup --prod` prints this command. Needs sign-off: a manual step on the
-production bucket.
+**Uploads expire after a day (`GATEWAY_UPLOAD_TTL_MS`).** Correctness needs
+no operator step:
+
+- `requireStorageRoom` deletes the organization's expired files and `keys/`
+  pointers on its list page before counting, so the cap counts live uploads.
+- A submit naming an expired (by its ULID's time) or missing upload of the
+  caller is `400 Upload expired; send it again` before the check. The install
+  takes it as final for that run; its next run has a new call key, so it
+  uploads the file again.
+- A replay whose file expired starts the key over: the pointer and file are
+  deleted and the body is stored again.
+
+The R2 lifecycle rule is the bulk clean-up for organizations that stop
+uploading: `wrangler r2 bucket lifecycle add <bucket> gateway-uploads-1d gateway-uploads/ --expire-days 1`
+(`bun setup --prod` prints it). It is not in `wrangler.jsonc`.
 
 ### Rate limit
 
@@ -1646,7 +1657,7 @@ sheets, 18 stills and 18 clips (42 media submits) plus, once text runs
 remote, about 41 chat calls (script analysis, a visual and a motion prompt per
 shot). Stills and their prompts fan out at once, so that short peaks near 40
 calls in a minute; a 30-scene sequence (`MAX_SCENES`) near 180. 300 leaves
-room for content retries. Uploads are not counted; the per-key limiter (10 a
+room for content retries. Uploads have their own bucket (120 a minute, above); the per-key limiter (10 a
 second) still applies.
 
 ### Hosted outputs are not uploads
@@ -1675,7 +1686,10 @@ file the hosted gateway made back by its hosted URL, never as an upload:
 - **Not covered.** A file the install derives (a dialogue section cut from a
   hosted take, a re-encoded still) has no record and is gated as an upload.
   Hosted outputs are not expired today; if a lifecycle rule ever removes them,
-  the URL is gated, never trusted.
+  the URL is gated, never trusted. Outputs are written create-only
+  (`storeGatewayOutput`, `upsert: false`), so only that job writes
+  `org/<organization>/gateway/<job>/output-<n>`, once; a retried store step
+  reuses what it already wrote.
 
 `submit-job.test.ts` and `adapter/http.test.ts` pin each.
 

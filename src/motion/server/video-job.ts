@@ -77,6 +77,7 @@ import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 import { getVideoJobStatus } from './video-job-status';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
@@ -97,7 +98,7 @@ export function falApiKey(
 ): string {
   if (key) return key.key;
   if (capture) return '';
-  throw new Error('A hosted-gateway clip has no local fal key');
+  throw new NonRetryableError('A hosted-gateway clip has no local fal key');
 }
 
 export async function resolveOptionalFalKey(

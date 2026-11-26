@@ -220,6 +220,43 @@ describe('the HTTP transport', () => {
     }
   });
 
+  it('after an expired-upload refusal, the next run uploads the file again under its own key', async () => {
+    const uploadUrl = 'https://hosted.example/r2/gateway-uploads/o/a.png';
+    const server = hosted({
+      '/api/v1/gateway/uploads': [
+        json({ url: uploadUrl }, 201),
+        json({ url: uploadUrl }, 201),
+      ],
+      '/api/v1/gateway/grok/grok-imagine-image': [
+        json(
+          {
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Upload expired; send it again',
+            },
+          },
+          400
+        ),
+        json(job('queued'), 202),
+      ],
+    });
+    try {
+      const body = { image: '/r2/characters/o/sheet.png' };
+      await expect(
+        transport().transport.submit(body, 'run-1:still')
+      ).rejects.toThrow('Upload expired; send it again');
+      await transport().transport.submit(body, 'run-2:still');
+      const uploads = server.calls.filter((c) => c.url.includes('/uploads'));
+      expect(uploads).toHaveLength(2);
+      const [a, b] = uploads.map((c) =>
+        new Headers(c.init.headers).get('idempotency-key')
+      );
+      expect(a).not.toBe(b);
+    } finally {
+      server.restore();
+    }
+  });
+
   it('leaves a hosted 5xx or 429 to the step retry', async () => {
     const server = hosted({
       '/api/v1/gateway/grok/grok-imagine-image': [json({}, 503)],

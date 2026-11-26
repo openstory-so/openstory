@@ -36,7 +36,7 @@ export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
             );
           }
           const body = bodySchema.parse(json);
-          await assertGatewayRate(context.organizationId);
+          await assertGatewayRate(context.organizationId, 'calls');
           const { job } = await submitGatewayJob(
             { provider, modelId, body },
             {

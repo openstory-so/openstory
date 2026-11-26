@@ -3,7 +3,11 @@
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
 import { outputExtension } from '@/gateway/server/storage';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
-import { readIdempotencyKey } from '@/gateway/server/submit-job';
+import {
+  GATEWAY_UPLOAD_TTL_MS,
+  gatewayUploadExpired,
+  readIdempotencyKey,
+} from '@/gateway/server/submit-job';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
@@ -18,8 +22,10 @@ import {
 import { uploadResponse } from '@/platform/server/storage/upload-response';
 import {
   deleteFile,
+  deleteFiles,
   listFilesPage,
   readStorageObject,
+  storageObjectSize,
   uploadFile,
 } from '#storage';
 import { estimateLLMCost } from '@/billing/cost-estimation';
@@ -60,12 +66,22 @@ function capped(
   return { stream, over };
 }
 
-/** One list page: more files than fit in it, or too many bytes, is refused. */
+/** One list page: expired files and pointers are deleted first; then more files than fit in it, or too many bytes, is refused. */
 async function requireStorageRoom(organizationId: string, adding: number) {
   const { files, nextCursor } = await listFilesPage(BUCKET, organizationId, {
     limit: 1000,
   });
-  const stored = files.filter((f) => !f.name.startsWith('keys/'));
+  const expired = (uploadedAt: string) =>
+    Date.now() - Date.parse(uploadedAt) > GATEWAY_UPLOAD_TTL_MS;
+  await deleteFiles(
+    BUCKET,
+    files
+      .filter((f) => expired(f.uploadedAt))
+      .map((f) => `${organizationId}/${f.name}`)
+  );
+  const stored = files.filter(
+    (f) => !f.name.startsWith('keys/') && !expired(f.uploadedAt)
+  );
   const bytes = stored.reduce((sum, f) => sum + f.size, 0);
   if (
     nextCursor !== null ||
@@ -76,6 +92,16 @@ async function requireStorageRoom(organizationId: string, adding: number) {
       `This organization keeps at most ${MAX_STORED_FILES} gateway uploads (${MAX_STORED_BYTES / MB} MB)`
     );
   }
+}
+
+/** Whether a stored upload is still within its expiry and still there. */
+async function liveUpload(organizationId: string, file: string) {
+  return (
+    !gatewayUploadExpired(file) &&
+    (await storageObjectSize(
+      buildR2Key(BUCKET, `${organizationId}/${file}`)
+    )) !== null
+  );
 }
 
 /** Where the Idempotency-Key's file id is kept: create-only, so a key names one file forever. */
@@ -145,7 +171,12 @@ export async function storeGatewayUpload(
   await assertGatewayRate(organizationId, 'uploads');
 
   const pointer = await pointerPath(organizationId, key);
-  const existing = await readPointer(pointer);
+  let existing = await readPointer(pointer);
+  if (existing && !(await liveUpload(organizationId, existing))) {
+    // Expired: the key starts over, as the refusal of its URL told the caller.
+    await deleteFiles(BUCKET, [pointer, `${organizationId}/${existing}`]);
+    existing = null;
+  }
   if (existing) {
     void request.body?.cancel();
     const url = urlOf(existing);
