@@ -242,7 +242,7 @@ function plainHttpHref(body: string): string | null {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
   const written = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(body);
   if (!written) return null;
-  const [, scheme, authority, rest] = written;
+  const [, scheme = '', authority = '', rest = ''] = written;
   const at = authority.lastIndexOf('@') + 1;
   const normalised = `${scheme.toLowerCase()}://${authority.slice(0, at)}${authority.slice(at).toLowerCase()}${rest.startsWith('/') ? '' : '/'}${rest}`;
   return encodeLikeParser(normalised) === encodeLikeParser(url.href)
@@ -266,14 +266,14 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
     }
     // The parser also drops every tab, LF and CR inside the string.
     const parsed = trimmed.replace(/[\t\n\r]/g, '');
-    const fetched = /^([a-z][a-z0-9+.-]*):(.?)/i.exec(parsed);
+    const [, fetched = '', next = ''] =
+      /^([a-z][a-z0-9+.-]*):(.?)/i.exec(parsed) ?? [];
     const urlLike =
       /^[\\/]{2}/.test(parsed) ||
       // `http: the old protocol` is prose: no host follows the scheme.
-      (fetched !== null &&
-        FETCHED_SCHEMES.has(fetched[1].toLowerCase()) &&
-        fetched[2] !== '' &&
-        !/\s/.test(fetched[2])) ||
+      (FETCHED_SCHEMES.has(fetched.toLowerCase()) &&
+        next !== '' &&
+        !/\s/.test(next)) ||
       // Any other scheme with an authority, as written: `Label:\n//note` is prose.
       /^[a-z][a-z0-9+.-]*:[\\/]{2}/i.test(trimmed);
     if (urlLike) {
