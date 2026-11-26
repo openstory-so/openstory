@@ -1,3 +1,4 @@
+import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateStalePlan } from './update-stale-plan';
 import { asStub } from '@/test/as-stub';
@@ -9,6 +10,7 @@ const getWorkflowRunOutcome = vi.fn();
 
 vi.doMock('@/stills/server/image-gateway-routes', () => ({
   imageGatewayRoutes: async () => ({}),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/platform/realtime', () => ({

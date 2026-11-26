@@ -80,7 +80,10 @@ import {
 } from '@/motion/draft-mode';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { gatewayImageRequest } from '@/stills/server/image-generation';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 
@@ -438,7 +441,7 @@ export async function createStudioAssets(
         : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
-  const pricing = await getEffectiveFalPricing();
+  const pricing = await imageQuotePricing(scopedDb);
   const perItemCost = estimateStudioCost({ ...input, count: 1 }, pricing);
   const creditErrorMessage =
     input.activity === 'video'

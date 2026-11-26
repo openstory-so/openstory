@@ -3,6 +3,11 @@
 import { describe, expect, it } from 'vitest';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import { gatewayRouteKey, type GatewayRoutes } from '@/gateway/server/route';
+import { estimateImageCost } from '@/billing/cost-estimation';
+import { micros } from '@/billing/money';
+import { priceGatewayJob } from '@/gateway/server/price';
+import { gatewayHoldMicros } from '@/gateway/server/submit-job';
+import { withGatewayImageQuotes } from './image-gateway-routes';
 import { gatewayImageRequest } from './image-generation';
 
 // The shape of modelschemas' `v1/images/generations` schema and card for Grok Imagine 2.0.
@@ -104,5 +109,28 @@ describe('gatewayImageRequest', () => {
     expect(
       gatewayImageRequest({ ...still, model: 'krea_2_turbo' }, OPENSTORY)
     ).toBeNull();
+  });
+});
+
+describe('withGatewayImageQuotes', () => {
+  const FAL_ID = 'xai/grok-imagine-image/v2.0/text-to-image';
+  const fal = { [FAL_ID]: { unitPrice: micros(40_000), unit: 'images' } };
+
+  it('quotes an openstory Grok still at exactly the gateway hold', () => {
+    const request = gatewayImageRequest(still, OPENSTORY);
+    if (!request) throw new Error('expected an openstory request');
+    const hold = gatewayHoldMicros(
+      priceGatewayJob(request.model.card, request.body)
+    );
+    const quote = estimateImageCost('grok_imagine_image', '16:9', 1, {
+      pricing: withGatewayImageQuotes(fal, OPENSTORY),
+    });
+    expect(hold).toBe(60_000);
+    expect(quote).toBe(hold);
+  });
+
+  it('leaves a direct-route quote on the fal map', () => {
+    const direct = withGatewayImageQuotes(fal, {});
+    expect(direct[FAL_ID]).toEqual(fal[FAL_ID]);
   });
 });

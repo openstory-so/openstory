@@ -85,7 +85,10 @@ import {
 } from '@/platform/server/workflow/client';
 import { simpleHash } from '@/platform/hash';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import {
   notifySequenceReady,
   sequenceScenesUrl,
@@ -433,7 +436,7 @@ export async function executeSmartRetry(
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
-  const pricing = await getEffectiveFalPricing();
+  const pricing = await imageQuotePricing(context.scopedDb);
 
   // 1. Retry failed images
   if (failedImageShots.length > 0) {

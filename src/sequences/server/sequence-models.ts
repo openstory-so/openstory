@@ -48,7 +48,10 @@ import {
 } from '@/motion/server/resolve-motion-prompt';
 import type { VariantType } from '@/platform/server/db/schema/shot-variants';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -698,7 +701,7 @@ export async function addModelToSequence(
 
   const perShotCost = gateEstimate(
     estimateImageCost(model, sequence.aspectRatio, 1, {
-      pricing: await getEffectiveFalPricing(),
+      pricing: await imageQuotePricing(scopedDb),
       resolution: sequence.resolution,
     }),
     { model, operation: 'add-image-model' }

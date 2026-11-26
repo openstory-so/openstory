@@ -300,6 +300,14 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
+/** The hold on a card estimate: every line of the charge it would settle to. Pre-flight quotes read this too. */
+export function gatewayHoldMicros(estimate: Microdollars): Microdollars {
+  return gatewayCharge({
+    providerCostMicros: estimate,
+    platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+  }).totalMicros;
+}
+
 /**
  * Validate and hold: the platform key, the body, the account, the media,
  * the price, the row and the reservation. A refused request leaves no row and
@@ -349,12 +357,8 @@ export async function holdGatewayJob(
     );
   }
 
-  // The hold covers every line of the charge the estimate would settle to.
   const platformFeeBps = GATEWAY_PLATFORM_FEE_BPS;
-  const hold = gatewayCharge({
-    providerCostMicros: estimate,
-    platformFeeBps,
-  }).totalMicros;
+  const hold = gatewayHoldMicros(estimate);
 
   const { job, created } = await scopedDb.gatewayJobs.create({
     kind: model.kind,

@@ -1,4 +1,5 @@
 import { getEnv } from '#env';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import { authWithOrganizationMiddleware } from '@/platform/middleware.fn';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import {
@@ -127,9 +128,9 @@ const estimateDraftGenerationInputSchema = z.object({
 export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
   .middleware([authWithOrganizationMiddleware])
   .validator(zodValidator(estimateDraftGenerationInputSchema))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     if (!data.script.trim()) return { estimateMicros: null };
-    const pricing = await getEffectiveFalPricing();
+    const pricing = await imageQuotePricing(context.scopedDb);
     const imageModel = safeTextToImageModel(
       data.imageModels[0],
       DEFAULT_IMAGE_MODEL

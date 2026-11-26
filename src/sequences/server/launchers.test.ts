@@ -1,3 +1,4 @@
+import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 /**
  * Tests for the storyboard launcher + generation mutex (#839).
  *
@@ -29,6 +30,7 @@ beforeEach(() => {
 });
 vi.doMock('@/stills/server/image-gateway-routes', () => ({
   imageGatewayRoutes: async () => ({}),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,

@@ -6,6 +6,7 @@ import { asStub } from '@/test/as-stub';
 const triggerWorkflow = vi.fn(async () => 'wf_image');
 vi.doMock('@/stills/server/image-gateway-routes', () => ({
   imageGatewayRoutes: async () => ({}),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/billing/server/fal-pricing-live', () => ({

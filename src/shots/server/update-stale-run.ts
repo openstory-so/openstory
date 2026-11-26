@@ -6,14 +6,16 @@
 
 import { z } from 'zod';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
 import { getLogger } from '@/platform/logger';
 import { getChannelHistory, getGenerationChannel } from '@/platform/realtime';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ValidationError } from '@/platform/errors';
@@ -104,7 +106,7 @@ export async function prepareUpdateStale(args: {
       ? ZERO_MICROS
       : gateEstimate(
           estimateImageCost(model, sequence.aspectRatio, 1, {
-            pricing: await getEffectiveFalPricing(),
+            pricing: await imageQuotePricing(scopedDb),
             resolution: sequence.resolution,
           }),
           { model, operation: 'update-stale-shots' }

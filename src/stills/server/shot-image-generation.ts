@@ -30,7 +30,10 @@ import {
 } from '@/shots/server/shot-image-input';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import type {
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
@@ -210,7 +213,7 @@ export async function generateShotImageVariants(
         sequence.aspectRatio,
         numImages,
         {
-          pricing: await getEffectiveFalPricing(),
+          pricing: await imageQuotePricing(context.scopedDb),
           resolution: sequence.resolution,
         }
       ),
