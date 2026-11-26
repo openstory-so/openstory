@@ -11,7 +11,6 @@
  *    Accept headers with a 500, so paths without a markdown rendition get
  *    their Accept normalized to text/html instead.
  */
-import { estimateTokens } from '@/platform/tokens';
 import { allDocs } from 'content-collections';
 import { buildFaqMarkdown, buildLlmsTxt } from './llms';
 
@@ -65,7 +64,7 @@ export function markdownResponse(markdown: string, method: string): Response {
   const headers = new Headers({
     'Content-Type': 'text/markdown; charset=utf-8',
     'Cache-Control': 'public, max-age=3600',
-    'X-Markdown-Tokens': String(estimateTokens(markdown)),
+    'X-Markdown-Tokens': String(Math.ceil(markdown.length / 4)),
     Vary: 'Accept',
     Link: DISCOVERY_LINK_HEADER,
   });

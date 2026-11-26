@@ -1289,11 +1289,12 @@ resolver, so the retry is metered on its own route.
   shortfall is reported as a skipped deduction (`reportSkippedDeduction`) and
   the call is not charged for it.
 - **Cut off part way** (an abort, a dropped connection, an error after
-  content): with no usage reported, the card is priced on estimated tokens
-  (`estimateTokens`, four characters a token) for the prompt and what
-  streamed, capped at what the request's output bound would have held (the
-  hold itself for a request). A call inside a run has no hold, so the cap is
-  the same price computed at charge time. A call that streamed
+  content): with no usage reported, the prompt and what streamed are
+  estimated at UTF-8 bytes / 3, rounded up, capped at what the request's
+  output bound would have held (the hold itself for a request; computed at
+  charge time in a run). Bytes / 3 is about 1.3x for English and about right
+  for CJK: an under-estimate is paid by the platform and can be had by
+  aborting every stream, so the estimate errs slightly high. A call that streamed
   nothing and reported no usage (a refusal, a Google location refusal, a
   4xx) is charged nothing, and its own hold is released.
 - **What a charge records:** each charge line's `sku` is

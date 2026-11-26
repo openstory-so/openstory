@@ -282,6 +282,39 @@ describe('openstoryText on the card route', () => {
     expect(held).toBe(0);
   });
 
+  /** A run's call cut off after one content chunk; returns its charge. */
+  const cutOffCharge = async (delta: string, maxTokens: number) => {
+    const inner = adapter(() => [
+      { type: EventType.RUN_STARTED, runId: 'r', threadId: 't', timestamp: 0 },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId: 'm',
+        delta,
+        timestamp: 0,
+      },
+    ]);
+    for await (const chunk of openstoryText(
+      inner,
+      meter({ run: { runReservationId: null } }),
+      'vendor/model'
+    ).chatStream({ ...OPTIONS, modelOptions: { maxTokens } })) {
+      if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break;
+    }
+    const { charges } = await ledger();
+    return charges.at(-1) ?? 0;
+  };
+
+  it('estimates an uncounted cut-off at UTF-8 bytes / 3: over for English, about right for CJK', async () => {
+    // 3,600 bytes each = 1,200 output tokens = 12,000 micros, plus a few input tokens.
+    const english = await cutOffCharge('hello world!'.repeat(300), 10_000);
+    const cjk = await cutOffCharge('你好'.repeat(600), 10_000);
+    expect(english).toBe(cjk);
+    expect(english).toBeGreaterThanOrEqual(12_000);
+    expect(english).toBeLessThan(12_100);
+    // Never below the real count: ~900 tokens of English, ~1,200 of CJK.
+    expect(english).toBeGreaterThan(9_000);
+  });
+
   it('caps a cut-off call inside a run at what its output bound would have held', async () => {
     const long = 'x'.repeat(40_000);
     const inner = adapter(() => [

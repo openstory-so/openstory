@@ -23,7 +23,6 @@ import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { isTokenUsage, llmCostFromUsage } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
-import { estimateTokens } from '@/platform/tokens';
 import type {
   AdapterYieldChunk,
   AnyTextAdapter,
@@ -35,6 +34,13 @@ const UNMETERED_SAFE_METHODS = new Set([
   'supportsCombinedToolsAndSchema',
   'combinedStructuredOutputSource',
 ]);
+
+/** Tokens for text no provider counted: UTF-8 bytes / 3, slightly over for English and about right for CJK, since an under-estimate is the platform's loss. */
+function estimatedTokens(bytes: number): number {
+  return Math.ceil(bytes / 3);
+}
+
+const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
 /** A non-text part is held at this many input tokens; the charge reads the real count. */
 const MEDIA_PART_TOKENS = 4096;
@@ -214,9 +220,10 @@ function inputTokenCounts(parts: unknown): {
     return null;
   });
   const mediaTokens = media * MEDIA_PART_TOKENS;
+  const bytes = utf8Bytes(json);
   return {
-    inputTokens: new TextEncoder().encode(json).length + mediaTokens,
-    inputEstimate: estimateTokens(json) + mediaTokens,
+    inputTokens: bytes + mediaTokens,
+    inputEstimate: estimatedTokens(bytes) + mediaTokens,
   };
 }
 
@@ -328,16 +335,16 @@ type Call = {
   readonly inputEstimate: number;
   readonly outputBound: number | undefined;
   usage: TokenUsage | undefined;
-  streamedChars: number;
+  streamedBytes: number;
 };
 
 function cardCost(card: Card, call: Call): Microdollars | null {
   if (call.usage) return price(card, cardUsage(card, call.usage));
-  if (call.streamedChars === 0) return null;
+  if (call.streamedBytes === 0) return null;
   // Cut off with no usage: estimated tokens, never above what the request's bound would have held.
   const cost = price(card, {
     input_tokens: call.inputEstimate,
-    output_tokens: Math.ceil(call.streamedChars / 4),
+    output_tokens: estimatedTokens(call.streamedBytes),
   });
   const cap = call.held
     ? call.held.estimateMicros
@@ -515,7 +522,7 @@ export function openstoryText<A extends AnyTextAdapter>(
       inputEstimate,
       outputBound,
       usage: undefined,
-      streamedChars: 0,
+      streamedBytes: 0,
     };
     // Only a request with no run holds; inside a run the run's reservation is the hold.
     if (!card || meter.run) return call;
@@ -538,7 +545,7 @@ export function openstoryText<A extends AnyTextAdapter>(
     try {
       for await (const chunk of run()) {
         if ('delta' in chunk && typeof chunk.delta === 'string') {
-          call.streamedChars += chunk.delta.length;
+          call.streamedBytes += utf8Bytes(chunk.delta);
         }
         call.usage = chunkUsage(chunk) ?? call.usage;
         yield chunk;
