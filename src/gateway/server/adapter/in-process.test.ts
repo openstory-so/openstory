@@ -15,6 +15,7 @@ import {
   vi,
 } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   generateAudio,
   generateImage,
@@ -419,6 +420,39 @@ describe('the openstory adapter, in-process', () => {
     const job = await onlyJob(VIDEO.id);
     expect(job.status).toBe('failed');
     expect(await chargesFor(job.id)).toMatchObject({ debits: 0 });
+    const [hold] = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    expect(hold?.remainingAmount).toBe(0);
+  });
+
+  it('polls a handle checkpointed before #2435 as owning its hold', async () => {
+    start.mockResolvedValue({ jobId: 'xai-7' });
+    poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-7:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    const { run, providerJobId } = z
+      .object({
+        run: z.object({ ownsReservation: z.boolean() }).passthrough(),
+        providerJobId: z.string(),
+      })
+      .parse(JSON.parse(jobId));
+    const { ownsReservation: _dropped, ...oldRun } = run;
+    const oldHandle = JSON.stringify({ run: oldRun, providerJobId });
+    expect(
+      await getVideoJobStatus({
+        adapter: statusAdapter(VIDEO),
+        jobId: oldHandle,
+      })
+    ).toMatchObject({ status: 'failed' });
+    const job = await onlyJob(VIDEO.id);
     const [hold] = await db
       .select()
       .from(creditReservations)
