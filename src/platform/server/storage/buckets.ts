@@ -20,6 +20,8 @@ export const STORAGE_BUCKETS = {
   STITCHES: 'stitches',
   /** A self-hosted install's gateway inputs (#2438): `<organizationId>/<ULID>.<ext>`, `<organizationId>/keys/<hash>` pointers; expired by an R2 lifecycle rule. */
   GATEWAY_UPLOADS: 'gateway-uploads',
+  /** A self-hosted install's record of which local objects are hosted gateway outputs (#2438): `<sha256 of the local key>` holds the hosted URL. */
+  GATEWAY_PROVENANCE: 'gateway-provenance',
 } as const;
 
 export type StorageBucket =

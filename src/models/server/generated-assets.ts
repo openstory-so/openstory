@@ -65,7 +65,7 @@ const issuesSchema = z.object({
 export async function createGeneratedAsset(
   scopedDb: ScopedDb,
   data: CreateGeneratedAssetData,
-  request: LikenessRequestContext
+  request: LikenessRequestContext & { origin: string }
 ): Promise<CreateGeneratedAssetResult> {
   const assetId = generateId();
   let route: AssetGenerationWorkflowInput['route'];
@@ -111,7 +111,7 @@ export async function createGeneratedAsset(
       const model = await getGatewayModel(data.provider, data.endpointId);
       const held = await holdGatewayJob(model, data.input, {
         scopedDb,
-        rights: { scopedDb, request },
+        rights: { scopedDb, request, origin: request.origin },
         idempotencyKey: `asset:${assetId}`,
         oauthClientId: null,
         runReservationId: null,

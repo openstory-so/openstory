@@ -116,7 +116,11 @@ const GROK: GatewayModel = {
 
 const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
-const REQUEST = { ipAddress: null, userAgent: null };
+const REQUEST = {
+  ipAddress: null,
+  userAgent: null,
+  origin: 'https://openstory.so',
+};
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());

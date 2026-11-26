@@ -15,6 +15,11 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import {
+  fromShareableUrl,
+  toShareableUrl,
+} from '@/platform/server/storage/buckets';
+import { storageObjectSize } from '#storage';
 import { sha256Hex } from '@/platform/compliance/hash';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -50,6 +55,8 @@ const logger = getLogger(['openstory', 'gateway', 'submit']);
 export type GatewaySubmitContext = {
   scopedDb: ScopedDb;
   request: LikenessRequestContext;
+  /** Where the request arrived: this server's output URLs are handed out on it. */
+  origin: string;
   /** The `Idempotency-Key` header, when sent. */
   idempotencyKey: string | null;
   /** `context.oauth?.clientId`; null for an `osk_` key or a session. */
@@ -65,7 +72,7 @@ export const UPLOAD_RIGHTS_CHECKED: unique symbol = Symbol(
 
 /** How a body's media is checked: here against the request, or already by an in-process caller. */
 export type GatewayRights =
-  | { scopedDb: ScopedDb; request: LikenessRequestContext }
+  | { scopedDb: ScopedDb; request: LikenessRequestContext; origin: string }
   | typeof UPLOAD_RIGHTS_CHECKED;
 
 /** What the hold writes: met by `ScopedDb` at a trigger and by `WorkflowScopedDb` in a step. */
@@ -351,16 +358,57 @@ export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   return found;
 }
 
-/** The organization a gateway upload URL belongs to; null for any other URL. */
-function gatewayUploadOwner(url: string): string | null {
+/** The organization a gateway upload or hosted output URL (origin or CDN form) belongs to; null for any other URL. */
+function gatewayFileOwner(url: string): string | null {
   let pathname: string;
   try {
-    pathname = new URL(url, 'http://local').pathname;
+    pathname = new URL(fromShareableUrl(url), 'http://local').pathname;
   } catch {
     return null;
   }
-  const match = /\/gateway-uploads\/([^/]+)\//.exec(pathname);
+  const match =
+    /\/gateway-uploads\/([^/]+)\//.exec(pathname) ??
+    /\/org\/([^/]+)\/gateway\//.exec(pathname);
   return match?.[1] ?? null;
+}
+
+/** `/r2/<bucket>/org/<organization>/gateway/<job id>/output-<n>.<ext>`: where the public endpoint's workflow stores a job's outputs. */
+const HOSTED_OUTPUT =
+  /^\/r2\/[a-z0-9-]+\/org\/([^/]+)\/gateway\/([0-9A-HJKMNP-TV-Z]{26})\/output-\d+\.[a-z0-9]+$/;
+
+/**
+ * The URLs that are outputs of the caller's own succeeded gateway jobs, as
+ * this server handed them out and still stored: generated here from inputs
+ * that passed the gate, so not uploads (#2438). Verified on the job row,
+ * never by the URL's shape; anything else is gated.
+ */
+async function ownHostedOutputs(
+  rights: { scopedDb: ScopedDb; origin: string },
+  urls: readonly string[]
+): Promise<Set<string>> {
+  const own = new Set<string>();
+  for (const url of urls) {
+    const stored = fromShareableUrl(url);
+    const match = HOSTED_OUTPUT.exec(stored);
+    const jobId = match?.[2];
+    if (!jobId || match[1] !== rights.scopedDb.organizationId) continue;
+    if (url !== stored && url !== toShareableUrl(stored, rights.origin)) {
+      continue;
+    }
+    const job = await rights.scopedDb.gatewayJobs.getById(jobId);
+    if (
+      job?.status !== 'succeeded' ||
+      !job.outputs?.some((output) => output.url === stored)
+    ) {
+      continue;
+    }
+    // A deleted output is gated like any URL, never trusted.
+    if ((await storageObjectSize(stored.slice('/r2/'.length))) === null) {
+      continue;
+    }
+    own.add(url);
+  }
+  return own;
 }
 
 /** The hold on a card estimate: every line of the charge it would settle to. Pre-flight quotes read this too. */
@@ -413,16 +461,17 @@ export async function holdGatewayJob(
     refuseVoiceClone(model, input);
     const urls = gatedUrls(input);
     for (const url of urls) {
-      const owner = gatewayUploadOwner(url);
+      const owner = gatewayFileOwner(url);
       if (owner !== null && owner !== scopedDb.organizationId) {
         throw new ValidationError(
           'An uploaded file belongs to another organization'
         );
       }
     }
+    const generated = await ownHostedOutputs(rights, urls);
     await requireCheckedUploadRights(
       withPlatformLlmKey(rights.scopedDb),
-      urls,
+      urls.filter((url) => !generated.has(url)),
       rights.request
     );
   }
@@ -512,7 +561,7 @@ export async function submitGatewayJob(
   const model = await getGatewayModel(request.provider, request.modelId);
   const { job, created, run } = await holdGatewayJob(model, request.body, {
     scopedDb,
-    rights: { scopedDb, request: ctx.request },
+    rights: { scopedDb, request: ctx.request, origin: ctx.origin },
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
     // The public endpoint always holds its own.

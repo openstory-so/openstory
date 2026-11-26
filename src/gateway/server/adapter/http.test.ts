@@ -10,12 +10,23 @@ const env: Record<string, string | undefined> = {
   OPENSTORY_GATEWAY_URL: 'https://hosted.example',
 };
 vi.doMock('#env', () => ({ getEnv: () => env }));
+/** The install's provenance records; every other key reads as a stored image. */
+const provenance = new Map<string, Uint8Array>();
 vi.doMock('#storage', () => ({
-  readStorageObject: vi.fn(async () => ({
-    bytes: new Uint8Array([1, 2, 3]),
-    contentType: 'image/png',
-  })),
+  readStorageObject: vi.fn(async (key: string) => {
+    if (key.startsWith('gateway-provenance/')) {
+      const bytes = provenance.get(key);
+      return bytes ? { bytes, contentType: 'text/plain' } : null;
+    }
+    return { bytes: new Uint8Array([1, 2, 3]), contentType: 'image/png' };
+  }),
+  uploadFile: vi.fn(async (bucket: string, path: string, bytes: Uint8Array) => {
+    provenance.set(`${bucket}/${path}`, bytes);
+  }),
 }));
+const { sha256Hex } = await import('@/platform/compliance/hash');
+const provenanceKey = async (r2Key: string) =>
+  `gateway-provenance/${await sha256Hex(r2Key)}`;
 
 const { gatewayPoller, gatewayTransport } = await import('./http');
 const { runGatewayToEnd } = await import('./index');
@@ -268,6 +279,79 @@ describe('the HTTP transport', () => {
     } finally {
       server.restore();
     }
+  });
+
+  describe('hosted outputs go back as hosted URLs (#2438)', () => {
+    it('records where each copied output came from', async () => {
+      provenance.clear();
+      const server = hosted({
+        '/api/v1/gateway/grok/grok-imagine-image': [json(SUCCEEDED, 202)],
+      });
+      try {
+        await transport().transport.submit({ prompt: 'Mara' }, 'run-1:still');
+        const recorded = provenance.get(
+          await provenanceKey('thumbnails/local/output-0.jpg')
+        );
+        expect(new TextDecoder().decode(recorded)).toBe(
+          'https://hosted.example/r2/thumbnails/out.jpg'
+        );
+      } finally {
+        server.restore();
+      }
+    });
+
+    it('sends a recorded still or take as its hosted URL and uploads nothing', async () => {
+      provenance.clear();
+      for (const [key, hostedUrl] of [
+        ['characters/o/sheet.png', 'https://hosted.example/r2/x/sheet.png'],
+        ['audio/o/take.wav', 'https://hosted.example/r2/audio/take.wav'],
+      ] as const) {
+        provenance.set(
+          await provenanceKey(key),
+          new TextEncoder().encode(hostedUrl)
+        );
+      }
+      const server = hosted({
+        '/api/v1/gateway/grok/grok-imagine-image': [json(job('queued'), 202)],
+      });
+      try {
+        await transport().transport.submit(
+          {
+            image: '/r2/characters/o/sheet.png',
+            audio: '/r2/audio/o/take.wav',
+          },
+          'run-1:clip'
+        );
+        expect(server.calls).toHaveLength(1);
+        expect(
+          JSON.parse(z.string().parse(server.calls[0]?.init.body))
+        ).toEqual({
+          image: 'https://hosted.example/r2/x/sheet.png',
+          audio: 'https://hosted.example/r2/audio/take.wav',
+        });
+      } finally {
+        server.restore();
+      }
+    });
+
+    it('refuses audio the hosted gateway did not make, before sending anything', async () => {
+      provenance.clear();
+      const server = hosted({});
+      try {
+        const error = await transport()
+          .transport.submit({ audio: '/r2/audio/o/mic.wav' }, 'run-1:clip')
+          .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(NonRetryableError);
+        expect(error).toMatchObject({
+          message: expect.stringContaining(
+            'Audio recorded or made on this install'
+          ),
+        });
+        expect(server.calls).toHaveLength(0);
+      } finally {
+        server.restore();
+      }
+    });
   });
 
   it('refuses a model id or job id that could retarget the request', async () => {

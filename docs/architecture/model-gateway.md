@@ -1649,19 +1649,50 @@ calls in a minute; a 30-scene sequence (`MAX_SCENES`) near 180. 300 leaves
 room for content retries. Uploads are not counted; the per-key limiter (10 a
 second) still applies.
 
+### Hosted outputs are not uploads
+
+The hosted classifier calls any photoreal face human, generated character
+sheets included, and cannot check audio at all. So a one-key install sends a
+file the hosted gateway made back by its hosted URL, never as an upload:
+
+- **Install.** When the HTTP transport copies a finished hosted job's outputs
+  (`storeRemoteOutputs`), it records each one's hosted URL under
+  `gateway-provenance/<sha256 of the local key>`. `withUploadedMedia` sends
+  that URL for a local `/r2/` file that has one; any other file is uploaded
+  (`POST /gateway/uploads`) and classified, and audio without one is refused
+  before anything is sent.
+- **Hosted.** `ownHostedOutputs` in `submit-job.ts` exempts a URL from the
+  upload gate only when it is exactly how this server handed out an output
+  (`toShareableUrl`) of a `succeeded` `gateway_jobs` row of the calling
+  organization, at `org/<organization>/gateway/<job id>/output-<n>`, and the
+  object is still stored. The job row decides, never the URL's shape. Another
+  organization's output is `400` before the check; a look-alike, another host
+  or a deleted output is gated as any URL.
+- **Why it is safe.** A hosted output derives only from inputs that passed the
+  gate on the same endpoint, so it carries no likeness the gate has not
+  already seen. Needs sign-off: it changes who the likeness gate applies to on
+  the public endpoint (an organization's own outputs are exempt as inputs).
+- **Not covered.** A file the install derives (a dialogue section cut from a
+  hosted take, a re-encoded still) has no record and is gated as an upload.
+  Hosted outputs are not expired today; if a lifecycle rule ever removes them,
+  the URL is gated, never trusted.
+
+`submit-job.test.ts` and `adapter/http.test.ts` pin each.
+
 ### Not remote yet
 
-| Call                                                                                                                             | Why                                                                                        | Where it runs                         |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- |
-| Every ElevenLabs call                                                                                                            | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`    |
-| Scribe, isolation, mic take                                                                                                      | multipart bodies; ElevenLabs                                                               | direct                                |
-| Seed takes cloned from a voice clip                                                                                              | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                        |
-| Real people in any input                                                                                                         | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED` |
-| Gemini images                                                                                                                    | TanStack/schemas#755                                                                       | direct; needs a Google key            |
-| fal Flux, Seedream, Nano Banana stills                                                                                           | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key               |
-| A model the hosted card cannot price                                                                                             | the hosted side refuses                                                                    | hosted refusal                        |
-| LLM calls with tools (script enhancement's web search, the assistant)                                                            | the hosted chat endpoint takes no tools                                                    | refused at the call                   |
-| Vision (upload descriptions, element and talent vision, Studio prompt drafts with references, watch_clip, enhance with elements) | the hosted chat endpoint takes text only                                                   | refused at the call                   |
+| Call                                                                                                                                    | Why                                                                                                    | Where it runs                         |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| Every ElevenLabs call                                                                                                                   | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`)             | direct; needs `ELEVENLABS_API_KEY`    |
+| Scribe, isolation, mic take                                                                                                             | multipart bodies; ElevenLabs                                                                           | direct                                |
+| Seed takes cloned from a voice clip                                                                                                     | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)                   | hosted refusal                        |
+| A user upload showing any photoreal face, real or generated elsewhere (another provider, the install's own key)                         | the hosted classifier calls every photoreal face human; no portrait attestation on the public endpoint | hosted refusal `ATTESTATION_REQUIRED` |
+| Any user-supplied audio, and audio cut or made on the install (mic takes, dialogue sections for lip-sync and Seedance audio references) | the classifier cannot hear audio; only the hosted gateway's own outputs are exempt                     | refused at submit, before any upload  |
+| Gemini images                                                                                                                           | TanStack/schemas#755                                                                                   | direct; needs a Google key            |
+| fal Flux, Seedream, Nano Banana stills                                                                                                  | no gateway body built for them (only Grok stills route, § Product stills)                              | direct; needs a fal key               |
+| A model the hosted card cannot price                                                                                                    | the hosted side refuses                                                                                | hosted refusal                        |
+| LLM calls with tools (script enhancement's web search, the assistant)                                                                   | the hosted chat endpoint takes no tools                                                                | refused at the call                   |
+| Vision (upload descriptions, element and talent vision, Studio prompt drafts with references, watch_clip, enhance with elements)        | the hosted chat endpoint takes text only                                                               | refused at the call                   |
 
 ### Proof (2026-11-26)
 

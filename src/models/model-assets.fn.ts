@@ -58,6 +58,7 @@ export const createGeneratedAssetFn = createServerFn({ method: 'POST' })
     return createGeneratedAsset(context.scopedDb, data, {
       ipAddress: request.headers.get('cf-connecting-ip'),
       userAgent: request.headers.get('user-agent'),
+      origin: new URL(request.url).origin,
     });
   });
 

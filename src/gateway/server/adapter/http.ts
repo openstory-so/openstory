@@ -28,10 +28,18 @@ import {
 import type { GatewayCallRoute } from '@/gateway/server/route';
 import type { JsonValue } from '@/platform/server/db/schema';
 import { isCheckable } from '@/cast/server/upload-rights';
-import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  buildR2Key,
+  r2KeyFromUrl,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
+import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { getLogger } from '@/platform/logger';
-import { readStorageObject } from '#storage';
+import { readStorageObject, uploadFile } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
@@ -48,10 +56,22 @@ async function callGateway(
 
 const uploadAnswer = z.object({ url: z.string() });
 
+const PROVENANCE = STORAGE_BUCKETS.GATEWAY_PROVENANCE;
+
+/** The hosted output URL a local object was copied from, or null when the file was not made by the hosted gateway. */
+async function hostedSourceOf(key: string): Promise<string | null> {
+  const stored = await readStorageObject(
+    buildR2Key(PROVENANCE, await sha256Hex(key))
+  );
+  return stored ? new TextDecoder().decode(stored.bytes) : null;
+}
+
 /**
- * Every local `/r2/` file in the body goes up to the hosted gateway first
- * (`POST /gateway/uploads`); the key names the file, so a retried step gets
- * the same URL back and the job's Idempotency-Key sees the same body.
+ * Every local `/r2/` file in the body goes to the hosted gateway first. One
+ * the hosted gateway made goes back as its hosted URL, which the hosted side
+ * verifies against its own job; any other is uploaded (`POST /gateway/uploads`)
+ * and classified there. The key names the file, so a retried step gets the
+ * same URL back and the job's Idempotency-Key sees the same body.
  */
 async function withUploadedMedia(
   body: GatewayJobInput,
@@ -62,7 +82,19 @@ async function withUploadedMedia(
   const upload = (url: string, key: string) => {
     let pending = uploaded.get(url);
     if (!pending) {
-      pending = uploadStored(key, `${idempotencyKey}:${key}`);
+      pending = hostedSourceOf(key).then((hosted) => {
+        if (hosted) return hosted;
+        if (
+          getMimeTypeFromExtension(getExtensionFromUrl(url)).startsWith(
+            'audio/'
+          )
+        ) {
+          throw new NonRetryableError(
+            'Audio recorded or made on this install cannot be sent to the hosted gateway; only audio the hosted gateway generated can'
+          );
+        }
+        return uploadStored(key, `${idempotencyKey}:${key}`);
+      });
       uploaded.set(url, pending);
     }
     return pending;
@@ -128,9 +160,23 @@ async function storeRemoteOutputs(
     chargeMicros: job.charge?.totalMicros ?? null,
   });
   return Promise.all(
-    job.outputs.map((output, index) =>
-      store({ url: output.url, contentType: output.contentType }, index)
-    )
+    job.outputs.map(async (output, index) => {
+      const stored = await store(
+        { url: output.url, contentType: output.contentType },
+        index
+      );
+      // So a later call can send the hosted URL back instead of uploading these bytes.
+      const key = r2KeyFromUrl(stored.url);
+      if (key !== null) {
+        await uploadFile(
+          PROVENANCE,
+          await sha256Hex(key),
+          new TextEncoder().encode(output.url),
+          { contentType: 'text/plain' }
+        );
+      }
+      return stored;
+    })
   );
 }
 
