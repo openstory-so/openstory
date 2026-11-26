@@ -5,7 +5,7 @@ import { outputExtension } from '@/gateway/server/storage';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { readIdempotencyKey } from '@/gateway/server/submit-job';
 import { sha256Hex } from '@/platform/compliance/hash';
-import { ValidationError } from '@/platform/errors';
+import { InsufficientCreditsError, ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
@@ -16,13 +16,67 @@ import {
   toShareableUrl,
 } from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
-import { deleteFile, readStorageObject, uploadFile } from '#storage';
+import {
+  deleteFile,
+  listFilesPage,
+  readStorageObject,
+  uploadFile,
+} from '#storage';
+import { estimateLLMCost } from '@/billing/cost-estimation';
+import { assertGatewayRate } from '@/gateway/server/rate-limit';
+import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const MB = 1024 * 1024;
+/** The largest file per kind, enforced on the declared length and on the bytes read. */
+const MAX_BYTES = { image: 20 * MB, video: 100 * MB, audio: 25 * MB } as const;
 const MEDIA_TYPE = /^(image|video|audio)\//;
+/** What one organization may keep here at once. */
+const MAX_STORED_FILES = 500;
+const MAX_STORED_BYTES = 2048 * MB;
 
 const BUCKET = STORAGE_BUCKETS.GATEWAY_UPLOADS;
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+/** The body, failing once it carries more bytes than it declared; `over()` says whether it did. */
+function capped(
+  body: ReadableStream<Uint8Array> | null,
+  limit: number
+): { stream: ReadableStream<Uint8Array> | null; over: () => boolean } {
+  let seen = 0;
+  const over = () => seen > limit;
+  if (!body) return { stream: null, over };
+  const stream = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > limit) {
+          controller.error(new Error('Upload over its Content-Length'));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    })
+  );
+  return { stream, over };
+}
+
+/** One list page: more files than fit in it, or too many bytes, is refused. */
+async function requireStorageRoom(organizationId: string, adding: number) {
+  const { files, nextCursor } = await listFilesPage(BUCKET, organizationId, {
+    limit: 1000,
+  });
+  const stored = files.filter((f) => !f.name.startsWith('keys/'));
+  const bytes = stored.reduce((sum, f) => sum + f.size, 0);
+  if (
+    nextCursor !== null ||
+    stored.length >= MAX_STORED_FILES ||
+    bytes + adding > MAX_STORED_BYTES
+  ) {
+    throw new ValidationError(
+      `This organization keeps at most ${MAX_STORED_FILES} gateway uploads (${MAX_STORED_BYTES / MB} MB)`
+    );
+  }
+}
 
 /** Where the Idempotency-Key's file id is kept: create-only, so a key names one file forever. */
 async function pointerPath(organizationId: string, key: string) {
@@ -65,9 +119,16 @@ export async function storeGatewayUpload(
   if (extension === 'bin') {
     throw new ValidationError(`Unsupported Content-Type ${contentType}`);
   }
+  const kind = contentType.split('/', 1)[0];
+  const cap =
+    kind === 'image' || kind === 'video' || kind === 'audio'
+      ? MAX_BYTES[kind]
+      : 0;
   const length = Number(request.headers.get('content-length'));
-  if (!(Number.isInteger(length) && length > 0 && length <= MAX_UPLOAD_BYTES)) {
-    throw new ValidationError('Content-Length is required and at most 500 MB');
+  if (!(Number.isInteger(length) && length > 0 && length <= cap)) {
+    throw new ValidationError(
+      `Content-Length is required and at most ${cap / MB} MB for ${kind}`
+    );
   }
   const { organizationId } = scopedDb;
   const origin = new URL(request.url).origin;
@@ -79,6 +140,10 @@ export async function storeGatewayUpload(
       userAgent: request.headers.get('user-agent'),
     });
 
+  // Before any byte is read: the account and the rate; a new file also the check's price and the stored total.
+  await requireGenerationAllowed({ userId: scopedDb.userId, organizationId });
+  await assertGatewayRate(organizationId, 'uploads');
+
   const pointer = await pointerPath(organizationId, key);
   const existing = await readPointer(pointer);
   if (existing) {
@@ -89,15 +154,29 @@ export async function storeGatewayUpload(
     return { url };
   }
 
+  // The check is charged to this organization (`likeness:<url>`); refuse it before storing what it cannot pay for.
+  if (!(await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1)))) {
+    throw new InsufficientCreditsError(
+      'Insufficient credits to check an upload'
+    );
+  }
+  await requireStorageRoom(organizationId, length);
   const file = `${generateId()}.${extension}`;
-  await uploadResponse(
-    new Response(request.body, {
-      headers: { 'content-length': String(length) },
-    }),
-    BUCKET,
-    `${organizationId}/${file}`,
-    { contentType, upsert: false }
-  );
+  const body = capped(request.body, length);
+  try {
+    await uploadResponse(
+      new Response(body.stream, {
+        headers: { 'content-length': String(length) },
+      }),
+      BUCKET,
+      `${organizationId}/${file}`,
+      { contentType, upsert: false }
+    );
+  } catch (error) {
+    if (!body.over()) throw error;
+    await deleteFile(BUCKET, `${organizationId}/${file}`);
+    throw new ValidationError('The body is longer than its Content-Length');
+  }
   const url = urlOf(file);
   try {
     await check(url);

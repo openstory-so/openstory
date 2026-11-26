@@ -387,7 +387,8 @@ trigger failed (`NOT_STARTED`) is spent: retry with a new key.
 - `GATEWAY_RATE_LIMITER` (300 submits a minute per organization since #2438, namespace
   `2380`) is declared in all three wrangler blocks. A 429 is
   `{ error: { code: 'RATE_LIMITED' } }` with `Retry-After`. Reads are not
-  throttled beyond the per-key limiter.
+  throttled beyond the per-key limiter. Uploads have their own,
+  `GATEWAY_UPLOAD_RATE_LIMITER` (120 a minute, namespace `2438`, #2438).
 
 ### Not yet (PR 1)
 
@@ -1597,7 +1598,18 @@ arrive.
 
 `POST /api/v1/gateway/uploads` (`src/gateway/server/uploads.ts`): the body
 is the file, `Content-Type` an image, video or audio type, `Content-Length`
-required (at most 500 MB), `Idempotency-Key` required.
+required, `Idempotency-Key` required.
+
+- **Refused before a byte is read.** `requireGenerationAllowed` (a blocked
+  organization), then `GATEWAY_UPLOAD_RATE_LIMITER` (120 a minute per
+  organization, its own bucket, `429 RATE_LIMITED`). A new file is also
+  refused when the organization cannot pay for its check
+  (`hasEnoughCredits(estimateLLMCost(1))`, `402`) or already keeps 500
+  uploads or 2 GB here. A replay of a stored key skips those two: it spends
+  nothing.
+- **Size per kind.** 20 MB an image (the product's own image cap), 100 MB a
+  clip, 25 MB audio. Checked on `Content-Length` and again on the stream: a
+  body longer than it declared is cut off, its partial file deleted, `400`.
 
 - **A fresh id, written once.** Each file is stored at
   `gateway-uploads/<organization>/<ULID>.<ext>` with a create-only write
@@ -1606,7 +1618,8 @@ required (at most 500 MB), `Idempotency-Key` required.
 - **Checked before it is answered.** `requireCheckedUploadRights` runs on
   that exact URL; a refusal (a real person is `400 ATTESTATION_REQUIRED`)
   deletes the file and answers nothing. A pass answers `201 { url }`, and a
-  submit finds the verdict. The check is charged to the caller as on a submit.
+  submit finds the verdict. The check is charged to the caller on the platform
+  key's meter (`likeness:<url>`, `whenShort: 'refuse'`), as on a submit.
 - **The key maps to the id.** After a pass, a create-only pointer at
   `gateway-uploads/<organization>/keys/<sha256 of the key>` records the file.
   A replay answers that file's URL and never stores again; a concurrent

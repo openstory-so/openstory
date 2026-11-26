@@ -130,6 +130,11 @@
       "namespace_id": "2380",
       "simple": { "limit": 300, "period": 60 },
     },
+    {
+      "name": "GATEWAY_UPLOAD_RATE_LIMITER",
+      "namespace_id": "2438",
+      "simple": { "limit": 120, "period": 60 },
+    },
   ],
   "workflows": [
     // All durable async work runs on Cloudflare Workflows. Each class is
@@ -455,6 +460,11 @@
           "namespace_id": "2380",
           "simple": { "limit": 300, "period": 60 },
         },
+        {
+          "name": "GATEWAY_UPLOAD_RATE_LIMITER",
+          "namespace_id": "2438",
+          "simple": { "limit": 120, "period": 60 },
+        },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
       // they must be redeclared here. Keep this list in sync with the
@@ -778,6 +788,11 @@
           "name": "GATEWAY_RATE_LIMITER",
           "namespace_id": "2380",
           "simple": { "limit": 300, "period": 60 },
+        },
+        {
+          "name": "GATEWAY_UPLOAD_RATE_LIMITER",
+          "namespace_id": "2438",
+          "simple": { "limit": 120, "period": 60 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
