@@ -10,7 +10,6 @@
 
 import {
   createAdapter,
-  getPlatformLlmKey,
   resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
@@ -299,8 +298,8 @@ export type DurableLLMCallContext = {
    * can't double-charge.
    */
   workflowRunId: string;
-  /** Scoped DB context for resolving organization API keys + deducting credits. */
-  scopedDb?: WorkflowScopedDb;
+  /** The run's scoped DB: its key is resolved, and charged, through it. */
+  scopedDb: WorkflowScopedDb;
 };
 
 export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
@@ -312,8 +311,7 @@ export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
 };
 
 /**
- * Resolve the key for the LLM call — the organization's key via ScopedDb, or the
- * platform key for anonymous workflows. MUST be awaited INSIDE the LLM
+ * Resolve the key for the LLM call through the run's ScopedDb. MUST be awaited INSIDE the LLM
  * `step.do`: it reads (and, via `decryptOrMarkInvalid`, writes) mutable D1
  * state, so resolving between steps would re-execute on replay while the LLM
  * step is cache-served, and the billing attribution could flip. The step
@@ -324,17 +322,7 @@ async function resolveCallKey(
   callContext: DurableLLMCallContext,
   model?: string
 ) {
-  if (callContext.scopedDb) {
-    return callContext.scopedDb.credentials.resolveLlmKey(model);
-  }
-  const platform = getPlatformLlmKey(model);
-  if (!platform) {
-    throw new NonRetryableError(
-      'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)',
-      'WorkflowValidationError'
-    );
-  }
-  return platform;
+  return callContext.scopedDb.credentials.resolveLlmKey(model);
 }
 
 /**
@@ -449,7 +437,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                     // deduction) but often not `userId`, which silently produced
                     // anonymous generations — see the media-side note in
                     // image-generation.ts.
-                    userId: callContext.userId ?? callContext.scopedDb?.userId,
+                    userId: callContext.userId ?? callContext.scopedDb.userId,
                   }),
                 ],
                 debug: false,
@@ -623,7 +611,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
                   metadata: logMetadata,
                   sessionId: callContext.sequenceId,
                   // Same scopedDb fallback as the non-streaming path above.
-                  userId: callContext.userId ?? callContext.scopedDb?.userId,
+                  userId: callContext.userId ?? callContext.scopedDb.userId,
                 }),
               ],
               debug: false,

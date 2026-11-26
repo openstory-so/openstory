@@ -1211,9 +1211,11 @@ required argument, so no call builds an adapter on an implicit platform key.
 Only `getPlatformLlmKey` mints a `no organization` key, and
 `unmetered-llm-keys.test.ts` pins the files that may call it: the
 definition; the unwrapped `apiKeys` (which only `scoped.ts` builds, inside
-`withTextGateway`); `text.ts`, which meters it; a durable call with no
-`scopedDb` (an anonymous workflow); llm-client's Google re-run of a call
-already marked uncharged. The same test also fails on any other file that
+`withTextGateway`); `text.ts`, which meters it; and llm-client's Google
+re-run of a call already marked uncharged. A durable call takes the run's
+`scopedDb` as a required argument, and `WorkflowScopedDb.apiKeys` has no
+LLM resolver, so a run reaches its key only through
+`credentials.resolveLlmKey`, metered for the run. The same test also fails on any other file that
 writes `OWN_KEY`, a reason literal, a bare `uncharged:` or copies a meter
 from another key (`meter: someKey.meter`).
 
@@ -1303,8 +1305,9 @@ resolver, so the retry is metered on its own route.
   disconnects before the first text still pays the prompt estimate, since
   the provider bills the prompt and any hidden reasoning. Only a provider
   failure before any text (a refusal, a Google location refusal, a 4xx,
-  a run error) is free, and its own hold is released. On the direct route
-  an estimate is priced by `llmCostFromUsage`, which has no rate for an
+  a run error) is free, and its own hold is released. The direct route
+  applies the same rule, pricing the estimate with `llmCostFromUsage`
+  (native Grok, Gemini and LLMTR rates); it has no rate for an
   OpenRouter model without the provider's `cost`, so such a call stays
   uncharged (reported as a missing cost) until it has a card.
 - **What a charge records:** each charge line's `sku` is

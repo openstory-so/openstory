@@ -232,7 +232,12 @@ type WorkflowLiveReads = Pick<ScopedDb, 'organizationId' | 'userId'> & {
   };
 };
 
-export type WorkflowScopedDb = WorkflowDomains & {
+export type WorkflowScopedDb = Omit<WorkflowDomains, 'apiKeys'> & {
+  /** No LLM resolvers: a run's key comes through `credentials.resolveLlmKey`, metered for the run. */
+  apiKeys: Omit<
+    WorkflowDomains['apiKeys'],
+    'resolveLlmKey' | 'resolveRunLlmKey' | 'resolvePlatformLlmKey'
+  >;
   credentials: WorkflowCredentials;
   claims: WorkflowClaims;
   liveRead: WorkflowLiveReads;
@@ -292,7 +297,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
       resolveOptionalKey: (provider) =>
         scopedDb.apiKeys.resolveOptionalKey(provider),
-      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
+      resolveLlmKey: (model) => scopedDb.apiKeys.resolveRunLlmKey(model, null),
     },
     claims: scopedDb,
     liveRead: scopedDb,

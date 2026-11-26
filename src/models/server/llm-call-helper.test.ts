@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { WorkflowStep } from 'cloudflare:workers';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 
 // Import real modules before vi.doMock so mocks can re-export the rest.
 import * as tanstackAi from '@tanstack/ai';
@@ -18,12 +19,6 @@ vi.doMock('@tanstack/ai', () => ({
 vi.doMock('./create-adapter', () => ({
   ...createAdapterModule,
   createAdapter: () => ({ kind: 'text', name: 'mock' }),
-  getPlatformLlmKey: () => ({
-    key: 'test-key',
-    source: 'platform' as const,
-    via: 'openrouter' as const,
-    meter: { uncharged: 'no organization' as const },
-  }),
 }));
 
 vi.doMock('@/platform/server/ai/prompts-index', () => ({
@@ -76,7 +71,21 @@ const callConfig = {
   responseSchema: schema,
 };
 
+// the helper only resolves its key through the run's hatch
+const scopedDb = asStub<WorkflowScopedDb>({
+  userId: 'u1',
+  credentials: {
+    resolveLlmKey: async () => ({
+      key: 'test-key',
+      source: 'platform' as const,
+      via: 'openrouter' as const,
+      meter: { uncharged: 'no organization' as const },
+    }),
+  },
+});
+
 const callContext = {
+  scopedDb,
   sequenceId: '01TESTSEQUENCE0000000000',
   workflowRunId: 'wf-test',
   shotPromptStream: { shotId: 'shot-1', promptType: 'visual' as const },
@@ -84,6 +93,7 @@ const callContext = {
 
 /** Context without shot stream → durableLLMCallCf (non-UI stream drain). */
 const nonStreamContext = {
+  scopedDb,
   sequenceId: '01TESTSEQUENCE0000000000',
   workflowRunId: 'wf-test',
 };

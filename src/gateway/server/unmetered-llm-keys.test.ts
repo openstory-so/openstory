@@ -19,8 +19,6 @@ const UNMETERED_ALLOWLIST = [
   'src/models/server/db/api-keys.ts',
   // Puts the meter on.
   'src/gateway/server/text.ts',
-  // A durable call with no scopedDb: no organization to charge.
-  'src/models/server/llm-call-helper.ts',
   // The Google re-run of a call already marked uncharged.
   'src/models/server/llm-client.ts',
   // Its own per-provider `OWN_KEY` table (media routing), not the charging mode.

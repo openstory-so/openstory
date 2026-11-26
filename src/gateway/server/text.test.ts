@@ -522,6 +522,36 @@ describe('openstoryText on the direct route', () => {
   // OpenRouter's own bill for the call: what `llmCostFromUsage` charges today.
   const billed = (): TokenUsage => ({ ...USAGE(), cost: 0.0015 });
 
+  it('charges a caller disconnect with no usage on its estimated tokens (native Grok rates)', async () => {
+    const inner = adapter(() => run());
+    for await (const chunk of openstoryText(
+      inner,
+      meter({ card: null, via: 'xai' }),
+      'x-ai/grok-4.7'
+    ).chatStream(OPTIONS)) {
+      if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break;
+    }
+    const { charges } = await ledger();
+    expect(charges).toHaveLength(1);
+    expect(charges[0]).toBeGreaterThan(0);
+  });
+
+  it('charges nothing on the direct route when the provider throws before any text', async () => {
+    const inner = adapter(() => {
+      throw new Error('400 Bad Request');
+    });
+    await expect(
+      drain(
+        openstoryText(
+          inner,
+          meter({ card: null, via: 'xai' }),
+          'x-ai/grok-4.7'
+        ).chatStream(OPTIONS)
+      )
+    ).rejects.toThrow('400');
+    expect((await ledger()).charges).toEqual([]);
+  });
+
   it('charges a request once at the provider cost, with no hold', async () => {
     const inner = adapter(() => run('r', billed()));
     await drain(
