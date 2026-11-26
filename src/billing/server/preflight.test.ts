@@ -17,6 +17,11 @@ import {
 } from './preflight';
 import { asStub } from '@/test/as-stub';
 
+const remote = vi.hoisted(() => ({ configured: false }));
+vi.mock('@/gateway/server/remote-config', () => ({
+  remoteGatewayConfigured: () => remote.configured,
+}));
+
 type StubProvider = 'fal' | 'openrouter' | 'llmtr';
 
 function fakeScopedDb(opts: {
@@ -246,5 +251,32 @@ describe('releaseReservationOnThrow', () => {
     ).rejects.toThrow('trigger failed');
 
     expect(zeroReservation).not.toHaveBeenCalled();
+  });
+});
+
+describe('an install on the hosted gateway (#2438)', () => {
+  it('takes no local hold and makes no local check: the key organization pays there', async () => {
+    remote.configured = true;
+    try {
+      const db = fakeScopedDb({ keys: [], canAfford: false });
+      const hold = vi.spyOn(db.billing, 'createReservation');
+      expect(await reserveRunCredits(db, COST)).toBeUndefined();
+      await expect(requireCredits(db, COST)).resolves.toBeUndefined();
+      expect(hold).not.toHaveBeenCalled();
+    } finally {
+      remote.configured = false;
+    }
+  });
+
+  it('still holds platform-only work, which runs on this server', async () => {
+    remote.configured = true;
+    try {
+      const db = fakeScopedDb({ keys: [], canAfford: true });
+      expect(await reserveRunCredits(db, COST, { providers: [] })).toBe(
+        'res_1'
+      );
+    } finally {
+      remote.configured = false;
+    }
   });
 });

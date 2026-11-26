@@ -108,6 +108,8 @@ export const SECRETS = {
   LANGFUSE_PUBLIC_KEY: { runtime: false, build: false },
   LANGFUSE_SECRET_KEY: { runtime: false, build: false },
   OPENAI_APPS_CHALLENGE: { runtime: true, build: false, optional: true },
+  // A self-hosted install's one key: providers with no key run on the hosted gateway (#2438).
+  OPENSTORY_API_KEY: { runtime: true, build: false, optional: true },
   OPENROUTER_KEY: { runtime: true, build: false },
   R2_PUBLIC_ASSETS_DOMAIN: { runtime: false, build: false },
   R2_PUBLIC_STORAGE_DOMAIN: { runtime: true, build: false, optional: true },

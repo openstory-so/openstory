@@ -88,7 +88,7 @@ const still = {
 describe('gatewayImageRequest', () => {
   it("sends a Grok still with no references as xAI's own body", () => {
     const request = gatewayImageRequest(still, OPENSTORY, ORG);
-    expect(request?.model).toEqual(GROK);
+    expect(request?.route).toEqual({ via: 'openstory', model: GROK });
     expect(request?.body).toMatchObject({
       model: 'grok-imagine-image-2.0',
       n: 1,
@@ -139,9 +139,11 @@ describe('withGatewayImageQuotes', () => {
 
   it('quotes an openstory Grok still at exactly the gateway hold', () => {
     const request = gatewayImageRequest(still, OPENSTORY, ORG);
-    if (!request) throw new Error('expected an openstory request');
+    if (request?.route.via !== 'openstory') {
+      throw new Error('expected an openstory request');
+    }
     const hold = gatewayHoldMicros(
-      priceGatewayJob(request.model.card, request.body)
+      priceGatewayJob(request.route.model.card, request.body)
     );
     const quote = estimateImageCost('grok_imagine_image', '16:9', 1, {
       pricing: withGatewayImageQuotes(fal, OPENSTORY),

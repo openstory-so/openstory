@@ -26,9 +26,13 @@ import {
   openstoryVideoStatus,
 } from '@/gateway/server/adapter';
 import {
-  inProcessGateway,
+  gatewayPoller,
+  gatewayTransport,
+  remoteJobCharge,
+} from '@/gateway/server/adapter/http';
+import { remoteJobOf } from '@/gateway/server/remote-config';
+import {
   gatewayRunOf,
-  inProcessPoller,
   releaseInProcessJob,
 } from '@/gateway/server/adapter/in-process';
 import type { GatewayStore } from '@/gateway/server/phases';
@@ -261,9 +265,8 @@ export async function sendVideoJob(params: {
         reason: route.reason,
       });
     } else {
-      const transport = inProcessGateway({
+      const { modelId, transport } = gatewayTransport(route, {
         scopedDb: gateway.scopedDb,
-        model: route.model,
         runId: gateway.runId,
         store: gateway.store,
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
@@ -279,7 +282,7 @@ export async function sendVideoJob(params: {
             : async (held) => held,
       });
       const job = await generateVideo({
-        adapter: openstoryVideo(route.model.id, transport, {
+        adapter: openstoryVideo(modelId, transport, {
           idempotencyKey: gateway.idempotencyKey,
         }),
         prompt: '',
@@ -307,7 +310,8 @@ export async function releaseTimedOutVideoJob(
   scopedDb: WorkflowScopedDb,
   error: string
 ): Promise<void> {
-  if (job.via !== 'openstory') return;
+  // A hosted job cannot be stopped from here; it ends and is charged there.
+  if (job.via !== 'openstory' || remoteJobOf(job.jobId)) return;
   await releaseInProcessJob(scopedDb, job.jobId, error).catch(
     (err: unknown) => {
       logger.error('Releasing a timed-out gateway video job failed', { err });
@@ -324,6 +328,10 @@ export async function readGatewayCharge(
   if (job.via !== 'openstory') return null;
   const charge = await step.do('read-gateway-charge', async () => {
     const done = doneVideoJob(job.jobId);
+    const handle = done ? done.jobId : job.jobId;
+    const remote = handle ? remoteJobOf(handle) : null;
+    // The hosted organization paid: shown, never debited here.
+    if (remote) return remoteJobCharge(remote);
     const jobId = done ? done.jobId : (gatewayRunOf(job.jobId)?.jobId ?? null);
     if (!jobId) {
       logger.warn('A gateway clip names no job: its charge is not recorded');
@@ -368,7 +376,10 @@ export async function pollVideoJob(
       throw new Error(`Video job on the gateway polled without its store`);
     }
     return getVideoJobStatus({
-      adapter: openstoryVideoStatus(endpointId, inProcessPoller(ctx.gateway)),
+      adapter: openstoryVideoStatus(
+        endpointId,
+        gatewayPoller(job.jobId, ctx.gateway)
+      ),
       jobId: job.jobId,
       ...thread,
     });

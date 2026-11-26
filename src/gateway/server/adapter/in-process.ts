@@ -27,6 +27,7 @@ import {
   releaseGatewayRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
+import { remoteJobOf } from '@/gateway/server/remote-config';
 import {
   holdGatewayJob,
   type UPLOAD_RIGHTS_CHECKED,
@@ -121,11 +122,11 @@ export function inProcessPoller(params: {
   };
 }
 
-/** The gateway job and provider a queued handle names; null for a `done:` handle (`doneVideoJob`). */
+/** The gateway job and provider a queued handle names; null for a `done:` or hosted handle. */
 export function gatewayRunOf(
   handle: string
 ): Pick<GatewayRun, 'jobId' | 'provider'> | null {
-  if (handle.startsWith('done:')) return null;
+  if (handle.startsWith('done:') || remoteJobOf(handle)) return null;
   const { run } = handleSchema.parse(JSON.parse(handle));
   return { jobId: run.jobId, provider: run.provider };
 }

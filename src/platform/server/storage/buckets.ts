@@ -18,6 +18,8 @@ export const STORAGE_BUCKETS = {
   ELEMENTS: 'elements',
   /** Shared stitches (#2127): `<organizationId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
   STITCHES: 'stitches',
+  /** A self-hosted install's gateway inputs (#2438): `<organizationId>/<key hash>.<ext>`; expired by an R2 lifecycle rule. */
+  GATEWAY_UPLOADS: 'gateway-uploads',
 } as const;
 
 export type StorageBucket =
