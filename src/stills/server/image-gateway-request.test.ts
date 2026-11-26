@@ -69,6 +69,8 @@ const GROK: GatewayModel = {
   },
 };
 
+const ORG = '01KORG000000000000000000AA';
+
 const OPENSTORY: GatewayRoutes = {
   [gatewayRouteKey('grok', 'grok-imagine-image-2.0')]: {
     via: 'openstory',
@@ -85,7 +87,7 @@ const still = {
 
 describe('gatewayImageRequest', () => {
   it("sends a Grok still with no references as xAI's own body", () => {
-    const request = gatewayImageRequest(still, OPENSTORY);
+    const request = gatewayImageRequest(still, OPENSTORY, ORG);
     expect(request?.model).toEqual(GROK);
     expect(request?.body).toMatchObject({
       model: 'grok-imagine-image-2.0',
@@ -98,30 +100,35 @@ describe('gatewayImageRequest', () => {
   it('keeps a still with references direct: the endpoint takes none', () => {
     expect(
       gatewayImageRequest(
-        { ...still, referenceImageUrls: ['/r2/characters/a.png'] },
-        OPENSTORY
+        { ...still, referenceImageUrls: [`/r2/characters/org/${ORG}/a.png`] },
+        OPENSTORY,
+        ORG
       )
     ).toBeNull();
   });
 
   it('keeps a model routed direct at the trigger direct', () => {
     expect(
-      gatewayImageRequest(still, {
-        'grok/grok-imagine-image-2.0': {
-          via: 'direct',
-          reason: 'The organization has its own key',
+      gatewayImageRequest(
+        still,
+        {
+          'grok/grok-imagine-image-2.0': {
+            via: 'direct',
+            reason: 'The organization has its own key',
+          },
         },
-      })
+        ORG
+      )
     ).toBeNull();
   });
 
   it('keeps a run triggered before routes existed direct', () => {
-    expect(gatewayImageRequest(still, undefined)).toBeNull();
+    expect(gatewayImageRequest(still, undefined, ORG)).toBeNull();
   });
 
   it('keeps a non-Grok still direct', () => {
     expect(
-      gatewayImageRequest({ ...still, model: 'krea_2_turbo' }, OPENSTORY)
+      gatewayImageRequest({ ...still, model: 'krea_2_turbo' }, OPENSTORY, ORG)
     ).toBeNull();
   });
 });
@@ -131,7 +138,7 @@ describe('withGatewayImageQuotes', () => {
   const fal = { [FAL_ID]: { unitPrice: micros(40_000), unit: 'images' } };
 
   it('quotes an openstory Grok still at exactly the gateway hold', () => {
-    const request = gatewayImageRequest(still, OPENSTORY);
+    const request = gatewayImageRequest(still, OPENSTORY, ORG);
     if (!request) throw new Error('expected an openstory request');
     const hold = gatewayHoldMicros(
       priceGatewayJob(request.model.card, request.body)
@@ -234,23 +241,26 @@ const falStill = {
   imageSize: 'landscape_16_9' as const,
   numImages: 1,
 };
-const withRefs = { ...falStill, referenceImageUrls: ['/r2/characters/a.png'] };
+const withRefs = {
+  ...falStill,
+  referenceImageUrls: [`/r2/characters/org/${ORG}/a.png`],
+};
 const FAL_ROWS_EDIT = {
   [NANO_EDIT.id]: { unitPrice: micros(1), unit: 'images' },
 };
 
 describe('a fal still', () => {
   it('runs on the gateway with no references', () => {
-    const request = gatewayImageRequest(falStill, FAL_ROUTES);
+    const request = gatewayImageRequest(falStill, FAL_ROUTES, ORG);
     expect(request?.model.id).toBe(NANO.id);
     expect(request?.body).toMatchObject({ prompt: falStill.prompt });
   });
 
   it('runs on the gateway with references, through the edit endpoint', () => {
-    const request = gatewayImageRequest(withRefs, FAL_ROUTES);
+    const request = gatewayImageRequest(withRefs, FAL_ROUTES, ORG);
     expect(request?.model.id).toBe(NANO_EDIT.id);
     expect(request?.body).toMatchObject({
-      image_urls: [stableMediaUrl('/r2/characters/a.png')],
+      image_urls: [stableMediaUrl(`/r2/characters/org/${ORG}/a.png`, ORG)],
     });
   });
 
@@ -262,8 +272,8 @@ describe('a fal still', () => {
         reason: 'text_input_tokens (text_input_tokens): required',
       },
     };
-    expect(gatewayImageRequest(falStill, routes)?.model.id).toBe(NANO.id);
-    expect(gatewayImageRequest(withRefs, routes)).toBeNull();
+    expect(gatewayImageRequest(falStill, routes, ORG)?.model.id).toBe(NANO.id);
+    expect(gatewayImageRequest(withRefs, routes, ORG)).toBeNull();
   });
 
   // The fal rows exist; their prices are not what an openstory shape quotes.
@@ -278,7 +288,8 @@ describe('a fal still', () => {
       for (const resolution of [undefined, '720p', '4k'] as const) {
         const request = gatewayImageRequest(
           { ...params, numImages: 2, ...(resolution && { resolution }) },
-          FAL_ROUTES
+          FAL_ROUTES,
+          ORG
         );
         if (!request) throw new Error('expected an openstory request');
         const quote = estimateImageCost('nano_banana_2', '16:9', 2, {
@@ -314,9 +325,9 @@ describe('a fal still', () => {
     };
     const pricing = withGatewayImageQuotes(FAL_ROWS, routes);
     expect(
-      gatewayImageRequest({ ...falStill, numImages: 2 }, routes)
+      gatewayImageRequest({ ...falStill, numImages: 2 }, routes, ORG)
     ).toBeNull();
-    const request = gatewayImageRequest(falStill, routes);
+    const request = gatewayImageRequest(falStill, routes, ORG);
     if (!request) throw new Error('expected an openstory request');
     expect(estimateImageCost('nano_banana_2', '16:9', 1, { pricing })).toBe(
       gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
@@ -395,12 +406,12 @@ describe('a stored relative reference on a `format: uri` field', () => {
     [
       'with a CDN',
       { R2_PUBLIC_STORAGE_DOMAIN: 'media.example.com' },
-      'https://media.example.com/characters/a.png',
+      `https://media.example.com/characters/org/${ORG}/a.png`,
     ],
     [
       'without one',
       { R2_PUBLIC_STORAGE_DOMAIN: '' },
-      'https://app.example.com/r2/characters/a.png',
+      `https://app.example.com/r2/characters/org/${ORG}/a.png`,
     ],
   ])(
     'routes openstory %s, on the same absolute URL every attempt',
@@ -408,8 +419,8 @@ describe('a stored relative reference on a `format: uri` field', () => {
       vi.stubEnv('VITE_APP_URL', 'https://app.example.com');
       for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
       try {
-        const first = gatewayImageRequest(withRefs, routes());
-        const retried = gatewayImageRequest(withRefs, routes());
+        const first = gatewayImageRequest(withRefs, routes(), ORG);
+        const retried = gatewayImageRequest(withRefs, routes(), ORG);
         expect(first?.model.id).toBe(NANO_EDIT.id);
         expect(first?.body).toMatchObject({ image_urls: [held] });
         expect(retried?.body).toEqual(first?.body);

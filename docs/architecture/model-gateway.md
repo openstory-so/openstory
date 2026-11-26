@@ -822,7 +822,13 @@ anything else goes direct as before.
   else the app's own `/r2/` route), so a `format: uri` field validates (no
   snapshot schema declares one today). The fal upload is `wireBody`
   (`fetchableFalBody`), made just before the hold so a failing upload
-  strands no hold. Without a storage CDN (Deploy-button
+  strands no hold. Both rewrite only a URL we serve ourselves (`/r2/<key>`
+  or the app's origin) whose key the run's organization owns
+  (`storedUrlOwnedBy`, the check `isCheckable` uses); another host with an
+  `/r2/` path, or another organization's object, is sent as it came, never
+  turned into a CDN URL or an upload. The direct send knows no organization
+  and checks the host only. `ensureExternallyFetchableUrl` itself still
+  takes any host's `/r2/` path, as on main. Without a storage CDN (Deploy-button
   workers, e2e record) each fal upload is a new URL, so holding the sent
   body would make a retried step conflict with its own job after it was
   charged. Video does the same: the motion and Studio fal builders keep the

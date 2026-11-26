@@ -125,7 +125,8 @@ export function withGatewayImageQuotes(
                 ...(resolution && { resolution }),
                 referenceImageUrls,
               },
-              routes
+              routes,
+              null
             );
             if (route.via !== 'openstory') continue;
             holds[gatewayHoldKey(aspectRatio, resolution, numImages)] =

@@ -4,6 +4,7 @@
  */
 
 import { getEnv } from '#env';
+import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
 
 export const STORAGE_BUCKETS = {
   THUMBNAILS: 'thumbnails',
@@ -44,6 +45,13 @@ export function keyOwner(segments: readonly string[]): string | undefined {
   return segments[0] === 'org' || segments[0] === 'teams'
     ? segments[1]
     : segments[0];
+}
+
+/** Whether a stored URL is this organization's object: the key's owner segment, never a substring. */
+export function storedUrlOwnedBy(url: string, organizationId: string): boolean {
+  const key = r2KeyFromUrl(url);
+  if (key === null || mediaUrlHasTraversal(url)) return false;
+  return keyOwner(key.split('/').slice(1)) === organizationId;
 }
 
 /**

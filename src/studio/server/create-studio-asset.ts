@@ -488,7 +488,11 @@ export async function createStudioAssets(
   // The gateway holds and charges an `openstory` still itself (#2434).
   const onGateway =
     input.activity === 'image' &&
-    gatewayImageRequest(studioImageParams(input), gatewayRoutes) !== null;
+    gatewayImageRequest(
+      studioImageParams(input),
+      gatewayRoutes,
+      scopedDb.organizationId
+    ) !== null;
 
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve

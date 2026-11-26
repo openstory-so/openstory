@@ -163,7 +163,11 @@ export async function generateImageWithProvider(
 
   const gateway = options?.gateway;
   const onGateway = gateway
-    ? gatewayImageRequest(params, gateway.routes)
+    ? gatewayImageRequest(
+        params,
+        gateway.routes,
+        gateway.scopedDb.organizationId
+      )
     : null;
   // The via of the attempt in flight, for the failure span.
   let via: ProductVia = onGateway ? 'openstory' : 'fal';
@@ -235,38 +239,45 @@ const jsonBody = z.record(z.string(), z.json());
  */
 function imageGatewayTarget(
   params: ImageGenerationParams,
-  routes: GatewayRoutes | undefined
+  routes: GatewayRoutes | undefined,
+  organizationId: string | null
 ): { target: GatewayRouteTarget; body: GatewayJobInput } {
   const grokId = nativeGrokImageModel(params.model);
   if (grokId && routes?.[gatewayRouteKey('grok', grokId)]) {
     return {
       target: { provider: 'grok', modelId: grokId },
-      body: jsonBody.parse(stableMediaBody(buildGrokImageBody(params, grokId))),
+      body: jsonBody.parse(
+        stableMediaBody(buildGrokImageBody(params, grokId), organizationId)
+      ),
     };
   }
   const { endpointId, input } = buildImageRequest(params);
   return {
     target: { provider: 'fal', modelId: endpointId },
     // As fal receives it (JSON drops an undefined option), stored URLs absolute and stable.
-    body: jsonBody.parse(stableMediaBody(JSON.parse(JSON.stringify(input)))),
+    body: jsonBody.parse(
+      stableMediaBody(JSON.parse(JSON.stringify(input)), organizationId)
+    ),
   };
 }
 
 /** The run's route for this still and the body it would send. Pure, no log. */
 export function imageGatewayRoute(
   params: ImageGenerationParams,
-  routes: GatewayRoutes | undefined
+  routes: GatewayRoutes | undefined,
+  organizationId: string | null
 ): { route: GatewayRoute; body: GatewayJobInput } {
-  const { target, body } = imageGatewayTarget(params, routes);
+  const { target, body } = imageGatewayTarget(params, routes, organizationId);
   return { route: gatewayRunRoute(routes, target, body), body };
 }
 
 /** The gateway model and body when the route for this still is `openstory`; else null (direct). */
 export function gatewayImageRequest(
   params: ImageGenerationParams,
-  routes: GatewayRoutes | undefined
+  routes: GatewayRoutes | undefined,
+  organizationId: string
 ): { model: GatewayModel; body: GatewayJobInput } | null {
-  const { route, body } = imageGatewayRoute(params, routes);
+  const { route, body } = imageGatewayRoute(params, routes, organizationId);
   if (route.via === 'direct') {
     logger.info(`Image stays direct: ${route.reason}`, {
       model: params.model,
@@ -329,10 +340,16 @@ async function generateOnGateway(
     // Held with the stored URLs; sent with ones the provider can fetch, made only when it starts.
     wireBody:
       request.model.provider === 'fal'
-        ? async (held) => jsonBody.parse(await fetchableFalBody(held))
+        ? async (held) =>
+            jsonBody.parse(
+              await fetchableFalBody(held, call.scopedDb.organizationId)
+            )
         : async () =>
-            imageGatewayTarget(await inlinedReferences(params), call.routes)
-              .body,
+            imageGatewayTarget(
+              await inlinedReferences(params),
+              call.routes,
+              call.scopedDb.organizationId
+            ).body,
   });
   const result = await generateImage({
     adapter: openstoryImage(request.model.id, transport, {

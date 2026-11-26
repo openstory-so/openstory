@@ -244,7 +244,10 @@ export async function sendVideoJob(params: {
   if (gateway) {
     // Held and checked with stored URLs absolute and stable; fal's upload waits for the start.
     const body = jsonBody.parse(
-      stableMediaBody(await captureVideoBody(params.send))
+      stableMediaBody(
+        await captureVideoBody(params.send),
+        gateway.scopedDb.organizationId
+      )
     );
     const route = gatewayRunRoute(
       gateway.routes,
@@ -269,7 +272,10 @@ export async function sendVideoJob(params: {
         // Held with the stored URLs; fal gets fetchable ones when the job starts.
         wireBody:
           params.provider === 'fal'
-            ? async (held) => jsonBody.parse(await fetchableFalBody(held))
+            ? async (held) =>
+                jsonBody.parse(
+                  await fetchableFalBody(held, gateway.scopedDb.organizationId)
+                )
             : async (held) => held,
       });
       const job = await generateVideo({

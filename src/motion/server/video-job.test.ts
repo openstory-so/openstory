@@ -177,6 +177,7 @@ describe('sendVideoJob', () => {
     mockGenerateVideo.mockResolvedValue({ jobId: 'gateway-job' });
     transport.mockClear();
     const scopedDb = asStub<WorkflowScopedDb>({
+      organizationId: 'org-1',
       liveRead: { apiKeys: { hasUsableKey: vi.fn(async () => false) } },
     });
     const routes = await routeVideoJob(scopedDb, {
@@ -216,7 +217,7 @@ describe('sendVideoJob', () => {
         modelOptions: {
           ...held,
           image_urls: [
-            actualExternalUrl.stableMediaUrl(held.image_urls[0] ?? ''),
+            actualExternalUrl.stableMediaUrl(held.image_urls[0] ?? '', 'org-1'),
           ],
         },
       })

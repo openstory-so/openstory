@@ -20,7 +20,6 @@
  * off the client.
  */
 
-import { keyOwner } from '@/platform/server/storage/buckets';
 import type { Likeness } from '@/cast/likeness';
 import {
   analyzeTalentClipForOrganization,
@@ -43,8 +42,10 @@ import {
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
-import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
-import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  r2KeyFromUrl,
+  storedUrlOwnedBy,
+} from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -220,14 +221,11 @@ function analyzeUpload(opts: {
 /**
  * A raw URL, or one of this organization's own stored objects. Ownership is the
  * key's owner segment, read the way the upload route reads it
- * (`keyOwner`), never a substring.
+ * (`storedUrlOwnedBy`), never a substring.
  */
 export function isCheckable(url: string, organizationId: string): boolean {
-  const key = r2KeyFromUrl(url);
-  if (key === null) return needsLikenessCheck(url);
-  if (mediaUrlHasTraversal(url)) return false;
-  const path = key.split('/').slice(1);
-  return keyOwner(path) === organizationId;
+  if (r2KeyFromUrl(url) === null) return needsLikenessCheck(url);
+  return storedUrlOwnedBy(url, organizationId);
 }
 
 /** Refuse a URL {@link isCheckable} rejects: another organization's file. */
