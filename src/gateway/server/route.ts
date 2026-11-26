@@ -8,6 +8,7 @@ import {
 } from '@/gateway/server/catalog';
 import { storedModelSchema } from '@/gateway/server/db/gateway-models';
 import { priceGatewayJob } from '@/gateway/server/price';
+import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import { validatedBody } from '@/gateway/server/submit-job';
 import { ValidationError } from '@/platform/errors';
 import type { ApiKeyProvider } from '@/platform/server/db/schema';
@@ -87,6 +88,9 @@ export async function resolveGatewayRoute({
   }
   const model = await getSnapshotGatewayModel(provider, modelId);
   if (!model) return { via: 'direct', reason: 'not in the gateway snapshot' };
+  if (!GATEWAY_DRIVERS[provider].configured(model.endpointId)) {
+    return { via: 'direct', reason: 'not configured on this server' };
+  }
   const reason =
     unholdableReason(model.card) ?? (body && gatewayCannotRun(model, body));
   return reason ? { via: 'direct', reason } : { via: 'openstory', model };
