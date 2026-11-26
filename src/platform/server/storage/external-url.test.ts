@@ -348,8 +348,9 @@ describe('fetchableFalFetch (the direct fal send)', () => {
     });
 
     expect(createFalClient).toHaveBeenCalledWith({ credentials: 'own-key' });
-    const init = base.mock.calls[0]?.[1];
-    expect(JSON.parse(String(init?.body))).toEqual({
+    const body = base.mock.calls[0]?.[1]?.body;
+    if (typeof body !== 'string') throw new Error('expected a JSON body');
+    expect(JSON.parse(body)).toEqual({
       prompt: 'Mara turns at the door',
       image_urls: ['https://v3.fal.media/files/b/abc/shot.png'],
       duration: 5,
