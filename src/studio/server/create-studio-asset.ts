@@ -80,10 +80,7 @@ import {
 } from '@/motion/draft-mode';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { gatewayImageRequest } from '@/stills/server/image-generation';
-import {
-  imageGatewayRoutes,
-  imageQuotePricing,
-} from '@/stills/server/image-gateway-routes';
+import { imageRoutesAndQuotes } from '@/stills/server/image-gateway-routes';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 
@@ -441,7 +438,8 @@ export async function createStudioAssets(
         : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
-  const pricing = await imageQuotePricing(scopedDb);
+  const { routes: gatewayRoutes, pricing } =
+    await imageRoutesAndQuotes(scopedDb);
   const perItemCost = estimateStudioCost({ ...input, count: 1 }, pricing);
   const creditErrorMessage =
     input.activity === 'video'
@@ -487,7 +485,6 @@ export async function createStudioAssets(
     }
   }
 
-  const gatewayRoutes = await imageGatewayRoutes(scopedDb);
   // The gateway holds and charges an `openstory` still itself (#2434).
   const onGateway =
     input.activity === 'image' &&

@@ -11,7 +11,7 @@ import {
 import { priceGatewayJob } from '@/gateway/server/price';
 import { gatewayHoldMicros } from '@/gateway/server/submit-job';
 import { nativeGrokImageModel } from '@/models/grok-native';
-import { gatewayImageRequest } from '@/stills/server/image-generation';
+import { imageGatewayRoute } from '@/stills/server/image-generation';
 import { getEditEndpoint, IMAGE_MODELS } from '@/models/models';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { typedEntries } from '@/platform/typed-object';
@@ -34,7 +34,7 @@ export function imageGatewayRoutes(
 
 /**
  * The pricing map image quotes read: each endpoint a still would take is
- * priced by the run's own decision (`gatewayImageRequest`), so the hold where
+ * priced by the run's own decision (`imageGatewayRoute`), so the hold where
  * it routes `openstory`; a quote with references reads the edit endpoint.
  */
 export function withGatewayImageQuotes(
@@ -48,7 +48,7 @@ export function withGatewayImageQuotes(
     if (editId) endpoints.push([editId, ['/r2/quote.png']]);
     for (const [endpointId, referenceImageUrls] of endpoints) {
       // Grok's price reads only the count and quality, so one still's body prices every size.
-      const request = gatewayImageRequest(
+      const resolved = imageGatewayRoute(
         {
           model: key,
           prompt: 'quote',
@@ -58,10 +58,10 @@ export function withGatewayImageQuotes(
         },
         routes
       );
-      if (!request) continue;
+      if (resolved?.route.via !== 'openstory') continue;
       quoted[endpointId] = {
         unitPrice: gatewayHoldMicros(
-          priceGatewayJob(request.model.card, request.body)
+          priceGatewayJob(resolved.route.model.card, resolved.body)
         ),
         unit: 'images',
         typicalUnitsPerCall: 1,
@@ -71,13 +71,23 @@ export function withGatewayImageQuotes(
   return quoted;
 }
 
-/** The image quote pricing for this organization: the fal map with its `openstory` stills at the hold. */
-export async function imageQuotePricing(
+/** This organization's image routes and the quote map priced from them, resolved once. */
+export async function imageRoutesAndQuotes(
   scopedDb: Pick<ScopedDb, 'apiKeys'>
-): Promise<Record<string, EffectiveFalPricing>> {
+): Promise<{
+  routes: GatewayRoutes;
+  pricing: Record<string, EffectiveFalPricing>;
+}> {
   const [pricing, routes] = await Promise.all([
     getEffectiveFalPricing(),
     imageGatewayRoutes(scopedDb),
   ]);
-  return withGatewayImageQuotes(pricing, routes);
+  return { routes, pricing: withGatewayImageQuotes(pricing, routes) };
+}
+
+/** The image quote pricing for this organization: the fal map with its `openstory` stills at the hold. */
+export async function imageQuotePricing(
+  scopedDb: Pick<ScopedDb, 'apiKeys'>
+): Promise<Record<string, EffectiveFalPricing>> {
+  return (await imageRoutesAndQuotes(scopedDb)).pricing;
 }

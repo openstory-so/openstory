@@ -48,10 +48,7 @@ import {
 } from '@/motion/server/resolve-motion-prompt';
 import type { VariantType } from '@/platform/server/db/schema/shot-variants';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import {
-  imageGatewayRoutes,
-  imageQuotePricing,
-} from '@/stills/server/image-gateway-routes';
+import { imageRoutesAndQuotes } from '@/stills/server/image-gateway-routes';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -699,7 +696,8 @@ export async function addModelToSequence(
     throw new ValidationError('No shots have a prompt to generate from');
   }
 
-  const pricing = await imageQuotePricing(scopedDb);
+  const { routes: gatewayRoutes, pricing } =
+    await imageRoutesAndQuotes(scopedDb);
   const shotCost = (edit: boolean) =>
     gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
@@ -719,7 +717,6 @@ export async function addModelToSequence(
   // and its onFailure marks it failed — so there's nothing to pre-write here.
   let workflowRunId = '';
   let triggered = 0;
-  const gatewayRoutes = await imageGatewayRoutes(scopedDb);
   for (const input of inputs) {
     let reservationId: string | undefined;
     try {

@@ -39,7 +39,11 @@ import { getLogger } from '@/platform/logger';
 import { openstoryImage } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import type { GatewayModel } from '@/gateway/server/catalog';
-import { gatewayRunRoute, type GatewayRoutes } from '@/gateway/server/route';
+import {
+  gatewayRunRoute,
+  type GatewayRoute,
+  type GatewayRoutes,
+} from '@/gateway/server/route';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import type { GatewayJobInput } from '@/gateway/schema';
@@ -213,24 +217,38 @@ export async function generateImageWithProvider(
   }
 }
 
+/** The run's route for this still and the body it would send; null when the model has no gateway body. Pure, no log. */
+export function imageGatewayRoute(
+  params: ImageGenerationParams,
+  routes: GatewayRoutes | undefined
+): { route: GatewayRoute; body: GatewayJobInput } | null {
+  const nativeModel = nativeGrokImageModel(params.model);
+  if (!nativeModel) return null;
+  const body = buildGrokImageBody(params, nativeModel);
+  return {
+    route: gatewayRunRoute(
+      routes,
+      { provider: 'grok', modelId: nativeModel },
+      body
+    ),
+    body,
+  };
+}
+
 /** The gateway model and body when the route for this model is `openstory` and the body can run there; else null (direct). */
 export function gatewayImageRequest(
   params: ImageGenerationParams,
   routes: GatewayRoutes | undefined
 ): { model: GatewayModel; body: GatewayJobInput } | null {
-  const nativeModel = nativeGrokImageModel(params.model);
-  if (!nativeModel) return null;
-  const body = buildGrokImageBody(params, nativeModel);
-  const route = gatewayRunRoute(
-    routes,
-    { provider: 'grok', modelId: nativeModel },
-    body
-  );
-  if (route.via === 'direct') {
-    logger.info(`Image stays direct: ${route.reason}`, { model: params.model });
+  const resolved = imageGatewayRoute(params, routes);
+  if (!resolved) return null;
+  if (resolved.route.via === 'direct') {
+    logger.info(`Image stays direct: ${resolved.route.reason}`, {
+      model: params.model,
+    });
     return null;
   }
-  return { model: route.model, body };
+  return { model: resolved.route.model, body: resolved.body };
 }
 
 /** One gateway job: held, run, stored and charged in this step; a content refusal is released and rethrown. */

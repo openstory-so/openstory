@@ -14,6 +14,7 @@ vi.doMock('@/shots/server/shot-image-input', () => ({
 vi.doMock('@/stills/server/image-gateway-routes', () => ({
   imageGatewayRoutes: vi.fn(async () => ({})),
   imageQuotePricing: async () => TEST_FAL_PRICING,
+  imageRoutesAndQuotes: async () => ({ routes: {}, pricing: TEST_FAL_PRICING }),
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: vi.fn(async () => 'run-1'),

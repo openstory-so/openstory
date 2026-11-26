@@ -32,7 +32,7 @@ import type { ShotEditContext } from '@/shots/server/shot-context';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
   imageGatewayRoutes,
-  imageQuotePricing,
+  imageRoutesAndQuotes,
 } from '@/stills/server/image-gateway-routes';
 import type {
   ShotVariantWorkflowInput,
@@ -205,6 +205,9 @@ export async function generateShotImageVariants(
   }
 
   const numImages = data.numImages ?? 1;
+  const { routes: gatewayRoutes, pricing } = await imageRoutesAndQuotes(
+    context.scopedDb
+  );
   await requireCredits(
     context.scopedDb,
     gateEstimate(
@@ -213,7 +216,7 @@ export async function generateShotImageVariants(
         sequence.aspectRatio,
         numImages,
         {
-          pricing: await imageQuotePricing(context.scopedDb),
+          pricing,
           resolution: sequence.resolution,
           // A variant always edits the shot's current still.
           edit: true,
@@ -291,7 +294,7 @@ export async function generateShotImageVariants(
     '/variant-image',
     {
       ...workflowInput,
-      gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
+      gatewayRoutes,
     },
     {
       deduplicationId: `variant-${shot.id}-${Date.now()}`,

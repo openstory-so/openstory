@@ -85,8 +85,8 @@ import {
 import { simpleHash } from '@/platform/hash';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
-  imageGatewayRoutes,
   imageQuotePricing,
+  imageRoutesAndQuotes,
 } from '@/stills/server/image-gateway-routes';
 import {
   notifySequenceReady,
@@ -435,7 +435,9 @@ export async function executeSmartRetry(
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
-  const pricing = await imageQuotePricing(context.scopedDb);
+  const { routes: gatewayRoutes, pricing } = await imageRoutesAndQuotes(
+    context.scopedDb
+  );
 
   // 1. Retry failed images
   if (failedImageShots.length > 0) {
@@ -447,7 +449,6 @@ export async function executeSmartRetry(
     // reported as retried (and must not clear the failed flag on their own).
     let triggeredImages = 0;
     const styleConfig = lazySequenceStyle(context.scopedDb, sequence);
-    const gatewayRoutes = await imageGatewayRoutes(context.scopedDb);
     for (const shot of failedImageShots) {
       const scene = sceneOf(shot);
       const promptVersion = shot.imagePromptVersion;
