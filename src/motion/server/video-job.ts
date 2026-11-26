@@ -252,17 +252,6 @@ export async function sendVideoJob(params: {
   };
 }
 
-/** A run that stops polling ends its gateway job itself; a direct job has nothing held. */
-export async function releaseVideoJob(
-  job: Pick<StampedVideoJob, 'jobId' | 'via'>,
-  scopedDb: WorkflowScopedDb,
-  error: string
-): Promise<void> {
-  if (job.via === 'openstory') {
-    await releaseInProcessJob(scopedDb, job.jobId, error);
-  }
-}
-
 /**
  * The release step before a timeout throws: never fails, so the run still
  * says it timed out; the sweep and the run's own end are the backstop.
@@ -272,9 +261,12 @@ export async function releaseTimedOutVideoJob(
   scopedDb: WorkflowScopedDb,
   error: string
 ): Promise<void> {
-  await releaseVideoJob(job, scopedDb, error).catch((err: unknown) => {
-    logger.error('Releasing a timed-out gateway video job failed', { err });
-  });
+  if (job.via !== 'openstory') return;
+  await releaseInProcessJob(scopedDb, job.jobId, error).catch(
+    (err: unknown) => {
+      logger.error('Releasing a timed-out gateway video job failed', { err });
+    }
+  );
 }
 
 /** What the gateway charged for a finished clip, read back by the run's own job id; null when the handle names none. */
