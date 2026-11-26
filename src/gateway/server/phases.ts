@@ -142,7 +142,11 @@ export async function startGatewayRun(
   const start = await GATEWAY_DRIVERS[run.provider]
     .start(run.target, run.input, credentials)
     .catch((error: unknown) => {
-      throw answeredStart(error) ? new NonRetryableError(error.message) : error;
+      if (!(error instanceof Error)) throw error;
+      const outcome = startOutcome(run, error);
+      if (outcome === 'refused') throw new NonRetryableError(error.message);
+      if (outcome === 'resend') throw new StartNotRun(error.message);
+      throw error;
     });
   return 'jobId' in start
     ? { providerJobId: start.jobId }
@@ -151,14 +155,28 @@ export async function startGatewayRun(
       };
 }
 
-/** A start the provider answered with an error never ran; a timeout or rate limit may have, or may pass. */
-function answeredStart(error: unknown): error is Error {
-  return (
-    error instanceof Error &&
-    'statusCode' in error &&
-    typeof error.statusCode === 'number' &&
-    ![408, 429, 504].includes(error.statusCode)
-  );
+/** The provider answered the start without running it: the same key may send it again. */
+export class StartNotRun extends Error {}
+
+/**
+ * How a start that threw ends: `refused` fails the job now; `resend` proves
+ * nothing ran, so a retry may send it again; `unknown` may have reached the
+ * provider, so a retry must not.
+ */
+function startOutcome(
+  run: Pick<GatewayRun, 'provider' | 'target'>,
+  error: Error
+): 'refused' | 'resend' | 'unknown' {
+  if (error instanceof NonRetryableError) return 'refused';
+  const status =
+    'statusCode' in error && typeof error.statusCode === 'number'
+      ? error.statusCode
+      : null;
+  if (status === null || status === 408 || status === 504) return 'unknown';
+  if (status === 429) return 'resend';
+  return GATEWAY_DRIVERS[run.provider].answersAtOnce(run.target.endpointId)
+    ? 'resend'
+    : 'refused';
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */

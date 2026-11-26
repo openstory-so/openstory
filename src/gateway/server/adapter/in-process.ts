@@ -25,6 +25,7 @@ import {
   pollGatewayRun,
   releaseGatewayRun,
   startGatewayRun,
+  StartNotRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import {
@@ -207,6 +208,10 @@ export function inProcessGateway(params: {
         async (error: unknown) => {
           if (error instanceof NonRetryableError) {
             await releaseGatewayRun(scopedDb, run, error.message);
+          }
+          // Nothing ran: back to queued with its hold, so the retried step sends it under the same key.
+          if (error instanceof StartNotRun) {
+            await scopedDb.gatewayJobs.requeue(run.jobId);
           }
           throw error;
         }

@@ -51,7 +51,14 @@ vi.doMock('#env', () => ({
 }));
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: {
-    grok: { configured: () => true, start, poll },
+    grok: {
+      configured: () => true,
+      // Grok's own rule: an image answers at once, a video queues.
+      answersAtOnce: (endpointId: string) =>
+        endpointId.startsWith('v1/images/'),
+      start,
+      poll,
+    },
   },
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
@@ -273,12 +280,14 @@ describe('the openstory adapter, in-process', () => {
     expect(await holdLeft(job.id)).toBe(0);
   });
 
-  it('fails at once and lets the hold go when the provider answers the start with an error', async () => {
-    start.mockRejectedValueOnce(
-      Object.assign(new Error('Provider refused the request (500): busy'), {
-        statusCode: 500,
-      })
-    );
+  it('sends an answering model again under the same key after a 5xx, which ran nothing, and charges once', async () => {
+    start
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Provider refused the request (500): busy'), {
+          statusCode: 500,
+        })
+      )
+      .mockResolvedValueOnce(answered);
     const submit = () =>
       generateImage({
         threadId: 'thread-1',
@@ -288,8 +297,38 @@ describe('the openstory adapter, in-process', () => {
         prompt: '',
         modelOptions: BODY,
       });
-    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    const error = await submit().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(NonRetryableError);
     const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('queued');
+    expect(await holdLeft(job.id)).toBe(20_000);
+    await submit();
+    expect(start).toHaveBeenCalledTimes(2);
+    expect((await onlyJob(IMAGE.id)).status).toBe('succeeded');
+    expect(await chargesFor(job.id)).toMatchObject({
+      debits: 1,
+      balanceDrop: 20_000,
+    });
+  });
+
+  it('fails a queued submit at once on a 5xx, which may have queued it, and lets the hold go', async () => {
+    start.mockRejectedValueOnce(
+      Object.assign(new Error('Provider refused the request (500): busy'), {
+        statusCode: 500,
+      })
+    );
+    const submit = () =>
+      generateVideo({
+        threadId: 'thread-1',
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+          idempotencyKey: 'run-5:video',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(VIDEO.id);
     expect(job.status).toBe('failed');
     expect(await holdLeft(job.id)).toBe(0);
     // A retried step reads the failed job and never sends it again.

@@ -502,6 +502,27 @@ describe('elevenlabs driver', () => {
   });
 });
 
+describe('which starts answer at once', () => {
+  it('lets only a start that returns its result be sent again after a 5xx', () => {
+    expect(GATEWAY_DRIVERS.byteplus.answersAtOnce('tts/create')).toBe(true);
+    expect(GATEWAY_DRIVERS.byteplus.answersAtOnce('images/generations')).toBe(
+      true
+    );
+    expect(
+      GATEWAY_DRIVERS.byteplus.answersAtOnce('contents/generations/tasks')
+    ).toBe(false);
+    expect(GATEWAY_DRIVERS.grok.answersAtOnce('v1/images/generations')).toBe(
+      true
+    );
+    expect(GATEWAY_DRIVERS.grok.answersAtOnce('v1/videos/generations')).toBe(
+      false
+    );
+    expect(GATEWAY_DRIVERS.fal.answersAtOnce('fal-ai/ferry/video')).toBe(false);
+    expect(GATEWAY_DRIVERS.gemini.answersAtOnce('any')).toBe(true);
+    expect(GATEWAY_DRIVERS.elevenlabs.answersAtOnce('v1/music')).toBe(true);
+  });
+});
+
 describe('gemini driver', () => {
   it("sends the caller's body unchanged and reads the inline media back", async () => {
     fetchMock.mockResolvedValueOnce(

@@ -191,6 +191,20 @@ export function createGatewayJobsMethods(
     },
 
     /** True when this call flipped the row, so only one attempt starts the provider. */
+    /** A start the provider answered without running it goes back to queued, hold kept, so the same key sends it again. */
+    requeue: async (id: string): Promise<void> => {
+      await db
+        .update(gatewayJobs)
+        .set({ status: 'queued', updatedAt: new Date() })
+        .where(
+          and(
+            own(id),
+            eq(gatewayJobs.status, 'running'),
+            isNull(gatewayJobs.providerJobId)
+          )
+        );
+    },
+
     markRunning: async (id: string): Promise<boolean> => {
       const flipped = await db
         .update(gatewayJobs)

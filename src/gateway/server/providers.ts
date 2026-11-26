@@ -131,6 +131,8 @@ export type GatewayTarget = { modelId: string; endpointId: string };
 type Driver = {
   /** Whether this driver can run the endpoint on this server; asked at submit, before the hold. */
   configured: (endpointId: string) => boolean;
+  /** The start answers with the result, so a 5xx means nothing ran; a queued start's 5xx may have queued the job. */
+  answersAtOnce: (endpointId: string) => boolean;
   start: (
     target: GatewayTarget,
     body: GatewayJobInput,
@@ -219,6 +221,7 @@ function imagesFromData(body: JsonObject): GatewayMedia[] {
 
 const falDriver: Driver = {
   configured: () => resolvePlatformOptionalKey('fal') !== undefined,
+  answersAtOnce: () => false,
   start: async (target, body, credentials) => {
     const fal = await falClient(credentials);
     try {
@@ -311,6 +314,7 @@ const grokDriver: Driver = {
   configured: () =>
     nativeOn(getEnv().XAI_BASE_URL) &&
     resolvePlatformOptionalKey('xai') !== undefined,
+  answersAtOnce: (endpointId) => endpointId.startsWith('v1/images/'),
   start: async (target, body, credentials) => {
     // modelschemas names the endpoint with its version: `v1/videos/generations`.
     const answer = await grokCall(
@@ -421,6 +425,9 @@ const bytePlusDriver: Driver = {
     endpointId === BYTEPLUS_ENDPOINTS.speech
       ? isSeedSpeechConfigured()
       : nativeOn(getArkBaseUrl()) && Boolean(getArkApiKey()),
+  answersAtOnce: (endpointId) =>
+    endpointId === BYTEPLUS_ENDPOINTS.speech ||
+    endpointId === BYTEPLUS_ENDPOINTS.images,
   start: async (target, body) => {
     if (target.endpointId === BYTEPLUS_ENDPOINTS.speech) {
       return seedSpeech(body);
@@ -497,6 +504,7 @@ const geminiDriver: Driver = {
   configured: () =>
     nativeOn(getEnv().GEMINI_BASE_URL) &&
     resolvePlatformOptionalKey('google') !== undefined,
+  answersAtOnce: () => true,
   start: async (target, body, credentials) => {
     const override = getEnv().GEMINI_BASE_URL;
     requireNative(override, 'Google');
@@ -545,6 +553,7 @@ const geminiDriver: Driver = {
 const elevenLabsDriver: Driver = {
   configured: (endpointId) =>
     ELEVENLABS_ENDPOINTS.includes(endpointId) && isElevenLabsConfigured(),
+  answersAtOnce: () => true,
   start: async (target, body, credentials) => {
     const { key } = await credentials.resolveKey('elevenlabs');
     const url = `${getElevenLabsBaseUrl() ?? 'https://api.elevenlabs.io'}/${target.endpointId}`;
