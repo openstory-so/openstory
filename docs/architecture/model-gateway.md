@@ -772,59 +772,116 @@ bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
 
 ## Product stills on the gateway (#2434)
 
-Only Grok stills with no reference images go through the gateway today.
+Any still whose endpoint the gateway can hold goes through it, on any via:
+the body is the one the product's own builder makes for that via (the fal
+builders, native Grok), and the generation and edit endpoints are judged
+each on their own body.
 
 The trigger decides the route and puts it on the payload as
-`gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`):
-one `resolveGatewayRoute` per Grok image model, so a run that falls back to
-another Grok model mid-run still has its answer. It reads the stored
-snapshot only (`getSnapshotGatewayModel`): a miss is direct, a provider
-with no platform key on this server (`GATEWAY_DRIVERS[provider].configured`)
-is direct, and a modelschemas outage cannot stop a trigger. The run reads its route only
-through `gatewayRunRoute`, the snapshot plus the pure body check, so a step
-retry takes the same route. A run triggered before
-#2434 has no routes and stays direct. `generateImageWithProvider` is the one
-place the route is applied (`gatewayImageRequest`): an `openstory` route plus
-a body the endpoint takes (`gatewayCannotRun`) runs the `openstory` adapter
-over `inProcessGateway`; anything else goes direct as before.
+`gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`).
+`imageRouteTargets` lists every image model the product can select, through
+`resolveImageVia`, the same function the direct path uses:
+
+- `xai` (native Grok): the xAI model id.
+- `fal`: the text-to-image endpoint and its edit endpoint (`EDIT_ENDPOINTS`),
+  two targets, so a still with references is decided on the edit card.
+- `byteplus` (Ark Seedream) and `google` (native Gemini): no target, so the
+  run finds no route and goes direct ("not routed at the trigger"). For Ark
+  this is an explicit rule, not the body check: Ark registers a real
+  person's portrait as an account-wide asset before the call, which the
+  product owns (`byteplus-ark.md`). The Ark card is also unholdable today
+  (`input_images` required).
+
+Each target goes through `resolveGatewayRoute`: own key for the provider is
+direct, a snapshot miss is direct (`getSnapshotGatewayModel`, so a
+modelschemas outage cannot stop a trigger), a provider with no platform key
+on this server (`GATEWAY_DRIVERS[provider].configured`) is direct, an
+unholdable card is direct. The run reads its route only through
+`gatewayRunRoute`, the snapshot plus the pure body check, so a step retry
+takes the same route. A run triggered before #2434 has no routes and stays
+direct. `generateImageWithProvider` is the one place the route is applied
+(`gatewayImageRequest`): an `openstory` route plus a body the endpoint takes
+(`gatewayCannotRun`) runs the `openstory` adapter over `inProcessGateway`;
+anything else goes direct as before.
 
 - Each attempt is its own job and hold: the idempotency key is
   `<runId>:<stepName>`, and the softening loops name a step per attempt.
-- A Grok refusal is a provider 4xx: the hold is released, the job is
+  The fal content-flag rescue to `IMAGE_CONTENT_FALLBACK_MODEL` is a new
+  attempt on another model, so its route is decided again for that model.
+- A provider refusal is a 4xx: the hold is released, the job is
   `CONTENT_REJECTED`, and the message reaches `isContentRejectionError`
   unchanged, so softening runs as before.
 - An `openstory` still is charged by the gateway; the workflows skip their
   image `deductWorkflowCredits` on that via. Studio takes no trigger hold for
   it.
-- Proof (2026-11-26, `bun dev`): one Studio Grok still through
-  `StudioGenerationWorkflow`. One hold of $0.06, one `credit_usage` of $0.06
-  (`gateway:<job>:settle`), no other debit, output in R2. Repeated with
-  the route read from the stored snapshot (after `bun
-  scripts/refresh-fal-pricing.ts`): the same, once.
+- References: a fal body carries URLs. Before sending, a local `/r2/` URL is
+  made fetchable with the platform fal key (`ensureExternallyFetchableUrls`),
+  as the direct path does; xAI gets a data or CDN URL (`toDataOrCdnUrl`).
+  Locally each fal storage upload is a new URL, so a retried step sends a
+  different body and the gateway refuses the reused key. Production URLs
+  are the CDN's and do not change.
+- Rights: the step passes `UPLOAD_RIGHTS_CHECKED`. A still's references are
+  uploads classified when saved (`requireUploadRights` in `media-upload.ts`,
+  location and element attach, describe upload), Studio uploads checked at
+  the click (`requireCheckedUploadRights` in `create-studio-asset`), or media
+  we generated (sheets, earlier stills), which is never classified.
 
-Routed today: Studio images; shot image and variant regenerations; character
+Routed today, when the snapshot holds the card and the body passes:
+
+| Still                                   | Generation                                | With references                                                                                            |
+| --------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Grok Imagine 2.0 / Quality (native xAI) | gateway                                   | direct: no `v1/images/edits` card ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)) |
+| Phota                                   | gateway (proved)                          | gateway, `fal-ai/phota/edit` (proved)                                                                      |
+| Nano Banana 2 (retired; old sequences)  | gateway (body checked on the real schema) | gateway (`/edit`, same)                                                                                    |
+| Nano Banana Pro                         | by the body check (card holdable)         | by the body check                                                                                          |
+| Seedream 5 Pro on fal (no Ark key)      | by the body check                         | by the body check                                                                                          |
+
+Stay direct, with the reason:
+
+- FLUX.2 Max: the product's body sends `num_images`, which the schema does
+  not have (`gatewayCannotRun`).
+- Megapixel cards, no estimate before the run (#2432): FLUX.2 dev text-to-image,
+  FLUX.2 flash and turbo, HiDream, Hunyuan (and its edit), Krea (and its edit).
+- Token cards (#2432): Nano Banana 2.1 and its edit, Nano Banana 2 Lite and
+  its edit, GPT Image 2.6.
+- No card: Qwen Image 2 Pro.
+- Gemini native: TanStack/schemas#755. Ark Seedream: the rule above.
+- Upscales, sheet portraits that edit, posters.
+
+Proof (2026-11-26, `bun dev` on port 3004, Studio through MCP):
+
+- Grok 2.0, no references: one hold of $0.06, one `credit_usage` of $0.06
+  (`gateway:<job>:settle`), no other debit, output in R2.
+- Phota, no references: job `fal-ai/phota`, $0.09, one settle line, no
+  other debit; quote $0.09.
+- Phota with one uploaded reference: job `fal-ai/phota/edit`, the reference
+  sent as a fal storage URL, $0.09, one settle line; quote $0.09. The upload's
+  likeness check ($0.008) is the upload's own line.
+- The local snapshot was seeded by model when the anonymous modelschemas
+  limit (60 an hour) refused the full refresh: `fetchGatewayModel` then
+  `storeGatewayModel` for each id against local D1, the two calls the
+  refresh makes.
+
+Children: Studio images; shot image and variant regenerations; character
 and location sheet regenerations; the sequence pipeline (storyboard and
 continue, Update stale, smart retry, add model), each child inheriting
 `gatewayRoutes` from its parent like `reservationId`. A root merges its
 image routes into any it was given (`{ ...input.gatewayRoutes, ...image }`).
-Shot previews render Nano Banana, which the gateway does not hold. These
-children carry no routes and go direct: Recast location's `RegenerateShots`
-children, shot previews and Replace element's children. Stay direct:
+These carry no routes and go direct: Recast location's `RegenerateShots`
+children, shot previews and Replace element's children.
 
-- Grok stills with reference images: modelschemas has no `v1/images/edits`
-  for Grok ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)).
-- Upscales (an edit), sheet portraits that edit, posters (fal).
-- fal Flux and Seedream: the cards have a usage lever with no estimate
-  (#2432). Gemini images: TanStack/schemas#755.
-
-Quotes: `imageQuotePricing` gives a trigger the fal map with each
-`openstory` Grok still priced at `gatewayHoldMicros` of its card estimate,
-the number the hold takes ($0.06 for Grok 2.0 at `quality: medium`, where
-the fal map says $0.04). Direct routes keep the fal map. Signed-in pages
-read the same map through `getOrganizationFalPricingFn`
-(`useOrganizationFalPricing`): Studio, the character and location sheets,
-the scene list and the shot prompts. The public `getCatalogFalPricingFn` is
-for signed-out pages only.
+Quotes: `imageQuotePricing` gives a trigger the fal map with each endpoint
+on an `openstory` route carrying `gatewayHolds`: the hold
+(`gatewayHoldMicros` of its card on the product's real body, one image) per
+shape, keyed `gatewayHoldKey(aspectRatio, resolution)`, for every aspect
+ratio and resolution, the generation endpoint with no references and the
+edit endpoint with one. `estimateImageCost` reads the hold for the request's
+shape and multiplies by the image count (every holdable card is linear in
+count); a shape with no hold is a direct route and keeps the fal price. So
+quote equals hold for every routed still. Signed-in pages read the same map
+through `getOrganizationFalPricingFn` (`useOrganizationFalPricing`): Studio,
+the character and location sheets, the scene list and the shot prompts. The
+public `getCatalogFalPricingFn` is for signed-out pages only.
 
 No double hold: a run that owns a reservation (the pipeline envelope, a
 shot or sheet trigger) passes it as `runReservationId`, and the gateway job
@@ -833,7 +890,7 @@ on the `openstory` route) holds per job.
 
 Known differences from direct:
 
-- A transient xAI 5xx fails an `openstory` still; the direct path retried it.
+- A transient provider 5xx fails an `openstory` still; the direct path retried it.
 - A still is written to R2 twice: the gateway stores its output under
   `gateway/<id>/`, then the step copies it to the still's own key. The
   product's store callbacks take a URL, not media, so passing the final key
@@ -842,16 +899,14 @@ Known differences from direct:
 - Every quote reads the same map: preflight, Continue, Update stale, smart
   retry, sheet references and the freeze-plan gate (from the payload's
   routes, no read), so the run envelope reserves what the gateway charges.
-- The map prices both endpoints a still can take by the run's own decision
-  (`gatewayImageRequest`): the generation endpoint with no references, the
-  edit endpoint with one. A quote that knows its references passes
-  `edit`: shot image, variants (always an edit of the current still), smart
-  retry, add model per shot, Studio, and the sheet pages. Update stale's
-  floor takes the cheaper of the two. Plan envelopes (storyboard, Continue,
-  freeze-plan) price every still with no references, because which shots
-  carry references is not known per unit; today that is the higher of the
-  two for Grok ($0.06 hold against $0.04 edit), so a cast-heavy plan
-  reserves more than it spends and settle releases the rest.
+- A quote that knows its references passes `edit`: shot image, variants
+  (always an edit of the current still), smart retry, add model per shot,
+  Studio, and the sheet pages. Update stale's floor takes the cheaper of the
+  two. Plan envelopes (storyboard, Continue, freeze-plan) price every still
+  with no references, because which shots carry references is not known per
+  unit; where the generation hold is the higher (Grok: $0.06 against a
+  direct $0.04 edit), a cast-heavy plan reserves more than it spends and
+  settle releases the rest.
 
 ## Every model can be priced (#2432)
 
