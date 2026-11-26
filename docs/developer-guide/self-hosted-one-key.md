@@ -20,6 +20,6 @@ A provider key you set (`FAL_KEY`, `XAI_API_KEY`, …) still wins for its provid
 - Script breakdown and prompts: an OpenRouter or fal key.
 - Voices, dialogue and ElevenLabs music: `ELEVENLABS_API_KEY`.
 - fal Flux, Seedream and Nano Banana stills: `FAL_KEY`. Gemini stills: a Google key.
-- The Models page.
+- The Models page and studio video: the provider's own key.
 
 When openstory.so refuses a call (no credits, a model it cannot price, a real person in an input), you see that error. Your install never retries it on another key. The reasons and the plan are in [model-gateway.md § Self-hosted on one key](../architecture/model-gateway.md#self-hosted-on-one-key-2438).

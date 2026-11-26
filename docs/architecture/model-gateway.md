@@ -1526,6 +1526,10 @@ place a call site turns a route into a transport (in-process or HTTP), and
 (`image-generation.ts`), audio (`audio-gateway.ts`) and video
 (`video-job.ts`) use them.
 
+- **Bodies need no key here.** A still's Grok body is built with none; a
+  sequence clip on the fal via skips `resolveFalKey` and the fal-storage
+  upload when its route is remote (`routesRemote`), so the body keeps its
+  local `/r2/` URLs for the transport to upload.
 - **Submit:** every local `/r2/` string in the body is uploaded first, then
   `POST /api/v1/gateway/{provider}/{model}` with the call's Idempotency-Key.
 - **Poll:** `GET /api/v1/gateway/jobs/{id}?wait=20s`.
@@ -1564,17 +1568,18 @@ second) still applies.
 
 ### Not remote yet
 
-| Call                                   | Why                                                                                        | Where it runs                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| Every ElevenLabs call                  | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`     |
-| Scribe, isolation, mic take            | multipart bodies; ElevenLabs                                                               | direct                                 |
-| Seed takes cloned from a voice clip    | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                         |
-| Real people in any input               | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED`  |
-| Gemini images                          | TanStack/schemas#755                                                                       | direct; needs a Google key             |
-| fal Flux, Seedream, Nano Banana stills | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key                |
-| A model the hosted card cannot price   | the hosted side refuses                                                                    | hosted refusal                         |
-| Text (script analysis, prompts)        | the HTTP text stream is not built (#2437 lands its endpoint first)                         | direct; needs an OpenRouter or fal key |
-| The Models page                        | it holds at the click on this server (`createGeneratedAsset`)                              | in-process; needs the provider key     |
+| Call                                      | Why                                                                                        | Where it runs                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
+| Every ElevenLabs call                     | saved voices are account-wide slots; the public endpoint refuses ElevenLabs (`NOT_REMOTE`) | direct; needs `ELEVENLABS_API_KEY`     |
+| Scribe, isolation, mic take               | multipart bodies; ElevenLabs                                                               | direct                                 |
+| Seed takes cloned from a voice clip       | the public endpoint refuses `references[]` audio (the likeness check cannot hear it)       | hosted refusal                         |
+| Real people in any input                  | no portrait attestation on the public endpoint; BytePlus portrait slots are per account    | hosted refusal `ATTESTATION_REQUIRED`  |
+| Gemini images                             | TanStack/schemas#755                                                                       | direct; needs a Google key             |
+| fal Flux, Seedream, Nano Banana stills    | no gateway body built for them (only Grok stills route, § Product stills)                  | direct; needs a fal key                |
+| A model the hosted card cannot price      | the hosted side refuses                                                                    | hosted refusal                         |
+| Text (script analysis, prompts)           | the HTTP text stream is not built (#2437 lands its endpoint first)                         | direct; needs an OpenRouter or fal key |
+| The Models page                           | it holds at the click on this server (`createGeneratedAsset`)                              | in-process; needs the provider key     |
+| Studio video (`StudioGenerationWorkflow`) | its submit resolves a fal key before the body is built                                     | direct; needs a fal key                |
 
 ### Proof (2026-11-26)
 

@@ -191,6 +191,16 @@ function parsedModel(json: string): GatewayModel {
   return model;
 }
 
+/** Whether the run sends this target to the hosted gateway: its body then needs no key or fetchable URL here. */
+export function routesRemote(
+  routes: GatewayRoutes | undefined,
+  target: GatewayRouteTarget
+): boolean {
+  return (
+    routes?.[gatewayRouteKey(target.provider, target.modelId)]?.via === 'remote'
+  );
+}
+
 /**
  * The route a run applies: its payload snapshot plus the pure body check, no
  * read, so a step retry takes the same route. Absent routes are a payload

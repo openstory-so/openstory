@@ -48,7 +48,7 @@ import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
 import type { GatewayProvider } from '@/gateway/schema';
-import type { GatewayRouteTarget } from '@/gateway/server/route';
+import { routesRemote, type GatewayRouteTarget } from '@/gateway/server/route';
 import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import { getLogger } from '@/platform/logger';
@@ -277,7 +277,7 @@ async function inlineNativeReferenceImages(
 }
 
 async function prepareFalMotionJob(
-  options: GenerateMotionOptions,
+  options: GenerateMotionOptions & Pick<SubmitMotionOptions, 'gateway'>,
   modelKey: ImageToVideoModel,
   threadId: string
 ): Promise<{ send: VideoSend; usedOwnKey: boolean; endpointId: string }> {
@@ -295,7 +295,14 @@ async function prepareFalMotionJob(
   });
 
   const { endpoint } = motionEndpoint(modelKey, options, 'fal');
-  const key = await resolveFalKey(options.credentials);
+  // The hosted gateway sends this body: no fal key here, and the transport uploads local URLs.
+  const remote = routesRemote(options.gateway?.routes, {
+    provider: 'fal',
+    modelId: endpoint.endpointId,
+  });
+  const key = remote
+    ? { key: 'hosted-gateway', source: 'platform' as const }
+    : await resolveFalKey(options.credentials);
 
   // Built on the stored URLs; the send makes them fetchable (`fetchableFalFetch`), so the gateway holds the stored body.
   const modelInput = buildMotionRequest(
