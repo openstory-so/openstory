@@ -6,7 +6,6 @@ import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
@@ -51,21 +50,6 @@ export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVi
           sessionId: event.payload.sequenceId,
           metadata: { elementId },
         },
-      });
-    });
-
-    await step.do('deduct-vision-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: vision.costMicros,
-        usedOwnKey: vision.usedOwnKey,
-        description: `Element vision (${vision.model})`,
-        idempotencyKey: `${event.instanceId}:vision`,
-        metadata: {
-          model: vision.model,
-          elementId,
-        },
-        workflowName: 'ElementVisionWorkflow',
       });
     });
 

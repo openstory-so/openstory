@@ -1160,136 +1160,183 @@ run and the in-process transport (`claimAndStartGatewayRun` in
 
 ## Text (#2437)
 
-Every LLM call the product makes on a platform key is held and charged by
-the gateway from the model's modelschemas card. An organization's own key
-(OpenRouter, fal, xAI, Google, LLMTR) keeps today's direct path, unbilled
-by the gateway.
+Every LLM call the product makes on a platform key is charged in one place:
+a meter on the key, read by the adapter wrapper. On a text card the price is
+the gateway's (the card plus the platform fee); with no card it is today's
+`llmCostFromUsage`. An organization's own key (OpenRouter, fal, xAI, Google,
+LLMTR) carries no meter and is never charged. No call site bills an LLM call
+any more.
 
 ### The route
 
 Decided once per call, where the key is decided: `resolveLlmKey`, wrapped by
-`withTextGateway` (`src/gateway/server/text.ts`) in `createScopedDb`, so the
-workflow `credentials.resolveLlmKey` hatch gets it too. A platform key whose
-model has a text card in the snapshot that prices `input_tokens` and
-`output_tokens` comes back with `gateway` set; anything else comes back
-without it and stays on today's path. `resolveNativeGrokModel` and
-`resolveNativeGeminiModel` still pick the provider, so the card is the
-provider's own: `openrouter/<id>`, `grok/<xAI id>`, `gemini/<Gemini id>`.
+`withTextGateway` (`src/gateway/server/text.ts`) in `createScopedDb`. Every
+platform key comes back with a `meter`. Its `card` is set when the model has
+a text card in the snapshot that prices `input_tokens` and `output_tokens`;
+otherwise it is null and the call is priced as today. `resolveNativeGrokModel`
+and `resolveNativeGeminiModel` still pick the provider, so the card is the
+provider's own: `openrouter/<id>`, `grok/<xAI id>` or `gemini/<Gemini id>`.
 The card is read from the snapshot in the step that spends it, like the key:
 it is a platform price, not a row the user writes. This is the text form of
-the routing rule; `resolveGatewayRoute` is for media, whose own-key rule is
-per provider, while text's is `resolveLlmKey`'s order.
+the routing rule. `resolveGatewayRoute` is for media, whose own-key rule is
+per provider, while text follows `resolveLlmKey`'s order.
+
+A call goes direct (priced as today) with a reason recorded on its
+transaction:
+
+| Call                                                                    | Reason                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------- |
+| A model whose snapshot row is missing or whose card cannot price tokens | `no card`                                   |
+| OpenRouter through the platform fal key (no `OPENROUTER_KEY`)           | `no card` (fal's OpenRouter proxy has none) |
+| A request with `serviceTier` other than `standard`                      | `service tier <tier> is not on the card`    |
+
+Every OpenRouter call through llm-client's `buildModelOptions` sends
+`serviceTier: 'priority'`: script enhancement, the scene split, element and
+talent vision, the studio prompt draft, `ai.fn`, describe-upload and
+watch-clip. No card has a tier lever, so these are priced as OpenRouter
+billed them until one does. The durable helpers (`chatModelOptionsForCall`),
+the assistant, the public endpoint and native xAI and Google calls send no
+tier and are priced on the card.
+
+These calls are not metered at all. A call with no organization
+(`getPlatformLlmKey` in an anonymous workflow) has nobody to charge. The
+gateway submit's own likeness check (`withPlatformLlmKey`) is the gateway's
+cost of taking a job.
 
 The snapshot holds a text card for every `SCRIPT_ANALYSIS_MODELS` id on
 OpenRouter, plus the native Grok and Gemini ids (`productTextModels`). A
-text row stores the card only: the body is the route adapter's, never
+text row stores the card only: the body is the route adapter's and is never
 validated against a schema, so the refresh asks modelschemas once per text
-model.
-
-Still on the direct path, platform key and all:
-
-| Call                                                                    | Why                                          |
-| ----------------------------------------------------------------------- | -------------------------------------------- |
-| OpenRouter through the platform fal key (no `OPENROUTER_KEY`)           | fal's OpenRouter proxy has no card           |
-| A call with no organization (anonymous workflow, `getPlatformLlmKey`)   | nobody to hold against                       |
-| The gateway submit's own likeness check (`withPlatformLlmKey`)          | the gateway's cost of taking a job           |
-| A model whose snapshot row is missing or whose card cannot price tokens | the routing rule; fails safe to today's path |
+model, inside the same time budget and per-model failure isolation as media.
 
 ### The adapter
 
-`createAdapter` builds the route's adapter as before and, when the key
-carries `gateway`, returns `openstoryText(adapter, gateway)`: a proxy whose
-`chatStream`, `structuredOutput` and `structuredOutputStream` each take a
-hold, delegate, and charge. Nothing it sends changes, so `chat()` keeps
-tools, structured output, web search, vision input, reasoning and durable
-streams, and the four provider protocols are not re-implemented. Each
-provider request (an agent-loop turn, a separate structured-output call) is
-one held and charged call. A key resolved for one model is refused for
-another (the #1358 mismatch), so a call is never priced on another card.
-
-The charged usage is marked (`providerUsageDetails.openstoryGatewayCharged`)
-and survives `chat()` into `onUsage`; every site that bills an LLM call
-itself skips it (`chargedByGateway`, `llmCostToDeduct` returning null,
-`deductWorkflowCredits` taking null), so no call is charged twice.
+`createAdapter` builds the route's adapter as before. When the key carries a
+meter, it returns `openstoryText(adapter, meter, model)`: a proxy whose
+`chatStream`, `structuredOutput` and `structuredOutputStream` each delegate
+and then charge once. Nothing it sends changes, so `chat()` keeps tools,
+structured output, web search, vision input, reasoning and durable streams,
+and the four provider protocols are not re-implemented. Each provider request
+is one charged call: an agent-loop turn, or a separate structured-output
+call. A key resolved for one model is refused for another (the #1358
+mismatch), so a call is never priced on another card. The Google region
+re-run and llm-client's model fallback re-resolve through the meter's
+resolver, so the retry is metered on its own route.
 
 ### Money
 
-- **Hold before the first byte:** the card on `input_tokens` = the UTF-8
-  bytes of the system prompts, messages, tool names and descriptions and the
-  output schema (a token is at least a byte), with each image, audio, video
-  or document part at 4,096; and `output_tokens` = the request's maximum
-  output tokens (`maxTokens`, `max_tokens`, `max_output_tokens` or
-  `maxOutputTokens`), else `getMaxOutputTokens(model)`, which is what every
-  call site sends.
-- **Charge at the end:** the card on the usage the stream reported, mapped to
-  OpenAI Chat usage and through `normalizeUsage`, so cached, cache-write and
-  reasoning tokens are priced on their own levers, plus OpenRouter's
-  server-side web searches (`serverToolUseDetails.webSearchRequests`) on the
-  card's `web_searches` lever. Never `llmCostFromUsage`,
-  never the provider's `cost`. A charge above the hold grows it while the
-  balance allows (`settleReservation`), else it is reported as skipped.
-- **Cut off part way** (abort, dropped connection, an error after content):
-  the card on the input bound and the characters streamed as output tokens,
-  at most the estimate held. A call that streamed nothing and reported no
-  usage (a refusal, a Google location refusal, a 4xx) is released and
-  charged nothing; the region re-run is a new call with its own hold.
-- One settle per call (key `text:<id>:settle`), lines as for any gateway
-  charge, then the hold zeroed. A retried workflow step that calls the
-  provider again is charged again: it ran again.
+- **Inside a workflow run there is no per-call hold.** `base-workflow`
+  resolves keys through `forWorkflowRun` (`scoped-workflow.ts`), which
+  carries the payload's `reservationId`. On the card route each call settles
+  its lines against the run's reservation (`settleReservation`, which
+  captures without closing). On the direct route it captures the cost
+  (`captureReservation`). A run with no reservation takes a hold at charge
+  time and closes it in the same call (card), or uses `tryDeductCredits`
+  (direct). A short balance is reported as a skipped deduction, never thrown
+  into the run. There is never a second hold.
+- **A request with no run** (a server fn, the assistant, the public
+  endpoint) holds before the first byte, only on the card route. The hold
+  is the card priced on `input_tokens` and `output_tokens`. `input_tokens`
+  is the UTF-8 bytes of the system prompts, messages, tool names and
+  descriptions and the output schema (a token is at least a byte), with each
+  image, audio, video or document part counted at 4,096. `output_tokens` is
+  the request's own output budget (`maxTokens`, `max_tokens`,
+  `max_output_tokens` or `maxOutputTokens`). A request that sets none is
+  refused before the hold. A direct-route request is deducted at the end,
+  as today.
+- **Charge at the end:** the card is priced on the usage the stream reported,
+  mapped to OpenAI Chat usage and through `normalizeUsage`, so cached,
+  cache-write and reasoning tokens are priced on their own levers. OpenRouter's
+  server-side web searches (`serverToolUseDetails.webSearchRequests`) are
+  priced on the card's `web_searches` lever. The card route never uses
+  `llmCostFromUsage` or the provider's `cost`.
+- **A charge above the hold** grows the hold while the balance allows (the
+  capture in `settleReservation` / `captureReservation`). Otherwise the
+  shortfall is reported as a skipped deduction (`reportSkippedDeduction`) and
+  the call is not charged for it.
+- **Cut off part way** (an abort, a dropped connection, an error after
+  content): the card is priced on the input bound plus the characters
+  streamed as output tokens, at most the estimate held. A call that streamed
+  nothing and reported no usage (a refusal, a Google location refusal, a
+  4xx) is charged nothing, and its own hold is released.
+- **What a charge records:** each charge line's `sku` is
+  `<provider>/<model id>`, so the #2439 usage view groups lines by model and
+  day. The transaction metadata holds the via, the model, the card, the
+  direct reason and the usage. A public-endpoint call carries its OAuth
+  client (`attribution.oauthClientId`).
+- **Idempotency:** each call is charged under `text:<id>`. A single-call
+  site that may repeat for the same input passes its own key through
+  `chargedOnceAs`: the likeness check uses `likeness:<url>` and the element
+  draft uses `draft-vision:<url>`.
 
-**Needs sign-off:** the hold is large. Call sites send about half the
-context window as `max_tokens`, so a Sonnet 5.5 call holds about $1.28 of
-output before it starts, and an organization with less free balance than
-that cannot run it, though it would cost cents. Lowering what the call sites
-send, or one hold per workflow run drawn down by its calls, would fix it.
+Output bounds set at call sites that had none (all requests with no run):
+element vision 2,048; talent vision 4,096; studio prompt draft 2,048;
+`recommendStyles` 2,048; describe-upload 2,048; watch-clip 4,096; script
+enhancement `min(32,000, model max)` (4,000 truncated, #915); assistant
+8,192 per model call. `shortenPrompt` (500) and `estimateSceneDuration`
+(2,048) already had bounds.
 
-### D1 per call (measured)
+**Behaviour changes.** An LLM call is charged when it happens, not in a
+deduct step after it, so a run that fails later still pays for the calls it
+made. A retried step that calls the provider again is charged again. A
+transaction's description is now `LLM (<model>)`, without the call site's
+phase or sequence. A run in flight at deploy whose LLM step is cached but
+whose old deduct step has not run is not charged for that call.
 
-Measured on the test D1 with the billing module's own logger: the hold is 3
-round trips (a replay read, the `credits` upsert, the reservation insert);
-the settle is 4 (a replay read, a reservation read, one atomic batch of four
-writes, a balance read and the charge line, a read of the lines); the
-release is 1. Plus the snapshot read in `resolveLlmKey`: **9 round trips,
-about 8 written statements per LLM call**, against the 1 to 3 of today's
-single deduction. A sequence's analysis makes tens of calls, so this is tens
-of D1 writes per sequence, well inside D1's limits; no per-run
-pre-authorisation was built.
+### D1 per call
+
+From the measured parts (the billing module's own logger on the test D1):
+a hold is 3 round trips (a replay read, the `credits` upsert, the
+reservation insert). A settle is 4: a replay read, a reservation read, one
+atomic batch (the capture, the transaction, the balance and the charge
+lines), and a read of the lines. A release is 1. Add the snapshot read in
+`resolveLlmKey`:
+
+- **In a run, on a card:** 5 round trips, one write batch.
+- **A request on a card:** 9 round trips, about 8 written statements.
+- **Direct route:** 1 to 3, as today.
+
+A sequence's analysis runs in a workflow, so it pays the first figure.
 
 ### The public endpoint
 
 `POST /api/v1/gateway/chat/{model}` (`src/gateway/server/chat.ts`) runs one
-text model on the same core and streams AG-UI events. `{model}` is an
-OpenStory analysis model id; the body is text turns, an optional system
-prompt and a required `maxTokens` (no tools, no media: inline media and tool
-execution stay on the trusted in-process path). It spends platform keys only
-(`resolvePlatformLlmKey`), so a model whose card cannot price it is refused,
-never run direct. `/gateway/*` already needs `models:invoke` on an OAuth
-token.
+text model on the same meter and streams AG-UI events. `{model}` is an
+OpenStory analysis model id. The body is text turns, an optional system
+prompt and a required `maxTokens`. Tools and media are not accepted: inline
+media and tool execution stay on the trusted in-process path. It spends
+platform keys only (`resolvePlatformLlmKey`), so a model whose card cannot
+price it is refused, never run direct. `/gateway/*` already needs
+`models:invoke` on an OAuth token, and the client id is recorded on the
+charge.
 
 ### Real runs (2026-11-26, local, platform keys)
 
-Snapshot seeded with the Sonnet 5.5 OpenRouter card only, so the same run
-also shows the route per model.
+The snapshot was seeded with the Sonnet 5.5 OpenRouter card only, so each
+run also shows the route per call. Every charge equalled OpenRouter's own
+`usage.cost` for the call, and each call was charged once.
 
-- A one-line script, enhanced and analysed to `stopAt: script` on Sonnet
-  5.5: four Sonnet calls (enhancement, then three analysis calls) each held
-  about $1.30 and charged once on the card ($0.0178, $0.0220, $0.0115,
-  $0.0205), equal to the cent-fraction to OpenRouter's own `usage.cost`. The
-  Opus 5.5 scene split had no card in the snapshot and took today's path,
-  deducted once.
-- One assistant turn with a tool call (`openstory_list_sequences`): two
-  Sonnet calls charged $0.0447 and $0.0033 (the second mostly cache reads),
-  both equal to OpenRouter's cost; no separate assistant deduction.
-- The public endpoint, `maxTokens: 32`: held $0.000478, charged $0.000110,
-  equal to OpenRouter's cost.
-- Every hold released (7 holds, $0 left held).
+- **A funded run** (`stopAt: references`, an 840,000-micro run
+  reservation): two LLM calls drew on the run's reservation with no hold of
+  their own: the Sonnet analysis call on the card, and the Opus 5.5 split
+  direct with `no card`. Two llm-client calls went direct with the priority
+  tier reason.
+- **An unfunded run** (`stopAt: script`, no reservation): the card call took
+  a hold of exactly its charge at charge time and closed it. The
+  enhancement request was deducted direct with the priority tier reason.
+- **One assistant turn with a tool call** (`openstory_list_sequences`): two
+  Sonnet calls, each holding about $0.14 on the 8,192 bound, charged $0.0447
+  and $0.0058. No separate assistant deduction.
+- **The public endpoint** (`maxTokens: 32`): held 494 micros, charged 116.
+- Every request hold was released, and every card line carries `sku`
+  `openrouter/anthropic/claude-sonnet-5.5`.
 
 ### No job row
 
-A text call writes no `gateway_jobs` row: it has nothing to poll, store or
-read back. Its record is the `credit_usage` transaction (provider, model,
-usage and estimate in its metadata) and its charge lines
-(`gateway_job_id` null).
+A text call writes no `gateway_jobs` row. It has nothing to poll, store or
+read back, and a row would add a write to every call. Its record is the
+`credit_usage` transaction and the charge lines (`sku` set,
+`gateway_job_id` null).
 
 ## Not in this stack
 

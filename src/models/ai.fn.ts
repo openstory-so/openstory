@@ -11,14 +11,8 @@
  * bodies, which the compiler strips.
  */
 
-import {
-  callLLMStream,
-  llmCostToDeduct,
-  RECOMMENDED_MODELS,
-} from '@/models/server/llm-client';
+import { callLLMStream, RECOMMENDED_MODELS } from '@/models/server/llm-client';
 import { isValidImageToVideoModel } from './models';
-import type { TextModel } from './models';
-import type { LlmKeyInfo } from '@/models/server/create-adapter';
 import { isValidAnalysisModelId } from './models.config';
 import { sanitizeScriptContent } from '@/sequences/prompt-validation';
 import {
@@ -107,7 +101,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     enforceRateLimit(promptShorteningRateLimiter, getClientIP());
 
-    const { llmKey, deduct } = await prepareBilling(
+    const { llmKey } = await prepareBilling(
       context.scopedDb,
       `Prompt shortening (${RECOMMENDED_MODELS.fast})`,
       { model: RECOMMENDED_MODELS.fast }
@@ -115,10 +109,6 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
 
     const model = RECOMMENDED_MODELS.fast;
     let shortenedPrompt = '';
-    let usage;
-    // A region block retries on another model (#1259); bill what answered.
-    let servedModel: TextModel = model;
-    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model,
       messages: [
@@ -132,11 +122,6 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       apiKey: llmKey,
     })) {
       shortenedPrompt = chunk.accumulated;
-      if (chunk.done) {
-        usage = chunk.usage;
-        servedModel = chunk.model;
-        servedVia = chunk.via;
-      }
     }
 
     if (!shortenedPrompt) {
@@ -147,8 +132,6 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
     if (trimmedPrompt.length < 20) {
       throw new Error('Shortened prompt is too short. Please try again.');
     }
-
-    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     return {
       originalPrompt: data.prompt,
@@ -202,7 +185,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
         ? context.sequence.analysisModel
         : null) ?? RECOMMENDED_MODELS.fast;
 
-    const { llmKey, deduct } = await prepareBilling(
+    const { llmKey } = await prepareBilling(
       context.scopedDb,
       `Scene duration estimate (${analysisModel})`,
       { model: analysisModel, shotId: context.shot.id }
@@ -222,9 +205,6 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       .join('\n');
 
     let response;
-    let usage;
-    let servedModel: TextModel = analysisModel;
-    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model: analysisModel,
       messages: [
@@ -245,17 +225,12 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
     })) {
       if (chunk.done) {
         response = chunk.parsed;
-        usage = chunk.usage;
-        servedModel = chunk.model;
-        servedVia = chunk.via;
       }
     }
 
     if (!response) {
       throw new Error('No response received from AI service');
     }
-
-    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     return { durationSeconds: clampDuration(response.durationSeconds) };
   });
@@ -459,7 +434,7 @@ export const recommendStylesForScriptFn = createServerFn({ method: 'POST' })
       return { recommendations: [] as StyleRecommendation[] };
     }
 
-    const { llmKey, deduct } = await prepareBilling(
+    const { llmKey } = await prepareBilling(
       context.scopedDb,
       `Style recommendation (${RECOMMENDED_MODELS.structured})`,
       { model: RECOMMENDED_MODELS.structured }
@@ -477,9 +452,6 @@ Return up to ${limit} best-fit styles, strongest first.`;
 
     const model = RECOMMENDED_MODELS.structured;
     let result;
-    let usage;
-    let servedModel: TextModel = model;
-    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model,
       messages: [
@@ -487,6 +459,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
         { role: 'user' as const, content: userPrompt },
       ],
       temperature: 0.4,
+      max_tokens: 2048,
       observationName: 'recommendStylesForScript',
       userId: context.user.id,
       responseSchema: styleRecommendationResponseSchema,
@@ -494,17 +467,12 @@ Return up to ${limit} best-fit styles, strongest first.`;
     })) {
       if (chunk.done) {
         result = chunk.parsed;
-        usage = chunk.usage;
-        servedModel = chunk.model;
-        servedVia = chunk.via;
       }
     }
 
     if (!result) {
       throw new Error('No response received from AI service');
     }
-
-    await deduct?.(llmCostToDeduct(usage, servedModel, servedVia));
 
     const recommendations = rankStyleRecommendations(
       result,

@@ -19,7 +19,6 @@ import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   DEFAULT_IMAGE_MODEL,
   safeTextToImageModel,
@@ -271,22 +270,6 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         result.consistencyTag
       );
       return result;
-    });
-
-    await step.do('deduct-vision-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: visionResult.costMicros,
-        usedOwnKey: visionResult.usedOwnKey,
-        description: `Element vision (${visionResult.model})`,
-        idempotencyKey: `${event.instanceId}:vision`,
-        metadata: {
-          model: visionResult.model,
-          elementId,
-          sequenceId,
-        },
-        workflowName: 'ReplaceElementWorkflow',
-      });
     });
 
     // Vision-driven auto-rename: if the new image suggests a meaningfully

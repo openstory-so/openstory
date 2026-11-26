@@ -27,7 +27,6 @@ function likenessCheckDb(scopedDb: WorkflowScopedDb): LikenessCheckDb {
     billing: {
       hasEnoughCredits: (amount) =>
         scopedDb.liveRead.billing.hasEnoughCredits(amount),
-      deductCredits: (...args) => scopedDb.billing.deductCredits(...args),
     },
     compliance: {
       attestations: {

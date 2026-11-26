@@ -5,8 +5,9 @@ import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
+import { chargedOnceAs } from '@/gateway/server/text';
+import type { TextModel } from '@/models/models';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -104,8 +105,13 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { scopedDb } = context;
-    const llmKeyInfo =
-      await scopedDb.apiKeys.resolveLlmKey(ELEMENT_VISION_MODEL);
+    // One charge per upload, however often the draft is described.
+    const chargeOnce = async (model: TextModel) =>
+      chargedOnceAs(
+        await scopedDb.apiKeys.resolveLlmKey(model),
+        `draft-vision:${data.publicUrl}`
+      );
+    const llmKeyInfo = await chargeOnce(ELEMENT_VISION_MODEL);
     if (llmKeyInfo.source !== 'organization') {
       const estimatedCost = estimateLLMCost(1);
       const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
@@ -120,7 +126,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
       imageUrl: data.publicUrl,
       filename: data.filename,
       llmKey: llmKeyInfo,
-      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
+      resolveLlmKey: chargeOnce,
       observability: {
         userId: context.user.id,
         tags: ['vision', 'draft'],
@@ -128,21 +134,6 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
       },
     });
 
-    if (!result.usedOwnKey && result.costMicros !== null) {
-      if (result.costMicros > 0) {
-        await scopedDb.billing.deductCredits(result.costMicros, {
-          description: `Element vision (${result.model})`,
-          metadata: { model: result.model, draft: true },
-          idempotencyKey: `draft-vision:${data.publicUrl}`,
-        });
-      } else {
-        reportMissingBillingCost({
-          source: 'draft-element-vision',
-          modelId: result.model,
-          metadata: { draft: true, publicUrl: data.publicUrl },
-        });
-      }
-    }
     return {
       description: result.description,
       consistencyTag: result.consistencyTag,

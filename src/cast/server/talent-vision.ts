@@ -6,7 +6,6 @@
  * call returns; recorded fixtures still parse them.
  */
 
-import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
 import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
@@ -16,7 +15,7 @@ import type {
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { z } from 'zod';
-import { callLLMStream, llmCostToDeduct } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { talentSubjectKindSchema } from '@/cast/subject-kind';
 
@@ -57,11 +56,8 @@ export type AnalyzeTalentMediaInput = {
 
 export type TalentVisionResult = TalentMediaAnalysis & {
   /** The model that actually answered — the region fallback may have run
-   *  instead of {@link TALENT_VISION_MODEL}. Bill and log this one. */
+   *  instead of {@link TALENT_VISION_MODEL}. Log this one; the key's meter charged it. */
   model: TextModel;
-  /** Null when the gateway already charged the call. */
-  costMicros: Microdollars | null;
-  usedOwnKey: boolean;
 };
 
 // Recorded e2e fixtures match this prompt text; changing it means
@@ -211,13 +207,12 @@ async function runTalentVision(input: {
   observability?: AIObservabilityMeta;
 }): Promise<TalentVisionResult> {
   let parsed: TalentMediaAnalysis | undefined;
-  let usage;
   let model = input.model;
-  let via = input.llmKey?.via;
   for await (const chunk of callLLMStream({
     model: input.model,
     messages: input.messages,
     temperature: 0.2,
+    max_tokens: 4096,
     responseSchema: talentMediaAnalysisSchema,
     apiKey: input.llmKey,
     resolveApiKey: input.resolveLlmKey,
@@ -227,9 +222,7 @@ async function runTalentVision(input: {
   })) {
     if (chunk.done) {
       parsed = chunk.parsed;
-      usage = chunk.usage;
       model = chunk.model;
-      via = chunk.via;
     }
   }
   if (!parsed) {
@@ -239,7 +232,5 @@ async function runTalentVision(input: {
   return {
     ...parsed,
     model,
-    costMicros: llmCostToDeduct(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

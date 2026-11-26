@@ -5,17 +5,14 @@
  * described.
  */
 
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import {
   requireCheckable,
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
-import { chargedByGateway } from '@/gateway/server/text';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import { InsufficientCreditsError } from '@/platform/errors';
-import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadRightsReader } from '@/cast/server/upload-rights';
 import type { VisionBillingDb } from '@/cast/server/talent/analyze-talent-media';
@@ -62,9 +59,6 @@ export async function describeUpload(opts: {
   }
 
   let parsed: z.infer<typeof responseSchema> | undefined;
-  let usage;
-  let model = DEFAULT_VISION_MODEL;
-  let via: Parameters<typeof llmCostFromUsage>[2] = llmKey.via;
   for await (const chunk of callLLMStream({
     model: DEFAULT_VISION_MODEL,
     messages: [
@@ -78,6 +72,7 @@ export async function describeUpload(opts: {
       },
     ],
     temperature: 0.3,
+    max_tokens: 2048,
     responseSchema,
     apiKey: llmKey,
     resolveApiKey: (m) => scopedDb.apiKeys.resolveLlmKey(m),
@@ -85,12 +80,7 @@ export async function describeUpload(opts: {
     tags: ['vision'],
     userId: opts.userId,
   })) {
-    if (chunk.done) {
-      parsed = chunk.parsed;
-      usage = chunk.usage;
-      model = chunk.model;
-      via = chunk.via;
-    }
+    if (chunk.done) parsed = chunk.parsed;
   }
   const description = parsed?.description.trim();
   if (!parsed || !description) {
@@ -99,22 +89,5 @@ export async function describeUpload(opts: {
   const isCharacterSheet =
     opts.subject === 'character' ? parsed.isCharacterSheet : null;
 
-  if (llmKey.source !== 'organization' && !chargedByGateway(usage)) {
-    const costMicros = llmCostFromUsage(usage, model, via);
-    if (costMicros > 0) {
-      await scopedDb.billing.deductCredits(costMicros, {
-        description: `Upload description (${model})`,
-        metadata: { model, subject: opts.subject },
-        // Every call is a model call: one charge each, never keyed by URL.
-        idempotencyKey: `describe-upload:${generateId()}`,
-      });
-    } else {
-      reportMissingBillingCost({
-        source: 'describe-upload',
-        modelId: model,
-        metadata: { subject: opts.subject },
-      });
-    }
-  }
   return { description, isCharacterSheet };
 }

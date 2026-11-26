@@ -3,7 +3,6 @@
  * tools (#1985): favourite, delete, edit history and the AI prompt draft.
  */
 
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -125,19 +124,5 @@ export async function draftStudioPromptForOrganization(
     observability: { userId: scopedDb.userId, tags: ['studio', 'draft'] },
   });
 
-  if (!result.usedOwnKey && result.costMicros !== null) {
-    if (result.costMicros > 0) {
-      await scopedDb.billing.deductCredits(result.costMicros, {
-        description: `Studio prompt draft (${result.model})`,
-        metadata: { model: result.model },
-      });
-    } else {
-      reportMissingBillingCost({
-        source: 'studio-prompt-draft',
-        modelId: result.model,
-        metadata: { references: data.references.length },
-      });
-    }
-  }
   return { prompt: result.prompt };
 }

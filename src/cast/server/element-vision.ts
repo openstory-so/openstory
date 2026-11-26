@@ -5,7 +5,6 @@
  * @tanstack/ai's OpenRouter adapter.
  */
 
-import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
 import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
@@ -15,7 +14,7 @@ import type {
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { z } from 'zod';
-import { callLLMStream, llmCostToDeduct } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 
 export const ELEMENT_VISION_MODEL = DEFAULT_VISION_MODEL;
@@ -50,11 +49,8 @@ export type DescribeElementInput = {
 
 export type ElementVisionResult = ElementDescription & {
   /** The model that actually answered — the region fallback may have run
-   *  instead of {@link ELEMENT_VISION_MODEL}. Bill and log this one. */
+   *  instead of {@link ELEMENT_VISION_MODEL}. Log this one; the key's meter charged it. */
   model: TextModel;
-  /** Null when the gateway already charged the call. */
-  costMicros: Microdollars | null;
-  usedOwnKey: boolean;
 };
 
 /**
@@ -117,13 +113,12 @@ export async function describeElementImage(
   // reasoning effort on the GLM-5.3 Flash fallback, which otherwise thinks at
   // `max` (#1494).
   let parsed: ElementDescription | undefined;
-  let usage;
   let model = ELEMENT_VISION_MODEL;
-  let via = input.llmKey?.via;
   for await (const chunk of callLLMStream({
     model: ELEMENT_VISION_MODEL,
     messages,
     temperature: 0.3,
+    max_tokens: 2048,
     responseSchema: elementVisionResponseSchema,
     apiKey: input.llmKey,
     resolveApiKey: input.resolveLlmKey,
@@ -133,9 +128,7 @@ export async function describeElementImage(
   })) {
     if (chunk.done) {
       parsed = chunk.parsed;
-      usage = chunk.usage;
       model = chunk.model;
-      via = chunk.via;
     }
   }
   if (!parsed) {
@@ -154,7 +147,5 @@ export async function describeElementImage(
     consistencyTag,
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
     model,
-    costMicros: llmCostToDeduct(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }
