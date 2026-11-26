@@ -21,8 +21,6 @@ declare namespace Cloudflare {
     SEED_SPEECH_API_KEY?: string;
     SEED_SPEECH_BASE_URL?: string;
     SEED_SPEECH_QPM?: string;
-    /** Lifts modelschemas.com off its anonymous rate limit. */
-    MODELSCHEMAS_API_KEY?: string;
     /** Served at /.well-known/openai-apps-challenge (#2138). */
     OPENAI_APPS_CHALLENGE?: string;
     /** Storage CDN domain; unset means the worker's `/r2/$` route serves. */

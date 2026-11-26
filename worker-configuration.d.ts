@@ -18,6 +18,7 @@ interface __BaseEnv_Env {
 	GEMINI_API_KEY: string;
 	GOOGLE_CLIENT_ID: string;
 	GOOGLE_CLIENT_SECRET: string;
+	MODELSCHEMAS_API_KEY: string;
 	OPENROUTER_KEY: string;
 	STRIPE_PUBLISHABLE_KEY: string;
 	STRIPE_SECRET_KEY: string;
@@ -90,6 +91,7 @@ declare namespace Cloudflare {
 		GEMINI_API_KEY: string;
 		GOOGLE_CLIENT_ID: string;
 		GOOGLE_CLIENT_SECRET: string;
+		MODELSCHEMAS_API_KEY: string;
 		OPENROUTER_KEY: string;
 		STRIPE_PUBLISHABLE_KEY: string;
 		STRIPE_SECRET_KEY: string;
@@ -157,6 +159,7 @@ declare namespace Cloudflare {
 		GEMINI_API_KEY: string;
 		GOOGLE_CLIENT_ID: string;
 		GOOGLE_CLIENT_SECRET: string;
+		MODELSCHEMAS_API_KEY: string;
 		OPENROUTER_KEY: string;
 		STRIPE_PUBLISHABLE_KEY: string;
 		STRIPE_SECRET_KEY: string;
@@ -212,7 +215,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ADMIN_EMAILS" | "API_KEY_ENCRYPTION_KEY" | "BETTER_AUTH_SECRET" | "EMAIL_FROM" | "FAL_BILLING_KEY" | "FAL_KEY" | "GEMINI_API_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "OPENROUTER_KEY" | "STRIPE_PUBLISHABLE_KEY" | "STRIPE_SECRET_KEY" | "STRIPE_WEBHOOK_SECRET" | "VITE_APP_NAME" | "VITE_APP_URL" | "VITE_PUBLIC_POSTHOG_HOST" | "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN" | "XAI_API_KEY" | "E2E_TEST">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ADMIN_EMAILS" | "API_KEY_ENCRYPTION_KEY" | "BETTER_AUTH_SECRET" | "EMAIL_FROM" | "FAL_BILLING_KEY" | "FAL_KEY" | "GEMINI_API_KEY" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "MODELSCHEMAS_API_KEY" | "OPENROUTER_KEY" | "STRIPE_PUBLISHABLE_KEY" | "STRIPE_SECRET_KEY" | "STRIPE_WEBHOOK_SECRET" | "VITE_APP_NAME" | "VITE_APP_URL" | "VITE_PUBLIC_POSTHOG_HOST" | "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN" | "XAI_API_KEY" | "E2E_TEST">> {}
 }
 declare module "*.txt" {
 	const value: string;

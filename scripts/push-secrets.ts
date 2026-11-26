@@ -101,9 +101,8 @@ export const SECRETS = {
   GEMINI_API_KEY: { runtime: true, build: false },
   GOOGLE_CLIENT_ID: { runtime: true, build: false },
   GOOGLE_CLIENT_SECRET: { runtime: true, build: false },
-  // Lifts modelschemas.com (catalog, input schemas, rate cards) off its
-  // anonymous 60 req/h limit.
-  MODELSCHEMAS_API_KEY: { runtime: true, build: false, optional: true },
+  // Required: the daily gateway snapshot reads 75 models; anonymous is 60 req/h.
+  MODELSCHEMAS_API_KEY: { runtime: true, build: false },
   LANGFUSE_BASE_URL: { runtime: false, build: false },
   LANGFUSE_PROMPTS_ENABLED: { runtime: false, build: false },
   LANGFUSE_PUBLIC_KEY: { runtime: false, build: false },

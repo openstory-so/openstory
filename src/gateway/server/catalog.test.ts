@@ -94,6 +94,39 @@ describe('the stored snapshot', () => {
     expect(await db.select().from(gatewayModels)).toEqual([]);
   });
 
+  it('remembers a refused live id instead of asking modelschemas again', async () => {
+    await expect(
+      getGatewayModel('grok', 'grok-no-such-model')
+    ).rejects.toBeInstanceOf(NotFoundError);
+    const calls = fetchCatalogJson.mock.calls.length;
+    await expect(
+      getGatewayModel('grok', 'grok-no-such-model')
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(fetchCatalogJson.mock.calls.length).toBe(calls);
+  });
+
+  it('makes at most 30 live reads a minute, so random ids cannot spend the refresh quota', async () => {
+    vi.useFakeTimers({ now: new Date('2030-01-01T00:00:00Z') });
+    try {
+      for (let i = 0; i < 30; i++) {
+        await expect(
+          getGatewayModel('grok', `grok-random-${i}`)
+        ).rejects.toBeInstanceOf(NotFoundError);
+      }
+      const calls = fetchCatalogJson.mock.calls.length;
+      await expect(
+        getGatewayModel('grok', 'grok-random-30')
+      ).rejects.toMatchObject({ statusCode: 429 });
+      expect(fetchCatalogJson.mock.calls.length).toBe(calls);
+      vi.advanceTimersByTime(60_000);
+      await expect(
+        getGatewayModel('grok', 'grok-random-30')
+      ).rejects.toBeInstanceOf(NotFoundError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('serves a stored model with modelschemas unreachable', async () => {
     pages = VIDEO_PAGES;
     products = [{ provider: 'grok', id: 'grok-imagine-video' }];

@@ -9,6 +9,8 @@ import {
   listStoredGatewayModels,
   storeGatewayModel,
 } from '@/gateway/server/db/gateway-models';
+import { getEnv } from '#env';
+import { IS_PRODUCTION_DEPLOYMENT } from '@/platform/flags';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cron', 'gateway-models']);
@@ -32,6 +34,11 @@ export async function refreshGatewayModels(
   db: PricingRefreshDb = getDb(),
   budgetMs: number = REFRESH_BUDGET_MS
 ): Promise<GatewayModelsRefreshSummary> {
+  if (IS_PRODUCTION_DEPLOYMENT && !getEnv().MODELSCHEMAS_API_KEY) {
+    logger.error(
+      'MODELSCHEMAS_API_KEY is not set: modelschemas allows 60 anonymous requests an hour, so most product models will not refresh'
+    );
+  }
   const deadline = Date.now() + budgetMs;
   const products = productGatewayModels();
   const wanted = new Set(products.map((m) => `${m.provider}/${m.id}`));

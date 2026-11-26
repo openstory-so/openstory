@@ -168,14 +168,15 @@ setup.
 
 Secrets are pushed to the Worker via `wrangler secret bulk`. The full list is defined in [`.github/workflows/deploy-cloudflare.yml`](https://github.com/openstory-so/openstory/blob/main/.github/workflows/deploy-cloudflare.yml). Core secrets include:
 
-| Variable                                    | Description                                                                           |
-| ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`                        | Better Auth signing secret                                                            |
-| `VITE_APP_URL`                              | Public URL of the deployment                                                          |
-| `FAL_KEY`                                   | fal.ai API key for image/video generation                                             |
-| `OPENROUTER_KEY`                            | OpenRouter API key for LLM script analysis                                            |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials                                                              |
-| `EMAIL_FROM`                                | Sender address for transactional email (domain onboarded in Cloudflare Email Service) |
+| Variable                                    | Description                                                                                                                                                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                        | Better Auth signing secret                                                                                                                                                                            |
+| `VITE_APP_URL`                              | Public URL of the deployment                                                                                                                                                                          |
+| `FAL_KEY`                                   | fal.ai API key for image/video generation                                                                                                                                                             |
+| `OPENROUTER_KEY`                            | OpenRouter API key for LLM script analysis                                                                                                                                                            |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials                                                                                                                                                                              |
+| `EMAIL_FROM`                                | Sender address for transactional email (domain onboarded in Cloudflare Email Service)                                                                                                                 |
+| `MODELSCHEMAS_API_KEY`                      | modelschemas.com key. Required in production: the daily gateway snapshot reads 75 models and the anonymous limit is 60 requests an hour, so without it most rows go stale (the refresh logs an error) |
 
 ## Prod database cutover (velro-prd → openstory-prd)
 

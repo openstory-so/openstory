@@ -663,7 +663,10 @@ from modelschemas on a request.
   the stored row; on a miss it reads modelschemas through the catalog's
   bounded TTL cache, writes nothing, and refuses an answer under another id
   than the one asked for. Only the scheduled refresh writes rows, so a caller
-  cannot grow the table by inventing ids (`catalog.test.ts`).
+  cannot grow the table by inventing ids (`catalog.test.ts`). Live reads
+  spend the refresh's modelschemas quota, so they are bounded per isolate: a
+  refused id is remembered for ten minutes, and past 30 live reads a minute
+  the answer is `429 RATE_LIMITED`.
 - The snapshot holds exactly `productGatewayModels()`
   (`src/gateway/product-models.ts`). `GET /api/v1/gateway/models` and the
   Models page lists still read modelschemas' lists.
@@ -678,8 +681,10 @@ from modelschemas on a request.
 - It runs on the existing daily cron (`FAL_PRICING_CRON`), before the fal
   pricing refresh and in its own `try`, so a failure or the budget never
   stops fal pricing; no new cron expression. `bun scripts/refresh-fal-pricing.ts`
-  runs both against local D1. Set `MODELSCHEMAS_API_KEY`: a refresh is two
-  requests a model, past the anonymous 60 an hour.
+  runs both against local D1. `MODELSCHEMAS_API_KEY` is required in
+  production (`scripts/push-secrets.ts`): a refresh is two requests a model,
+  past the anonymous 60 an hour, and a production refresh without it logs
+  an error.
 - The fal pricing refresh takes its cards from this snapshot
   (`listStoredGatewayModels(db)`); its own modelschemas fetcher
   (`fetch-rate-cards.ts`) is gone. A used fal endpoint the snapshot does not
