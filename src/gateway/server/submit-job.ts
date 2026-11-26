@@ -123,9 +123,12 @@ async function rowBody(body: GatewayJobInput): Promise<GatewayJobInput> {
   const entries = await Promise.all(
     Object.entries(body).map(
       async ([key, inner]): Promise<[string, JsonValue]> => {
-        if (!INLINE_KEYS.has(key)) return [key, await rowValue(inner)];
-        const text = canonical(inner);
-        return [key, { sha256: await sha256Hex(text), length: text.length }];
+        return [
+          key,
+          INLINE_KEYS.has(key)
+            ? await digest(canonical(inner))
+            : await rowValue(inner),
+        ];
       }
     )
   );
@@ -134,7 +137,19 @@ async function rowBody(body: GatewayJobInput): Promise<GatewayJobInput> {
 
 async function rowValue(value: JsonValue): Promise<JsonValue> {
   if (Array.isArray(value)) return Promise.all(value.map(rowValue));
-  return isObject(value) ? rowBody(value) : value;
+  if (isObject(value)) return rowBody(value);
+  // A `data:` URL in any field is media too; a short one stays as it is.
+  return typeof value === 'string' &&
+    value.length > DATA_URL_DIGEST_FROM &&
+    /^data:/i.test(value)
+    ? digest(value)
+    : value;
+}
+
+const DATA_URL_DIGEST_FROM = 256;
+
+async function digest(text: string): Promise<JsonValue> {
+  return { sha256: await sha256Hex(text), length: text.length };
 }
 
 /** Refuses a replayed key that carries a different request; `model` is the path's, so it is left out. */

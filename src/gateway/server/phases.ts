@@ -155,6 +155,8 @@ export async function startGatewayRun(
       };
 }
 
+const ORIGIN_FAILED = new Set([500, 503]);
+
 /** The provider answered the start without running it: the same key may send it again. */
 export class StartNotRun extends Error {}
 
@@ -172,8 +174,15 @@ function startOutcome(
     'statusCode' in error && typeof error.statusCode === 'number'
       ? error.statusCode
       : null;
-  if (status === null || status === 408 || status === 504) return 'unknown';
   if (status === 429) return 'resend';
+  // Only the origin's own 500 and 503 say nothing ran; a proxy's 502, 504 or 52x can follow a finished, billed request.
+  if (
+    status === null ||
+    status === 408 ||
+    (status >= 500 && !ORIGIN_FAILED.has(status))
+  ) {
+    return 'unknown';
+  }
   return GATEWAY_DRIVERS[run.provider].answersAtOnce(run.target.endpointId)
     ? 'resend'
     : 'refused';

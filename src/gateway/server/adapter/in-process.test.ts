@@ -312,6 +312,38 @@ describe('the openstory adapter, in-process', () => {
     });
   });
 
+  it.each([502, 504, 520, 524])(
+    'never sends an answering model again after a proxy %i, which may follow a billed request',
+    async (statusCode) => {
+      start.mockRejectedValueOnce(
+        Object.assign(
+          new Error(`Provider refused the request (${statusCode})`),
+          {
+            statusCode,
+          }
+        )
+      );
+      const submit = () =>
+        generateImage({
+          threadId: 'thread-1',
+          adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+            idempotencyKey: `run-9-${statusCode}:image`,
+          }),
+          prompt: '',
+          modelOptions: BODY,
+        });
+      const first = await submit().catch((e: unknown) => e);
+      expect(first).not.toBeInstanceOf(NonRetryableError);
+      expect((await onlyJob(IMAGE.id)).status).toBe('running');
+      // The retried step fails closed and lets the hold go.
+      await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+      expect(start).toHaveBeenCalledTimes(1);
+      const job = await onlyJob(IMAGE.id);
+      expect(job.status).toBe('failed');
+      expect(await holdLeft(job.id)).toBe(0);
+    }
+  );
+
   it('fails a queued submit at once on a 5xx, which may have queued it, and lets the hold go', async () => {
     start.mockRejectedValueOnce(
       Object.assign(new Error('Provider refused the request (500): busy'), {

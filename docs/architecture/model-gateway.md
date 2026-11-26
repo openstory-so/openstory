@@ -1116,7 +1116,8 @@ caller books `seed-audio` itself (`seedCharge`). The body is the same.
   voice clips, made from text, and a mic take is the user's own recording
   made in the app. The job row keeps inline media (`audio_data`,
   `inlineData` and the other inline keys) as `{ sha256, length }`, never
-  the bytes, so a 30 second clip stays under D1's 2 MB row; a replayed key
+  the bytes, and so is any `data:` URL over 256 characters in any field, so
+  a 30 second clip stays under D1's 2 MB row; a replayed key
   is compared on the digest, and the provider still gets the whole body.
 - Pacing stays on the BytePlus governor: the Seed Audio driver calls
   `acquireSeedSpeechToken` before every call.
@@ -1133,11 +1134,13 @@ settle step), and the 500 left its job `running` with its hold. Now a
 start's error is read by whether the driver answers at once
 (`answersAtOnce`: Seed, Ark images, Grok images, Gemini, ElevenLabs) or
 queues a job (Ark tasks, Grok video, fal). A 4xx fails and releases. A 429,
-or a 5xx from a start that answers at once, ran nothing: in-process the job
-goes back to `queued` with its hold and the retried step sends it again
-under the same key. A 5xx from a queued start may have queued the job, so
-it fails and releases at once. A timeout or dropped connection may have
-reached the provider: the retried step finds the job `running` with no
+or the origin's own 500 or 503 from a start that answers at once, ran
+nothing: in-process the job goes back to `queued` with its hold and the
+retried step sends it again under the same key. A 500 or 503 from a queued
+start may have queued the job, so it fails and releases at once. A proxy's
+502, 504 or 52x (Cloudflare in front of xAI or the Seed edge) can follow a
+request that finished and was billed, so it is treated like a timeout or a
+dropped connection: the retried step finds the job `running` with no
 provider id and fails closed. fal's SDK errors carry `status`, not
 `statusCode`, so a fal submit error takes that last path and is never
 sent twice.

@@ -658,6 +658,37 @@ describe('submitGatewayJob', () => {
     expect(changed).toBeInstanceOf(ConflictError);
   });
 
+  it('keeps a digest of a long data: URL in any field, and still refuses a changed one', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const url = `data:audio/wav;base64,${'U'.repeat(300_000)}`;
+    const body: GatewayJobInput = {
+      text_prompt: '@Audio1 says the port engine is done for',
+      duration: 5,
+      references: [{ audio_url: url }, { audio_url: 'data:,short' }],
+    };
+    const hold = (sent: GatewayJobInput) =>
+      holdGatewayJob(model, sent, {
+        scopedDb,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-data-url-1',
+        oauthClientId: null,
+        runReservationId: null,
+      });
+    const first = await hold(body);
+    expect(first.job.input.references).toEqual([
+      { audio_url: { sha256: expect.any(String), length: url.length } },
+      { audio_url: 'data:,short' },
+    ]);
+    expect(first.run.input).toMatchObject(body);
+    expect((await hold(body)).job.id).toBe(first.job.id);
+    const changed = await hold({
+      ...body,
+      references: [{ audio_url: `${url}V` }, { audio_url: 'data:,short' }],
+    }).catch((e: unknown) => e);
+    expect(changed).toBeInstanceOf(ConflictError);
+  });
+
   it('checks every URL in the body before anything spends', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
     const body: GatewayJobInput = {
