@@ -24,10 +24,14 @@ import {
   retryOnRateLimit,
 } from '@/models/server/elevenlabs-config';
 import { type Microdollars, ZERO_MICROS } from '@/billing/money';
+import type { GatewayJobInput } from '@/gateway/schema';
+import { ELEVENLABS_MUSIC_TARGET } from '@/audio/gateway-targets';
 import {
-  runElevenLabsOnGateway,
-  type ElevenLabsGatewayCall,
-} from '@/audio/server/elevenlabs-gateway';
+  runAudioOnGateway,
+  type AudioGatewayCall,
+  type AudioRun,
+} from '@/audio/server/audio-gateway';
+import { gatewayRunRoute } from '@/gateway/server/route';
 import { generateId } from '@/platform/id';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
@@ -46,8 +50,8 @@ const logger = getLogger(['openstory', 'audio', 'music-generation']);
 
 export type GenerateMusicOptions = {
   credentials?: CredentialScopedDb;
-  /** ElevenLabs Music routed to the gateway at the trigger; null keeps today's direct call. */
-  gateway: ElevenLabsGatewayCall | null;
+  /** The run: ElevenLabs Music goes where its routes send the body. */
+  run: AudioRun;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
   /** Style/mood prompt for the music (e.g., "tense orchestral, dark atmosphere") */
@@ -232,8 +236,24 @@ async function callElevenLabsAudio(
     promptLength: options.prompt.length,
     duration: billedDuration,
   });
-  if (options.gateway) {
-    return gatewayMusic(options.gateway, options, modelConfig, billedDuration);
+  const body = {
+    model_id: ELEVENLABS_MUSIC_MODEL,
+    prompt: options.prompt,
+    music_length_ms: Math.round(billedDuration * 1000),
+    force_instrumental: options.instrumental ?? true,
+  };
+  const route = gatewayRunRoute(
+    options.run.routes,
+    ELEVENLABS_MUSIC_TARGET,
+    body
+  );
+  if (route.via === 'openstory') {
+    return gatewayMusic(
+      { ...options.run, model: route.model },
+      body,
+      modelConfig,
+      billedDuration
+    );
   }
 
   const apiKeyInfo = options.credentials
@@ -307,17 +327,12 @@ async function callElevenLabsAudio(
 
 /** The gateway holds and charges, so the caller books nothing. */
 async function gatewayMusic(
-  call: ElevenLabsGatewayCall,
-  options: GenerateMusicOptions,
+  call: AudioGatewayCall,
+  body: GatewayJobInput,
   modelConfig: AudioModelConfig,
   billedDuration: number
 ): Promise<MusicResult> {
-  const { outputs } = await runElevenLabsOnGateway(call, {
-    model_id: call.model.id,
-    prompt: options.prompt,
-    music_length_ms: Math.round(billedDuration * 1000),
-    force_instrumental: options.instrumental ?? true,
-  });
+  const { outputs } = await runAudioOnGateway(call, body);
   const [output] = outputs;
   if (!output) throw new Error('The gateway stored no music');
   return {

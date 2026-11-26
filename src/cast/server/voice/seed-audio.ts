@@ -21,24 +21,20 @@ import {
 } from '@/billing/seed-speech-pricing';
 import { SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import type { GatewayJobInput } from '@/gateway/schema';
-import { openstoryAudio } from '@/gateway/server/adapter';
-import { inProcessGateway } from '@/gateway/server/adapter/in-process';
-import type { GatewayModel } from '@/gateway/server/catalog';
-import { storeGatewayOutput } from '@/gateway/server/storage';
-import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
+import { getSeedSpeechBaseUrl } from '@/models/server/seed-speech-config';
+import { gatewayRunRoute } from '@/gateway/server/route';
+import { SEED_AUDIO_TARGET } from '@/audio/gateway-targets';
 import {
-  getSeedSpeechBaseUrl,
-  isSeedSpeechConfigured,
-} from '@/models/server/seed-speech-config';
-import { resolveGatewayRoute, type GatewayRoute } from '@/gateway/server/route';
+  runAudioOnGateway,
+  type AudioGatewayCall,
+  type AudioRun,
+} from '@/audio/server/audio-gateway';
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { generateId } from '@/platform/id';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import { honestDataSize } from '@/motion/server/pad-dialogue-audio';
 import { readStorageObject } from '#storage';
-import { generateAudio } from '@tanstack/ai';
 import { transcribeSpeech } from './elevenlabs-voice';
 import { checkParts, type PartsCheck } from './take-check';
 
@@ -143,44 +139,15 @@ function platformSeedRecorder(apiKey: string): SeedRecorder {
   };
 }
 
-/**
- * The `openstory` gateway: each take is held and charged there, under
- * `${idempotencyKey}:${take}`, so a retried step must put its attempt in the key.
- */
-export function gatewaySeedRecorder(params: {
-  scopedDb: WorkflowScopedDb;
-  /** The model as it read at the trigger. */
-  model: GatewayModel;
-  runId: string;
-  idempotencyKey: string;
-}): SeedRecorder {
-  const { scopedDb, model, runId } = params;
-  const folder = `seed-takes/${generateId()}`;
-  // References: the organization's Seed voice clips (made from text) and the user's own in-app mic take.
-  const gateway = inProcessGateway({
-    scopedDb,
-    model,
-    runId,
-    store: (media, index) =>
-      storeGatewayOutput({
-        media,
-        kind: 'audio',
-        organizationId: scopedDb.organizationId,
-        folder,
-        index,
-      }),
-    uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
-  });
+/** The gateway: each take is held and charged there under `${idempotencyKey}:${take}`. */
+function gatewaySeedRecorder(call: AudioGatewayCall): SeedRecorder {
   return async (body, take) => {
-    const { audio } = await generateAudio({
-      adapter: openstoryAudio(model.id, gateway, {
-        idempotencyKey: `${params.idempotencyKey}:${take}`,
-      }),
-      prompt: '',
-      modelOptions: body,
-      threadId: runId,
-    });
-    const key = audio.url ? r2KeyFromUrl(audio.url) : null;
+    const { outputs } = await runAudioOnGateway(
+      { ...call, idempotencyKey: `${call.idempotencyKey}:${take}` },
+      body
+    );
+    const url = outputs[0]?.url;
+    const key = url ? r2KeyFromUrl(url) : null;
     const stored = key ? await readStorageObject(key) : null;
     if (!stored) throw new Error('The gateway stored no Seed take');
     honestDataSize(stored.bytes);
@@ -188,40 +155,17 @@ export function gatewaySeedRecorder(params: {
   };
 }
 
-/** Pipeline-spawned runs are not routed yet: their root triggers snapshot this. */
-export const SEED_PIPELINE_DIRECT: GatewayRoute = {
-  via: 'direct',
-  reason: 'Pipeline runs are not routed to the gateway yet',
-};
-
-/** Where this run's Seed takes go, decided at its trigger (platform key only: no own-key outcome). */
-export async function resolveSeedSpeechRoute(
-  scopedDb: Parameters<typeof resolveGatewayRoute>[0]['scopedDb']
-): Promise<GatewayRoute> {
-  if (!isSeedSpeechConfigured()) {
-    return { via: 'direct', reason: 'Seed Speech is not configured' };
-  }
-  return resolveGatewayRoute({
-    scopedDb,
-    provider: 'byteplus',
-    modelId: SEED_AUDIO_MODEL,
-    body: { model: SEED_AUDIO_MODEL, text_prompt: '' },
-  });
-}
-
-/** The recorder for the route the run was given; `idempotencyKey` must hold the step's attempt. */
-export async function seedRecorderFor(params: {
-  route: GatewayRoute;
-  scopedDb: WorkflowScopedDb;
-  runId: string;
-  idempotencyKey: string;
-}): Promise<SeedRecorder> {
-  const { route, scopedDb } = params;
-  if (route.via === 'openstory') {
-    return gatewaySeedRecorder({ ...params, model: route.model });
-  }
-  const { key } = await scopedDb.credentials.resolveKey('seed-speech');
-  return platformSeedRecorder(key);
+/** Each take goes where the run's routes send its body; `idempotencyKey` must hold the step's attempt. */
+export function seedRecorderFor(params: AudioRun): SeedRecorder {
+  const { routes, ...call } = params;
+  return async (body, take) => {
+    const route = gatewayRunRoute(routes, SEED_AUDIO_TARGET, body);
+    if (route.via === 'openstory') {
+      return gatewaySeedRecorder({ ...call, model: route.model })(body, take);
+    }
+    const { key } = await call.scopedDb.credentials.resolveKey('seed-speech');
+    return platformSeedRecorder(key)(body, take);
+  };
 }
 
 export type CheckedTake = SeedAudioResult & {

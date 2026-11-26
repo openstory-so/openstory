@@ -2,6 +2,8 @@
  * Add a model to a sequence and set a model across it (#547), shared by the
  * editor's server fns (`sequences.fn.ts`) and the MCP tools.
  */
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import {
@@ -254,9 +256,19 @@ export async function addModelToSequence(
             reservationId,
             ownsReservation: true,
           };
-          const workflowRunId = await triggerWorkflow('/music', musicInput, {
-            deduplicationId: `add-audio-${variantId}`,
-          });
+          const workflowRunId = await triggerWorkflow(
+            '/music',
+            {
+              ...musicInput,
+              gatewayRoutes: await resolveGatewayRoutes(
+                scopedDb,
+                AUDIO_ROUTE_TARGETS
+              ),
+            },
+            {
+              deduplicationId: `add-audio-${variantId}`,
+            }
+          );
           return {
             workflowRunId,
             variantType,
@@ -587,9 +599,19 @@ export async function addModelToSequence(
               : {}),
             shots,
           };
-          return triggerWorkflow('/motion-batch', workflowInput, {
-            deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
-          });
+          return triggerWorkflow(
+            '/motion-batch',
+            {
+              ...workflowInput,
+              gatewayRoutes: await resolveGatewayRoutes(
+                scopedDb,
+                AUDIO_ROUTE_TARGETS
+              ),
+            },
+            {
+              deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
+            }
+          );
         }
       );
       return {

@@ -36,6 +36,8 @@
  * separately.
  */
 
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { getRequestCountry } from '@/platform/server/request-country';
@@ -324,9 +326,19 @@ export async function triggerStoryboard(
   // 'failed' on the next acquire and the slot recovers.
   let workflowRunId: string;
   try {
-    workflowRunId = await triggerWorkflow('/storyboard', payload, {
-      deduplicationId: claimId,
-    });
+    workflowRunId = await triggerWorkflow(
+      '/storyboard',
+      {
+        ...payload,
+        gatewayRoutes: await resolveGatewayRoutes(
+          scopedDb,
+          AUDIO_ROUTE_TARGETS
+        ),
+      },
+      {
+        deduplicationId: claimId,
+      }
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {

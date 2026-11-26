@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as tanstackAi from '@tanstack/ai';
+import { asStub } from '@/test/as-stub';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   ELEVENLABS_MUSIC_ENDPOINT,
   ELEVENLABS_MUSIC_MODEL,
@@ -41,6 +43,15 @@ vi.doMock('@/platform/server/observability/ai-otel', () => ({
 
 const { generateMusic } = await import('./music-generation');
 
+// No routes: a payload from before #2434, so the direct path, unchanged.
+const DIRECT_RUN = {
+  routes: undefined,
+  scopedDb: asStub<WorkflowScopedDb>({}),
+  runId: 'music_run-1',
+  reservationId: undefined,
+  idempotencyKey: 'music_run-1:generate-music',
+};
+
 describe('generateMusic native ElevenLabs', () => {
   beforeEach(() => {
     generateAudio.mockReset();
@@ -54,7 +65,7 @@ describe('generateMusic native ElevenLabs', () => {
   it('refuses the native path when no platform key is configured', async () => {
     env.ELEVENLABS_API_KEY = undefined;
     await expect(
-      generateMusic({ prompt: 'lo-fi beat', duration: 30, gateway: null })
+      generateMusic({ prompt: 'lo-fi beat', duration: 30, run: DIRECT_RUN })
     ).rejects.toThrow(/ELEVENLABS_API_KEY/);
     expect(generateAudio).not.toHaveBeenCalled();
   });
@@ -71,7 +82,7 @@ describe('generateMusic native ElevenLabs', () => {
     });
 
     const result = await generateMusic({
-      gateway: null,
+      run: DIRECT_RUN,
       prompt: 'lo-fi beat',
       duration: 61,
       organizationId: 'team_1',

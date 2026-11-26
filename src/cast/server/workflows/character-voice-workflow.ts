@@ -373,15 +373,15 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             `seed-range-read-${take}`,
             SEED_READ_STEP,
             async (ctx) => {
-              const [record, eleven] = await Promise.all([
-                seedRecorderFor({
-                  route: input.seedSpeech,
-                  scopedDb,
-                  runId: event.instanceId,
-                  idempotencyKey: `${event.instanceId}:seed-range-read-${take}:${ctx.attempt}`,
-                }),
-                scopedDb.credentials.resolveKey('elevenlabs'),
-              ]);
+              const record = seedRecorderFor({
+                routes: input.gatewayRoutes,
+                scopedDb,
+                runId: event.instanceId,
+                reservationId: input.reservationId,
+                idempotencyKey: `${event.instanceId}:seed-range-read-${take}:${ctx.attempt}`,
+              });
+              const eleven =
+                await scopedDb.credentials.resolveKey('elevenlabs');
               // ponytail: a take that fails the check is re-recorded by the step
               // retry; on the platform key the platform eats it, on the gateway it is charged.
               const made = await recordRangeRead({

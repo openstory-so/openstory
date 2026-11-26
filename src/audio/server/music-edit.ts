@@ -3,6 +3,8 @@
  * (#1979): save or restore the music prompt, pick a track, discard / undiscard
  * one, generate a track, rewrite the prompt with the LLM.
  */
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
@@ -243,7 +245,11 @@ export async function generateMusic(
   if (!variantId) return { variantId: null };
 
   try {
-    await triggerWorkflow('/music', { ...musicInput, variantId });
+    await triggerWorkflow('/music', {
+      ...musicInput,
+      variantId,
+      gatewayRoutes: await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS),
+    });
   } catch (error) {
     await scopedDb.sequenceVariants.failMusicClaim(
       { sequenceId: sequence.id, variantId },

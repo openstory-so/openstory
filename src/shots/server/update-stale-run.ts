@@ -4,12 +4,13 @@
  * (#1460).
  */
 
-import { resolveSeedSpeechRoute } from '@/cast/server/voice/seed-audio';
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { z } from 'zod';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
-  imageGatewayRoutes,
   imageQuotePricing,
+  imageRouteTargets,
 } from '@/stills/server/image-gateway-routes';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
@@ -159,8 +160,10 @@ export async function launchUpdateStale(input: {
       organizationId: input.organizationId,
       sequenceId: input.sequenceId,
       plan: input.plan,
-      gatewayRoutes: await imageGatewayRoutes(input.scopedDb),
-      seedSpeech: await resolveSeedSpeechRoute(input.scopedDb),
+      gatewayRoutes: await resolveGatewayRoutes(input.scopedDb, [
+        ...imageRouteTargets(),
+        ...AUDIO_ROUTE_TARGETS,
+      ]),
     },
     { deduplicationId: input.runKey }
   );

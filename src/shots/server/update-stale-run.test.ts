@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateStalePlan } from './update-stale-plan';
 import { asStub } from '@/test/as-stub';
 
+// Routes read the stored snapshot; these tests are about the trigger, not the route.
+vi.mock('@/gateway/server/route', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/gateway/server/route')>()),
+  resolveGatewayRoutes: async () => ({}),
+}));
+
 const triggerWorkflow = vi.fn();
 const emit = vi.fn();
 const history = vi.fn();

@@ -3,7 +3,7 @@
  */
 
 import type { GatewayModel } from '@/gateway/server/catalog';
-import type { GatewayRoute, GatewayRoutes } from '@/gateway/server/route';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
@@ -590,8 +590,6 @@ export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   maxDurationSeconds: number;
   /** Model that rewrites an over-long section. Defaults to the analysis default. */
   analysisModelId?: AnalysisModelId;
-  /** Where Seed takes go, decided at the trigger (`resolveSeedSpeechRoute`). */
-  seedSpeech: GatewayRoute;
 }
 
 /**
@@ -620,8 +618,6 @@ export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
   minDurationSeconds: number;
   /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
   maxDurationSeconds: number;
-  /** Where Seed takes go, decided at the trigger (`resolveSeedSpeechRoute`). */
-  seedSpeech: GatewayRoute;
 }
 
 /**
@@ -1019,8 +1015,6 @@ export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
   announcePhases?: boolean;
   /** @see StoryboardWorkflowInput.leftoverGrokShotIds — a continue passes it through. */
   leftoverGrokShotIds?: string[];
-  /** Where Seed takes go, decided at the trigger (`resolveSeedSpeechRoute`). */
-  seedSpeech: GatewayRoute;
 }
 
 export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
@@ -1110,8 +1104,6 @@ export interface CharacterVoiceWorkflowInput extends Omit<
   voiceProvider: VoiceProvider;
   /** Seed takes to record, 1–`SEED_VOICE_MAX_TAKES`. ElevenLabs ignores it. */
   takes: number;
-  /** Where Seed takes go, decided at the trigger (`resolveSeedSpeechRoute`). */
-  seedSpeech: GatewayRoute;
   /**
    * Generating husk this run completes in place (#1715). Absent on in-flight
    * pre-husk payloads; persist then writes via `updateVoice` and does not

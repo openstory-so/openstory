@@ -1,4 +1,6 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import {
   derivedStillPrompt,
   lazySequenceStyle,
@@ -696,7 +698,13 @@ export async function executeSmartRetry(
         };
         await triggerKeyed(
           '/motion-batch',
-          workflowInput,
+          {
+            ...workflowInput,
+            gatewayRoutes: await resolveGatewayRoutes(
+              context.scopedDb,
+              AUDIO_ROUTE_TARGETS
+            ),
+          },
           'motion',
           reservationId
         );
@@ -762,7 +770,14 @@ export async function executeSmartRetry(
           musicRunId = await releaseReservationOnThrow(
             context.scopedDb,
             reservationId,
-            () => triggerWorkflow('/music', musicInput)
+            async () =>
+              triggerWorkflow('/music', {
+                ...musicInput,
+                gatewayRoutes: await resolveGatewayRoutes(
+                  context.scopedDb,
+                  AUDIO_ROUTE_TARGETS
+                ),
+              })
           );
         } catch (error) {
           await context.scopedDb.sequenceVariants.failMusicClaim(

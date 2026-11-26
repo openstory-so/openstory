@@ -18,10 +18,8 @@ const ALLOWED: readonly string[] = [
   'src/stills/server/image-generation.ts',
   // Motion and studio video: uploads gated when saved or at the click (`requireCheckedUploadRights`), clips in `check-reference-clip-rights`.
   'src/motion/server/video-job.ts',
-  // Seed takes: the organization's Seed voice clips (made from text) and the user's own in-app mic take.
-  'src/cast/server/voice/seed-audio.ts',
-  // ElevenLabs Music: a text prompt, no upload.
-  'src/audio/server/elevenlabs-gateway.ts',
+  // Seed takes (the organization's Seed voice clips, made from text, and the user's own in-app mic take) and ElevenLabs text bodies.
+  'src/audio/server/audio-gateway.ts',
 ];
 
 function* walk(dir: string): Generator<string> {

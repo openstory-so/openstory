@@ -4,6 +4,8 @@ import { loadSequenceStyle } from '@/look/server/sequence-style';
  * Shot motion (image-to-video) generation operations.
  */
 
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { batchRefusalLines } from '@/motion/reference-support';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
@@ -540,7 +542,13 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
 
         const workflowRunId = await triggerWorkflow(
           '/motion-batch',
-          workflowInput,
+          {
+            ...workflowInput,
+            gatewayRoutes: await resolveGatewayRoutes(
+              context.scopedDb,
+              AUDIO_ROUTE_TARGETS
+            ),
+          },
           {
             deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
           }

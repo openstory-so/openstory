@@ -65,7 +65,12 @@ vi.doMock('#storage', () => ({
   }),
 }));
 
-const { gatewaySeedRecorder, seedCharge } = await import('./seed-audio');
+vi.doMock('@/models/server/byteplus-governor', () => ({
+  acquireSeedSpeechToken: vi.fn(async () => undefined),
+}));
+
+const { seedRecorderFor, seedCharge } = await import('./seed-audio');
+const { gatewayRouteKey } = await import('@/gateway/server/route');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
   await import('@/platform/server/db/scoped-workflow');
@@ -110,11 +115,19 @@ const START_BALANCE = 100_000_000;
 const organizationId = generateId();
 const userId = generateId();
 
-function recorder(idempotencyKey: string) {
-  return gatewaySeedRecorder({
-    scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
+const ROUTES = {
+  [gatewayRouteKey('byteplus', 'seed-audio-1.0')]: {
+    via: 'openstory' as const,
     model: SEED,
+  },
+};
+
+function recorder(idempotencyKey: string, routes = ROUTES) {
+  return seedRecorderFor({
+    routes,
+    scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
     runId: 'voice_run-1',
+    reservationId: undefined,
     idempotencyKey,
   });
 }
@@ -180,6 +193,29 @@ describe('a Seed take on the gateway', () => {
       new TextDecoder().decode(one.wav)
     );
     expect(await balanceDrop()).toBe(40_000);
+  });
+
+  it('runs a payload with no routes on the platform key, as before the deploy', async () => {
+    vi.stubEnv('SEED_SPEECH_API_KEY', 'seed-test');
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ audio: btoa('direct-take'), original_duration: 4 })
+        )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const take = await seedRecorderFor({
+      routes: undefined,
+      scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
+      runId: 'voice_run-old',
+      reservationId: undefined,
+      idempotencyKey: 'voice_run-old:read:1',
+    })(BODY, 1);
+    vi.unstubAllGlobals();
+    expect(start).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(take.billedSeconds).toBe(4);
+    expect(await balanceDrop()).toBe(0);
   });
 
   it('books the platform-key take on the caller', () => {

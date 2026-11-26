@@ -12,7 +12,6 @@
  * single bad shot doesn't kill the rest of the batch.
  */
 
-import { SEED_PIPELINE_DIRECT } from '@/cast/server/voice/seed-audio';
 import {
   arkAssetIdentities,
   bytePlusAssetSlots,
@@ -237,6 +236,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           // dedupes); only it claims the sequence's track pointer.
           isPrimary: index === 0,
           reservationId: input.reservationId,
+          gatewayRoutes: input.gatewayRoutes,
         },
         spawnStepName: `spawn-music-${index}-${model}`,
         awaitStepName: `await-music-${index}-${model}`,
@@ -344,7 +344,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         minDurationSeconds: speech.minDurationSeconds,
         maxDurationSeconds: speech.maxDurationSeconds,
         analysisModelId: speech.analysisModelId,
-        seedSpeech: SEED_PIPELINE_DIRECT,
+        gatewayRoutes: input.gatewayRoutes,
       },
       spawnStepName: 'spawn-dialogue-audio',
       awaitStepName: 'await-dialogue-audio',

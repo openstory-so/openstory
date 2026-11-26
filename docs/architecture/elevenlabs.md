@@ -9,7 +9,7 @@
 **Gateway (#2436).** No ElevenLabs call runs on the `openstory` gateway:
 modelschemas has no card for any ElevenLabs model (TanStack/schemas#756,
 #757). Every call below stays on the platform key, unchanged. Music has a
-gateway branch (`generateMusic`'s `gateway`, `elevenlabs-gateway.ts`) for
+gateway branch (`generateMusic`'s `run`, `audio-gateway.ts`) for
 when its card exists; the rest need a query parameter or a multipart file a
 gateway body cannot carry. See `model-gateway.md` § Audio on the gateway.
 

@@ -54,6 +54,7 @@ vi.doMock('@/platform/server/observability/ai-otel', () => ({
 }));
 
 const { generateMusic } = await import('./music-generation');
+const { gatewayRouteKey } = await import('@/gateway/server/route');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
   await import('@/platform/server/db/scoped-workflow');
@@ -98,10 +99,16 @@ function music(idempotencyKey: string) {
     prompt: 'A slow ferry horn under rain, low strings',
     duration: 30,
     model: 'elevenlabs_music',
-    gateway: {
+    run: {
+      routes: {
+        [gatewayRouteKey('elevenlabs', 'music_v2_5')]: {
+          via: 'openstory',
+          model: MUSIC,
+        },
+      },
       scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
-      model: MUSIC,
       runId: 'music_run-1',
+      reservationId: undefined,
       idempotencyKey,
     },
   });

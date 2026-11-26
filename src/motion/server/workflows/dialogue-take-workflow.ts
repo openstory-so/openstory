@@ -61,10 +61,11 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         const eleven = await scopedDb.credentials.resolveKey('elevenlabs');
         const seed =
           voiceProviderOf(input.line.voiceId) === 'seed'
-            ? await seedRecorderFor({
-                route: input.seedSpeech,
+            ? seedRecorderFor({
+                routes: input.gatewayRoutes,
                 scopedDb,
                 runId: workflowRunId,
+                reservationId: input.reservationId,
                 idempotencyKey: `${workflowRunId}:record-take:${ctx.attempt}`,
               })
             : null;

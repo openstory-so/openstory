@@ -1,31 +1,43 @@
-/** ElevenLabs on the openstory gateway: held, run, stored and charged in the caller's step (#2436). */
+/** Audio on the openstory gateway: held, run, stored and charged in the caller's step (#2436). */
 
 import type { GatewayJobInput } from '@/gateway/schema';
 import { runGatewayToEnd } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import type { GatewayModel } from '@/gateway/server/catalog';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 
-/** A call the trigger routed to the gateway; null on the direct path. */
-export type ElevenLabsGatewayCall = {
+/** A call routed to the gateway: the run's own step, model and key. */
+export type AudioGatewayCall = {
   readonly scopedDb: WorkflowScopedDb;
   /** The model as it read at the trigger. */
   readonly model: GatewayModel;
   readonly runId: string;
+  /** The run's own hold, for the shared-reservation commit (#2435); unused until it lands. */
+  readonly reservationId: string | undefined;
   /** Replay-stable per call: a retried step reuses the job and its hold. */
   readonly idempotencyKey: string;
 };
 
-/** The body is ElevenLabs' own; these bodies carry text only, so there is no upload to check. */
-export function runElevenLabsOnGateway(
-  call: ElevenLabsGatewayCall,
+/** A run's audio calls: its routes and what a gateway call needs; the model comes from the route. */
+export type AudioRun = Omit<AudioGatewayCall, 'model'> & {
+  readonly routes: GatewayRoutes | undefined;
+};
+
+/**
+ * The body is the provider's own. Rights: ElevenLabs bodies are text; Seed
+ * references are the organization's Seed voice clips (made from text) or the
+ * user's own in-app mic take.
+ */
+export function runAudioOnGateway(
+  call: AudioGatewayCall,
   body: GatewayJobInput
 ) {
   const { scopedDb, model, runId } = call;
-  const folder = `elevenlabs/${generateId()}`;
+  const folder = `audio-gateway/${generateId()}`;
   const gateway = inProcessGateway({
     scopedDb,
     model,

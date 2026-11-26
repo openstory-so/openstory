@@ -3,6 +3,8 @@
  * (`motion.fn.ts`) and the MCP tools: generate a shot's clip, cancel a
  * render, and render Ark drafts at quality.
  */
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 import { seedanceEditSeconds } from '@/motion/seedance-edit';
@@ -594,7 +596,13 @@ export async function generateShotMotion(
 
       const workflowRunId = await triggerWorkflow(
         '/motion-batch',
-        workflowInput,
+        {
+          ...workflowInput,
+          gatewayRoutes: await resolveGatewayRoutes(
+            context.scopedDb,
+            AUDIO_ROUTE_TARGETS
+          ),
+        },
         {
           deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
         }
