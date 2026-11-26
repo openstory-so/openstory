@@ -622,6 +622,42 @@ describe('submitGatewayJob', () => {
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
   });
 
+  it('keeps a digest of inline media on the row, sends the provider the whole body, and still refuses a changed clip', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    // Over D1's 2 MB row: a 30 second mic take as base64.
+    const clip = 'U'.repeat(2_500_000);
+    const body: GatewayJobInput = {
+      text_prompt: '@Audio1 says the port engine is done for',
+      duration: 5,
+      references: [{ audio_data: clip }],
+    };
+    const hold = (sent: GatewayJobInput) =>
+      holdGatewayJob(model, sent, {
+        scopedDb,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-big-1',
+        oauthClientId: null,
+        runReservationId: null,
+      });
+    const first = await hold(body);
+    expect(JSON.stringify(first.job.input).length).toBeLessThan(1_000);
+    expect(first.job.input.references).toEqual([
+      { audio_data: { sha256: expect.any(String), length: clip.length + 2 } },
+    ]);
+    expect(first.run.input.references).toEqual([{ audio_data: clip }]);
+
+    const again = await hold(body);
+    expect(again.created).toBe(false);
+    expect(again.job.id).toBe(first.job.id);
+
+    const changed = await hold({
+      ...body,
+      references: [{ audio_data: `${clip}V` }],
+    }).catch((e: unknown) => e);
+    expect(changed).toBeInstanceOf(ConflictError);
+  });
+
   it('checks every URL in the body before anything spends', async () => {
     const scopedDb = createScopedDb(organizationId, userId);
     const body: GatewayJobInput = {

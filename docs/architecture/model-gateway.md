@@ -1114,7 +1114,10 @@ caller books `seed-audio` itself (`seedCharge`). The body is the same.
   is) and held for an in-process caller. `seed-audio.ts` is on the
   `UPLOAD_RIGHTS_CHECKED` allowlist (through `audio-gateway.ts`): its clips are the organization's Seed
   voice clips, made from text, and a mic take is the user's own recording
-  made in the app.
+  made in the app. The job row keeps inline media (`audio_data`,
+  `inlineData` and the other inline keys) as `{ sha256, length }`, never
+  the bytes, so a 30 second clip stays under D1's 2 MB row; a replayed key
+  is compared on the digest, and the provider still gets the whole body.
 - Pacing stays on the BytePlus governor: the Seed Audio driver calls
   `acquireSeedSpeechToken` before every call.
 - Scribe and isolation stay ElevenLabs ledger lines (`deductWorkflowCredits`).
