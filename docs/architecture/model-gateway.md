@@ -1042,8 +1042,16 @@ call can be held today and every one runs on the direct path, platform key
 only, unchanged. The `elevenlabs` provider and driver exist so Music moves
 the day its card does.
 
+- **In-process only.** The platform key reaches the whole shared account,
+  where saved voices are account-wide slots the product owns
+  (`voiceProviderOf`, `releaseVoiceIfUnreferenced`). Until the gateway owns
+  voices per organization, the public endpoint refuses every ElevenLabs
+  model, so no caller can name another organization's `voice_id`, and the
+  driver calls only `ELEVENLABS_ENDPOINTS` (`v1/music`); any other endpoint
+  is "not configured" and refused before the hold.
 - **Driver** (`providers.ts`): platform key only (`OWN_KEY.elevenlabs` is
-  null in `route.ts`); `configured()` is `isElevenLabsConfigured()`; the
+  null in `route.ts`); `configured()` is that list and
+  `isElevenLabsConfigured()`; the
   key is resolved per call; a 429 (the account's concurrency cap, never
   run) is resent by `retryOnRateLimit`. An `audio/*` answer is one media
   file; a JSON answer has its base64 audio (`audio_base64`,

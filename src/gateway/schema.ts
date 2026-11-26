@@ -43,6 +43,9 @@ export const BYTEPLUS_ENDPOINTS = {
   speech: 'tts/create',
 } as const;
 
+/** The ElevenLabs endpoints the driver calls: the platform key reaches the whole account, voices included. */
+export const ELEVENLABS_ENDPOINTS: readonly string[] = ['v1/music'];
+
 export const GATEWAY_JOB_KINDS = ['image', 'video', 'audio'] as const;
 export type GatewayJobKind = (typeof GATEWAY_JOB_KINDS)[number];
 

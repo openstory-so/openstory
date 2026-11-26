@@ -26,6 +26,7 @@ import {
 } from '@/models/server/seed-speech-config';
 import {
   BYTEPLUS_ENDPOINTS,
+  ELEVENLABS_ENDPOINTS,
   type GatewayJobInput,
   type GatewayProvider,
 } from '@/gateway/schema';
@@ -567,7 +568,8 @@ function elevenLabsResult(answer: JsonObject): GatewayRunResult {
 
 /** Platform key only: a designed voice lives in the account that made it. */
 const elevenLabsDriver: Driver = {
-  configured: () => isElevenLabsConfigured(),
+  configured: (endpointId) =>
+    ELEVENLABS_ENDPOINTS.includes(endpointId) && isElevenLabsConfigured(),
   start: async (target, body, credentials) => {
     const { key } = await credentials.resolveKey('elevenlabs');
     const url = `${getElevenLabsBaseUrl() ?? 'https://api.elevenlabs.io'}/${target.endpointId}`;

@@ -148,6 +148,23 @@ const MODELS: Record<string, GatewayModel> = {
       required: ['text_prompt'],
     },
   },
+  'elevenlabs/music_v2_5': {
+    provider: 'elevenlabs',
+    id: 'music_v2_5',
+    name: 'Eleven Music',
+    kind: 'audio',
+    endpointId: 'v1/music',
+    card: PER_SECOND,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model_id: { type: 'string' },
+        prompt: { type: 'string' },
+        voice_id: { type: 'string' },
+      },
+      required: ['prompt'],
+    },
+  },
   'grok/grok-imagine-tokens': {
     provider: 'grok',
     id: 'grok-imagine-tokens',
@@ -565,6 +582,21 @@ describe('submitGatewayJob', () => {
       expect(String(error)).toContain('Cloning a voice');
     }
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
+  it('refuses ElevenLabs on the public endpoint, where a voice_id could reach a voice saved by another organization', async () => {
+    for (const body of [
+      { prompt: 'a sea shanty' },
+      { prompt: 'a sea shanty', voice_id: 'another-orgs-voice' },
+    ]) {
+      const error = await refused({
+        provider: 'elevenlabs',
+        modelId: 'music_v2_5',
+        body,
+      });
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(String(error)).toContain('ElevenLabs is served only');
+    }
   });
 
   it('holds a cloned Seed Audio voice for the in-process caller, which ran its own rights step', async () => {

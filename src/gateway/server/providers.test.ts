@@ -520,6 +520,18 @@ describe('elevenlabs driver', () => {
     );
   });
 
+  it('calls no endpoint but the ones it lists: the platform key reaches every voice on the account', async () => {
+    for (const endpoint of [
+      'v1/text-to-voice',
+      'v1/voices/add',
+      'v1/voices/v-1',
+      'v1/speech-to-speech/v-1',
+      'v1/text-to-dialogue/with-timestamps',
+    ]) {
+      expect(GATEWAY_DRIVERS.elevenlabs.configured(endpoint)).toBe(false);
+    }
+  });
+
   it('is configured only with the platform key', () => {
     expect(GATEWAY_DRIVERS.elevenlabs.configured('v1/music')).toBe(true);
     elevenLabsConfigured = false;

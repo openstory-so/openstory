@@ -118,7 +118,7 @@ const userId = generateId();
 const ROUTES = {
   [gatewayRouteKey('byteplus', 'seed-audio-1.0')]: {
     via: 'openstory' as const,
-    model: SEED,
+    model: JSON.stringify(SEED),
   },
 };
 

@@ -346,6 +346,12 @@ export async function holdGatewayJob(
     organizationId: scopedDb.organizationId,
   });
   if (rights !== UPLOAD_RIGHTS_CHECKED) {
+    // Saved voices are slots on the shared platform account; the gateway does not own them per organization.
+    if (model.provider === 'elevenlabs') {
+      throw new ValidationError(
+        'ElevenLabs is served only to OpenStory itself'
+      );
+    }
     refuseVoiceClone(model, input);
     await requireCheckedUploadRights(
       withPlatformLlmKey(rights.scopedDb),

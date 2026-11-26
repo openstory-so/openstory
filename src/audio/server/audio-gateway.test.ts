@@ -103,7 +103,7 @@ function music(idempotencyKey: string) {
       routes: {
         [gatewayRouteKey('elevenlabs', 'music_v2_5')]: {
           via: 'openstory',
-          model: MUSIC,
+          model: JSON.stringify(MUSIC),
         },
       },
       scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
