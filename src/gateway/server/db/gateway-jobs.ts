@@ -14,7 +14,6 @@ import {
   type GatewayJob,
 } from '@/platform/server/db/schema';
 import type {
-  GatewayJobData,
   GatewayJobError,
   GatewayJobInput,
   GatewayJobKind,
@@ -225,7 +224,6 @@ export function createGatewayJobsMethods(
       result: {
         outputs: GatewayJobOutput[];
         via: GatewayVia;
-        data: GatewayJobData | null;
       }
     ): Promise<void> => {
       await db

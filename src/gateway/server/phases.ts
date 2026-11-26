@@ -11,7 +11,6 @@ import { getLogger } from '@/platform/logger';
 import {
   GATEWAY_VIA,
   type GatewayErrorCode,
-  type GatewayJobData,
   type GatewayJobInput,
   type GatewayJobKind,
   type GatewayJobOutput,
@@ -69,8 +68,6 @@ export type GatewayStored = {
   /** JSON text: a recursive JSON type fails the step's Serializable check. */
   usageJson: string | null;
   requestId: string | null;
-  /** The answer's JSON beside the media, as text for the same reason. */
-  dataJson?: string;
 };
 
 export type GatewayStarted =
@@ -91,21 +88,12 @@ export function gatewayErrorCode(message: string): GatewayErrorCode {
 
 const usageSchema = z.record(z.string(), z.unknown());
 
-/** `data` holds a voice id or a transcript, never media. */
-export const MAX_DATA_CHARS = 8192;
-
 export async function storeGatewayResult(
   result: GatewayRunResult,
   store: GatewayStore
 ): Promise<GatewayStored> {
   if (result.media.length === 0) {
     throw new NonRetryableError('The model returned no output files');
-  }
-  const dataJson = result.data ? JSON.stringify(result.data) : undefined;
-  if (dataJson && dataJson.length > MAX_DATA_CHARS) {
-    throw new NonRetryableError(
-      `The answer's JSON is ${dataJson.length} characters; a job keeps at most ${MAX_DATA_CHARS}`
-    );
   }
   const outputs: GatewayJobOutput[] = [];
   for (const [index, media] of result.media.entries()) {
@@ -115,7 +103,6 @@ export async function storeGatewayResult(
     outputs,
     usageJson: result.usage ? JSON.stringify(result.usage) : null,
     requestId: result.requestId,
-    ...(dataJson && { dataJson }),
   };
 }
 
@@ -233,13 +220,6 @@ export async function settleGatewayRun(
   });
 }
 
-const dataSchema = z.record(z.string(), z.json());
-
-/** The answer's JSON a run stored, or null when the provider sent only media. */
-export function storedData(stored: GatewayStored): GatewayJobData | null {
-  return stored.dataJson ? dataSchema.parse(JSON.parse(stored.dataJson)) : null;
-}
-
 /** Records the outputs, then charges: a charged job always has its outputs. */
 export async function finishGatewayRun(
   scopedDb: WorkflowScopedDb,
@@ -250,7 +230,6 @@ export async function finishGatewayRun(
   await scopedDb.gatewayJobs.recordOutputs(run.jobId, {
     outputs: stored.outputs,
     via: GATEWAY_VIA[run.provider],
-    data: storedData(stored),
   });
   const charged = await settleGatewayRun(scopedDb, run, stored, idempotencyKey);
   // A job's own hold gives back what the charge did not capture now, not at its TTL; a run's keeps it for the run.

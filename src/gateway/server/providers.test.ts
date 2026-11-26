@@ -452,45 +452,11 @@ describe('elevenlabs driver', () => {
     expect(request.body).toBe(JSON.stringify(body));
   });
 
-  it('splits a JSON answer: base64 audio becomes media, the rest is data', async () => {
-    fetchMock.mockResolvedValueOnce(
-      answer({
-        previews: [
-          {
-            audio_base_64: 'AAAA',
-            generated_voice_id: 'gv-1',
-            media_type: 'audio/mpeg',
-          },
-          {
-            audio_base_64: 'BBBB',
-            generated_voice_id: 'gv-2',
-            media_type: 'audio/mpeg',
-          },
-        ],
-        text: 'The port engine is done for.',
-      })
+  it('refuses a JSON answer: nothing on a job can carry it', async () => {
+    fetchMock.mockResolvedValueOnce(answer({ text: 'not audio' }));
+    await expect(speak('v1/music', {})).rejects.toBeInstanceOf(
+      NonRetryableError
     );
-    expect(
-      await speak('v1/text-to-voice/design', {
-        voice_description: 'Mara, gravelly',
-      })
-    ).toEqual({
-      result: {
-        media: [
-          { base64: 'AAAA', contentType: 'audio/mpeg' },
-          { base64: 'BBBB', contentType: 'audio/mpeg' },
-        ],
-        usage: null,
-        requestId: null,
-        data: {
-          previews: [
-            { generated_voice_id: 'gv-1', media_type: 'audio/mpeg' },
-            { generated_voice_id: 'gv-2', media_type: 'audio/mpeg' },
-          ],
-          text: 'The port engine is done for.',
-        },
-      },
-    });
   });
 
   it('resends a 429, which never ran, and refuses a 422 for good', async () => {
@@ -502,15 +468,12 @@ describe('elevenlabs driver', () => {
         })
       )
       .mockResolvedValueOnce(
-        answer({ audio_base64: 'AAAA', alignment: { characters: ['H', 'i'] } })
+        new Response(new Uint8Array([1]), {
+          headers: { 'content-type': 'audio/mpeg' },
+        })
       );
-    expect(
-      await speak('v1/text-to-dialogue/with-timestamps', { inputs: [] })
-    ).toMatchObject({
-      result: {
-        media: [{ base64: 'AAAA' }],
-        data: { alignment: { characters: ['H', 'i'] } },
-      },
+    expect(await speak('v1/music', {})).toMatchObject({
+      result: { media: [{ base64: 'AQ==' }] },
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 

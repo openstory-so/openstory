@@ -60,9 +60,6 @@ export type GatewayJobStatus = (typeof GATEWAY_JOB_STATUSES)[number];
 /** The provider's own request body, as the caller sent it. */
 export type GatewayJobInput = { readonly [key: string]: JsonValue };
 
-/** The small JSON a provider answers beside its media, such as ElevenLabs' alignment. */
-export type GatewayJobData = { readonly [key: string]: JsonValue };
-
 /** One stored output; `url` is origin-relative R2 until the API absolutizes it. */
 export type GatewayJobOutput = {
   url: string;

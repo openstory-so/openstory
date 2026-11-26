@@ -59,12 +59,6 @@ export const gatewayJobResourceSchema = z
     outputs: z
       .array(z.object({ url: z.string(), contentType: z.string() }))
       .describe('Absolute result URLs, once the job has succeeded.'),
-    data: z
-      .record(z.string(), z.json())
-      .nullable()
-      .describe(
-        "The provider's JSON beside the files, such as timestamps; null when it sent only files."
-      ),
     error: z
       .object({ code: z.enum(GATEWAY_ERROR_CODES), message: z.string() })
       .nullable(),
@@ -161,7 +155,6 @@ export function gatewayJobDocument(
           contentType: output.contentType,
         })
       ),
-      data: job.status === 'succeeded' ? job.data : null,
       // A closed set: the provider's raw text never reaches the caller.
       error: job.error
         ? {

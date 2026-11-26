@@ -184,7 +184,7 @@ describe('gateway jobs rows', () => {
     const outputs = [
       { url: '/r2/b.png', path: 'b.png', contentType: 'image/png' },
     ];
-    await own.recordOutputs(job.id, { outputs, via: 'xai', data: null });
+    await own.recordOutputs(job.id, { outputs, via: 'xai' });
     // A zeroed hold and an empty wallet: the first attempt debits nothing.
     const setBalance = (balance: number) =>
       db

@@ -1054,14 +1054,11 @@ the day its card does.
   `isElevenLabsConfigured()`; the
   key is resolved per call; a 429 (the account's concurrency cap, never
   run) is resent by `retryOnRateLimit`. An `audio/*` answer is one media
-  file; a JSON answer has its base64 audio (`audio_base64`,
-  `previews[].audio_base_64`) taken out as media and the rest kept as
-  `data`.
-- **JSON result.** `gateway_jobs.data` holds that rest (null when the
-  provider sent only files); the transport's `done` carries it, and the
-  public job document shows it once the job succeeded. It is for a voice id
-  or a transcript, never media: an answer whose JSON is over
-  `MAX_DATA_CHARS` (8 KB) fails before anything is stored.
+  file; any other answer fails the job.
+- **No JSON result.** The issue's JSON result (voice ids, timestamps) is
+  not built: every call that answers one (voice design, dialogue with
+  timestamps) cannot be a gateway body today (below), so nothing would
+  produce it.
 - **A body is JSON only.** A query parameter has no place in it, and the
   driver never moves a field out of the body. Voice design needs
   `output_format=mp3_44100_128` (the 192 kbps default needs the Creator

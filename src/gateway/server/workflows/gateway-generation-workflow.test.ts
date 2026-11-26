@@ -373,7 +373,6 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     expect(gatewayJobs.recordOutputs).toHaveBeenCalledWith('job-1', {
       outputs: OUTPUTS,
       via: 'xai',
-      data: null,
     });
     // 5 seconds at $0.08.
     expect(billing.settleReservation).toHaveBeenCalledWith(
@@ -575,7 +574,6 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
     expect(gatewayJobs.recordOutputs).toHaveBeenCalledWith('job-1', {
       outputs: [OUTPUTS[0]],
       via: 'xai',
-      data: null,
     });
     expect(billing.settleReservation).toHaveBeenCalledWith(
       'res-1',

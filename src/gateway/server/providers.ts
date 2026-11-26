@@ -116,8 +116,6 @@ export type GatewayRunResult = {
   media: GatewayMedia[];
   usage: JsonObject | null;
   requestId: string | null;
-  /** The answer's small JSON beside the media, such as ElevenLabs' alignment or preview voice ids. */
-  data?: JsonObject;
 };
 
 export type GatewayStart = { jobId: string } | { result: GatewayRunResult };
@@ -543,29 +541,6 @@ const geminiDriver: Driver = {
   },
 };
 
-/** ElevenLabs' JSON answers carry audio as base64 beside small fields: the audio becomes media, the rest `data`. */
-function elevenLabsResult(answer: JsonObject): GatewayRunResult {
-  const { audio_base64, previews, ...rest } = answer;
-  const media: GatewayMedia[] = [];
-  const data: JsonObject = { ...rest };
-  if (typeof audio_base64 === 'string') {
-    media.push({ base64: audio_base64, contentType: 'audio/mpeg' });
-  }
-  if (Array.isArray(previews)) {
-    data.previews = previews.map((item) => {
-      const { audio_base_64, ...preview } = recordOrNull(item) ?? {};
-      if (typeof audio_base_64 === 'string') {
-        media.push({
-          base64: audio_base_64,
-          contentType: text(preview.media_type) ?? 'audio/mpeg',
-        });
-      }
-      return preview;
-    });
-  }
-  return { media, usage: null, requestId: null, data };
-}
-
 /** Platform key only: a designed voice lives in the account that made it. */
 const elevenLabsDriver: Driver = {
   configured: (endpointId) =>
@@ -598,9 +573,10 @@ const elevenLabsDriver: Driver = {
         },
       };
     }
-    return {
-      result: elevenLabsResult(jsonObject.parse(await response.json())),
-    };
+    // `v1/music` answers audio; a JSON answer has nowhere to go on a job.
+    throw new NonRetryableError(
+      `ElevenLabs answered ${contentType || 'no content type'}, not audio`
+    );
   },
   poll: async () => {
     throw new NonRetryableError('ElevenLabs jobs answer at once');

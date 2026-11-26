@@ -4,11 +4,7 @@
  * as it is; the transport holds, runs, stores and charges.
  */
 
-import type {
-  GatewayJobData,
-  GatewayJobInput,
-  GatewayJobOutput,
-} from '@/gateway/schema';
+import type { GatewayJobInput, GatewayJobOutput } from '@/gateway/schema';
 import type {
   AudioGenerationOptions,
   AudioGenerationResult,
@@ -28,12 +24,11 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
-/** A finished job; `jobId` is the gateway job that charged it (null on an own-key transport); `data` is the provider's JSON beside the files. */
 type GatewayDone = {
   kind: 'done';
+  // The gateway job that charged it; null on a transport that holds no job (an own key).
   jobId: string | null;
   outputs: GatewayJobOutput[];
-  data?: GatewayJobData | null;
 };
 
 type GatewaySubmitted = { kind: 'queued'; handle: string } | GatewayDone;

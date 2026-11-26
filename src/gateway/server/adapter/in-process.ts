@@ -25,7 +25,6 @@ import {
   pollGatewayRun,
   releaseGatewayRun,
   startGatewayRun,
-  storedData,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import {
@@ -74,7 +73,6 @@ async function finish(
   return {
     kind: 'done' as const,
     outputs: stored.outputs,
-    data: storedData(stored),
   };
 }
 
@@ -95,7 +93,6 @@ export function inProcessPoller(params: {
         return {
           kind: 'done' as const,
           outputs: storedOutputs(job),
-          data: job.data,
         };
       }
       if (job?.status === 'failed') {
@@ -181,7 +178,6 @@ export function inProcessGateway(params: {
           kind: 'done' as const,
           jobId: job.id,
           outputs: storedOutputs(job),
-          data: job.data,
         };
       }
       if (job.status === 'failed') {

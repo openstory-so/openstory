@@ -5,7 +5,6 @@ import { micros } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { asStub } from '@/test/as-stub';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
-import { NonRetryableError } from 'cloudflare:workflows';
 
 const settleGatewayJob = vi.fn(async () => micros(0));
 vi.doMock('./settle', () => ({ settleGatewayJob }));
@@ -16,12 +15,7 @@ vi.doMock('./providers', async (importOriginal) => ({
   GATEWAY_DRIVERS: { grok: { start } },
 }));
 
-const {
-  MAX_DATA_CHARS,
-  settleGatewayRun,
-  startGatewayRun,
-  storeGatewayResult,
-} = await import('./phases');
+const { settleGatewayRun, startGatewayRun } = await import('./phases');
 const { platformOnlyCredentials } = await import('./platform-credentials');
 const CREDENTIALS = platformOnlyCredentials({
   organizationId: 'org-1',
@@ -180,32 +174,6 @@ describe('startGatewayRun', () => {
     expect(store).toHaveBeenCalledTimes(1);
     if (!('stored' in started)) throw new Error('not stored');
     expect(started.stored.outputs).toHaveLength(1);
-  });
-});
-
-describe('storeGatewayResult', () => {
-  const store = vi.fn(async () => ({
-    url: '/r2/a.mp3',
-    path: 'a.mp3',
-    contentType: 'audio/mpeg',
-  }));
-  const media = [{ base64: 'AAAA', contentType: 'audio/mpeg' }];
-
-  it('keeps a small answer beside the media', async () => {
-    const stored = await storeGatewayResult(
-      { media, usage: null, requestId: null, data: { voice_id: 'v-1' } },
-      store
-    );
-    expect(stored.dataJson).toBe('{"voice_id":"v-1"}');
-  });
-
-  it('refuses an answer too large to be anything but media, before storing', async () => {
-    store.mockClear();
-    const data = { audio: 'A'.repeat(MAX_DATA_CHARS) };
-    await expect(
-      storeGatewayResult({ media, usage: null, requestId: null, data }, store)
-    ).rejects.toBeInstanceOf(NonRetryableError);
-    expect(store).not.toHaveBeenCalled();
   });
 });
 

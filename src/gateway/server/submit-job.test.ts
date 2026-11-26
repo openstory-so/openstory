@@ -1005,7 +1005,6 @@ describe('the charge', () => {
     await run.gatewayJobs.recordOutputs(payload.jobId, {
       outputs: [OUTPUT],
       via: 'xai',
-      data: null,
     });
     return settleGatewayJob({
       scopedDb: run,
@@ -1097,7 +1096,6 @@ describe('the charge', () => {
     await scopedDb.gatewayJobs.recordOutputs(job.id, {
       outputs: [OUTPUT],
       via: 'xai',
-      data: null,
     });
     await scopedDb.billing.settleReservation(
       payload.reservationId,
@@ -1130,7 +1128,6 @@ describe('the charge', () => {
     await scopedDb.gatewayJobs.recordOutputs(job.id, {
       outputs: [OUTPUT],
       via: 'xai',
-      data: null,
     });
     await scopedDb.gatewayJobs.markFailed(job.id, {
       code: 'GENERATION_FAILED',

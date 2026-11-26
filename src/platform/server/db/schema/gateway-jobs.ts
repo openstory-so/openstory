@@ -14,7 +14,6 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import type {
-  GatewayJobData,
   GatewayJobError,
   GatewayJobInput,
   GatewayJobKind,
@@ -50,8 +49,6 @@ export const gatewayJobs = snakeCase.table(
     via: text({ length: 50 }).$type<GatewayVia>(),
     providerJobId: text(),
     outputs: text({ mode: 'json' }).$type<GatewayJobOutput[]>(),
-    // The answer's JSON beside the media; null when the provider sent only media.
-    data: text({ mode: 'json' }).$type<GatewayJobData>(),
     error: text({ mode: 'json' }).$type<GatewayJobError>(),
     costMicros: integer(),
     reservationId: text(),
