@@ -759,7 +759,8 @@ describe('submitGatewayJob', () => {
         source: 'platform',
       });
       // Metered: the check is charged to the organization, not absorbed.
-      expect(key && 'uncharged' in key.meter).toBe(false);
+      expect(key).toHaveProperty('meter.run', null);
+      expect(key).not.toHaveProperty('meter.uncharged');
     } finally {
       vi.unstubAllEnvs();
     }
