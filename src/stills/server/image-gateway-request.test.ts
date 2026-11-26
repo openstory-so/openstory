@@ -1,14 +1,26 @@
 /** Which stills go through the gateway: a Grok model routed `openstory` whose body the endpoint takes (#2434). */
 
-import { describe, expect, it } from 'vitest';
+import * as tanstackAi from '@tanstack/ai';
+import { describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import { gatewayRouteKey, type GatewayRoutes } from '@/gateway/server/route';
 import { estimateImageCost } from '@/billing/cost-estimation';
 import { micros } from '@/billing/money';
 import { priceGatewayJob } from '@/gateway/server/price';
 import { gatewayHoldMicros } from '@/gateway/server/submit-job';
-import { withGatewayImageQuotes } from './image-gateway-routes';
-import { gatewayImageRequest } from './image-generation';
+
+const inProcessGateway = vi.fn(() => ({}));
+vi.doMock('@/gateway/server/adapter/in-process', () => ({ inProcessGateway }));
+vi.doMock('@/gateway/server/adapter', () => ({ openstoryImage: () => ({}) }));
+vi.doMock('@tanstack/ai', () => ({
+  ...tanstackAi,
+  generateImage: async () => ({ images: [{ url: '/r2/gateway/a.jpg' }] }),
+}));
+const { gatewayImageRequest, generateImageWithProvider } =
+  await import('./image-generation');
+const { withGatewayImageQuotes } = await import('./image-gateway-routes');
 
 // The shape of modelschemas' `v1/images/generations` schema and card for Grok Imagine 2.0.
 const GROK: GatewayModel = {
@@ -132,5 +144,35 @@ describe('withGatewayImageQuotes', () => {
   it('leaves a direct-route quote on the fal map', () => {
     const direct = withGatewayImageQuotes(fal, {});
     expect(direct[FAL_ID]).toEqual(fal[FAL_ID]);
+  });
+});
+
+describe('a pipeline still on the openstory route', () => {
+  const call = (runReservationId: string | undefined) =>
+    generateImageWithProvider(still, {
+      gateway: {
+        routes: OPENSTORY,
+        runReservationId,
+        scopedDb: asStub<WorkflowScopedDb>({ organizationId: 'org-1' }),
+        runId: 'run-1',
+        idempotencyKey: 'run-1:image',
+      },
+    });
+
+  it("charges the run's own reservation instead of holding again", async () => {
+    inProcessGateway.mockClear();
+    const result = await call('res-run');
+    expect(result.via).toBe('openstory');
+    expect(inProcessGateway).toHaveBeenCalledWith(
+      expect.objectContaining({ reservation: { id: 'res-run' } })
+    );
+  });
+
+  it('holds per job when the run has no reservation', async () => {
+    inProcessGateway.mockClear();
+    await call(undefined);
+    expect(inProcessGateway).toHaveBeenCalledWith(
+      expect.objectContaining({ reservation: null })
+    );
   });
 });
