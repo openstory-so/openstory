@@ -260,10 +260,10 @@ export async function addModelToSequence(
             '/music',
             {
               ...musicInput,
-              gatewayRoutes: await resolveGatewayRoutes(
-                scopedDb,
-                AUDIO_ROUTE_TARGETS
-              ),
+              gatewayRoutes: {
+                ...musicInput.gatewayRoutes,
+                ...(await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS)),
+              },
             },
             {
               deduplicationId: `add-audio-${variantId}`,
@@ -603,10 +603,10 @@ export async function addModelToSequence(
             '/motion-batch',
             {
               ...workflowInput,
-              gatewayRoutes: await resolveGatewayRoutes(
-                scopedDb,
-                AUDIO_ROUTE_TARGETS
-              ),
+              gatewayRoutes: {
+                ...workflowInput.gatewayRoutes,
+                ...(await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS)),
+              },
             },
             {
               deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,

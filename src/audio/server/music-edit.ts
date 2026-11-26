@@ -248,7 +248,10 @@ export async function generateMusic(
     await triggerWorkflow('/music', {
       ...musicInput,
       variantId,
-      gatewayRoutes: await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS),
+      gatewayRoutes: {
+        ...musicInput.gatewayRoutes,
+        ...(await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS)),
+      },
     });
   } catch (error) {
     await scopedDb.sequenceVariants.failMusicClaim(

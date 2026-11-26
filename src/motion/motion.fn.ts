@@ -544,10 +544,13 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           '/motion-batch',
           {
             ...workflowInput,
-            gatewayRoutes: await resolveGatewayRoutes(
-              context.scopedDb,
-              AUDIO_ROUTE_TARGETS
-            ),
+            gatewayRoutes: {
+              ...workflowInput.gatewayRoutes,
+              ...(await resolveGatewayRoutes(
+                context.scopedDb,
+                AUDIO_ROUTE_TARGETS
+              )),
+            },
           },
           {
             deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,

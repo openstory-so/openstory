@@ -700,10 +700,13 @@ export async function executeSmartRetry(
           '/motion-batch',
           {
             ...workflowInput,
-            gatewayRoutes: await resolveGatewayRoutes(
-              context.scopedDb,
-              AUDIO_ROUTE_TARGETS
-            ),
+            gatewayRoutes: {
+              ...workflowInput.gatewayRoutes,
+              ...(await resolveGatewayRoutes(
+                context.scopedDb,
+                AUDIO_ROUTE_TARGETS
+              )),
+            },
           },
           'motion',
           reservationId
@@ -773,10 +776,13 @@ export async function executeSmartRetry(
             async () =>
               triggerWorkflow('/music', {
                 ...musicInput,
-                gatewayRoutes: await resolveGatewayRoutes(
-                  context.scopedDb,
-                  AUDIO_ROUTE_TARGETS
-                ),
+                gatewayRoutes: {
+                  ...musicInput.gatewayRoutes,
+                  ...(await resolveGatewayRoutes(
+                    context.scopedDb,
+                    AUDIO_ROUTE_TARGETS
+                  )),
+                },
               })
           );
         } catch (error) {

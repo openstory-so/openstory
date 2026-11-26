@@ -598,10 +598,13 @@ export async function generateShotMotion(
         '/motion-batch',
         {
           ...workflowInput,
-          gatewayRoutes: await resolveGatewayRoutes(
-            context.scopedDb,
-            AUDIO_ROUTE_TARGETS
-          ),
+          gatewayRoutes: {
+            ...workflowInput.gatewayRoutes,
+            ...(await resolveGatewayRoutes(
+              context.scopedDb,
+              AUDIO_ROUTE_TARGETS
+            )),
+          },
         },
         {
           deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,

@@ -330,10 +330,10 @@ export async function triggerStoryboard(
       '/storyboard',
       {
         ...payload,
-        gatewayRoutes: await resolveGatewayRoutes(
-          scopedDb,
-          AUDIO_ROUTE_TARGETS
-        ),
+        gatewayRoutes: {
+          ...payload.gatewayRoutes,
+          ...(await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS)),
+        },
       },
       {
         deduplicationId: claimId,
