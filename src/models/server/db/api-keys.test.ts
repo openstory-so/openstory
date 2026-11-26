@@ -48,6 +48,7 @@ const testEnv: {
   ELEVENLABS_API_KEY: string | undefined;
   ELEVENLABS_BASE_URL: string | undefined;
   E2E_TEST: string | undefined;
+  OPENSTORY_API_KEY?: string;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
@@ -494,6 +495,23 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
     );
   });
 
+  it('falls to the hosted gateway on an OpenStory key when no LLM key is set (#2438)', async () => {
+    testEnv.OPENROUTER_KEY = undefined;
+    testEnv.FAL_KEY = undefined;
+    testEnv.OPENSTORY_API_KEY = 'osk_test';
+    try {
+      const scope = createApiKeysReadMethods(db, organizationId);
+      expect(await scope.resolveLlmKey()).toEqual({
+        key: '',
+        source: 'platform',
+        via: 'openstory',
+        meter: { uncharged: 'hosted gateway' },
+      });
+    } finally {
+      testEnv.OPENSTORY_API_KEY = undefined;
+    }
+  });
+
   it('shares the per-provider row cache with resolveKey (one read per provider)', async () => {
     await createApiKeysMethods(db, organizationId, userId).saveKey({
       provider: 'fal',
@@ -632,7 +650,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     const scope = createApiKeysReadMethods(db, organizationId);
 
     await expect(scope.resolveLlmKey(CARRIED)).rejects.toThrow(
-      /No platform LLM key available \(set OPENROUTER_KEY or FAL_KEY\)/
+      /No platform LLM key available \(set OPENROUTER_KEY, FAL_KEY or OPENSTORY_API_KEY\)/
     );
   });
 

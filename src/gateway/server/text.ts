@@ -148,7 +148,8 @@ export function withTextGateway<
     describe: ((model: string) => string) | null,
     resolve: (model: string) => Promise<ResolvedLlmKey>
   ): Promise<ResolvedLlmKey> =>
-    key.source === 'platform'
+    // A hosted gateway call is charged there, by the OpenStory key's organization (#2438).
+    key.source === 'platform' && key.via !== 'openstory'
       ? {
           ...key,
           meter: {
@@ -231,7 +232,8 @@ function inputTokenCounts(parts: unknown): {
 }
 
 /** The request's own output budget, under whichever name its provider uses. */
-function requestMaxTokens(
+/** The output budget a call set, whatever the provider names it. */
+export function requestMaxTokens(
   modelOptions: Record<string, unknown> | undefined
 ): number | undefined {
   return [

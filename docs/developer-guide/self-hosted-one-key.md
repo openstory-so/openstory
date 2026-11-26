@@ -14,10 +14,11 @@ A provider key you set (`FAL_KEY`, `XAI_API_KEY`, …) still wins for its provid
 
 - Grok stills and sheets with no reference images.
 - Video clips (sequence and studio) and Models page runs whose model the hosted card can price (Grok video, the fal Kling and Seedance models in `docs/architecture/model-gateway.md` § Holdable today).
+- Plain text LLM calls (no tools, no images, no structured output).
 
 ## What still needs a key here
 
-- Script breakdown and prompts: an OpenRouter or fal key.
+- Script breakdown, shot specs and most prompts (they use structured output or tools): an OpenRouter or fal key. Without one they are refused with that message.
 - Voices, dialogue and ElevenLabs music: `ELEVENLABS_API_KEY`.
 - fal Flux, Seedream and Nano Banana stills: `FAL_KEY`. Gemini stills: a Google key.
 

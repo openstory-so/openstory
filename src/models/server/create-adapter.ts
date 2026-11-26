@@ -11,6 +11,8 @@
  */
 
 import { getEnv } from '#env';
+import { hostedTextAdapter } from '@/gateway/server/adapter/http-text';
+import { remoteGatewayConfigured } from '@/gateway/server/remote-config';
 import { openstoryText, type TextMeter } from '@/gateway/server/text';
 import {
   nativeGeminiTextModel,
@@ -54,22 +56,27 @@ type LlmKeyRoute = {
    * (Bearer auth, Grok models only — issue #1167), 'google' calls Google's
    * own Gemini API (`x-goog-api-key` auth, Gemini models only), 'llmtr' calls
    * the LLMTR gateway (Bearer auth, OpenAI Chat Completions, and only the
-   * models `LLMTR_TEXT_MODELS` maps).
+   * models `LLMTR_TEXT_MODELS` maps), 'openstory' calls the hosted gateway
+   * with the install's `OPENSTORY_API_KEY` (#2438; `key` is empty, the
+   * adapter reads the secret when it sends).
    */
-  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
+  via: OwnKeyVia | 'openstory';
 };
+
+/** The APIs an organization's own key can belong to; never the hosted gateway. */
+export type OwnKeyVia = 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 
 /** The organization's own key: never charged. */
 export type OwnKey = { readonly uncharged: 'own key' };
 /** A platform key nobody is charged for, and why. */
 export type PlatformUncharged = {
-  readonly uncharged: 'no organization';
+  readonly uncharged: 'no organization' | 'hosted gateway';
 };
 
 /** How the key's calls are charged (#2437): a platform key carries a meter or a named platform reason, never `own key`. */
 export type LlmKeyInfo = LlmKeyRoute &
   (
-    | { source: 'organization'; meter: OwnKey }
+    | { source: 'organization'; via: OwnKeyVia; meter: OwnKey }
     | {
         source: 'platform';
         fallbackReason?: string;
@@ -82,6 +89,23 @@ export const OWN_KEY: OwnKey = { uncharged: 'own key' };
 export const NO_ORGANIZATION: PlatformUncharged = {
   uncharged: 'no organization',
 };
+
+/**
+ * No LLM key on this install and an OpenStory key: the hosted gateway runs
+ * the call and charges the key's organization there, so nothing is charged
+ * here (#2438). Only `resolveLlmKey` falls back to it.
+ */
+export function getHostedLlmKey():
+  | (LlmKeyInfo & { source: 'platform' })
+  | undefined {
+  if (!remoteGatewayConfigured()) return undefined;
+  return {
+    key: '',
+    via: 'openstory',
+    source: 'platform',
+    meter: { uncharged: 'hosted gateway' },
+  };
+}
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
 // OpenRouter SDK hardcodes `Bearer`; rewrite the header on the way out.
@@ -255,6 +279,7 @@ export function createAdapter(model: TextModel, keyInfo: LlmKeyInfo) {
 function createRouteAdapter(model: TextModel, resolved: LlmKeyInfo) {
   const env = getEnv();
   const { key, via } = resolved;
+  if (via === 'openstory') return hostedTextAdapter(model);
 
   const nativeModel = resolveNativeGrokModel(model, resolved);
   if (nativeModel) {

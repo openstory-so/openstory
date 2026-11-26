@@ -4,7 +4,6 @@
  * § Self-hosted on one key). No local hold, no local debit.
  */
 
-import { getEnv } from '#env';
 import type {
   GatewayJobInput,
   GatewayJobOutput,
@@ -21,7 +20,7 @@ import {
 } from '@/gateway/server/api-documents';
 import type { GatewayStore } from '@/gateway/server/phases';
 import {
-  DEFAULT_GATEWAY_URL,
+  hostedFetch,
   remoteHandle,
   remoteJobOf,
 } from '@/gateway/server/remote-config';
@@ -38,59 +37,11 @@ const logger = getLogger(['openstory', 'gateway', 'http']);
 
 const POLL_WAIT = '20s';
 
-/** Read inside the call that spends it: never on a payload, a URL or a log. */
-function remoteGateway(): { base: string; key: string } {
-  const env = getEnv();
-  if (!env.OPENSTORY_API_KEY) {
-    throw new NonRetryableError('OPENSTORY_API_KEY is not set on this install');
-  }
-  return {
-    base: (env.OPENSTORY_GATEWAY_URL ?? DEFAULT_GATEWAY_URL).replace(/\/$/, ''),
-    key: env.OPENSTORY_API_KEY,
-  };
-}
-
-const errorEnvelope = z.object({
-  error: z.object({ code: z.string(), message: z.string() }),
-});
-
-/** One call to the hosted gateway. A refusal (a 4xx other than 429) is final and reads as the hosted side wrote it. */
 async function callGateway(
   path: string,
-  init: {
-    method: 'GET' | 'POST';
-    headers?: Readonly<Record<string, string>>;
-    body?: BodyInit;
-  }
+  init: Parameters<typeof hostedFetch>[1]
 ): Promise<unknown> {
-  const { base, key } = remoteGateway();
-  const response = await fetch(`${base}/api/v1/gateway/${path}`, {
-    ...init,
-    headers: { ...init.headers, authorization: `Bearer ${key}` },
-  });
-  const text = await response.text();
-  if (response.ok) return JSON.parse(text);
-  const parsed = errorEnvelope.safeParse(safeJson(text));
-  const reason = parsed.success
-    ? `${parsed.data.error.code}: ${parsed.data.error.message}`
-    : `HTTP ${response.status}`;
-  const message = `The hosted gateway refused this call (${reason})`;
-  if (
-    response.status >= 400 &&
-    response.status < 500 &&
-    response.status !== 429
-  ) {
-    throw new NonRetryableError(message);
-  }
-  throw new Error(message);
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
+  return (await hostedFetch(path, init)).json();
 }
 
 const uploadAnswer = z.object({ url: z.string() });
