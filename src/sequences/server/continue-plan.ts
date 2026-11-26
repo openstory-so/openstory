@@ -80,7 +80,7 @@ export async function estimateContinueCost(args: {
   work: readonly PlanUnit[];
   generateStartFrames: boolean;
   draftMotion: boolean;
-  scopedDb: Pick<ScopedDb, 'apiKeys'>;
+  scopedDb: Pick<ScopedDb, 'userId' | 'apiKeys'>;
 }): Promise<{ micros: Microdollars; priced: boolean }> {
   const { sequence, shots } = args;
   const pricing = await imageQuotePricing(args.scopedDb);

@@ -49,6 +49,8 @@ export type EffectiveFalPricing = {
    * refresh has fetched one for this endpoint.
    */
   rateCard?: RateCard;
+  /** Gateway hold per image by `gatewayHoldKey`, for a still this organization runs `openstory` (#2434); read before every other price. */
+  gatewayHolds?: Readonly<Record<string, Microdollars>>;
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;

@@ -144,6 +144,14 @@ export function gateEstimate(
   return floored;
 }
 
+/** The shape a gateway hold is priced for: the request fields a still's price can read. */
+export function gatewayHoldKey(
+  aspectRatio: AspectRatio,
+  resolution: Resolution | undefined
+): string {
+  return `${aspectRatio}|${resolution ?? ''}`;
+}
+
 /**
  * Estimate provider cost of generating images. Rough pre-flight
  * gate only — the exact charge comes from fal's reported units post-generation.
@@ -166,8 +174,16 @@ export function estimateImageCost(
   // Always the fal catalog id: when the platform routes this model to BytePlus
   // Ark, the pricing map already aliases that id to the Ark rate (#1157), so
   // no call site has to know the route.
+  const endpointId =
+    (opts.edit ? getEditEndpoint(model) : null) ?? IMAGE_MODELS[model].id;
+  // The gateway hold is per image: every holdable card multiplies by the count.
+  const hold =
+    opts.pricing[endpointId]?.gatewayHolds?.[
+      gatewayHoldKey(aspectRatio, opts.resolution)
+    ];
+  if (hold !== undefined) return multiplyMicros(hold, numImages);
   return estimateFalCost(
-    (opts.edit ? getEditEndpoint(model) : null) ?? IMAGE_MODELS[model].id,
+    endpointId,
     {
       numImages,
       widthPx: width,

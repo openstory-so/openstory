@@ -166,6 +166,124 @@ describe('withGatewayImageQuotes', () => {
   });
 });
 
+// modelschemas' fal Nano Banana 2 schema and card, cut to the fields the product sends.
+const nanoSchema = (edit: boolean) => ({
+  type: 'object',
+  properties: {
+    prompt: { type: 'string' },
+    aspect_ratio: { type: 'string' },
+    resolution: { type: 'string', enum: ['0.5K', '1K', '2K', '4K'] },
+    safety_tolerance: { type: 'string' },
+    num_images: { type: 'integer' },
+    sync_mode: { type: 'boolean' },
+    ...(edit && { image_urls: { type: 'array', items: { type: 'string' } } }),
+  },
+});
+const nano = (id: string, edit: boolean): GatewayModel => ({
+  provider: 'fal',
+  id,
+  name: 'Nano Banana 2',
+  kind: 'image',
+  endpointId: id,
+  inputSchema: nanoSchema(edit),
+  card: {
+    inputs: {
+      num_images: {
+        param: 'num_images',
+        bound: 'request',
+        kind: 'number',
+        default: 1,
+      },
+      resolution: {
+        param: 'resolution',
+        bound: 'request',
+        kind: 'enum',
+        values: ['0.5K', '1K', '2K', '4K'],
+        default: '1K',
+      },
+    },
+    tables: { multiplier: { '0.5K': 0.75, '1K': 1, '2K': 1.5, '4K': 2 } },
+    price: {
+      '*': [
+        { var: 'num_images' },
+        0.08,
+        { lookup: { table: 'multiplier', keys: [{ var: 'resolution' }] } },
+      ],
+    },
+    examples: [],
+    source: GROK.card.source,
+  },
+});
+const NANO = nano('fal-ai/nano-banana-2', false);
+const NANO_EDIT = nano('fal-ai/nano-banana-2/edit', true);
+const FAL_ROUTES: GatewayRoutes = {
+  [gatewayRouteKey('fal', NANO.id)]: {
+    via: 'openstory',
+    model: JSON.stringify(NANO),
+  },
+  [gatewayRouteKey('fal', NANO_EDIT.id)]: {
+    via: 'openstory',
+    model: JSON.stringify(NANO_EDIT),
+  },
+};
+const falStill = {
+  model: 'nano_banana_2' as const,
+  prompt: 'A woman reads a letter by the window',
+  imageSize: 'landscape_16_9' as const,
+  numImages: 1,
+};
+const withRefs = { ...falStill, referenceImageUrls: ['/r2/characters/a.png'] };
+
+describe('a fal still', () => {
+  it('runs on the gateway with no references', () => {
+    const request = gatewayImageRequest(falStill, FAL_ROUTES);
+    expect(request?.model.id).toBe(NANO.id);
+    expect(request?.body).toMatchObject({ prompt: falStill.prompt });
+  });
+
+  it('runs on the gateway with references, through the edit endpoint', () => {
+    const request = gatewayImageRequest(withRefs, FAL_ROUTES);
+    expect(request?.model.id).toBe(NANO_EDIT.id);
+    expect(request?.body).toMatchObject({
+      image_urls: ['/r2/characters/a.png'],
+    });
+  });
+
+  it('stays direct with references when the edit endpoint is unholdable', () => {
+    const routes: GatewayRoutes = {
+      ...FAL_ROUTES,
+      [gatewayRouteKey('fal', NANO_EDIT.id)]: {
+        via: 'direct',
+        reason: 'text_input_tokens (text_input_tokens): required',
+      },
+    };
+    expect(gatewayImageRequest(falStill, routes)?.model.id).toBe(NANO.id);
+    expect(gatewayImageRequest(withRefs, routes)).toBeNull();
+  });
+
+  it('is quoted at exactly its hold, with and without references', () => {
+    const pricing = withGatewayImageQuotes({}, FAL_ROUTES);
+    for (const params of [falStill, withRefs]) {
+      for (const resolution of [undefined, '720p', '4k'] as const) {
+        const request = gatewayImageRequest(
+          { ...params, ...(resolution && { resolution }) },
+          FAL_ROUTES
+        );
+        if (!request) throw new Error('expected an openstory request');
+        const quote = estimateImageCost('nano_banana_2', '16:9', 2, {
+          pricing,
+          resolution,
+          edit: params === withRefs,
+        });
+        expect(quote).toBe(
+          2 *
+            gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
+        );
+      }
+    }
+  });
+});
+
 describe('a pipeline still on the openstory route', () => {
   const call = (runReservationId: string | undefined) =>
     generateImageWithProvider(still, {

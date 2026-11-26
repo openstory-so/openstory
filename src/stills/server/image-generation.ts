@@ -40,9 +40,11 @@ import { openstoryImage } from '@/gateway/server/adapter';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import {
+  gatewayRouteKey,
   gatewayRunRoute,
   type GatewayRoute,
   type GatewayRoutes,
+  type GatewayRouteTarget,
 } from '@/gateway/server/route';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
@@ -77,6 +79,7 @@ import {
 import { falImage } from '@tanstack/ai-fal';
 import { ThinkingLevel, createGeminiImage } from '@tanstack/ai-gemini';
 import { createGrokImage } from '@tanstack/ai-grok';
+import { z } from 'zod';
 
 export type { ImageGenerationParams } from '@/stills/build-image-request';
 
@@ -217,38 +220,70 @@ export async function generateImageWithProvider(
   }
 }
 
-/** The run's route for this still and the body it would send; null when the model has no gateway body. Pure, no log. */
-export function imageGatewayRoute(
+const jsonBody = z.record(z.string(), z.json());
+
+/**
+ * Where a still goes on the gateway and the body it sends there: native Grok
+ * when the trigger routed it on xAI, else the fal endpoint `buildImageRequest`
+ * picks (the edit endpoint when it has references). Pure.
+ */
+function imageGatewayTarget(
   params: ImageGenerationParams,
   routes: GatewayRoutes | undefined
-): { route: GatewayRoute; body: GatewayJobInput } | null {
-  const nativeModel = nativeGrokImageModel(params.model);
-  if (!nativeModel) return null;
-  const body = buildGrokImageBody(params, nativeModel);
+): { target: GatewayRouteTarget; body: GatewayJobInput } {
+  const grokId = nativeGrokImageModel(params.model);
+  if (grokId && routes?.[gatewayRouteKey('grok', grokId)]) {
+    return {
+      target: { provider: 'grok', modelId: grokId },
+      body: buildGrokImageBody(params, grokId),
+    };
+  }
+  const { endpointId, input } = buildImageRequest(params);
   return {
-    route: gatewayRunRoute(
-      routes,
-      { provider: 'grok', modelId: nativeModel },
-      body
-    ),
-    body,
+    target: { provider: 'fal', modelId: endpointId },
+    // As fal receives it: JSON, so an undefined option is dropped.
+    body: jsonBody.parse(JSON.parse(JSON.stringify(input))),
   };
 }
 
-/** The gateway model and body when the route for this model is `openstory` and the body can run there; else null (direct). */
+/** The run's route for this still and the body it would send. Pure, no log. */
+export function imageGatewayRoute(
+  params: ImageGenerationParams,
+  routes: GatewayRoutes | undefined
+): { route: GatewayRoute; body: GatewayJobInput } {
+  const { target, body } = imageGatewayTarget(params, routes);
+  return { route: gatewayRunRoute(routes, target, body), body };
+}
+
+/** The gateway model and body when the route for this still is `openstory`; else null (direct). */
 export function gatewayImageRequest(
   params: ImageGenerationParams,
   routes: GatewayRoutes | undefined
 ): { model: GatewayModel; body: GatewayJobInput } | null {
-  const resolved = imageGatewayRoute(params, routes);
-  if (!resolved) return null;
-  if (resolved.route.via === 'direct') {
-    logger.info(`Image stays direct: ${resolved.route.reason}`, {
+  const { route, body } = imageGatewayRoute(params, routes);
+  if (route.via === 'direct') {
+    logger.info(`Image stays direct: ${route.reason}`, {
       model: params.model,
     });
     return null;
   }
-  return { model: resolved.route.model, body: resolved.body };
+  return { model: route.model, body };
+}
+
+/** References a provider can fetch: fal reads URLs (a local `/r2/` is uploaded), xAI takes data URIs. */
+async function fetchableReferences(
+  params: ImageGenerationParams,
+  provider: GatewayModel['provider']
+): Promise<ImageGenerationParams> {
+  const urls = params.referenceImageUrls;
+  if (!urls?.length) return params;
+  return {
+    ...params,
+    referenceImageUrls:
+      provider === 'fal'
+        ? await ensureExternallyFetchableUrls(urls)
+        : await Promise.all(urls.map((url) => toDataOrCdnUrl(url))),
+  };
 }
 
 /** One gateway job: held, run, stored and charged in this step; a content refusal is released and rethrown. */
@@ -271,17 +306,22 @@ async function generateOnGateway(
         folder,
         index,
       }),
-    // No media to check: a still with references fails the body check and stays direct.
+    // References are uploads gated when saved or at the click, or media we generated (docs/architecture/model-gateway.md).
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
     // A run that holds its own estimate is charged against it: no second hold.
     reservation: call.runReservationId ? { id: call.runReservationId } : null,
   });
+  // Judged on the stored URLs at the trigger; sent with ones the provider can fetch.
+  const body = imageGatewayTarget(
+    await fetchableReferences(params, request.model.provider),
+    call.routes
+  ).body;
   const result = await generateImage({
     adapter: openstoryImage(request.model.id, transport, {
       idempotencyKey: call.idempotencyKey,
     }),
     prompt: '',
-    modelOptions: request.body,
+    modelOptions: body,
     threadId: call.runId,
   });
   const imageUrls = result.images.flatMap((image) =>
@@ -316,7 +356,7 @@ async function resolveOptionalXaiKey(
 }
 
 /** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal organization), fal. */
-async function resolveImageVia(
+export async function resolveImageVia(
   model: ImageGenerationParams['model'],
   credentials: CredentialScopedDb | undefined
 ): Promise<{

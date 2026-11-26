@@ -58,6 +58,14 @@ function hydratePricingMap(
       ...(row.rateCardJson && {
         rateCard: parseRateCard(row.rateCardJson),
       }),
+      ...(row.gatewayHolds && {
+        gatewayHolds: Object.fromEntries(
+          Object.entries(row.gatewayHolds).map(([shape, hold]) => [
+            shape,
+            micros(hold),
+          ])
+        ),
+      }),
     };
   }
   return map;

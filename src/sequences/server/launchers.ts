@@ -231,7 +231,7 @@ async function resolveStoryboardPayload(
     gatewayRoutes: {
       ...input.gatewayRoutes,
       ...(await resolveGatewayRoutes(scopedDb, [
-        ...imageRouteTargets(),
+        ...(await imageRouteTargets(scopedDb)),
         ...AUDIO_ROUTE_TARGETS,
       ])),
     },
