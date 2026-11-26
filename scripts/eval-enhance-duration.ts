@@ -14,6 +14,7 @@
  *
  * Needs OPENROUTER_KEY. Report-only — never writes to the DB.
  */
+import { NO_ORGANIZATION } from '@/models/server/create-adapter';
 import {
   callLLM,
   ENHANCE_REASONING,
@@ -76,7 +77,12 @@ async function enhanceOnce(): Promise<string> {
     temperature: 0.7,
     reasoning: ENHANCE_REASONING,
     observationName: 'eval-enhance-duration',
-    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
+    apiKey: {
+      key: openRouterKey,
+      via: 'openrouter',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    },
   });
 }
 

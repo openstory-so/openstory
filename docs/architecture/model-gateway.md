@@ -1198,10 +1198,23 @@ billed them until one does. The durable helpers (`chatModelOptionsForCall`),
 the assistant, the public endpoint and native xAI and Google calls send no
 tier and are priced on the card.
 
-These calls are not metered at all. A call with no organization
-(`getPlatformLlmKey` in an anonymous workflow) has nobody to charge. The
-gateway submit's own likeness check (`withPlatformLlmKey`) is the gateway's
-cost of taking a job.
+Every LLM key carries its charging mode in the type (`LlmKeyInfo.meter`,
+required): a `TextMeter`, or `{ uncharged: 'own key' }` for an
+organization's own key, or `{ uncharged: 'no organization' }` for a platform
+key with nobody to charge. `createAdapter` and llm-client take the key as a
+required argument, so no call builds an adapter on an implicit platform key.
+Only `getPlatformLlmKey` mints a `no organization` key, and
+`unmetered-llm-keys.test.ts` pins the files that may call it: the
+definition; the unwrapped `apiKeys` (which only `scoped.ts` builds, inside
+`withTextGateway`); `text.ts`, which meters it; a durable call with no
+`scopedDb` (an anonymous workflow); and llm-client's Google re-run of a call
+already marked so.
+
+The gateway submit's likeness check (`withPlatformLlmKey`) spends the
+platform's key, never the organization's, and is metered like any other
+request. Before #2437 it was billed to the organization (`billTalentVision`,
+`likeness:<url>`). It still is, once per checked URL, pinned by
+`platform-credentials.test.ts`.
 
 The snapshot holds a text card for every `SCRIPT_ANALYSIS_MODELS` id on
 OpenRouter, plus the native Grok and Gemini ids (`productTextModels`). A

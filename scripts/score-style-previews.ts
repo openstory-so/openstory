@@ -26,6 +26,7 @@
  *   bun scripts/score-style-previews.ts --scene action        # only that scene
  *   bun scripts/score-style-previews.ts --model openai/gpt-5.5 --threshold 6.5
  */
+import { NO_ORGANIZATION } from '@/models/server/create-adapter';
 import { parseStyleConfig } from '@/look/style-config';
 import type { TextModel } from '@/models/models';
 import { callLLM } from '@/models/server/llm-client';
@@ -218,7 +219,12 @@ async function scoreStyle(
     max_tokens: 1200,
     temperature: 0,
     observationName: 'score-style-preview',
-    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
+    apiKey: {
+      key: openRouterKey,
+      via: 'openrouter',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    },
   });
   const parsed = styleVerdictSchema.parse(JSON.parse(extractJson(reply)));
 

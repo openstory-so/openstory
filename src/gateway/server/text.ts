@@ -164,19 +164,19 @@ export function withTextGateway<
       null,
       (next) => resolveRunLlmKey(next, reservationId)
     );
-  return {
-    ...apiKeys,
-    resolveLlmKey,
-    resolveRunLlmKey,
-    resolvePlatformLlmKey: async (model, oauthClientId) => {
-      const platform = getPlatformLlmKey(model);
-      if (!platform) return null;
-      const key = await metered(platform, model, null, oauthClientId, (m) =>
-        Promise.reject(new Error(`No re-run for ${m} on the public API`))
-      );
-      return key.meter?.card ? key : null;
-    },
+  const resolvePlatformLlmKey = async (
+    model: string,
+    oauthClientId: string | null
+  ): Promise<ResolvedLlmKey | null> => {
+    const platform = getPlatformLlmKey(model);
+    if (!platform) return null;
+    return metered(platform, model, null, oauthClientId, async (next) => {
+      const key = await resolvePlatformLlmKey(next, oauthClientId);
+      if (!key) throw new Error(`No platform LLM key for ${next}`);
+      return key;
+    });
   };
+  return { ...apiKeys, resolveLlmKey, resolveRunLlmKey, resolvePlatformLlmKey };
 }
 function isMediaPart(value: unknown): boolean {
   return (

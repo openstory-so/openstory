@@ -24,6 +24,13 @@ vi.doMock('#env', () => ({
   }),
 }));
 
+const TEST_KEY = {
+  key: 'test-key',
+  source: 'platform' as const,
+  via: 'openrouter' as const,
+  meter: { uncharged: 'no organization' as const },
+};
+
 // Mock @tanstack/ai — chat() is the only function callLLMStream uses
 // Re-export all real exports so other test files aren't affected by incomplete mock
 const mockChat = vi.fn();
@@ -38,6 +45,7 @@ vi.doMock('@tanstack/ai', () => ({
 const mockCreateAdapter = vi.fn(() => ({ kind: 'text', name: 'mock' }));
 vi.doMock('./create-adapter', () => ({
   createAdapter: mockCreateAdapter,
+  getPlatformLlmKey: () => TEST_KEY,
   resolveNativeGrokModel: () => undefined,
   resolveNativeGeminiModel: () => undefined,
 }));
@@ -143,6 +151,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -170,6 +179,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -196,6 +206,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
         userId: 'user-123',
@@ -245,6 +256,7 @@ describe('llm-client', () => {
 
       let doneUsage: TokenUsage | undefined;
       for await (const chunk of callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       })) {
@@ -265,6 +277,7 @@ describe('llm-client', () => {
       );
 
       for await (const _chunk of callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       })) {
@@ -286,6 +299,7 @@ describe('llm-client', () => {
           })()
         );
         for await (const _chunk of callLLMStream({
+          apiKey: TEST_KEY,
           model,
           messages: [{ role: 'user', content: 'test' }],
         })) {
@@ -333,6 +347,7 @@ describe('llm-client', () => {
       let doneUsage: TokenUsage | undefined;
       let parsed: { title: string } | undefined;
       for await (const chunk of callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
         responseSchema: schema,
@@ -368,6 +383,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -397,6 +413,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
             responseSchema: z.object({ scenes: z.array(z.unknown()) }),
@@ -440,6 +457,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -466,6 +484,7 @@ describe('llm-client', () => {
         );
 
       const result = await callLLM({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-opus-5-fast',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -482,7 +501,7 @@ describe('llm-client', () => {
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
         REGION_FALLBACK_MODEL,
-        undefined
+        TEST_KEY
       );
     });
 
@@ -507,17 +526,22 @@ describe('llm-client', () => {
         const result = await callLLM({
           model: 'google/gemini-3.8-flash',
           messages: [{ role: 'user', content: 'test' }],
-          apiKey: { key: 'platform-google', via: 'google', source: 'platform' },
+          apiKey: {
+            key: 'platform-google',
+            via: 'google',
+            meter: { uncharged: 'no organization' as const },
+            source: 'platform',
+          },
         });
 
         expect(result).toBe('via openrouter');
         expect(errorLog).not.toHaveBeenCalled();
         expect(mockChat).toHaveBeenCalledTimes(2);
-        // Same model, no key: createAdapter picks the platform's non-Google key.
+        // Same model on the platform's non-Google key, still marked no organization.
         expect(mockCreateAdapter).toHaveBeenNthCalledWith(
           2,
           'google/gemini-3.8-flash',
-          undefined
+          TEST_KEY
         );
         expect(isGoogleRegionBlockedHere()).toBe(true);
       } finally {
@@ -543,6 +567,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'organization-google',
               via: 'google',
+              meter: { uncharged: 'no organization' as const },
               source: 'organization',
             },
           })
@@ -572,6 +597,7 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'organization-openrouter',
         via: 'openrouter' as const,
+        meter: { uncharged: 'no organization' as const },
         source: 'organization' as const,
       }));
 
@@ -582,6 +608,7 @@ describe('llm-client', () => {
           apiKey: {
             key: 'organization-google',
             via: 'google',
+            meter: { uncharged: 'no organization' as const },
             source: 'organization',
           },
           resolveApiKey,
@@ -593,6 +620,7 @@ describe('llm-client', () => {
           {
             key: 'organization-openrouter',
             via: 'openrouter',
+            meter: { uncharged: 'no organization' as const },
             source: 'organization',
           }
         );
@@ -612,6 +640,7 @@ describe('llm-client', () => {
       );
       await expect(
         callLLM({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
         })
@@ -638,6 +667,7 @@ describe('llm-client', () => {
             })()
           );
         await callLLM({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-opus-5.5',
           messages: [{ role: 'user', content: 'test' }],
           max_tokens,
@@ -668,6 +698,7 @@ describe('llm-client', () => {
       const resolveApiKey = vi.fn(async () => ({
         key: 'k',
         via: 'openrouter' as const,
+        meter: { uncharged: 'no organization' as const },
         source: 'organization' as const,
       }));
 
@@ -675,7 +706,12 @@ describe('llm-client', () => {
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-opus-5-fast',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'llmtr', source: 'organization' },
+        apiKey: {
+          key: 'k',
+          via: 'llmtr',
+          meter: { uncharged: 'no organization' as const },
+          source: 'organization',
+        },
         resolveApiKey,
       })) {
         if (chunk.done) terminal = chunk;
@@ -699,7 +735,12 @@ describe('llm-client', () => {
       for await (const chunk of callLLMStream({
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
-        apiKey: { key: 'k', via: 'openrouter', source: 'organization' },
+        apiKey: {
+          key: 'k',
+          via: 'openrouter',
+          meter: { uncharged: 'no organization' as const },
+          source: 'organization',
+        },
       })) {
         if (chunk.done) terminal = chunk;
       }
@@ -728,6 +769,7 @@ describe('llm-client', () => {
         );
 
       const result = await callLLM({
+        apiKey: TEST_KEY,
         model: 'deepseek/deepseek-v4-pro-0813',
         messages: [
           {
@@ -747,7 +789,7 @@ describe('llm-client', () => {
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
         REGION_FALLBACK_MODEL,
-        undefined
+        TEST_KEY
       );
     });
 
@@ -765,6 +807,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-opus-5-fast',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -789,6 +832,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -811,6 +855,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -832,6 +877,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -852,6 +898,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -883,6 +930,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -911,6 +959,7 @@ describe('llm-client', () => {
         );
 
         const generator = callLLMStream({
+          apiKey: TEST_KEY,
           model: nativeModel,
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,
@@ -944,6 +993,7 @@ describe('llm-client', () => {
         );
 
         const generator = callLLMStream({
+          apiKey: TEST_KEY,
           model: nativeModel,
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,
@@ -968,6 +1018,7 @@ describe('llm-client', () => {
         );
 
         const generator = callLLMStream({
+          apiKey: TEST_KEY,
           model: nativeModel,
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,
@@ -1003,6 +1054,7 @@ describe('llm-client', () => {
 
         const chunks = [];
         for await (const chunk of callLLMStream({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,
@@ -1047,6 +1099,7 @@ describe('llm-client', () => {
         );
 
         const generator = callLLMStream({
+          apiKey: TEST_KEY,
           model,
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: z.object({ ok: z.boolean() }),
@@ -1071,6 +1124,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-opus-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1086,6 +1140,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'x-ai/grok-4.7',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1104,6 +1159,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1121,6 +1177,7 @@ describe('llm-client', () => {
 
           await drain(
             callLLMStream({
+              apiKey: TEST_KEY,
               model,
               messages: [{ role: 'user', content: 'test' }],
               temperature: 0.7,
@@ -1138,6 +1195,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             temperature: 0.7,
@@ -1154,6 +1212,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'deepseek/deepseek-v4-pro-0813',
             max_tokens: 300,
             messages: [{ role: 'user', content: 'test' }],
@@ -1170,6 +1229,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             provider: { allowFallbacks: false },
@@ -1200,6 +1260,7 @@ describe('llm-client', () => {
         const thinking: string[] = [];
         let finalAccumulated = '';
         for await (const chunk of callLLMStream({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           reasoning: { enabled: true, effort: 'medium' },
@@ -1227,6 +1288,7 @@ describe('llm-client', () => {
 
         const seen: { delta: string; accumulated: string }[] = [];
         for await (const chunk of callLLMStream({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           reasoning: { enabled: true, effort: 'medium' },
@@ -1252,6 +1314,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             reasoning: { enabled: true, effort: 'medium' },
@@ -1277,6 +1340,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1296,6 +1360,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'z-ai/glm-5.3-flash',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1316,6 +1381,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'z-ai/glm-5.3-flash',
             messages: [{ role: 'user', content: 'test' }],
             reasoning: { enabled: true, effort: 'medium' },
@@ -1341,6 +1407,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
+              meter: { uncharged: 'no organization' as const },
               source: 'organization',
             },
           })
@@ -1364,6 +1431,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             webSearch: true,
@@ -1396,6 +1464,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
+              meter: { uncharged: 'no organization' as const },
               source: 'organization',
             },
           })
@@ -1425,6 +1494,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
+              meter: { uncharged: 'no organization' as const },
               source: 'organization',
             },
           })
@@ -1453,6 +1523,7 @@ describe('llm-client', () => {
             apiKey: {
               key: 'llmtr-organization',
               via: 'llmtr',
+              meter: { uncharged: 'no organization' as const },
               source: 'organization',
             },
           })
@@ -1474,6 +1545,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
+            apiKey: TEST_KEY,
             model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
@@ -1503,6 +1575,7 @@ describe('llm-client', () => {
       );
 
       const result = await callLLM({
+        apiKey: TEST_KEY,
         model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
@@ -1529,6 +1602,7 @@ describe('llm-client', () => {
 
       return expect(
         callLLM({
+          apiKey: TEST_KEY,
           model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
         })
@@ -1548,6 +1622,7 @@ describe('llm-client', () => {
       );
 
       const result = await callLLM({
+        apiKey: TEST_KEY,
         model: 'openai/gpt-5.5',
         messages: [{ role: 'user', content: 'test' }],
         responseSchema: schema,
@@ -1566,6 +1641,7 @@ describe('llm-client', () => {
 
       return expect(
         callLLM({
+          apiKey: TEST_KEY,
           model: 'openai/gpt-5.5',
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,

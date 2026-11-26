@@ -33,7 +33,7 @@ import { createModel, extendAdapter } from '@tanstack/ai';
 import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
 import { openaiCompatibleText } from '@tanstack/ai-openai/compatible';
-import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
+import { createOpenRouterText } from '@tanstack/ai-openrouter';
 
 import { getLogger } from '@/platform/logger';
 
@@ -57,9 +57,16 @@ export type LlmKeyInfo = {
    * models `LLMTR_TEXT_MODELS` maps).
    */
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
-  /** Set on every platform key resolved for an organization: each provider call is charged once (#2437). */
-  meter?: TextMeter;
+  /** How the key's calls are charged: a meter, or a named reason they are not (#2437). */
+  meter: TextMeter | Uncharged;
 };
+
+/** A key whose calls are never charged: the organization's own key, or a platform key with no organization to charge. */
+export type Uncharged = { readonly uncharged: 'own key' | 'no organization' };
+
+export const OWN_KEY: Uncharged = { uncharged: 'own key' };
+/** Only for callers with no organization: `getPlatformLlmKey`'s allowlist is pinned by `platform-llm-key-callers.test.ts`. */
+export const NO_ORGANIZATION: Uncharged = { uncharged: 'no organization' };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
 // OpenRouter SDK hardcodes `Bearer`; rewrite the header on the way out.
@@ -87,7 +94,12 @@ export function getPlatformLlmKey(
 ): (LlmKeyInfo & { source: 'platform' }) | undefined {
   const env = getEnv();
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
-    return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
+    return {
+      key: env.XAI_API_KEY,
+      via: 'xai',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    };
   }
   // Skipped where Google refused this isolate's location (`google-region.ts`).
   if (
@@ -96,13 +108,28 @@ export function getPlatformLlmKey(
     env.GEMINI_API_KEY &&
     !isGoogleRegionBlockedHere()
   ) {
-    return { key: env.GEMINI_API_KEY, via: 'google', source: 'platform' };
+    return {
+      key: env.GEMINI_API_KEY,
+      via: 'google',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    };
   }
   if (env.OPENROUTER_KEY) {
-    return { key: env.OPENROUTER_KEY, via: 'openrouter', source: 'platform' };
+    return {
+      key: env.OPENROUTER_KEY,
+      via: 'openrouter',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    };
   }
   if (env.FAL_KEY) {
-    return { key: env.FAL_KEY, via: 'fal', source: 'platform' };
+    return {
+      key: env.FAL_KEY,
+      via: 'fal',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    };
   }
   return undefined;
 }
@@ -133,10 +160,6 @@ export const CATALOG_LAG_MODELS = [
   }),
 ] as const;
 
-const openRouterTextExtended = extendAdapter(
-  openRouterText,
-  CATALOG_LAG_MODELS
-);
 const createOpenRouterTextExtended = extendAdapter(
   createOpenRouterText,
   CATALOG_LAG_MODELS
@@ -199,10 +222,10 @@ export function resolveNativeGeminiModel(
 }
 
 /** The route's adapter, charged by the key's meter when it has one; refuses a card resolved for another model. */
-export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
+export function createAdapter(model: TextModel, keyInfo: LlmKeyInfo) {
   const adapter = createRouteAdapter(model, keyInfo);
-  const meter = keyInfo?.meter;
-  if (!meter) return adapter;
+  const { meter } = keyInfo;
+  if ('uncharged' in meter) return adapter;
   if (meter.card && meter.card.registryId !== model) {
     throw new Error(
       `LLM key was resolved for '${meter.card.registryId}', not '${model}'`
@@ -214,14 +237,12 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
 // Callers must say which API a key belongs to (`via`) — a bare string can't:
 // a fal key mistaken for an OpenRouter key gets Bearer auth against
 // openrouter.ai and 401s at runtime, invisibly to the compiler.
-function createRouteAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
+function createRouteAdapter(model: TextModel, resolved: LlmKeyInfo) {
   const env = getEnv();
-  const resolved = keyInfo ?? getPlatformLlmKey(model);
-  const key = resolved?.key;
-  const via = resolved?.via ?? 'openrouter';
+  const { key, via } = resolved;
 
   const nativeModel = resolveNativeGrokModel(model, resolved);
-  if (nativeModel && key) {
+  if (nativeModel) {
     return createGrokTextExtended(nativeModel, key, {
       fetch: workersSafeFetch,
       // XAI_BASE_URL points aimock at the native path in e2e, mirroring what
@@ -231,7 +252,7 @@ function createRouteAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   }
 
   const nativeGeminiModel = resolveNativeGeminiModel(model, resolved);
-  if (nativeGeminiModel && key) {
+  if (nativeGeminiModel) {
     return createGeminiChatExtended(nativeGeminiModel, key, {
       // GEMINI_BASE_URL is the aimock hook for the native Google path,
       // mirroring XAI_BASE_URL above.
@@ -260,7 +281,7 @@ function createRouteAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   // carry must not fall through to OpenRouter.
   if (via === 'llmtr') {
     const llmtrModel = llmtrTextModel(model);
-    if (!llmtrModel || !key) {
+    if (!llmtrModel) {
       throw new Error(
         `LLMTR does not carry model '${model}'. Resolve the LLM key for the model being called, not a different analysis model.`
       );
@@ -302,14 +323,12 @@ function createRouteAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     httpReferer: env.VITE_APP_URL || 'http://localhost:3000',
     xTitle: env.VITE_APP_NAME || 'OpenStory',
     ...(serverURL && { serverURL }),
-    ...(via === 'fal' && key && { httpClient: falAuthHttpClient(key) }),
+    ...(via === 'fal' && { httpClient: falAuthHttpClient(key) }),
     ...(isRecording && {
       retryConfig: { strategy: 'none' as const },
       timeoutMs: 600_000,
     }),
   };
 
-  return key
-    ? createOpenRouterTextExtended(model, key, config)
-    : openRouterTextExtended(model, config);
+  return createOpenRouterTextExtended(model, key, config);
 }

@@ -6,7 +6,7 @@
  * structured output so usage.cost lands) but skips the production
  * structured-output allowlist so candidate models can be measured too.
  */
-import { createAdapter } from '@/models/server/create-adapter';
+import { createAdapter, NO_ORGANIZATION } from '@/models/server/create-adapter';
 import {
   createUsageCapture,
   extractRunError,
@@ -43,7 +43,11 @@ if (!OPENROUTER_KEY) {
   throw new Error('OPENROUTER_KEY is required (set in .env.local).');
 }
 
-const API_KEY = { key: OPENROUTER_KEY, via: 'openrouter' as const };
+const API_KEY = {
+  key: OPENROUTER_KEY,
+  via: 'openrouter' as const,
+  meter: NO_ORGANIZATION,
+};
 
 function systemContentToString(content: ChatMessage['content']): string {
   if (typeof content === 'string') return content;

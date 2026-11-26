@@ -36,7 +36,7 @@ export type DescribeElementInput = {
   imageUrl: string;
   filename: string;
   /** Resolved LLM key (organization OpenRouter, organization fal, or platform) */
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
    * was resolved for {@link ELEMENT_VISION_MODEL}; the fallback may not be

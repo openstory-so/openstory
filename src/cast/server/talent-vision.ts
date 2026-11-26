@@ -44,7 +44,7 @@ export type AnalyzeTalentMediaInput = {
    * (the mock matches `userMessage`, not image bytes).
    */
   filenames?: string[];
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
    * was resolved for {@link TALENT_VISION_MODEL}; the fallback may not be
@@ -202,7 +202,7 @@ export async function analyzeTalentClip(input: {
 async function runTalentVision(input: {
   model: TextModel;
   messages: ChatMessage[];
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   observability?: AIObservabilityMeta;
 }): Promise<TalentVisionResult> {

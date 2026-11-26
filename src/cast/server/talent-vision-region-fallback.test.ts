@@ -98,11 +98,21 @@ beforeEach(() => {
   chatBehaviours.length = 0;
 });
 
+const PLATFORM_KEY = {
+  key: 'k',
+  via: 'openrouter' as const,
+  source: 'platform' as const,
+  meter: { uncharged: 'no organization' as const },
+};
+
 describe('analyzeTalentMedia region fallback', () => {
   it('retries a region-blocked call on the fallback model', async () => {
     chatBehaviours.push('region-block', 'ok');
 
-    const result = await analyzeTalentMedia({ imageUrls: IMAGES });
+    const result = await analyzeTalentMedia({
+      imageUrls: IMAGES,
+      llmKey: PLATFORM_KEY,
+    });
 
     expect(adapterModels).toEqual([TALENT_VISION_MODEL, REGION_FALLBACK_MODEL]);
     // Billing must follow the model that actually answered, not the default.
@@ -118,12 +128,18 @@ describe('analyzeTalentMedia region fallback', () => {
     const resolveLlmKey = vi.fn(async () => ({
       key: 'k',
       via: 'openrouter' as const,
+      meter: { uncharged: 'no organization' as const },
       source: 'platform' as const,
     }));
 
     const result = await analyzeTalentMedia({
       imageUrls: IMAGES,
-      llmKey: { key: 'k', via: 'llmtr', source: 'organization' },
+      llmKey: {
+        key: 'k',
+        via: 'llmtr',
+        meter: { uncharged: 'no organization' as const },
+        source: 'organization',
+      },
       resolveLlmKey,
     });
 
@@ -137,7 +153,10 @@ describe('analyzeTalentMedia region fallback', () => {
   it('stays on the default model when nothing is blocked', async () => {
     chatBehaviours.push('ok');
 
-    const result = await analyzeTalentMedia({ imageUrls: IMAGES });
+    const result = await analyzeTalentMedia({
+      imageUrls: IMAGES,
+      llmKey: PLATFORM_KEY,
+    });
 
     expect(adapterModels).toEqual([TALENT_VISION_MODEL]);
     expect(result.model).toBe(TALENT_VISION_MODEL);
@@ -146,9 +165,9 @@ describe('analyzeTalentMedia region fallback', () => {
   it('rethrows a non-region failure without a second call', async () => {
     chatBehaviours.push('other-error', 'ok');
 
-    await expect(analyzeTalentMedia({ imageUrls: IMAGES })).rejects.toThrow(
-      '402 Insufficient credits'
-    );
+    await expect(
+      analyzeTalentMedia({ imageUrls: IMAGES, llmKey: PLATFORM_KEY })
+    ).rejects.toThrow('402 Insufficient credits');
     expect(adapterModels).toEqual([TALENT_VISION_MODEL]);
   });
 });
@@ -160,7 +179,12 @@ describe('analyzeTalentClip region fallback', () => {
     await expect(
       analyzeTalentClip({
         clip: { uri: 'https://files.example/abc', mimeType: 'video/mp4' },
-        llmKey: { key: 'k', via: 'google', source: 'platform' },
+        llmKey: {
+          key: 'k',
+          via: 'google',
+          meter: { uncharged: 'no organization' as const },
+          source: 'platform',
+        },
       })
     ).rejects.toThrow(`answered on ${REGION_FALLBACK_MODEL}`);
   });

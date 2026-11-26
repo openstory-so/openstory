@@ -206,6 +206,11 @@ const OPTIONS = {
   logger: resolveDebugOption(false),
 };
 
+function meterOf(key: ResolvedLlmKey): TextMeter {
+  if ('uncharged' in key.meter) throw new Error('unmetered key');
+  return key.meter;
+}
+
 async function drain(stream: AsyncIterable<unknown>) {
   for await (const _ of stream) {
     // drain
@@ -455,9 +460,10 @@ describe('openstoryText on the direct route', () => {
     );
     for (let i = 0; i < 2; i++) {
       const inner = adapter(() => run('r', billed()));
-      if (!charged.meter) throw new Error('no meter');
       await drain(
-        openstoryText(inner, charged.meter, 'vendor/model').chatStream(OPTIONS)
+        openstoryText(inner, meterOf(charged), 'vendor/model').chatStream(
+          OPTIONS
+        )
       );
     }
     expect((await ledger()).charges).toEqual([1500]);
@@ -468,7 +474,14 @@ describe('withTextGateway', () => {
   const key = (
     source: 'organization' | 'platform',
     via: ResolvedLlmKey['via']
-  ): ResolvedLlmKey => ({ key: 'k', source, via });
+  ): ResolvedLlmKey => ({
+    key: 'k',
+    source,
+    via,
+    meter: {
+      uncharged: source === 'organization' ? 'own key' : 'no organization',
+    },
+  });
   const keys = (resolved: ResolvedLlmKey) =>
     withTextGateway(
       { resolveLlmKey: async (_model?: string) => resolved },
@@ -484,8 +497,8 @@ describe('withTextGateway', () => {
     const resolved = await keys(key('platform', 'openrouter')).resolveLlmKey(
       'vendor/model'
     );
-    expect(resolved.meter?.card?.model.id).toBe('vendor/model');
-    expect(resolved.meter?.run).toBeNull();
+    expect(meterOf(resolved).card?.model.id).toBe('vendor/model');
+    expect(meterOf(resolved).run).toBeNull();
   });
 
   it('carries the run reservation for a workflow run', async () => {
@@ -493,10 +506,10 @@ describe('withTextGateway', () => {
       'vendor/model',
       'res-1'
     );
-    expect(resolved.meter?.run).toEqual({ runReservationId: 'res-1' });
+    expect(meterOf(resolved).run).toEqual({ runReservationId: 'res-1' });
   });
 
-  it('leaves own keys and LLMTR unmetered, so they are never charged', async () => {
+  it('leaves own keys unmetered and marked own key, so they are never charged', async () => {
     for (const resolved of [
       key('organization', 'openrouter'),
       key('organization', 'llmtr'),
@@ -504,21 +517,20 @@ describe('withTextGateway', () => {
     ]) {
       expect(
         (await keys(resolved).resolveLlmKey('vendor/model')).meter
-      ).toBeUndefined();
+      ).toEqual({ uncharged: 'own key' });
     }
   });
 
   it('meters platform fal, and a model with no card, on the direct route', async () => {
     expect(
-      (await keys(key('platform', 'fal')).resolveLlmKey('vendor/model')).meter
-        ?.card
+      meterOf(await keys(key('platform', 'fal')).resolveLlmKey('vendor/model'))
+        .card
     ).toBeNull();
     await db.delete(gatewayModels);
     const resolved = await keys(key('platform', 'openrouter')).resolveLlmKey(
       'vendor/model'
     );
-    expect(resolved.meter).toBeDefined();
-    expect(resolved.meter?.card).toBeNull();
+    expect(meterOf(resolved).card).toBeNull();
   });
 });
 

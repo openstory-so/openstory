@@ -752,11 +752,14 @@ describe('submitGatewayJob', () => {
       };
       await submitGatewayJob(VIDEO, ctx(scopedDb));
       const checked = requireCheckedUploadRights.mock.calls[0]?.[0];
-      expect(await checked?.apiKeys.resolveLlmKey('openai/gpt-5')).toEqual({
+      const key = await checked?.apiKeys.resolveLlmKey('openai/gpt-5');
+      expect(key).toMatchObject({
         key: 'platform-openrouter',
         via: 'openrouter',
         source: 'platform',
       });
+      // Metered: the check is charged to the organization, not absorbed.
+      expect(key && 'uncharged' in key.meter).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }

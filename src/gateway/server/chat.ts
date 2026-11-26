@@ -30,7 +30,10 @@ export async function streamGatewayChat(
     model,
     oauthClientId
   );
-  if (!key) throw new ValidationError('This model cannot be priced yet');
+  // The public API charges the card only: a model it cannot price is refused, never run direct.
+  if (!key || !('card' in key.meter) || !key.meter.card) {
+    throw new ValidationError('This model cannot be priced yet');
+  }
   const abortController = new AbortController();
   const stream = chat({
     adapter: createAdapter(model, key),

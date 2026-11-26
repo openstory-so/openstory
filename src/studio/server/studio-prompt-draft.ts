@@ -34,7 +34,7 @@ export type DraftStudioPromptInput = {
   endImageUrl?: string;
   /** What the user has typed so far, if anything — kept as intent. */
   currentPrompt?: string;
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
    * was resolved for {@link STUDIO_DRAFT_MODEL}; the fallback may not be
@@ -62,7 +62,7 @@ function tokensFor(references: DraftReference[]): string[] {
 }
 
 export async function buildDraftMessages(
-  input: DraftStudioPromptInput
+  input: Omit<DraftStudioPromptInput, 'llmKey'>
 ): Promise<{ systemPrompts: string[]; messages: ChatMessage[] }> {
   const tokens = tokensFor(input.references);
   const frames = input.startImageUrl

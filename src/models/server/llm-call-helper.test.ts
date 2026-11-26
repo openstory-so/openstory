@@ -22,6 +22,7 @@ vi.doMock('./create-adapter', () => ({
     key: 'test-key',
     source: 'platform' as const,
     via: 'openrouter' as const,
+    meter: { uncharged: 'no organization' as const },
   }),
 }));
 
@@ -91,7 +92,11 @@ describe('chatModelOptionsForCall', () => {
   it('uses Responses wire names for LLMTR Luna, not Chat Completions', () => {
     const options = chatModelOptionsForCall(
       'openai/gpt-6-luna',
-      { key: 'k', via: 'llmtr' },
+      {
+        key: 'k',
+        via: 'llmtr',
+        meter: { uncharged: 'no organization' as const },
+      },
       true
     );
     expect(options).toEqual({
@@ -103,7 +108,11 @@ describe('chatModelOptionsForCall', () => {
   it('pins GLM-5.3 Flash unrequested reasoning to low on OpenRouter (#1494)', () => {
     const options = chatModelOptionsForCall(
       'z-ai/glm-5.3-flash',
-      { key: 'k', via: 'openrouter' },
+      {
+        key: 'k',
+        via: 'openrouter',
+        meter: { uncharged: 'no organization' as const },
+      },
       undefined
     );
     expect(options).toEqual(
@@ -116,7 +125,11 @@ describe('chatModelOptionsForCall', () => {
   it('maps GLM-5.3 requested medium reasoning to high', () => {
     const options = chatModelOptionsForCall(
       'z-ai/glm-5.3-flash',
-      { key: 'k', via: 'openrouter' },
+      {
+        key: 'k',
+        via: 'openrouter',
+        meter: { uncharged: 'no organization' as const },
+      },
       true
     );
     expect(options).toEqual(
@@ -129,7 +142,11 @@ describe('chatModelOptionsForCall', () => {
   it('sends GLM-5.3 reasoning_effort low on LLMTR when unrequested', () => {
     const options = chatModelOptionsForCall(
       'z-ai/glm-5.3-flash',
-      { key: 'k', via: 'llmtr' },
+      {
+        key: 'k',
+        via: 'llmtr',
+        meter: { uncharged: 'no organization' as const },
+      },
       undefined
     );
     expect(options).toEqual({

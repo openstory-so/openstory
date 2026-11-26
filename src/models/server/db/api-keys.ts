@@ -10,6 +10,8 @@ import type { Database } from '@/platform/server/db/client';
 import { getEnv } from '#env';
 import {
   getPlatformLlmKey,
+  NO_ORGANIZATION,
+  OWN_KEY,
   type LlmKeyInfo,
 } from '@/models/server/create-adapter';
 import {
@@ -80,6 +82,11 @@ export type ResolvedLlmKey = ResolvedApiKey &
   Pick<LlmKeyInfo, 'meter'> & {
     via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
   };
+
+/** Unmetered until `withTextGateway` puts a meter on a platform key. */
+function chargeOf(key: ResolvedApiKey) {
+  return key.source === 'organization' ? OWN_KEY : NO_ORGANIZATION;
+}
 
 // The cached shape of a `organization_api_keys` lookup. Holds the *encrypted* row
 // (ciphertext + invalid flag) only — never the decrypted key. `resolveKey`
@@ -443,13 +450,13 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
 
     if (model && nativeGrokTextModel(model)) {
       const xai = await resolveOptionalKey('xai');
-      if (xai) return { ...xai, via: 'xai' };
+      if (xai) return { ...xai, via: 'xai', meter: chargeOf(xai) };
     }
 
     // Skipped where Google refused this isolate's location (`google-region.ts`).
     if (model && nativeGeminiTextModel(model) && !isGoogleRegionBlockedHere()) {
       const google = await resolveOptionalKey('google');
-      if (google) return { ...google, via: 'google' };
+      if (google) return { ...google, via: 'google', meter: chargeOf(google) };
     }
 
     if (model && llmtrTextModel(model)) {
@@ -458,7 +465,12 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
         await readKeyRowLogged('llmtr')
       );
       if ('key' in result) {
-        return { key: result.key, source: 'organization', via: 'llmtr' };
+        return {
+          key: result.key,
+          source: 'organization',
+          via: 'llmtr',
+          meter: OWN_KEY,
+        };
       }
       fallbackReason = result.skippedReason;
     }
@@ -474,7 +486,12 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       } else {
         const result = await decryptOrMarkInvalid('openrouter', orLookup);
         if ('key' in result) {
-          return { key: result.key, source: 'organization', via: 'openrouter' };
+          return {
+            key: result.key,
+            source: 'organization',
+            via: 'openrouter',
+            meter: OWN_KEY,
+          };
         }
         fallbackReason ??= result.skippedReason;
       }
@@ -488,7 +505,12 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       } else {
         const result = await decryptOrMarkInvalid('fal', falLookup);
         if ('key' in result) {
-          return { key: result.key, source: 'organization', via: 'fal' };
+          return {
+            key: result.key,
+            source: 'organization',
+            via: 'fal',
+            meter: OWN_KEY,
+          };
         }
         fallbackReason ??= result.skippedReason;
       }
