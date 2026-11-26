@@ -14,11 +14,13 @@ import {
   vi,
 } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { micros } from '@/billing/money';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import {
   chargeLines,
+  creditReservations,
   credits,
   gatewayJobs,
   organization,
@@ -122,12 +124,16 @@ const ROUTES = {
   },
 };
 
-function recorder(idempotencyKey: string, routes = ROUTES) {
+function recorder(
+  idempotencyKey: string,
+  routes = ROUTES,
+  reservationId: string | undefined = undefined
+) {
   return seedRecorderFor({
     routes,
     scopedDb: toWorkflowScopedDb(createScopedDb(organizationId, userId)),
     runId: 'voice_run-1',
-    reservationId: undefined,
+    reservationId,
     idempotencyKey,
   });
 }
@@ -181,6 +187,33 @@ describe('a Seed take on the gateway', () => {
     // The gateway charged it: the caller books no Seed line.
     expect(first.billedSeconds).toBeNull();
     expect(seedCharge(first.billedSeconds)).toEqual([]);
+    expect(await balanceDrop()).toBe(20_000);
+  });
+
+  it('charges the run reservation once and takes no hold of its own inside a run that reserved', async () => {
+    await db.delete(creditReservations);
+    const held = await createScopedDb(
+      organizationId,
+      userId
+    ).billing.createReservation(micros(50_000), {
+      idempotencyKey: `voice-run:${generateId()}`,
+    });
+    if (!held.ok) throw new Error('no run reservation');
+    const take = recorder('run-3:read:1', ROUTES, held.reservationId);
+    await take(BODY, 1);
+    await take(BODY, 1);
+    expect(start).toHaveBeenCalledTimes(1);
+    const holds = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.organizationId, organizationId));
+    expect(holds.map((hold) => hold.id)).toContain(held.reservationId);
+    expect(
+      holds.filter((hold) => hold.idempotencyKey?.startsWith('gateway:'))
+    ).toHaveLength(0);
+    expect(
+      holds.find((hold) => hold.id === held.reservationId)?.remainingAmount
+    ).toBe(30_000);
     expect(await balanceDrop()).toBe(20_000);
   });
 

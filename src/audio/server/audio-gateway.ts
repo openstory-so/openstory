@@ -16,7 +16,7 @@ export type AudioGatewayCall = {
   /** The model as it read at the trigger. */
   readonly model: GatewayModel;
   readonly runId: string;
-  /** The run's own hold, for the shared-reservation commit (#2435); unused until it lands. */
+  /** The run's reservation: each job charges it instead of holding again (#2435). */
   readonly reservationId: string | undefined;
   /** Replay-stable per call: a retried step reuses the job and its hold. */
   readonly idempotencyKey: string;
@@ -51,6 +51,7 @@ export function runAudioOnGateway(
         index,
       }),
     uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+    reservation: call.reservationId ? { id: call.reservationId } : null,
   });
   return runGatewayToEnd(
     gateway,

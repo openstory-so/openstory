@@ -1075,7 +1075,9 @@ the day its card does.
   `AUDIO_ROUTE_TARGETS` (`src/audio/gateway-targets.ts`) and children
   inherit them. A payload with no routes runs direct, so a run queued
   before the deploy finishes on its old path. Both callers go through
-  `runAudioOnGateway` (`src/audio/server/audio-gateway.ts`).
+  `runAudioOnGateway` (`src/audio/server/audio-gateway.ts`), which passes
+  the run's `reservationId` as the transport's `reservation`: a run that
+  reserved at its trigger is charged against that and holds nothing more.
 
 | Product call               | modelschemas                                                                                                            | Card                       | Where it runs                                |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
