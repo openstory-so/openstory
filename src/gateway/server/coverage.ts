@@ -185,7 +185,7 @@ export function coverageGap(coverage: Coverage): string | null {
   return coverage.hold ?? coverage.charge;
 }
 
-/** Gaps the doc does not list: a gap's paragraph names the model and its upstream issue, or `not yet filed`. */
+/** Gaps the doc does not list: a gap's paragraph names the model and its upstream issue. */
 export function unlistedGaps(
   coverages: readonly Coverage[],
   doc: string
@@ -197,7 +197,7 @@ export function unlistedGaps(
       !paragraphs.some(
         (paragraph) =>
           paragraph.includes(`\`${coverage.provider}/${coverage.id}\``) &&
-          /TanStack\/schemas#\d+|not yet filed/.test(paragraph)
+          /TanStack\/schemas#\d+/.test(paragraph)
       )
   );
 }

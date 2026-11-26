@@ -192,7 +192,7 @@ model the product uses (`productGatewayModels()`) against its card; `--json`
 prints `{ provider, id, holdable, reason }` for each, and `--recorded` reads
 `src/gateway/server/coverage.fixture.json` (recorded 2026-11-26) with no
 network. `coverage.test.ts` fails when a gap is not listed here with its
-upstream issue or `not yet filed`. Each stays refused until its card is
+upstream issue. Each stays refused until its card is
 fixed upstream; no local estimate, sibling price or guess stands in.
 
 - `fal/fal-ai/flux-2`, `fal/fal-ai/flux-2/flash`, `fal/fal-ai/flux-2/turbo`,
@@ -221,18 +221,19 @@ fixed upstream; no local estimate, sibling price or guess stands in.
 - `byteplus/dreamina-seedance-2-0-260128`,
   `byteplus/dreamina-seedance-2-5-260628`,
   `byteplus/dreamina-seedance-2-0-mini-260615`: `input_video` has no
-  estimate. not yet filed (#2435)
+  estimate. TanStack/schemas#764
 - `fal/fal-ai/sync-lipsync/v3` (`minutes`), `gemini/gemini-omni-1.2-flash`
-  (`input_tokens`): usage-only cards with no estimate. not yet filed (#2435)
+  (`input_tokens`): usage-only cards with no estimate. TanStack/schemas#764
 
 Holdable on a typical request but refused when the product sends a field the
-card types differently from the schema (not yet filed, #2435):
+card types differently from the schema (TanStack/schemas#766):
 `fal/xai/grok-imagine-video/v1.5/image-to-video` (`image_url`),
 `fal/fal-ai/kling-video/v3/pro/image-to-video` (`generate_audio`),
 `fal/minimax/h3-max/image-to-video`, `fal/minimax/h3-max/text-to-video` and
 `fal/minimax/h3-max/reference-to-video`
 (`resolution` case). `grok/grok-imagine-video-1.5` holds on `duration` alone,
-at the 480p rate (not yet filed, #2435). Outside the gateway's providers:
+at the 480p rate (TanStack/schemas#767). Text cards have no service-tier
+lever (TanStack/schemas#768). Outside the gateway's providers:
 ElevenLabs (TanStack/schemas#756, TanStack/schemas#757) and the Grok image
 edits endpoint (TanStack/schemas#758).
 
