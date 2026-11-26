@@ -155,10 +155,40 @@ export async function startGatewayRun(
       };
 }
 
+/**
+ * Every caller starts a job here: only the attempt that flips the row to
+ * `running` sends it. One found `running` may have reached the provider, so
+ * it fails and releases rather than send again; a start the provider
+ * answered without running goes back to `queued` with its hold.
+ */
+export async function claimAndStartGatewayRun(
+  scopedDb: Pick<WorkflowScopedDb, 'billing' | 'gatewayJobs'>,
+  run: GatewayRun,
+  credentials: GatewayCredentials,
+  store: GatewayStore
+): Promise<GatewayStarted> {
+  if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {
+    const error = 'The previous attempt may have started this job';
+    await releaseGatewayRun(scopedDb, run, error);
+    throw new NonRetryableError(error);
+  }
+  return startGatewayRun(run, credentials, store).catch(
+    async (error: unknown) => {
+      if (error instanceof NonRetryableError) {
+        await releaseGatewayRun(scopedDb, run, error.message);
+      }
+      if (error instanceof StartNotRun) {
+        await scopedDb.gatewayJobs.requeue(run.jobId);
+      }
+      throw error;
+    }
+  );
+}
+
 const ORIGIN_FAILED = new Set([500, 503]);
 
 /** The provider answered the start without running it: the same key may send it again. */
-export class StartNotRun extends Error {}
+class StartNotRun extends Error {}
 
 /**
  * How a start that threw ends: `refused` fails the job now; `resend` proves

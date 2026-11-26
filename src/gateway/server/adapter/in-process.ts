@@ -23,9 +23,8 @@ import {
   type GatewayStore,
   type GatewayStored,
   pollGatewayRun,
+  claimAndStartGatewayRun,
   releaseGatewayRun,
-  startGatewayRun,
-  StartNotRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import {
@@ -192,37 +191,23 @@ export function inProcessGateway(params: {
       if (job.status === 'failed') {
         throw new NonRetryableError(job.error?.message ?? 'Generation failed');
       }
-      if (job.status === 'running') {
-        if (job.providerJobId) {
-          return {
-            kind: 'queued' as const,
-            handle: JSON.stringify({ run, providerJobId: job.providerJobId }),
-          };
-        }
-        // Started but never stamped: the provider may have it, so it is failed rather than sent again.
-        const error = 'The previous attempt may have started this job';
-        await releaseGatewayRun(scopedDb, run, error);
-        throw new NonRetryableError(error);
+      if (job.status === 'running' && job.providerJobId) {
+        return {
+          kind: 'queued' as const,
+          handle: JSON.stringify({ run, providerJobId: job.providerJobId }),
+        };
       }
       // A borrowed hold stays off the row, so the stale-job sweep never zeroes the caller's reservation.
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
         reservationId: run.ownsReservation ? run.reservationId : null,
         workflowRunId: params.runId,
       });
-      if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {
-        throw new Error('Another attempt is starting this job');
-      }
-      const started = await startGatewayRun(run, credentials, store).catch(
-        async (error: unknown) => {
-          if (error instanceof NonRetryableError) {
-            await releaseGatewayRun(scopedDb, run, error.message);
-          }
-          // Nothing ran: back to queued with its hold, so the retried step sends it under the same key.
-          if (error instanceof StartNotRun) {
-            await scopedDb.gatewayJobs.requeue(run.jobId);
-          }
-          throw error;
-        }
+      // Started but never stamped: `claimAndStartGatewayRun` fails it rather than send again.
+      const started = await claimAndStartGatewayRun(
+        scopedDb,
+        run,
+        credentials,
+        store
       );
       if ('stored' in started) {
         return {

@@ -17,8 +17,8 @@ import {
   type GatewayStore,
   type GatewayStored,
   pollGatewayRun,
+  claimAndStartGatewayRun,
   releaseGatewayRun,
-  startGatewayRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import { storeGatewayOutput } from '@/gateway/server/storage';
@@ -60,12 +60,9 @@ export class GatewayGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Gatew
         index,
       });
 
-    await step.do('set-running', async () => {
-      await scopedDb.gatewayJobs.markRunning(jobId);
-    });
-
+    // The claim is in the start step, so a step replayed after a timeout fails closed rather than resend.
     const started = await step.do('start', (): Promise<GatewayStarted> =>
-      startGatewayRun(run, credentials, store)
+      claimAndStartGatewayRun(scopedDb, run, credentials, store)
     );
 
     let stored: GatewayStored | null =
