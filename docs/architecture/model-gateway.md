@@ -902,12 +902,25 @@ from modelschemas on a request.
 motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
 `motionCostFromUsage` and `studioVideoCostFromUsage` are gone.
 
-- **Route in the submit step.** The motion body (prompt, references, Ark
-  asset ids, fetchable URLs) first exists there, and motion has six
-  triggers. `sendVideoJob` captures the body the provider adapter would send
-  (its one request, intercepted; nothing leaves) and asks
-  `resolveGatewayRoute` with `scopedDb.liveRead`, the workflow's BYOK hatch.
-  The step's result (job id plus `via`) is the snapshot.
+- **Route in its own step.** Motion has six triggers and a content-flag
+  rescue that swaps the model mid-run, so the route is resolved in the run,
+  not on the payload: `route-motion<tag>` (studio `route-video<tag>`) runs
+  after the via step, before the submit. Its target is a pure function of
+  the via and the request (`motionGatewayTarget`, `studioGatewayTarget`; the
+  submit uses the same endpoint helper), and `routeVideoJob` asks
+  `resolveGatewayRoutes` with the own-key check through
+  `scopedDb.liveRead.apiKeys.hasUsableKey` and the stored snapshot. The
+  step's checkpoint (the route, the model as JSON text) is what every retry
+  of the submit reuses. The submit captures the body the provider adapter
+  would send (its one request, intercepted; nothing leaves) and applies
+  `gatewayRunRoute`: the pure schema and card check, no read. A submit
+  whose target is not the routed one goes direct (`not routed at the
+  trigger`). A rescue gets its own `-rescue` route step for the new model
+  and its own submit key, so it never reuses a job stamped for the old one.
+- **The run's reservation.** The submit passes the run's `reservationId`
+  (`inProcessGateway({ reservation })`), so the gateway charges the
+  reservation the trigger already took instead of holding a second time; a
+  run with none holds per job, as the Models page does.
 - **`openstory`:** the same body through `openstoryVideo` over
   `inProcessGateway`, key `<run>:submit-motion<tag>` (studio
   `submit-video<tag>`). The job is stamped `via: 'openstory'`.
@@ -923,11 +936,13 @@ motion and studio video; `pollMotionJob`, `pollStudioVideoJob`,
   `deduct-credits`, and its version records no provider request id.
 - **Cancel** is data-only, as before: the version is marked cancelled and the
   run goes on. The provider job is not stopped, so the gateway charges it
-  when it finishes and the clip is discarded. A provider failure is released
-  by the poller (`releaseGatewayRun`); a run that times out after 30 minutes
-  leaves a live job that the stale-job sweep ends (hold zeroed, job failed).
-  Each attempt holds in its own submit, so no hold outlives
-  `RESERVATION_TTL_MS` (6 hours) under a live run.
+  when it finishes and the clip is discarded. A provider failure marks the
+  job failed (`releaseGatewayRun`) and leaves the run's reservation to the
+  run, which zeroes it at its end; a run that times out after 30 minutes
+  leaves a live job that the stale-job sweep ends (job failed; a borrowed
+  reservation is not on the row, so the sweep cannot zero it). A capture
+  renews the reservation's `RESERVATION_TTL_MS` (6 hours), and a 30-minute
+  poll window sits well inside it.
 - **Packed clips:** one run, one submit, one gateway job, one charge.
 - **Upload rights:** `video-job.ts` passes `UPLOAD_RIGHTS_CHECKED`. Studio
   checks every upload at the click (`requireCheckedUploadRights`); motion's
@@ -957,7 +972,10 @@ The product's real request bodies, priced against the live cards:
 
 With platform keys the product sends Grok to xAI, Seedance to Ark and Omni
 Flash to Google, so today only Grok and the fal Kling and Seedance models
-reach the gateway. The upstream card issues are not filed yet (see the PR).
+reach the gateway. The four upstream card issues (Kling v3 `generate_audio`,
+MiniMax `resolution`, Grok-on-fal `image_url`, Grok video resolution lever)
+are **not yet filed**; the ready texts are in the PR under "Upstream issues
+to file".
 
 ### Real run (bun dev, 2026-11-26)
 
@@ -976,7 +994,7 @@ xAI. The Grok video card prices `duration` only ($0.08/s, the 480p rate) and
 has no resolution lever, so a 720p clip is charged about $0.36 under cost.
 
 A first attempt went direct: the local snapshot was empty and the live
-catalog read got a 429, which `resolveGatewayRoute` reads as a refusal.
+catalog read got a 429. Routes now read the stored snapshot only.
 
 ### Lip-sync
 

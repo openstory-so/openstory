@@ -46,6 +46,7 @@ import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
 import type { GatewayProvider } from '@/gateway/schema';
+import type { GatewayRouteTarget } from '@/gateway/server/route';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -82,6 +83,7 @@ import {
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
   sendVideoJob,
+  videoGatewayProvider,
   type VideoGatewayCall,
   type VideoSend,
 } from '@/motion/server/video-job';
@@ -453,6 +455,29 @@ async function sendStudioJob(
     via: onGateway ? ('openstory' as const) : job.via,
     usedOwnKey: !onGateway && job.usedOwnKey,
   };
+}
+
+/** The model a studio submit on this via would send through the gateway, for the route step; null where it never goes (#2435). */
+export function studioGatewayTarget(
+  options: Pick<
+    SubmitStudioVideoOptions,
+    'model' | 'mode' | 'draft' | 'finalFromDraftTaskId'
+  >,
+  via: MediaVia
+): GatewayRouteTarget | null {
+  const provider = videoGatewayProvider(via);
+  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
+  if (!provider || options.draft || options.finalFromDraftTaskId) return null;
+  const mode = options.mode ?? 'text';
+  const modelId =
+    provider === 'grok'
+      ? NATIVE_GROK_VIDEO_MODEL
+      : provider === 'byteplus'
+        ? getBytePlusVideoModelId(options.model)
+        : mode === 'frames'
+          ? IMAGE_TO_VIDEO_MODELS[options.model].id
+          : studioVideoEndpointId(options.model, mode);
+  return modelId ? { provider, modelId } : null;
 }
 
 /** Omni Flash 1.2 takes up to 15 s, but at most 10 s with an end frame. */

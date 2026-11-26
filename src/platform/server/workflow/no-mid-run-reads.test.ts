@@ -39,6 +39,8 @@ const WORKFLOW_PATHS = [
   // A workflow-step helper, not a workflow: dialogue speech spends the
   // ElevenLabs key inside the step it drives (#1651, #1657).
   'src/motion/server/generate-dialogue-speech.ts',
+  // The video route step's body: motion and studio call it in their own step (#2435).
+  'src/motion/server/video-job.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -367,6 +369,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'gatewayJobs.getById',
       bucket: 'CLAIM-BY-ID',
       why: "This call's own gateway job, by the id in its handle: a retried poll answers from it rather than storing and charging again.",
+    },
+  ],
+  'video-job.ts': [
+    {
+      read: 'apiKeys.hasUsableKey',
+      bucket: 'BILLING-GUARD',
+      why: 'An own key keeps the clip on the direct path, unbilled by the gateway; read in the route step, whose checkpoint every submit retry reuses (#2435).',
     },
   ],
   'llm-call-helper.ts': [

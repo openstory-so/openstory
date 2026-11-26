@@ -37,11 +37,15 @@ const actualCatalog = await vi.importActual<
 >('@/gateway/server/catalog');
 vi.doMock('@/gateway/server/catalog', () => ({
   ...actualCatalog,
-  getGatewayModel: async () => GROK,
+  getSnapshotGatewayModel: async () => GROK,
 }));
 const poller = vi.fn();
+const transport = vi.fn();
 vi.doMock('@/gateway/server/adapter/in-process', () => ({
-  inProcessGateway: () => ({ submit: vi.fn(), status: vi.fn() }),
+  inProcessGateway: (params: unknown) => {
+    transport(params);
+    return { submit: vi.fn(), status: vi.fn() };
+  },
   inProcessPoller: () => {
     poller();
     return { status: vi.fn() };
@@ -49,7 +53,8 @@ vi.doMock('@/gateway/server/adapter/in-process', () => ({
 }));
 vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'platform-fal' }) }));
 
-const { pollVideoJob, sendVideoJob } = await import('./video-job');
+const { pollVideoJob, routeVideoJob, sendVideoJob } =
+  await import('./video-job');
 
 /** A provider call that sends `{ duration: 5 }`; counts the calls that reached the provider. */
 function provider() {
@@ -69,15 +74,22 @@ function provider() {
   return { send, sent };
 }
 
-function gateway(ownKey: boolean) {
-  const scopedDb = {
+/** The route step, then the call the submit step builds from its result. */
+async function gateway(ownKey: boolean, routedModelId = GROK.id) {
+  const scopedDb = asStub<WorkflowScopedDb>({
     liveRead: { apiKeys: { hasUsableKey: vi.fn(async () => ownKey) } },
-  };
+  });
+  const routes = await routeVideoJob(scopedDb, {
+    provider: 'grok',
+    modelId: routedModelId,
+  });
   return {
-    scopedDb: asStub<WorkflowScopedDb>(scopedDb),
+    scopedDb,
     runId: 'run-1',
     idempotencyKey: 'run-1:submit-motion',
     store: vi.fn(),
+    routes,
+    reservation: { id: 'run-reservation' },
   };
 }
 
@@ -89,7 +101,7 @@ describe('sendVideoJob', () => {
       provider: 'grok',
       modelId: GROK.id,
       threadId: 't',
-      gateway: gateway(true),
+      gateway: await gateway(true),
       send,
     });
     expect(job).toEqual({ jobId: 'provider-job', via: 'direct' });
@@ -105,14 +117,32 @@ describe('sendVideoJob', () => {
       provider: 'grok',
       modelId: GROK.id,
       threadId: 't',
-      gateway: gateway(false),
+      gateway: await gateway(false),
       send,
     });
     expect(job).toEqual({ jobId: 'gateway-job', via: 'openstory' });
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({ reservation: { id: 'run-reservation' } })
+    );
     expect(sent).not.toHaveBeenCalled();
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: '', modelOptions: { duration: 5 } })
     );
+  });
+
+  it('goes direct when the submit target is not the one the route step routed', async () => {
+    mockGenerateVideo.mockClear();
+    const { send, sent } = provider();
+    const job = await sendVideoJob({
+      provider: 'grok',
+      modelId: GROK.id,
+      threadId: 't',
+      gateway: await gateway(false, 'another-model'),
+      send,
+    });
+    expect(job.via).toBe('direct');
+    expect(sent).toHaveBeenCalledOnce();
+    expect(mockGenerateVideo).not.toHaveBeenCalled();
   });
 
   it('goes direct with no gateway call (draft, final, scripts)', async () => {
@@ -136,7 +166,7 @@ describe('pollVideoJob', () => {
       jobId: 'gateway-job',
       status: 'processing',
     });
-    const ctx = gateway(false);
+    const ctx = await gateway(false);
     await pollVideoJob(
       {
         jobId: 'gateway-job',

@@ -83,7 +83,7 @@ vi.doMock('@/models/server/byteplus-final-render', () => ({
   submitBytePlusFinalRender: mockSubmitFinalRender,
 }));
 
-const { arkStillsForStudio, submitStudioVideoJob } =
+const { arkStillsForStudio, studioGatewayTarget, submitStudioVideoJob } =
   await import('./studio-video-generation');
 const { pollVideoJob, videoCostFromUsage } =
   await import('@/motion/server/video-job');
@@ -1000,5 +1000,28 @@ describe('videoCostFromUsage', () => {
     expect(billing.cost).toBe(347_700);
     expect(billing.recordFalUsage).toBe(false);
     expect(billing.endpointId).toBe('gemini-omni-1.2-flash');
+  });
+});
+
+describe('studioGatewayTarget (#2435)', () => {
+  it('routes the endpoint the submit sends to for each mode', () => {
+    expect(
+      studioGatewayTarget({ model: 'kling_v3_pro', mode: 'frames' }, 'fal')
+    ).toEqual({
+      provider: 'fal',
+      modelId: 'fal-ai/kling-video/v3/pro/image-to-video',
+    });
+    expect(
+      studioGatewayTarget({ model: 'grok_imagine_video_1_5' }, 'xai')
+    ).toEqual({ provider: 'grok', modelId: 'grok-imagine-video-1.5' });
+  });
+
+  it('routes nothing on Google or for a draft', () => {
+    expect(
+      studioGatewayTarget({ model: 'gemini_omni_flash' }, 'google')
+    ).toBeNull();
+    expect(
+      studioGatewayTarget({ model: 'seedance_v2_5', draft: true }, 'byteplus')
+    ).toBeNull();
   });
 });

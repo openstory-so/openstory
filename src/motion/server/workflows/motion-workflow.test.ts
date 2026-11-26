@@ -21,6 +21,15 @@ import { UnusableReferencesError } from '@/motion/reference-support';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
+const mockGatewayTarget = vi.fn((options: { model: string }, via: string) => ({
+  provider: via,
+  modelId: options.model,
+}));
+const mockRouteVideoJob = vi.fn(
+  async (_db: unknown, target: { modelId: string }) => ({
+    [target.modelId]: { via: 'direct', reason: 'test' },
+  })
+);
 const mockPoll = vi.fn();
 const mockSoften = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
@@ -45,6 +54,7 @@ vi.doMock('@/motion/server/motion-generation', () => ({
   calculateMotionMetadata: mockCalculateMotionMetadata,
   resolveMotionVia: mockResolveMotionVia,
   arkStillsForMotion: () => [],
+  motionGatewayTarget: mockGatewayTarget,
 }));
 const mockVideoCost = vi.fn(async () => ({
   cost: 0,
@@ -54,6 +64,7 @@ const mockVideoCost = vi.fn(async () => ({
 }));
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
+  routeVideoJob: mockRouteVideoJob,
   videoCostFromUsage: mockVideoCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
@@ -418,12 +429,17 @@ describe('MotionWorkflow on the openstory via (#2435)', () => {
     mockVideoCost.mockResolvedValue(charged);
     const { scopedDb } = makeScopedDb();
 
-    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await makeWorkflow().runBody(
+      makeEvent({ reservationId: 'res-run' }),
+      makeStep(),
+      scopedDb
+    );
 
     expect(mockSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
         gateway: expect.objectContaining({
           idempotencyKey: 'run-1:submit-motion',
+          reservation: { id: 'res-run' },
         }),
       })
     );
@@ -541,6 +557,31 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
       promptSoftened: false,
       modelFallback: true,
     });
+  });
+
+  it('a model swap routes the rescue model in its own step and sends it under its own key (#2435)', async () => {
+    rejectReseeds(STILL);
+    const { scopedDb } = makeScopedDb();
+    const step = makeStep();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(step.names).toEqual(
+      expect.arrayContaining(['route-motion', 'route-motion-rescue'])
+    );
+    expect(mockGatewayTarget).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: GROK }),
+      'fal'
+    );
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        model: GROK,
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion-rescue',
+          routes: { [GROK]: { via: 'direct', reason: 'test' } },
+        }),
+      })
+    );
   });
 
   it('both flagged: softens AND swaps; the fallback hash covers the softened manifest', async () => {

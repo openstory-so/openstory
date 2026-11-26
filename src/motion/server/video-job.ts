@@ -17,7 +17,12 @@ import {
   inProcessPoller,
 } from '@/gateway/server/adapter/in-process';
 import type { GatewayStore } from '@/gateway/server/phases';
-import { resolveGatewayRoute } from '@/gateway/server/route';
+import {
+  gatewayRunRoute,
+  resolveGatewayRoutes,
+  type GatewayRouteTarget,
+  type GatewayRoutes,
+} from '@/gateway/server/route';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import {
   geminiVideoCostFromUsage,
@@ -109,7 +114,39 @@ export type VideoGatewayCall = {
   idempotencyKey: string;
   /** Streams the finished clip into R2 inside the poll step that saw it (#1645). */
   store: GatewayStore;
+  /** The route step's checkpointed result (`routeVideoJob`); the submit reads nothing. */
+  routes: GatewayRoutes;
+  /** The run's reservation: the job charges it instead of holding its own. */
+  reservation: { readonly id: string } | null;
 };
+
+const GATEWAY_PROVIDER_OF_VIA: Partial<Record<MediaVia, GatewayProvider>> = {
+  xai: 'grok',
+  fal: 'fal',
+  byteplus: 'byteplus',
+};
+
+/** The gateway provider for a video via; null where the gateway is not used (native Google). */
+export function videoGatewayProvider(via: MediaVia): GatewayProvider | null {
+  return GATEWAY_PROVIDER_OF_VIA[via] ?? null;
+}
+
+/** The route step's body: the own-key check through the BYOK charge-gate hatch, the stored snapshot, no body yet. */
+export async function routeVideoJob(
+  scopedDb: WorkflowScopedDb,
+  target: GatewayRouteTarget | null
+): Promise<GatewayRoutes> {
+  if (!target) return {};
+  return resolveGatewayRoutes(
+    {
+      apiKeys: {
+        hasUsableKey: (provider) =>
+          scopedDb.liveRead.apiKeys.hasUsableKey(provider),
+      },
+    },
+    [target]
+  );
+}
 
 /** A provider call; `fetch` is passed only to capture the body it would send. */
 export type VideoSend = (
@@ -138,7 +175,7 @@ async function captureVideoBody(send: VideoSend): Promise<GatewayJobInput> {
  * Sends one video job. With a gateway call and a body the gateway can hold,
  * the body the provider adapter would send goes through the `openstory`
  * adapter (held, then charged by the poll that sees it finish); otherwise the
- * provider call runs as it is. Decided once, before any job exists.
+ * provider call runs as it is. The route comes from the run's route step; the body check is pure.
  */
 export async function sendVideoJob(params: {
   provider: GatewayProvider;
@@ -151,13 +188,11 @@ export async function sendVideoJob(params: {
   const { gateway } = params;
   if (gateway) {
     const body = await captureVideoBody(params.send);
-    // Decided in the submit step, where the body first exists; the step's result is the snapshot.
-    const route = await resolveGatewayRoute({
-      scopedDb: gateway.scopedDb.liveRead,
-      provider: params.provider,
-      modelId: params.modelId,
-      body,
-    });
+    const route = gatewayRunRoute(
+      gateway.routes,
+      { provider: params.provider, modelId: params.modelId },
+      body
+    );
     if (route.via === 'direct') {
       logger.info('Video job routed direct', {
         provider: params.provider,
@@ -172,6 +207,7 @@ export async function sendVideoJob(params: {
         store: gateway.store,
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
         uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+        reservation: gateway.reservation,
       });
       const job = await generateVideo({
         adapter: openstoryVideo(route.model.id, transport, {

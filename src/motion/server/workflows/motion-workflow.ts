@@ -52,15 +52,18 @@ import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import { packedPromptFitsLimit } from '@/motion/server/build-motion-render';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import { cutSpanningSection } from '@/motion/server/cut-audio-section';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import {
   arkStillsForMotion,
   calculateMotionMetadata,
   canRenderReferenceOnly,
+  motionGatewayTarget,
   resolveMotionVia,
   submitMotionJob,
 } from '@/motion/server/motion-generation';
 import {
   pollVideoJob,
+  routeVideoJob,
   videoCostFromUsage,
   type VideoGatewayCall,
 } from '@/motion/server/video-job';
@@ -910,13 +913,20 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             };
           }
         : null;
-    const gatewayCall = (idempotencyKey: string): VideoGatewayCall | null =>
+    const gatewayCall = (
+      idempotencyKey: string,
+      routes: GatewayRoutes
+    ): VideoGatewayCall | null =>
       gatewayStore
         ? {
             scopedDb,
             runId: workflowRunId,
             idempotencyKey,
             store: gatewayStore,
+            routes,
+            reservation: input.reservationId
+              ? { id: input.reservationId }
+              : null,
           }
         : null;
 
@@ -1091,6 +1101,26 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             })
           : {};
 
+      // Its own step per attempt, so a retried submit takes the route it was given and a rescue model gets its own (#2435).
+      const gatewayRoutes = gatewayStore
+        ? await step.do(`route-motion${tag}`, () =>
+            routeVideoJob(
+              scopedDb,
+              motionGatewayTarget(
+                {
+                  model: activeModel,
+                  referenceImages,
+                  imageUrl: startImageUrl ?? undefined,
+                  referenceOnly: input.referenceOnly,
+                  draft: input.draft,
+                  finalFromDraftTaskId: input.finalFromDraft?.taskId,
+                },
+                submitVia
+              )
+            )
+          )
+        : {};
+
       // Step 3a: Submit. A content rejection surfaces as a sentinel (not
       // thrown) so the loop owns the retry; a non-content 422 stays a hard
       // stop; anything else throws for CF's per-step retry.
@@ -1144,7 +1174,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             multiPrompt,
             draft: input.draft,
             finalFromDraftTaskId: input.finalFromDraft?.taskId,
-            gateway: gatewayCall(`${workflowRunId}:submit-motion${tag}`),
+            gateway: gatewayCall(
+              `${workflowRunId}:submit-motion${tag}`,
+              gatewayRoutes
+            ),
           });
           return { ok: true as const, job };
         } catch (error) {

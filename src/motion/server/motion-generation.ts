@@ -48,6 +48,7 @@ import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
 import type { GatewayProvider } from '@/gateway/schema';
+import type { GatewayRouteTarget } from '@/gateway/server/route';
 import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import { getLogger } from '@/platform/logger';
@@ -76,6 +77,7 @@ import {
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
   sendVideoJob,
+  videoGatewayProvider,
   type VideoGatewayCall,
   type VideoSend,
 } from './video-job';
@@ -291,21 +293,7 @@ async function prepareFalMotionJob(
     onArk: false,
   });
 
-  // References this model can actually carry (#1559): a shot whose only
-  // attachment is an audio element has nothing to send a reference endpoint,
-  // which rejects a request with no reference image or video.
-  const hasReferenceImages =
-    bindableReferences(
-      getMotionReferenceEndpoint(modelKey),
-      options.referenceImages ?? [],
-      Boolean(options.imageUrl)
-    ).length > 0;
-  const endpoint = resolveMotionEndpoint(
-    modelKey,
-    hasReferenceImages,
-    'fal',
-    options.referenceOnly ?? false
-  );
+  const { endpoint } = motionEndpoint(modelKey, options, 'fal');
   const key = await resolveFalKey(options.credentials);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
@@ -456,6 +444,64 @@ export function arkStillsToRegister(
   );
 }
 
+type MotionTargetOptions = Pick<
+  SubmitMotionOptions,
+  | 'model'
+  | 'credentials'
+  | 'referenceImages'
+  | 'imageUrl'
+  | 'referenceOnly'
+  | 'draft'
+  | 'finalFromDraftTaskId'
+>;
+
+/** The endpoint a submit on this via sends to. */
+function motionEndpoint(
+  modelKey: ImageToVideoModel,
+  options: Omit<MotionTargetOptions, 'credentials'>,
+  via: MediaVia
+) {
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
+  return {
+    hasReferenceImages,
+    endpoint: resolveMotionEndpoint(
+      modelKey,
+      hasReferenceImages,
+      via,
+      options.referenceOnly ?? false
+    ),
+  };
+}
+
+/** The model a submit on this via would send through the gateway, for the route step; null where it never goes (#2435). */
+export function motionGatewayTarget(
+  options: Omit<MotionTargetOptions, 'credentials'>,
+  via: MediaVia
+): GatewayRouteTarget | null {
+  const modelKey = options.model || DEFAULT_VIDEO_MODEL;
+  const provider = videoGatewayProvider(via);
+  // A draft and its final are Ark task ids the gateway does not hand out (#1756).
+  if (
+    !provider ||
+    options.finalFromDraftTaskId ||
+    (options.draft && supportsDraftMode(modelKey))
+  ) {
+    return null;
+  }
+  return {
+    provider,
+    modelId: motionEndpoint(modelKey, options, via).endpoint.endpointId,
+  };
+}
+
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
@@ -494,21 +540,10 @@ async function submitMotionJobOnce(
     onArk: via === 'byteplus',
   });
 
-  // References this model can actually carry (#1559): a shot whose only
-  // attachment is an audio element has nothing to send a reference endpoint,
-  // which rejects a request with no reference image or video.
-  const hasReferenceImages =
-    bindableReferences(
-      getMotionReferenceEndpoint(modelKey),
-      options.referenceImages ?? [],
-      Boolean(options.imageUrl)
-    ).length > 0;
-
-  const endpoint = resolveMotionEndpoint(
+  const { hasReferenceImages, endpoint } = motionEndpoint(
     modelKey,
-    hasReferenceImages,
-    via,
-    options.referenceOnly ?? false
+    options,
+    via
   );
 
   // Reference-only with nothing matched is not the mode — it is text-to-video

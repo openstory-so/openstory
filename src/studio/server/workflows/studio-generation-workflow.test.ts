@@ -52,9 +52,11 @@ vi.doMock('@/studio/server/upload', () => ({
 vi.doMock('@/studio/server/studio-video-generation', () => ({
   submitStudioVideoJob: mockSubmit,
   arkStillsForStudio: () => [],
+  studioGatewayTarget: () => null,
 }));
 vi.doMock('@/motion/server/video-job', () => ({
   pollVideoJob: mockPoll,
+  routeVideoJob: async () => ({}),
   videoCostFromUsage: mockCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
@@ -280,10 +282,14 @@ describe('StudioGenerationWorkflow video', () => {
       // The via is resolved per attempt so the stills are registered with
       // BytePlus before submit only when the model is going there (#1519).
       'resolve-video-via',
+      // The route is its own step, so a retried submit keeps it (#2435).
+      'route-video',
       'submit-video',
       'resolve-video-via-retry-1',
+      'route-video-retry-1',
       'submit-video-retry-1',
       'resolve-video-via-retry-2',
+      'route-video-retry-2',
       'submit-video-retry-2',
       'video-poll-batch-2-0',
       // Unpins every still the run leased on Ark, whatever via won (#1531).

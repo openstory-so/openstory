@@ -86,6 +86,7 @@ const {
   arkStillsToRegister,
   submitMotionJob,
   calculateMotionMetadata,
+  motionGatewayTarget,
   resolveMotionVia,
 } = await import('./motion-generation');
 const { pollVideoJob, videoCostFromUsage } = await import('./video-job');
@@ -1643,5 +1644,32 @@ describe('Motion Service', () => {
     it('falls back to fal for Omni Flash when no Google key exists', async () => {
       await expect(resolveMotionVia('gemini_omni_flash')).resolves.toBe('fal');
     });
+  });
+});
+
+describe('motionGatewayTarget (#2435)', () => {
+  it('routes the endpoint the submit sends to on that via', () => {
+    expect(motionGatewayTarget({ model: 'kling_v3_pro' }, 'fal')).toEqual({
+      provider: 'fal',
+      modelId: 'fal-ai/kling-video/v3/pro/image-to-video',
+    });
+    expect(
+      motionGatewayTarget({ model: 'grok_imagine_video_1_5' }, 'xai')
+    ).toEqual({ provider: 'grok', modelId: 'grok-imagine-video-1.5' });
+  });
+
+  it('routes nothing on Google, for a draft or for its final', () => {
+    expect(
+      motionGatewayTarget({ model: 'gemini_omni_flash' }, 'google')
+    ).toBeNull();
+    expect(
+      motionGatewayTarget({ model: 'seedance_v2_5', draft: true }, 'byteplus')
+    ).toBeNull();
+    expect(
+      motionGatewayTarget(
+        { model: 'seedance_v2_5', finalFromDraftTaskId: 'task-1' },
+        'byteplus'
+      )
+    ).toBeNull();
   });
 });

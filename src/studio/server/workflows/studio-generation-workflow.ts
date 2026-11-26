@@ -53,11 +53,13 @@ import { isEngineAbortError } from '@/platform/server/workflow/errors';
 import type { StudioRunInput } from '@/studio/schema';
 import {
   arkStillsForStudio,
+  studioGatewayTarget,
   submitStudioVideoJob,
 } from '@/studio/server/studio-video-generation';
 import { studioImageParams } from '@/studio/text-to-video';
 import {
   pollVideoJob,
+  routeVideoJob,
   videoCostFromUsage,
   type VideoGatewayCall,
 } from '@/motion/server/video-job';
@@ -272,6 +274,21 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               credentials: scopedDb.credentials,
             })
           : {};
+      // Its own step, so a retried submit takes the route it was given (#2435).
+      const gatewayRoutes = await step.do(`route-video${tag}`, () =>
+        routeVideoJob(
+          scopedDb,
+          studioGatewayTarget(
+            {
+              model: videoModel,
+              mode: input.mode,
+              draft: input.draft,
+              finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
+            },
+            submitVia
+          )
+        )
+      );
       const submitOutcome = await step.do(`submit-video${tag}`, async () => {
         try {
           const job = await submitStudioVideoJob({
@@ -297,6 +314,10 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               runId: event.instanceId,
               idempotencyKey: `${event.instanceId}:submit-video${tag}`,
               store: gatewayStore,
+              routes: gatewayRoutes,
+              reservation: event.payload.reservationId
+                ? { id: event.payload.reservationId }
+                : null,
             } satisfies VideoGatewayCall,
           });
           return { ok: true as const, job };
