@@ -162,6 +162,15 @@ const NOT_REMOTE: Readonly<Partial<Record<GatewayProvider, string>>> = {
     'ElevenLabs is not served to installs: saved voices are account-wide slots',
 };
 
+/** The hosted route for a call this server holds no key for, decided at the click; null when a key here runs it (#2438). */
+export function hostedRouteFor(
+  target: GatewayRouteTarget
+): Extract<GatewayRoute, { via: 'remote' }> | null {
+  if (serverHasKey(target.provider, null)) return null;
+  const route = remoteRoute(target);
+  return route?.via === 'remote' ? route : null;
+}
+
 /** The remote route when this server has no key for the provider and holds an OpenStory key; null otherwise. */
 function remoteRoute(target: GatewayRouteTarget): GatewayRoute | null {
   if (!remoteGatewayConfigured()) return null;

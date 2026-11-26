@@ -14,6 +14,7 @@ import type {
   GeneratedAssetInput,
 } from '@/platform/server/db/schema';
 import { getGatewayModel } from '@/gateway/server/catalog';
+import { hostedRouteFor } from '@/gateway/server/route';
 import { gatedUrls, holdGatewayJob } from '@/gateway/server/submit-job';
 import { GATEWAY_ERROR_MESSAGES } from '@/gateway/schema';
 import {
@@ -89,6 +90,20 @@ export async function createGeneratedAsset(
       );
       route = { via: 'fal', endpointId: data.endpointId };
       activity = data.activity;
+    } else if (
+      hostedRouteFor({ provider: data.provider, modelId: data.endpointId })
+    ) {
+      // No key here: the hosted gateway checks, prices, holds and refuses (#2438).
+      await requireGenerationAllowed({
+        userId: scopedDb.userId,
+        organizationId: scopedDb.organizationId,
+      });
+      route = {
+        via: 'remote',
+        provider: data.provider,
+        endpointId: data.endpointId,
+      };
+      activity = data.activity;
     } else {
       const model = await getGatewayModel(data.provider, data.endpointId);
       const held = await holdGatewayJob(model, data.input, {
@@ -120,7 +135,7 @@ export async function createGeneratedAsset(
 
   const row = await scopedDb.generatedAssets.insert({
     id: assetId,
-    provider: route.via,
+    provider: route.via === 'remote' ? 'openstory' : route.via,
     endpointId: data.endpointId,
     activity,
     modelName: data.modelName,

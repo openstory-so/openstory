@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
 import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
 
@@ -83,11 +84,28 @@ vi.doMock('@/models/server/byteplus-final-render', () => ({
   submitBytePlusFinalRender: mockSubmitFinalRender,
 }));
 
+const remoteSubmits: Array<{ body: unknown; key: string }> = [];
+const actualHttp = await vi.importActual('@/gateway/server/adapter/http');
+vi.doMock('@/gateway/server/adapter/http', () => ({
+  ...actualHttp,
+  gatewayTransport: (route: { via: string; target?: { modelId: string } }) => ({
+    modelId: route.target?.modelId ?? '',
+    transport: {
+      submit: async (body: unknown, key: string) => {
+        remoteSubmits.push({ body, key });
+        return { kind: 'queued', handle: 'remote:hosted-job-1' };
+      },
+      poll: async () => ({ kind: 'pending' }),
+    },
+  }),
+}));
+
 const { arkStillsForStudio, studioGatewayTarget, submitStudioVideoJob } =
   await import('./studio-video-generation');
 const { pollVideoJob, videoCostFromUsage } =
   await import('@/motion/server/video-job');
 const direct = { credentials: undefined, gateway: null };
+const { gatewayRouteKey } = await import('@/gateway/server/route');
 
 describe('submitStudioVideoJob', () => {
   beforeEach(() => {
@@ -103,6 +121,77 @@ describe('submitStudioVideoJob', () => {
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
     testEnv.E2E_TEST = undefined;
+  });
+
+  it('a fal clip routed to the hosted gateway needs no fal key and keeps local URLs for the transport (#2438)', async () => {
+    testEnv.FAL_KEY = undefined;
+    remoteSubmits.length = 0;
+    const target = studioGatewayTarget(
+      { model: 'kling_v3_pro', mode: 'frames' },
+      'fal'
+    );
+    if (!target) throw new Error('no gateway target');
+    // The fal call only runs to capture its body: replay its one request through the adapter's fetch.
+    mockGenerateVideo.mockImplementationOnce(
+      async ({ modelOptions }: { modelOptions: unknown }) => {
+        const options: unknown = mockFalVideo.mock.lastCall?.at(1);
+        const capture = z
+          .object({
+            fetch: z.custom<typeof fetch>((v) => typeof v === 'function'),
+          })
+          .parse(options);
+        await capture.fetch('https://queue.fal.run/x', {
+          method: 'POST',
+          body: JSON.stringify(modelOptions),
+        });
+        return { jobId: 'never-sent' };
+      }
+    );
+    mockGenerateVideo.mockImplementationOnce(
+      async ({
+        adapter,
+        modelOptions,
+      }: {
+        adapter: {
+          createVideoJob: (o: unknown) => Promise<{ jobId: string }>;
+        };
+        modelOptions: unknown;
+      }) =>
+        adapter.createVideoJob({
+          prompt: '',
+          modelOptions,
+          logger: { request: () => {} },
+        })
+    );
+    const result = await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Mara turns the valve',
+      model: 'kling_v3_pro',
+      mode: 'frames',
+      startImageUrl: '/r2/stills/a.png',
+      duration: 5,
+      aspectRatio: '16:9',
+      gateway: {
+        // @ts-expect-error -- the hosted route touches no local database
+        scopedDb: null,
+        runId: 'run-1',
+        idempotencyKey: 'run-1:submit-video',
+        store: async () => ({ url: '', path: '', contentType: '' }),
+        routes: {
+          [gatewayRouteKey('fal', target.modelId)]: { via: 'remote' },
+        },
+        reservation: null,
+      },
+    });
+    expect(result.via).toBe('openstory');
+    expect(mockFalVideo).toHaveBeenLastCalledWith(
+      target.modelId,
+      expect.objectContaining({ apiKey: 'hosted-gateway' })
+    );
+    expect(remoteSubmits).toHaveLength(1);
+    expect(JSON.stringify(remoteSubmits[0]?.body)).toContain(
+      '/r2/stills/a.png'
+    );
   });
 
   it('submits Seedance 2.5 to the 2.5 text-to-video endpoint with no image field', async () => {

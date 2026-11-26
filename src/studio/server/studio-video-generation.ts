@@ -45,7 +45,7 @@ import {
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
-import type { GatewayRouteTarget } from '@/gateway/server/route';
+import { routesRemote, type GatewayRouteTarget } from '@/gateway/server/route';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -223,8 +223,15 @@ async function submitFalStudioVideoJob(
       `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this organization`
     );
   }
+  // The hosted gateway sends this body: no fal key here, and the transport uploads local URLs (#2438).
+  const remote = routesRemote(options.gateway?.routes, {
+    provider: 'fal',
+    modelId: studioVideoEndpointId(modelKey, mode),
+  });
+  const key = remote
+    ? { key: 'hosted-gateway', source: 'platform' as const }
+    : await resolveFalKey(options.credentials);
   if (mode !== 'text') {
-    const key = await resolveFalKey(options.credentials);
     const { endpointId, built } = buildStudioImageModeInput(
       options,
       modelKey,
@@ -258,7 +265,6 @@ async function submitFalStudioVideoJob(
     resolution: options.resolution,
     generateAudio: options.generateAudio,
   });
-  const key = await resolveFalKey(options.credentials);
   const endpointId = studioVideoEndpointId(modelKey, mode);
   const sent = await sendVideoJob({
     gateway: options.gateway,

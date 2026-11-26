@@ -51,8 +51,17 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
 vi.doMock('@/gateway/server/catalog', () => ({
   getGatewayModel: mockGetGatewayModel,
 }));
+const grokConfigured = vi.fn(() => true);
 vi.doMock('@/gateway/server/providers', () => ({
-  GATEWAY_DRIVERS: { grok: { configured: () => true } },
+  GATEWAY_DRIVERS: { grok: { configured: grokConfigured } },
+}));
+const remoteConfigured = vi.fn(() => false);
+const actualRemote = await vi.importActual<
+  typeof import('@/gateway/server/remote-config')
+>('@/gateway/server/remote-config');
+vi.doMock('@/gateway/server/remote-config', () => ({
+  ...actualRemote,
+  remoteGatewayConfigured: remoteConfigured,
 }));
 
 const {
@@ -123,6 +132,8 @@ beforeEach(async () => {
   mockTriggerWorkflow.mockResolvedValue('wf-run-1');
   mockRequireGenerationAllowed.mockResolvedValue(undefined);
   mockGetGatewayModel.mockResolvedValue(GROK);
+  grokConfigured.mockReturnValue(true);
+  remoteConfigured.mockReturnValue(false);
 });
 
 function scoped(ownFalKey: boolean) {
@@ -237,6 +248,29 @@ describe('createGeneratedAsset', () => {
           model: GROK,
           hold: { jobId: job?.id, reservationId: holds[0]?.id },
         },
+      }),
+      { deduplicationId: `asset-${result.id}` }
+    );
+  });
+
+  it('sends a model this install has no key for to the hosted gateway: no local job, hold or check (#2438)', async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({ prompt: 'Mara wipes her hands on a rag' }),
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    expect(await db.select().from(gatewayJobs)).toEqual([]);
+    expect(await db.select().from(creditReservations)).toEqual([]);
+    expect(mockGetGatewayModel).not.toHaveBeenCalled();
+    const [row] = await db.select().from(generatedAssets);
+    expect(row?.provider).toBe('openstory');
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/asset',
+      expect.objectContaining({
+        route: { via: 'remote', provider: 'grok', endpointId: GROK.id },
       }),
       { deduplicationId: `asset-${result.id}` }
     );
