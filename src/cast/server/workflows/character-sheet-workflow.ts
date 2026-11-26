@@ -208,6 +208,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       workflowRunId,
       userId: input.userId,
       sequenceId: input.sequenceId ?? undefined,
+      reservationId: input.reservationId,
       kind: 'character-sheet',
       logTag: '[CharacterSheetWorkflow:cf]',
       subject: `sheet for ${input.characterName}`,

@@ -238,6 +238,7 @@ export type GenerateImageSofteningArgs = {
   onRetry?: (info: RetryInfo) => Promise<void>;
   /** Ids for structured logs. */
   meta?: Record<string, unknown>;
+  reservationId?: string;
 };
 
 type RetryInfo = {

@@ -171,6 +171,7 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           workflowRunId: event.instanceId,
           userId: input.userId,
           sequenceId,
+          reservationId: input.reservationId,
           kind: 'element-sheet',
           logTag: '[ElementSheetWorkflow:cf]',
           subject: `element ${entry.token}`,

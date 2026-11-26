@@ -135,6 +135,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       workflowRunId: event.instanceId,
       userId: input.userId,
       sequenceId: sequenceId ?? undefined,
+      reservationId: input.reservationId,
       kind: 'location-sheet',
       logTag: '[LocationSheetWorkflow:cf]',
       subject: `reference for ${input.locationName}`,
