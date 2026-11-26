@@ -1520,7 +1520,7 @@ there.
   media as `stableMediaUrl` writes it: the CDN URL, else the app's absolute
   `/r2/` URL. `withUploadedMedia` reads a string as this install's file only
   when it is exactly that form (or a relative `/r2/`) of its own key
-  (`localStorageKey`), so another host with an `/r2/` path is sent as it is.
+  (`localStorageKey`; ownership is `storedUrlOwnedBy`, the check `isCheckable` uses), so another host with an `/r2/` path is sent as it is.
   The ownership check, the provenance lookup and the upload all use that key.
 - **Quotes on a remote route.** `withGatewayImageQuotes` adds holds only for
   `openstory` routes, so a remote still quotes the install's own fal row when

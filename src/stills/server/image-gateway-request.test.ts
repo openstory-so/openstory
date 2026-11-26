@@ -289,7 +289,9 @@ describe('a fal still', () => {
         reason: 'text_input_tokens (text_input_tokens): required',
       },
     };
-    expect(heldModelId(gatewayImageRequest(falStill, routes, ORG))).toBe(NANO.id);
+    expect(heldModelId(gatewayImageRequest(falStill, routes, ORG))).toBe(
+      NANO.id
+    );
     expect(gatewayImageRequest(withRefs, routes, ORG)).toBeNull();
   });
 
@@ -438,8 +440,8 @@ describe('a stored relative reference on a `format: uri` field', () => {
       vi.stubEnv('VITE_APP_URL', 'https://app.example.com');
       for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
       try {
-        const first = gatewayImageRequest(withRefs, routes());
-        const retried = gatewayImageRequest(withRefs, routes());
+        const first = gatewayImageRequest(withRefs, routes(), ORG);
+        const retried = gatewayImageRequest(withRefs, routes(), ORG);
         expect(heldModelId(first)).toBe(NANO_EDIT.id);
         expect(first?.body).toMatchObject({ image_urls: [held] });
         expect(retried?.body).toEqual(first?.body);

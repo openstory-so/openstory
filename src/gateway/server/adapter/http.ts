@@ -27,13 +27,13 @@ import {
 } from '@/gateway/server/remote-config';
 import type { GatewayCallRoute } from '@/gateway/server/route';
 import type { JsonValue } from '@/platform/server/db/schema';
-import { isCheckable } from '@/cast/server/upload-rights';
 import { stableMediaUrl } from '@/platform/server/storage/external-url';
 import {
   buildR2Key,
   fromShareableUrl,
   r2KeyFromUrl,
   STORAGE_BUCKETS,
+  storedUrlOwnedBy,
 } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -60,12 +60,12 @@ const uploadAnswer = z.object({ url: z.string() });
 
 const PROVENANCE = STORAGE_BUCKETS.GATEWAY_PROVENANCE;
 
-/** The R2 key of this install's stored file in each form a body carries it (`/r2/…`, its stable app or CDN URL); null for any other host. */
+/** The R2 key of a file this install stores, in each form a body carries it (`/r2/…`, its stable app or CDN URL), whoever owns it; null for any other host. */
 function localStorageKey(url: string): string | null {
   const key = r2KeyFromUrl(fromShareableUrl(url));
   if (key === null) return null;
   const stored = `/r2/${key}`;
-  return url === stored || url === stableMediaUrl(stored) ? key : null;
+  return url === stored || url === stableMediaUrl(stored, null) ? key : null;
 }
 
 /** The hosted output URL a local object was copied from, or null when the file was not made by the hosted gateway. */
@@ -114,7 +114,7 @@ async function withUploadedMedia(
       const key = localStorageKey(value);
       if (key === null) return value;
       // Only the run's own files leave this install; checked before anything is read.
-      if (!isCheckable(`/r2/${key}`, organizationId)) {
+      if (!storedUrlOwnedBy(`/r2/${key}`, organizationId)) {
         throw new NonRetryableError(
           'An input file belongs to another organization'
         );

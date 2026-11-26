@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { asStub } from '@/test/as-stub';
 import { z } from 'zod';
 import { estimateFalCost } from '@/billing/fal-cost';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
@@ -363,8 +365,8 @@ describe('Motion Service', () => {
         model: 'kling_v3_pro',
         duration: 5,
         gateway: {
-          // @ts-expect-error -- the hosted route touches no local database
-          scopedDb: null,
+          // The hosted route reads only whose files these are.
+          scopedDb: asStub<WorkflowScopedDb>({ organizationId: 'o' }),
           runId: 'run-1',
           idempotencyKey: 'run-1:submit-motion',
           store: async () => ({ url: '', path: '', contentType: '' }),

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { asStub } from '@/test/as-stub';
 import { z } from 'zod';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
 import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
@@ -172,8 +174,8 @@ describe('submitStudioVideoJob', () => {
       duration: 5,
       aspectRatio: '16:9',
       gateway: {
-        // @ts-expect-error -- the hosted route touches no local database
-        scopedDb: null,
+        // The hosted route reads only whose files these are.
+        scopedDb: asStub<WorkflowScopedDb>({ organizationId: 'o' }),
         runId: 'run-1',
         idempotencyKey: 'run-1:submit-video',
         store: async () => ({ url: '', path: '', contentType: '' }),
