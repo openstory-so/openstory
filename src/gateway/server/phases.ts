@@ -139,16 +139,83 @@ export async function startGatewayRun(
   credentials: GatewayCredentials,
   store: GatewayStore
 ): Promise<GatewayStarted> {
-  const start = await GATEWAY_DRIVERS[run.provider].start(
-    run.target,
-    run.input,
-    credentials
-  );
+  const start = await GATEWAY_DRIVERS[run.provider]
+    .start(run.target, run.input, credentials)
+    .catch((error: unknown) => {
+      if (!(error instanceof Error)) throw error;
+      const outcome = startOutcome(run, error);
+      if (outcome === 'refused') throw new NonRetryableError(error.message);
+      if (outcome === 'resend') throw new StartNotRun(error.message);
+      throw error;
+    });
   return 'jobId' in start
     ? { providerJobId: start.jobId }
     : {
         stored: await storeGatewayResult(heldResult(run, start.result), store),
       };
+}
+
+/**
+ * Every caller starts a job here: only the attempt that flips the row to
+ * `running` sends it. One found `running` may have reached the provider, so
+ * it fails and releases rather than send again; a start the provider
+ * answered without running goes back to `queued` with its hold.
+ */
+export async function claimAndStartGatewayRun(
+  scopedDb: Pick<WorkflowScopedDb, 'billing' | 'gatewayJobs'>,
+  run: GatewayRun,
+  credentials: GatewayCredentials,
+  store: GatewayStore
+): Promise<GatewayStarted> {
+  if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {
+    const error = 'The previous attempt may have started this job';
+    await releaseGatewayRun(scopedDb, run, error);
+    throw new NonRetryableError(error);
+  }
+  return startGatewayRun(run, credentials, store).catch(
+    async (error: unknown) => {
+      if (error instanceof NonRetryableError) {
+        await releaseGatewayRun(scopedDb, run, error.message);
+      }
+      if (error instanceof StartNotRun) {
+        await scopedDb.gatewayJobs.requeue(run.jobId);
+      }
+      throw error;
+    }
+  );
+}
+
+const ORIGIN_FAILED = new Set([500, 503]);
+
+/** The provider answered the start without running it: the same key may send it again. */
+class StartNotRun extends Error {}
+
+/**
+ * How a start that threw ends: `refused` fails the job now; `resend` proves
+ * nothing ran, so a retry may send it again; `unknown` may have reached the
+ * provider, so a retry must not.
+ */
+function startOutcome(
+  run: Pick<GatewayRun, 'provider' | 'target'>,
+  error: Error
+): 'refused' | 'resend' | 'unknown' {
+  if (error instanceof NonRetryableError) return 'refused';
+  const status =
+    'statusCode' in error && typeof error.statusCode === 'number'
+      ? error.statusCode
+      : null;
+  if (status === 429) return 'resend';
+  // Only the origin's own 500 and 503 say nothing ran; a proxy's 502, 504 or 52x can follow a finished, billed request.
+  if (
+    status === null ||
+    status === 408 ||
+    (status >= 500 && !ORIGIN_FAILED.has(status))
+  ) {
+    return 'unknown';
+  }
+  return GATEWAY_DRIVERS[run.provider].answersAtOnce(run.target.endpointId)
+    ? 'resend'
+    : 'refused';
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */
@@ -221,7 +288,12 @@ export async function finishGatewayRun(
     outputs: stored.outputs,
     via: GATEWAY_VIA[run.provider],
   });
-  return settleGatewayRun(scopedDb, run, stored, idempotencyKey);
+  const charged = await settleGatewayRun(scopedDb, run, stored, idempotencyKey);
+  // A job's own hold gives back what the charge did not capture now, not at its TTL; a run's keeps it for the run.
+  if (run.ownsReservation) {
+    await scopedDb.billing.zeroReservation(run.reservationId);
+  }
+  return charged;
 }
 
 /** Ends a failed run: its own hold zeroed first (safe once the run is over), then the job failed; a charged job stays succeeded. */

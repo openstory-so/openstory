@@ -25,8 +25,14 @@ import {
 import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { readStorageObject, uploadFile } from '#storage';
 import { isolateVoice } from './elevenlabs-voice';
-import { recordCheckedTake, SEED_BOOTH_PROMPT } from './seed-audio';
+import {
+  type CheckedTake,
+  recordCheckedTake,
+  SEED_BOOTH_PROMPT,
+  type SeedRecorder,
+} from './seed-audio';
 import { WORD_LEAD_SECONDS } from './take-check';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
 export type RangeScript = Record<SeedVoiceMood, string>;
@@ -43,8 +49,8 @@ export type RecordedRangeRead = {
   /** The whole read, for audition. */
   url: string;
   path: string;
-  /** What the take spent, for billing. */
-  seedSeconds: number;
+  /** What the take spent, for billing; `seedSeconds` is null when the gateway charged it. */
+  seedSeconds: number | null;
   transcribedSeconds: number;
   isolatedSeconds: number;
 };
@@ -54,22 +60,32 @@ function rangeReadPrompt(description: string, script: RangeScript): string {
   return `${SEED_BOOTH_PROMPT} Speaker: ${description} They speak in three parts, at a natural conversational pace. First, relaxed and conversational: "${script.normal}" Then they drop to a whisper: "${script.quiet}" Then, raised and annoyed: "${script.loud}"`;
 }
 
+/** A read that misses its script is retaken in the step, up to this many takes. */
+const RANGE_READ_TAKES = 3;
+
 export async function recordRangeRead(input: {
-  seedKey: string;
+  record: SeedRecorder;
   elevenLabsKey: string;
   voiceId: string;
   description: string;
   script: RangeScript;
 }): Promise<RecordedRangeRead> {
-  const take = await recordCheckedTake({
-    seedKey: input.seedKey,
-    elevenLabsKey: input.elevenLabsKey,
-    prompt: rangeReadPrompt(input.description, input.script),
-    references: [],
-    parts: SEED_VOICE_MOODS.map((mood) => input.script[mood]),
-  });
+  let take: CheckedTake | null = null;
+  // Retakes are numbered here, so a retried step replays the same takes rather than recording new ones.
+  for (let n = 1; n <= RANGE_READ_TAKES && !take?.check.ok; n++) {
+    take = await recordCheckedTake({
+      record: input.record,
+      take: n,
+      elevenLabsKey: input.elevenLabsKey,
+      prompt: rangeReadPrompt(input.description, input.script),
+      references: [],
+      parts: SEED_VOICE_MOODS.map((mood) => input.script[mood]),
+    });
+  }
+  if (!take) throw new Error('Seed range read recorded no take');
   if (!take.check.ok) {
-    throw new Error(
+    // Every retake already ran in this step: a step retry would only record more.
+    throw new NonRetryableError(
       `Seed range read did not say its script: ${take.check.problem}`
     );
   }

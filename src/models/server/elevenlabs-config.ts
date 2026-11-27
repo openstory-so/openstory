@@ -18,7 +18,7 @@ export function getElevenLabsApiKey(): string | undefined {
   return optionalEnv('ELEVENLABS_API_KEY');
 }
 
-function getElevenLabsBaseUrl(): string | undefined {
+export function getElevenLabsBaseUrl(): string | undefined {
   return optionalEnv('ELEVENLABS_BASE_URL');
 }
 

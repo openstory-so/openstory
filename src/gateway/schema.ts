@@ -1,26 +1,37 @@
 /** Gateway wire types, shared by the API and the UI (docs/architecture/model-gateway.md). */
 
+import { ELEVENLABS_MUSIC_MODEL } from '@/billing/elevenlabs-pricing';
 import type { MediaVia } from '@/models/via';
 import type { JsonValue } from '@/platform/server/db/schema';
 
 /** modelschemas provider ids: the `{provider}` in `/gateway/{provider}/{model}`. */
-export const GATEWAY_PROVIDERS = ['fal', 'byteplus', 'gemini', 'grok'] as const;
+export const GATEWAY_PROVIDERS = [
+  'fal',
+  'byteplus',
+  'gemini',
+  'grok',
+  'elevenlabs',
+] as const;
 export type GatewayProvider = (typeof GATEWAY_PROVIDERS)[number];
 
 export function isGatewayProvider(value: string): value is GatewayProvider {
   return GATEWAY_PROVIDERS.some((provider) => provider === value);
 }
 
+/** A gateway job's via: a media via, or ElevenLabs, which the product calls outside `MediaVia`. */
+export type GatewayVia = MediaVia | 'elevenlabs';
+
 /** The via each provider's jobs are stamped with. */
-export const GATEWAY_VIA: Readonly<Record<GatewayProvider, MediaVia>> = {
+export const GATEWAY_VIA: Readonly<Record<GatewayProvider, GatewayVia>> = {
   fal: 'fal',
   byteplus: 'byteplus',
   gemini: 'google',
   grok: 'xai',
+  elevenlabs: 'elevenlabs',
 };
 
 /** The provider a stamped via belongs to. */
-export function gatewayProviderOfVia(via: MediaVia): GatewayProvider {
+export function gatewayProviderOfVia(via: GatewayVia): GatewayProvider {
   const provider = GATEWAY_PROVIDERS.find((p) => GATEWAY_VIA[p] === via);
   if (!provider) throw new Error(`No gateway provider for via ${via}`);
   return provider;
@@ -32,6 +43,14 @@ export const BYTEPLUS_ENDPOINTS = {
   images: 'images/generations',
   speech: 'tts/create',
 } as const;
+
+/** The ElevenLabs models the gateway serves, by endpoint: the platform key reaches the whole account, voices included. */
+export const ELEVENLABS_GATEWAY_MODELS: Readonly<Record<string, string>> = {
+  [ELEVENLABS_MUSIC_MODEL]: 'v1/music',
+};
+export const ELEVENLABS_ENDPOINTS: readonly string[] = Object.values(
+  ELEVENLABS_GATEWAY_MODELS
+);
 
 export const GATEWAY_JOB_KINDS = ['image', 'video', 'audio'] as const;
 export type GatewayJobKind = (typeof GATEWAY_JOB_KINDS)[number];

@@ -15,6 +15,7 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import { sha256Hex } from '@/platform/compliance/hash';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GatewayJob, JsonValue } from '@/platform/server/db/schema';
@@ -117,19 +118,53 @@ function canonical(value: JsonValue): string {
   );
 }
 
+/** The row's copy of the body: inline media becomes its digest, so a clip never fills the row (D1 caps one at 2 MB). */
+async function rowBody(body: GatewayJobInput): Promise<GatewayJobInput> {
+  const entries = await Promise.all(
+    Object.entries(body).map(
+      async ([key, inner]): Promise<[string, JsonValue]> => {
+        return [
+          key,
+          INLINE_KEYS.has(key)
+            ? await digest(canonical(inner))
+            : await rowValue(inner),
+        ];
+      }
+    )
+  );
+  return Object.fromEntries(entries);
+}
+
+async function rowValue(value: JsonValue): Promise<JsonValue> {
+  if (Array.isArray(value)) return Promise.all(value.map(rowValue));
+  if (isObject(value)) return rowBody(value);
+  // A `data:` URL in any field is media too; a short one stays as it is.
+  return typeof value === 'string' &&
+    value.length > DATA_URL_DIGEST_FROM &&
+    /^data:/i.test(value)
+    ? digest(value)
+    : value;
+}
+
+const DATA_URL_DIGEST_FROM = 256;
+
+async function digest(text: string): Promise<JsonValue> {
+  return { sha256: await sha256Hex(text), length: text.length };
+}
+
 /** Refuses a replayed key that carries a different request; `model` is the path's, so it is left out. */
-function requireSameRequest(
+async function requireSameRequest(
   job: GatewayJob,
   via: GatewayJob['via'],
   modelId: string,
   body: GatewayJobInput
-): void {
+): Promise<void> {
   const { model: _stored, ...stored } = job.input;
   const { model: _sent, ...sent } = body;
   if (
     job.via !== via ||
     job.modelKey !== modelId ||
-    canonical(stored) !== canonical(sent)
+    canonical(stored) !== canonical(await rowBody(sent))
   ) {
     throw new ConflictError(
       'This idempotency key was already used for a different request'
@@ -169,18 +204,6 @@ export function validatedBody(
     });
   }
 
-  // The likeness check sees images and video; it cannot hear whose voice a clip is.
-  if (
-    model.provider === 'byteplus' &&
-    model.endpointId === BYTEPLUS_ENDPOINTS.speech &&
-    Array.isArray(body.references) &&
-    body.references.some((entry) => isObject(entry) && 'audio_url' in entry)
-  ) {
-    throw new ValidationError(
-      'Cloning a voice from a clip is not served; use a `speaker`'
-    );
-  }
-
   const malformed = countFieldWhere(
     body,
     (count) => !Number.isInteger(count) || Number(count) < 1
@@ -205,6 +228,23 @@ export function validatedBody(
     );
   }
   return body;
+}
+
+/** The likeness check cannot hear whose voice a clip is; only the product's own voice flow, with its own rights step, clones. */
+function refuseVoiceClone(model: GatewayModel, body: GatewayJobInput): void {
+  if (
+    model.provider === 'byteplus' &&
+    model.endpointId === BYTEPLUS_ENDPOINTS.speech &&
+    Array.isArray(body.references) &&
+    body.references.some(
+      (entry) =>
+        isObject(entry) && ('audio_url' in entry || 'audio_data' in entry)
+    )
+  ) {
+    throw new ValidationError(
+      'Cloning a voice from a clip is not served; use a `speaker`'
+    );
+  }
 }
 
 const INLINE = 'Send media as a URL, not inline data';
@@ -341,6 +381,13 @@ export async function holdGatewayJob(
     organizationId: scopedDb.organizationId,
   });
   if (rights !== UPLOAD_RIGHTS_CHECKED) {
+    // Saved voices are slots on the shared platform account; the gateway does not own them per organization.
+    if (model.provider === 'elevenlabs') {
+      throw new ValidationError(
+        'ElevenLabs is served only to OpenStory itself'
+      );
+    }
+    refuseVoiceClone(model, input);
     await requireCheckedUploadRights(
       withPlatformLlmKey(rights.scopedDb),
       gatedUrls(input),
@@ -366,12 +413,12 @@ export async function holdGatewayJob(
     kind: model.kind,
     modelKey: model.id,
     via: GATEWAY_VIA[model.provider],
-    input,
+    input: await rowBody(input),
     idempotencyKey: ctx.idempotencyKey,
     oauthClientId: ctx.oauthClientId,
   });
   if (!created) {
-    requireSameRequest(job, GATEWAY_VIA[model.provider], model.id, input);
+    await requireSameRequest(job, GATEWAY_VIA[model.provider], model.id, input);
   }
 
   // Platform keys only: always held, whatever keys the organization has. A replay reuses the hold.
@@ -420,7 +467,7 @@ export async function submitGatewayJob(
       ctx.idempotencyKey
     );
     if (existing) {
-      requireSameRequest(
+      await requireSameRequest(
         existing,
         GATEWAY_VIA[request.provider],
         request.modelId,

@@ -49,7 +49,7 @@ describe('gateway coverage', () => {
     expect(recorded).toHaveLength(productGatewayModels().length);
   });
 
-  it('builds the product body for every model but these 18; a builder that starts throwing fails here', () => {
+  it('builds the product body for every model but these 19; a builder that starts throwing fails here', () => {
     expect(
       coverages
         .filter((c) => productGap(c) === undefined)
@@ -68,6 +68,7 @@ describe('gateway coverage', () => {
         'byteplus/dreamina-seedance-2-5-260628',
         'byteplus/dreamina-seedance-2-0-mini-260615',
         'byteplus/seed-audio-1.0',
+        'elevenlabs/music_v2_5',
         'grok/grok-imagine-image-2.0',
         'grok/grok-imagine-image-quality',
         'gemini/gemini-nano-banana-2.1',

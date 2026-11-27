@@ -148,6 +148,23 @@ const MODELS: Record<string, GatewayModel> = {
       required: ['text_prompt'],
     },
   },
+  'elevenlabs/music_v2_5': {
+    provider: 'elevenlabs',
+    id: 'music_v2_5',
+    name: 'Eleven Music',
+    kind: 'audio',
+    endpointId: 'v1/music',
+    card: PER_SECOND,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model_id: { type: 'string' },
+        prompt: { type: 'string' },
+        voice_id: { type: 'string' },
+      },
+      required: ['prompt'],
+    },
+  },
   'grok/grok-imagine-tokens': {
     provider: 'grok',
     id: 'grok-imagine-tokens',
@@ -200,8 +217,9 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
+const submitJob = await import('./submit-job');
 const { submitGatewayJob, holdGatewayJob, gatedUrls, readIdempotencyKey } =
-  await import('./submit-job');
+  submitJob;
 const { readGatewayJob } = await import('./read-job');
 const { settleGatewayJob } = await import('./settle');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
@@ -546,17 +564,129 @@ describe('submitGatewayJob', () => {
   });
 
   it('refuses a Seed Audio voice cloned from a clip, which the check cannot hear', async () => {
-    const error = await refused({
-      provider: 'byteplus',
-      modelId: 'seed-audio-1.0',
-      body: {
+    const references: GatewayJobInput[] = [
+      { audio_url: 'https://a.example/mara.wav' },
+      { audio_data: 'UklGRg==' },
+    ];
+    for (const reference of references) {
+      const error = await refused({
+        provider: 'byteplus',
+        modelId: 'seed-audio-1.0',
+        body: {
+          text_prompt: '@Audio1 says the port engine is done for',
+          duration: 5,
+          references: [reference],
+        },
+      });
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(String(error)).toContain('Cloning a voice');
+    }
+    expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
+  it('refuses ElevenLabs on the public endpoint, where a voice_id could reach a voice saved by another organization', async () => {
+    const bodies: GatewayJobInput[] = [
+      { prompt: 'a sea shanty' },
+      { prompt: 'a sea shanty', voice_id: 'another-orgs-voice' },
+    ];
+    for (const body of bodies) {
+      const error = await refused({
+        provider: 'elevenlabs',
+        modelId: 'music_v2_5',
+        body,
+      });
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(String(error)).toContain('ElevenLabs is served only');
+    }
+  });
+
+  it('holds a cloned Seed Audio voice for the in-process caller, which ran its own rights step', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const { job } = await holdGatewayJob(
+      model,
+      {
         text_prompt: '@Audio1 says the port engine is done for',
         duration: 5,
-        references: [{ audio_url: 'https://a.example/mara.wav' }],
+        references: [{ audio_data: 'UklGRg==' }],
       },
-    });
-    expect(error).toBeInstanceOf(ValidationError);
+      {
+        scopedDb,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-clone-1',
+        oauthClientId: null,
+        runReservationId: null,
+      }
+    );
+    expect(job.status).toBe('queued');
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
+  it('keeps a digest of inline media on the row, sends the provider the whole body, and still refuses a changed clip', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    // Over D1's 2 MB row: a 30 second mic take as base64.
+    const clip = 'U'.repeat(2_500_000);
+    const body: GatewayJobInput = {
+      text_prompt: '@Audio1 says the port engine is done for',
+      duration: 5,
+      references: [{ audio_data: clip }],
+    };
+    const hold = (sent: GatewayJobInput) =>
+      holdGatewayJob(model, sent, {
+        scopedDb,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-big-1',
+        oauthClientId: null,
+        runReservationId: null,
+      });
+    const first = await hold(body);
+    expect(JSON.stringify(first.job.input).length).toBeLessThan(1_000);
+    expect(first.job.input.references).toEqual([
+      { audio_data: { sha256: expect.any(String), length: clip.length + 2 } },
+    ]);
+    expect(first.run.input.references).toEqual([{ audio_data: clip }]);
+
+    const again = await hold(body);
+    expect(again.created).toBe(false);
+    expect(again.job.id).toBe(first.job.id);
+
+    const changed = await hold({
+      ...body,
+      references: [{ audio_data: `${clip}V` }],
+    }).catch((e: unknown) => e);
+    expect(changed).toBeInstanceOf(ConflictError);
+  });
+
+  it('keeps a digest of a long data: URL in any field, and still refuses a changed one', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const url = `data:audio/wav;base64,${'U'.repeat(300_000)}`;
+    const body: GatewayJobInput = {
+      text_prompt: '@Audio1 says the port engine is done for',
+      duration: 5,
+      references: [{ audio_url: url }, { audio_url: 'data:,short' }],
+    };
+    const hold = (sent: GatewayJobInput) =>
+      holdGatewayJob(model, sent, {
+        scopedDb,
+        rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+        idempotencyKey: 'seed-data-url-1',
+        oauthClientId: null,
+        runReservationId: null,
+      });
+    const first = await hold(body);
+    expect(first.job.input.references).toEqual([
+      { audio_url: { sha256: expect.any(String), length: url.length } },
+      { audio_url: 'data:,short' },
+    ]);
+    expect(first.run.input).toMatchObject(body);
+    expect((await hold(body)).job.id).toBe(first.job.id);
+    const changed = await hold({
+      ...body,
+      references: [{ audio_url: `${url}V` }, { audio_url: 'data:,short' }],
+    }).catch((e: unknown) => e);
+    expect(changed).toBeInstanceOf(ConflictError);
   });
 
   it('checks every URL in the body before anything spends', async () => {

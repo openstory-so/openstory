@@ -1,6 +1,9 @@
 /** Every gateway model the product itself calls: what the snapshot always holds and the coverage check walks. */
 
-import type { GatewayProvider } from '@/gateway/schema';
+import {
+  ELEVENLABS_GATEWAY_MODELS,
+  type GatewayProvider,
+} from '@/gateway/schema';
 import { getFalEndpointIds } from '@/models/fal-endpoints';
 import {
   nativeGeminiImageModel,
@@ -40,6 +43,8 @@ export function productGatewayModels(): ProductGatewayModel[] {
       ...imageKeys.map(nativeGeminiImageModel),
       NATIVE_GEMINI_VIDEO_MODEL,
     ],
+    // Voice design, dialogue and speech-to-speech stay direct (multipart and query parameters).
+    elevenlabs: Object.keys(ELEVENLABS_GATEWAY_MODELS),
   };
   return typedEntries(ids).flatMap(([provider, list]) =>
     [...new Set(list)].flatMap((id) => (id ? [{ provider, id }] : []))

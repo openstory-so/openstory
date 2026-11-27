@@ -16,6 +16,7 @@ import {
 } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { NonRetryableError } from 'cloudflare:workflows';
 import {
   generateAudio,
   generateImage,
@@ -50,7 +51,14 @@ vi.doMock('#env', () => ({
 }));
 vi.doMock('@/gateway/server/providers', () => ({
   GATEWAY_DRIVERS: {
-    grok: { configured: () => true, start, poll },
+    grok: {
+      configured: () => true,
+      // Grok's own rule: an image answers at once, a video queues.
+      answersAtOnce: (endpointId: string) =>
+        endpointId.startsWith('v1/images/'),
+      start,
+      poll,
+    },
   },
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
@@ -160,6 +168,14 @@ async function chargesFor(jobId: string) {
   };
 }
 
+async function holdLeft(jobId: string) {
+  const [hold] = await db
+    .select()
+    .from(creditReservations)
+    .where(eq(creditReservations.idempotencyKey, `gateway:${jobId}`));
+  return hold?.remainingAmount;
+}
+
 async function onlyJob(modelKey: string) {
   const rows = await db
     .select()
@@ -227,6 +243,169 @@ describe('the openstory adapter, in-process', () => {
       usageRows: 1,
       balanceDrop: 20_000,
     });
+    // What the charge did not capture goes back at once, not at the hold's TTL.
+    expect(await holdLeft(job.id)).toBe(0);
+  });
+
+  it('gives back what a usage-priced job did not spend once it is charged', async () => {
+    // Held at the 120 second estimate ($0.30), billed for 8 seconds ($0.02).
+    const card = rateCardSchema.parse({
+      inputs: {
+        original_duration: {
+          param: 'original_duration',
+          bound: 'usage',
+          kind: 'number',
+          estimate: { inputs: {}, value: 120, source: SOURCE },
+        },
+      },
+      tables: {},
+      price: { '*': [{ var: 'original_duration' }, 0.0025] },
+      examples: [],
+      source: SOURCE,
+    });
+    start.mockResolvedValueOnce({
+      result: { ...answered.result, usage: { original_duration: 8 } },
+    });
+    const usageImage = { ...IMAGE, id: 'grok-usage-image', card };
+    await generateImage({
+      threadId: 'thread-1',
+      adapter: openstoryImage(usageImage.id, transport(usageImage), {
+        idempotencyKey: 'run-7:image',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    const job = await onlyJob(usageImage.id);
+    expect(await chargesFor(job.id)).toMatchObject({ balanceDrop: 20_000 });
+    expect(await holdLeft(job.id)).toBe(0);
+  });
+
+  it('sends an answering model again under the same key after a 5xx, which ran nothing, and charges once', async () => {
+    start
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Provider refused the request (500): busy'), {
+          statusCode: 500,
+        })
+      )
+      .mockResolvedValueOnce(answered);
+    const submit = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-5:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    const error = await submit().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('queued');
+    expect(await holdLeft(job.id)).toBe(20_000);
+    await submit();
+    expect(start).toHaveBeenCalledTimes(2);
+    expect((await onlyJob(IMAGE.id)).status).toBe('succeeded');
+    expect(await chargesFor(job.id)).toMatchObject({
+      debits: 1,
+      balanceDrop: 20_000,
+    });
+  });
+
+  it.each([502, 504, 520, 524])(
+    'never sends an answering model again after a proxy %i, which may follow a billed request',
+    async (statusCode) => {
+      start.mockRejectedValueOnce(
+        Object.assign(
+          new Error(`Provider refused the request (${statusCode})`),
+          {
+            statusCode,
+          }
+        )
+      );
+      const submit = () =>
+        generateImage({
+          threadId: 'thread-1',
+          adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+            idempotencyKey: `run-9-${statusCode}:image`,
+          }),
+          prompt: '',
+          modelOptions: BODY,
+        });
+      const first = await submit().catch((e: unknown) => e);
+      expect(first).not.toBeInstanceOf(NonRetryableError);
+      expect((await onlyJob(IMAGE.id)).status).toBe('running');
+      // The retried step fails closed and lets the hold go.
+      await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+      expect(start).toHaveBeenCalledTimes(1);
+      const job = await onlyJob(IMAGE.id);
+      expect(job.status).toBe('failed');
+      expect(await holdLeft(job.id)).toBe(0);
+    }
+  );
+
+  it('fails a queued submit at once on a 5xx, which may have queued it, and lets the hold go', async () => {
+    start.mockRejectedValueOnce(
+      Object.assign(new Error('Provider refused the request (500): busy'), {
+        statusCode: 500,
+      })
+    );
+    const submit = () =>
+      generateVideo({
+        threadId: 'thread-1',
+        adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+          idempotencyKey: 'run-5:video',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(VIDEO.id);
+    expect(job.status).toBe('failed');
+    expect(await holdLeft(job.id)).toBe(0);
+    // A retried step reads the failed job and never sends it again.
+    await expect(submit()).rejects.toBeInstanceOf(NonRetryableError);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the hold on a start that may have reached the provider', async () => {
+    start.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-6:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      })
+    ).rejects.not.toBeInstanceOf(NonRetryableError);
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('running');
+    expect(await holdLeft(job.id)).toBeGreaterThan(0);
+  });
+
+  it('gives back the rest of the hold on a replay when the settle step died before its zero', async () => {
+    start.mockResolvedValue(answered);
+    const submit = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE), {
+          idempotencyKey: 'run-8:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await submit();
+    const job = await onlyJob(IMAGE.id);
+    // As if the zero after the charge had thrown.
+    await db
+      .update(creditReservations)
+      .set({ remainingAmount: 5_000 })
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    await submit();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(await holdLeft(job.id)).toBe(0);
   });
 
   it('never charges twice when the step is retried', async () => {

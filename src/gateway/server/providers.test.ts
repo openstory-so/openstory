@@ -26,6 +26,16 @@ vi.doMock('@/models/server/byteplus-governor', () => ({
   acquireSeedSpeechToken,
 }));
 
+let elevenLabsConfigured = true;
+const elevenLabsConfig = await vi.importActual<
+  typeof import('@/models/server/elevenlabs-config')
+>('@/models/server/elevenlabs-config');
+vi.doMock('@/models/server/elevenlabs-config', () => ({
+  ...elevenLabsConfig,
+  getElevenLabsBaseUrl: () => undefined,
+  isElevenLabsConfigured: () => elevenLabsConfigured,
+}));
+
 const falQueue = {
   submit: vi.fn(),
   status: vi.fn(),
@@ -88,7 +98,7 @@ async function sent() {
 
 // One start per native driver, for what holds on all three.
 const STARTS: Record<
-  Exclude<GatewayProvider, 'fal'>,
+  Exclude<GatewayProvider, 'fal' | 'elevenlabs'>,
   { target: { modelId: string; endpointId: string }; body: GatewayJobInput }
 > = {
   grok: {
@@ -129,6 +139,7 @@ beforeEach(() => {
   arkKey = 'ark-key';
   arkBaseUrl = undefined;
   seedConfigured = true;
+  elevenLabsConfigured = true;
 });
 
 afterAll(() => {
@@ -407,6 +418,108 @@ describe('byteplus driver on Seed Audio', () => {
     await expect(speak()).rejects.toBeInstanceOf(NonRetryableError);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(acquireSeedSpeechToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('elevenlabs driver', () => {
+  const speak = (endpointId: string, body: GatewayJobInput) =>
+    GATEWAY_DRIVERS.elevenlabs.start(
+      { modelId: 'music_v1', endpointId },
+      body,
+      credentials
+    );
+
+  it("sends the caller's body on the platform key and stores an audio answer as media", async () => {
+    const body = {
+      prompt: 'A slow ferry horn under rain',
+      music_length_ms: 10_000,
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { 'content-type': 'audio/mpeg', 'request-id': 'el-1' },
+      })
+    );
+    expect(await speak('v1/music', body)).toEqual({
+      result: {
+        media: [{ base64: 'AQID', contentType: 'audio/mpeg' }],
+        usage: null,
+        requestId: 'el-1',
+      },
+    });
+    const request = await sent();
+    expect(request.url).toBe('https://api.elevenlabs.io/v1/music');
+    expect(request.headers['xi-api-key']).toBe('elevenlabs-key');
+    expect(request.body).toBe(JSON.stringify(body));
+  });
+
+  it('refuses a JSON answer: nothing on a job can carry it', async () => {
+    fetchMock.mockResolvedValueOnce(answer({ text: 'not audio' }));
+    await expect(speak('v1/music', {})).rejects.toBeInstanceOf(
+      NonRetryableError
+    );
+  });
+
+  it('resends a 429, which never ran, and refuses a 422 for good', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response('busy', {
+          status: 429,
+          headers: { 'retry-after': '0.01' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1]), {
+          headers: { 'content-type': 'audio/mpeg' },
+        })
+      );
+    expect(await speak('v1/music', {})).toMatchObject({
+      result: { media: [{ base64: 'AQ==' }] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockResolvedValueOnce(new Response('bad', { status: 422 }));
+    await expect(speak('v1/music', {})).rejects.toBeInstanceOf(
+      NonRetryableError
+    );
+  });
+
+  it('calls no endpoint but the ones it lists: the platform key reaches every voice on the account', async () => {
+    for (const endpoint of [
+      'v1/text-to-voice',
+      'v1/voices/add',
+      'v1/voices/v-1',
+      'v1/speech-to-speech/v-1',
+      'v1/text-to-dialogue/with-timestamps',
+    ]) {
+      expect(GATEWAY_DRIVERS.elevenlabs.configured(endpoint)).toBe(false);
+    }
+  });
+
+  it('is configured only with the platform key', () => {
+    expect(GATEWAY_DRIVERS.elevenlabs.configured('v1/music')).toBe(true);
+    elevenLabsConfigured = false;
+    expect(GATEWAY_DRIVERS.elevenlabs.configured('v1/music')).toBe(false);
+  });
+});
+
+describe('which starts answer at once', () => {
+  it('lets only a start that returns its result be sent again after a 5xx', () => {
+    expect(GATEWAY_DRIVERS.byteplus.answersAtOnce('tts/create')).toBe(true);
+    expect(GATEWAY_DRIVERS.byteplus.answersAtOnce('images/generations')).toBe(
+      true
+    );
+    expect(
+      GATEWAY_DRIVERS.byteplus.answersAtOnce('contents/generations/tasks')
+    ).toBe(false);
+    expect(GATEWAY_DRIVERS.grok.answersAtOnce('v1/images/generations')).toBe(
+      true
+    );
+    expect(GATEWAY_DRIVERS.grok.answersAtOnce('v1/videos/generations')).toBe(
+      false
+    );
+    expect(GATEWAY_DRIVERS.fal.answersAtOnce('fal-ai/ferry/video')).toBe(false);
+    expect(GATEWAY_DRIVERS.gemini.answersAtOnce('any')).toBe(true);
+    expect(GATEWAY_DRIVERS.elevenlabs.answersAtOnce('v1/music')).toBe(true);
   });
 });
 

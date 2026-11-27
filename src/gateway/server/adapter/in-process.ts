@@ -23,8 +23,8 @@ import {
   type GatewayStore,
   type GatewayStored,
   pollGatewayRun,
+  claimAndStartGatewayRun,
   releaseGatewayRun,
-  startGatewayRun,
 } from '@/gateway/server/phases';
 import { platformOnlyCredentials } from '@/gateway/server/platform-credentials';
 import {
@@ -70,7 +70,10 @@ async function finish(
   stored: GatewayStored
 ) {
   await finishGatewayRun(scopedDb, run, stored, `gateway:${run.jobId}:settle`);
-  return { kind: 'done' as const, outputs: stored.outputs };
+  return {
+    kind: 'done' as const,
+    outputs: stored.outputs,
+  };
 }
 
 /** Polls a handle `submit` gave out. Needs no model, key or rights: a poll step builds only this. */
@@ -87,7 +90,14 @@ export function inProcessPoller(params: {
       // A retried poll whose job already ended answers from the row: no second store, no second charge.
       const job = await scopedDb.claims.gatewayJobs.getById(run.jobId);
       if (job?.status === 'succeeded') {
-        return { kind: 'done' as const, outputs: storedOutputs(job) };
+        // The settle step may have died before its zero: a replay finishes it.
+        if (run.ownsReservation) {
+          await scopedDb.billing.zeroReservation(run.reservationId);
+        }
+        return {
+          kind: 'done' as const,
+          outputs: storedOutputs(job),
+        };
       }
       if (job?.status === 'failed') {
         return {
@@ -168,6 +178,10 @@ export function inProcessGateway(params: {
       }
       // A replayed job is never started twice: only a queued one starts here.
       if (job.status === 'succeeded') {
+        // The settle step may have died before its zero: a replay finishes it.
+        if (run.ownsReservation) {
+          await scopedDb.billing.zeroReservation(run.reservationId);
+        }
         return {
           kind: 'done' as const,
           jobId: job.id,
@@ -177,33 +191,23 @@ export function inProcessGateway(params: {
       if (job.status === 'failed') {
         throw new NonRetryableError(job.error?.message ?? 'Generation failed');
       }
-      if (job.status === 'running') {
-        if (job.providerJobId) {
-          return {
-            kind: 'queued' as const,
-            handle: JSON.stringify({ run, providerJobId: job.providerJobId }),
-          };
-        }
-        // Started but never stamped: the provider may have it, so it is failed rather than sent again.
-        const error = 'The previous attempt may have started this job';
-        await releaseGatewayRun(scopedDb, run, error);
-        throw new NonRetryableError(error);
+      if (job.status === 'running' && job.providerJobId) {
+        return {
+          kind: 'queued' as const,
+          handle: JSON.stringify({ run, providerJobId: job.providerJobId }),
+        };
       }
       // A borrowed hold stays off the row, so the stale-job sweep never zeroes the caller's reservation.
       await scopedDb.gatewayJobs.attachRun(run.jobId, {
         reservationId: run.ownsReservation ? run.reservationId : null,
         workflowRunId: params.runId,
       });
-      if (!(await scopedDb.gatewayJobs.markRunning(run.jobId))) {
-        throw new Error('Another attempt is starting this job');
-      }
-      const started = await startGatewayRun(run, credentials, store).catch(
-        async (error: unknown) => {
-          if (error instanceof NonRetryableError) {
-            await releaseGatewayRun(scopedDb, run, error.message);
-          }
-          throw error;
-        }
+      // Started but never stamped: `claimAndStartGatewayRun` fails it rather than send again.
+      const started = await claimAndStartGatewayRun(
+        scopedDb,
+        run,
+        credentials,
+        store
       );
       if ('stored' in started) {
         return {

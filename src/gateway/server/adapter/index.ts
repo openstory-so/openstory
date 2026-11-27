@@ -95,18 +95,18 @@ function bodyOf(options: {
 }
 
 /** Submit and poll until done, in this call: images and audio answer in seconds. */
-async function runToEnd(
+export async function runGatewayToEnd(
   transport: GatewayTransport,
   call: GatewayCall,
   body: GatewayJobInput,
-  signal: AbortSignal | undefined
-): Promise<GatewayJobOutput[]> {
+  signal?: AbortSignal
+): Promise<{ outputs: GatewayJobOutput[] }> {
   const submitted = await transport.submit(body, call.idempotencyKey);
-  if (submitted.kind === 'done') return submitted.outputs;
+  if (submitted.kind === 'done') return submitted;
   for (;;) {
     signal?.throwIfAborted();
     const polled = await transport.poll(submitted.handle);
-    if (polled.kind === 'done') return polled.outputs;
+    if (polled.kind === 'done') return polled;
     if (polled.kind === 'failed') throw new NonRetryableError(polled.error);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
@@ -126,7 +126,7 @@ class OpenstoryImageAdapter extends BaseImageAdapter<string, GatewayJobInput> {
     options: ImageGenerationOptions<GatewayJobInput>
   ): Promise<ImageGenerationResult> {
     options.logger.request('openstory.generateImages', { model: this.model });
-    const outputs = await runToEnd(
+    const { outputs } = await runGatewayToEnd(
       this.transport,
       this.call,
       bodyOf(options),
@@ -154,7 +154,7 @@ class OpenstoryAudioAdapter extends BaseAudioAdapter<string, GatewayJobInput> {
     options: AudioGenerationOptions<GatewayJobInput>
   ): Promise<AudioGenerationResult> {
     options.logger.request('openstory.generateAudio', { model: this.model });
-    const outputs = await runToEnd(
+    const { outputs } = await runGatewayToEnd(
       this.transport,
       this.call,
       bodyOf(options),

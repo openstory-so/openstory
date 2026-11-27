@@ -8,6 +8,12 @@ import {
 import { getArkApiKey, getArkBaseUrl } from '@/models/server/byteplus-config';
 import { resolvePlatformOptionalKey } from '@/models/server/db/api-keys';
 import {
+  getElevenLabsBaseUrl,
+  isElevenLabsConfigured,
+  retryOnRateLimit,
+} from '@/models/server/elevenlabs-config';
+import { bytesToBase64 } from '@/platform/base64';
+import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
@@ -20,6 +26,7 @@ import {
 } from '@/models/server/seed-speech-config';
 import {
   BYTEPLUS_ENDPOINTS,
+  ELEVENLABS_ENDPOINTS,
   type GatewayJobInput,
   type GatewayProvider,
 } from '@/gateway/schema';
@@ -124,6 +131,8 @@ export type GatewayTarget = { modelId: string; endpointId: string };
 type Driver = {
   /** Whether this driver can run the endpoint on this server; asked at submit, before the hold. */
   configured: (endpointId: string) => boolean;
+  /** The start answers with the result, so a 5xx means nothing ran; a queued start's 5xx may have queued the job. */
+  answersAtOnce: (endpointId: string) => boolean;
   start: (
     target: GatewayTarget,
     body: GatewayJobInput,
@@ -136,32 +145,43 @@ type Driver = {
   ) => Promise<GatewayPoll>;
 };
 
+type ProviderRequest = {
+  method: 'GET' | 'POST';
+  headers: Record<string, string>;
+  body?: unknown;
+};
+
 /** A 4xx is the provider's answer to this body, so it is not retried; 408 and 429 are. */
 async function callJson(
   url: string,
-  init: {
-    method: 'GET' | 'POST';
-    headers: Record<string, string>;
-    body?: unknown;
-  }
+  init: ProviderRequest
 ): Promise<JsonObject> {
+  const response = await callProvider(url, init);
+  return jsonObject.parse(await response.json());
+}
+
+async function callProvider(
+  url: string,
+  init: ProviderRequest
+): Promise<Response> {
   const response = await fetch(url, {
     method: init.method,
     headers: { 'content-type': 'application/json', ...init.headers },
     ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const text = await response.text();
-  if (!response.ok) {
-    const message = `Provider refused the request (${response.status}): ${text.slice(0, 500)}`;
-    const final =
-      response.status >= 400 &&
-      response.status < 500 &&
-      response.status !== 408 &&
-      response.status !== 429;
-    throw final ? new NonRetryableError(message) : new Error(message);
-  }
-  return jsonObject.parse(JSON.parse(text));
+  if (response.ok) return response;
+  const message = `Provider refused the request (${response.status}): ${(await response.text()).slice(0, 500)}`;
+  const final =
+    response.status >= 400 &&
+    response.status < 500 &&
+    response.status !== 408 &&
+    response.status !== 429;
+  // `statusCode` and `rawResponse` as the SDKs carry them, for `retryOnRateLimit`.
+  throw Object.assign(
+    final ? new NonRetryableError(message) : new Error(message),
+    { statusCode: response.status, rawResponse: response }
+  );
 }
 
 /** E2E stays on the mocks: a laptop key must not bill a replay. */
@@ -201,6 +221,7 @@ function imagesFromData(body: JsonObject): GatewayMedia[] {
 
 const falDriver: Driver = {
   configured: () => resolvePlatformOptionalKey('fal') !== undefined,
+  answersAtOnce: () => false,
   start: async (target, body, credentials) => {
     const fal = await falClient(credentials);
     try {
@@ -293,6 +314,7 @@ const grokDriver: Driver = {
   configured: () =>
     nativeOn(getEnv().XAI_BASE_URL) &&
     resolvePlatformOptionalKey('xai') !== undefined,
+  answersAtOnce: (endpointId) => endpointId.startsWith('v1/images/'),
   start: async (target, body, credentials) => {
     // modelschemas names the endpoint with its version: `v1/videos/generations`.
     const answer = await grokCall(
@@ -403,6 +425,9 @@ const bytePlusDriver: Driver = {
     endpointId === BYTEPLUS_ENDPOINTS.speech
       ? isSeedSpeechConfigured()
       : nativeOn(getArkBaseUrl()) && Boolean(getArkApiKey()),
+  answersAtOnce: (endpointId) =>
+    endpointId === BYTEPLUS_ENDPOINTS.speech ||
+    endpointId === BYTEPLUS_ENDPOINTS.images,
   start: async (target, body) => {
     if (target.endpointId === BYTEPLUS_ENDPOINTS.speech) {
       return seedSpeech(body);
@@ -479,6 +504,7 @@ const geminiDriver: Driver = {
   configured: () =>
     nativeOn(getEnv().GEMINI_BASE_URL) &&
     resolvePlatformOptionalKey('google') !== undefined,
+  answersAtOnce: () => true,
   start: async (target, body, credentials) => {
     const override = getEnv().GEMINI_BASE_URL;
     requireNative(override, 'Google');
@@ -523,9 +549,53 @@ const geminiDriver: Driver = {
   },
 };
 
+/** Platform key only: a designed voice lives in the account that made it. */
+const elevenLabsDriver: Driver = {
+  configured: (endpointId) =>
+    ELEVENLABS_ENDPOINTS.includes(endpointId) && isElevenLabsConfigured(),
+  answersAtOnce: () => true,
+  start: async (target, body, credentials) => {
+    const { key } = await credentials.resolveKey('elevenlabs');
+    const url = `${getElevenLabsBaseUrl() ?? 'https://api.elevenlabs.io'}/${target.endpointId}`;
+    // A 429 is the account's concurrency cap and never ran, so it is resent here.
+    const response = await retryOnRateLimit(() =>
+      callProvider(url, {
+        method: 'POST',
+        headers: { 'xi-api-key': key },
+        body,
+      })
+    );
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.startsWith('audio/')) {
+      return {
+        result: {
+          media: [
+            {
+              base64: bytesToBase64(
+                new Uint8Array(await response.arrayBuffer())
+              ),
+              contentType,
+            },
+          ],
+          usage: null,
+          requestId: response.headers.get('request-id'),
+        },
+      };
+    }
+    // `v1/music` answers audio; a JSON answer has nowhere to go on a job.
+    throw new NonRetryableError(
+      `ElevenLabs answered ${contentType || 'no content type'}, not audio`
+    );
+  },
+  poll: async () => {
+    throw new NonRetryableError('ElevenLabs jobs answer at once');
+  },
+};
+
 export const GATEWAY_DRIVERS: Readonly<Record<GatewayProvider, Driver>> = {
   fal: falDriver,
   grok: grokDriver,
   byteplus: bytePlusDriver,
   gemini: geminiDriver,
+  elevenlabs: elevenLabsDriver,
 };

@@ -12,6 +12,12 @@ transcription check on every take.
   through `scopedDb.credentials.resolveKey('seed-speech')`. Under `E2E_TEST`
   it stays off unless `SEED_SPEECH_BASE_URL` is set, so e2e and replay stay on
   ElevenLabs.
+- **Gateway (#2436).** A take runs through the `openstory` gateway when the
+  run was routed there at its trigger (`gatewaySeedRecorder`): held and
+  charged per take, every take that answered, including ones that fail the
+  check. Otherwise `platformSeedRecorder` calls Seed directly and the run
+  books `seed-audio` on the kept take. Same body either way; see
+  `model-gateway.md` § Audio on the gateway.
 - Output is WAV at 44.1 kHz, so everything after the call is the same PCM
   byte arithmetic the ElevenLabs path uses (`cutAudioSection`,
   `trimmedEndSeconds`).

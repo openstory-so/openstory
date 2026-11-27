@@ -75,6 +75,7 @@ vi.doMock('@/platform/server/compliance/provenance', () => ({
 // For the full `run()`: the base class builds its own scoped db.
 const zeroReservation = vi.fn(async (_reservationId: string) => undefined);
 const runMarkFailed = vi.fn(async () => true);
+const runMarkRunning = vi.fn(async (_id: string) => true);
 type GatewayJobsMethods = ReturnType<typeof createGatewayJobsMethods>;
 type BillingMethods = ReturnType<typeof createBillingMethods>;
 const runScopedDb: {
@@ -86,7 +87,7 @@ const runScopedDb: {
   organizationId: 'org-1',
   billing: { zeroReservation },
   gatewayJobs: {
-    markRunning: vi.fn(async () => true),
+    markRunning: runMarkRunning,
     markFailed: runMarkFailed,
   },
   provenance: {},
@@ -181,6 +182,9 @@ function makeScopedDb() {
       }
     ),
     checkAutoTopUp: vi.fn(async () => undefined),
+    zeroReservation: vi.fn(async () => {
+      order.push(`${currentStep}:zeroReservation`);
+    }),
   };
   // Organization credentials throw: a gateway run must never reach them.
   const refuse = () => {
@@ -311,12 +315,7 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
     const { scopedDb } = makeScopedDb();
     const result = await makeWorkflow().runBody(makeEvent(), step, scopedDb);
 
-    expect(step.names).toEqual([
-      'set-running',
-      'start',
-      'record-provenance',
-      'settle',
-    ]);
+    expect(step.names).toEqual(['start', 'record-provenance', 'settle']);
     expect(step.results.start).toEqual({
       stored: {
         outputs: OUTPUTS,
@@ -396,6 +395,8 @@ describe('GatewayGenerationWorkflow, an answer at once', () => {
       'settle:recordOutputs',
       'settle:settleReservation',
       'settle:markSucceeded',
+      // The rest of the hold goes back in the same step.
+      'settle:zeroReservation',
     ]);
     expect(mockRecordProvenance).toHaveBeenCalledTimes(2);
     expect(mockRecordProvenance).toHaveBeenCalledWith(
@@ -541,7 +542,6 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
     await makeWorkflow().runBody(makeEvent(), step, scopedDb);
 
     expect(step.names).toEqual([
-      'set-running',
       'start',
       'stamp-provider-job',
       'poll-batch-0',
@@ -596,7 +596,6 @@ describe('GatewayGenerationWorkflow, a queued job', () => {
       await run;
 
       expect(step.names).toEqual([
-        'set-running',
         'start',
         'stamp-provider-job',
         'poll-batch-0',
@@ -638,6 +637,21 @@ describe('failure', () => {
     expect(runMarkFailed).toHaveBeenCalledWith('job-1', {
       code: 'GENERATION_FAILED',
       message: expect.stringContaining('provider down'),
+    });
+  });
+
+  it('never sends a start again after a timeout: the replayed step finds the job running and fails closed', async () => {
+    mockStart.mockRejectedValueOnce(new TypeError('fetch failed'));
+    // The first attempt claimed the row; the replay finds it running.
+    runMarkRunning.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await expect(
+      makeWorkflow().run(makeEvent(), makeStep({ retry: true }))
+    ).rejects.toThrow('may have started');
+    expect(mockStart).toHaveBeenCalledTimes(1);
+    expect(zeroReservation).toHaveBeenCalledWith('res-1');
+    expect(runMarkFailed).toHaveBeenCalledWith('job-1', {
+      code: 'GENERATION_FAILED',
+      message: expect.stringContaining('may have started'),
     });
   });
 
@@ -747,7 +761,6 @@ describe('a throw after the charge', () => {
     ).rejects.toThrow('D1 blip');
 
     expect(step.names).toEqual([
-      'set-running',
       'start',
       'record-provenance',
       'settle',

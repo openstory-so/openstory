@@ -8,6 +8,7 @@
 
 import { generateVoice } from '@tanstack/ai';
 import { generateId } from '@/platform/id';
+import { ELEVENLABS_VOICE_DESIGN_MODEL } from '@/billing/elevenlabs-pricing';
 import {
   toCatalogVoiceFromLibrary,
   voiceConsumesAccountSlot,
@@ -47,11 +48,15 @@ export async function designVoicePreviews(
 ): Promise<DesignedPreview[]> {
   const createElevenLabsVoiceDesign = await loadElevenLabsVoiceDesign();
   const adapterConfig = elevenLabsAdapterConfig(apiKey, 120);
-  const adapter = createElevenLabsVoiceDesign('eleven_ttv_v3', apiKey, {
-    timeoutInSeconds: adapterConfig.timeoutInSeconds,
-    maxRetries: adapterConfig.maxRetries,
-    ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
-  });
+  const adapter = createElevenLabsVoiceDesign(
+    ELEVENLABS_VOICE_DESIGN_MODEL,
+    apiKey,
+    {
+      timeoutInSeconds: adapterConfig.timeoutInSeconds,
+      maxRetries: adapterConfig.maxRetries,
+      ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
+    }
+  );
   const result = await retryOnRateLimit(() =>
     generateVoice({
       adapter,

@@ -4,6 +4,12 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { enqueueCharacterVoiceDesign } from './enqueue-character-voice';
 import { asStub } from '@/test/as-stub';
 
+// Routes read the stored snapshot; these tests are about the trigger, not the route.
+vi.mock('@/gateway/server/route', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/gateway/server/route')>()),
+  resolveGatewayRoutes: async () => ({}),
+}));
+
 function character(
   overrides: Partial<CastCharacterWithSheet> = {}
 ): CastCharacterWithSheet {

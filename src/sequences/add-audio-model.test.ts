@@ -3,6 +3,12 @@ import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { ZERO_MICROS } from '@/billing/money';
 import { asStub } from '@/test/as-stub';
 
+// Routes read the stored snapshot; these tests are about the trigger, not the route.
+vi.mock('@/gateway/server/route', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/gateway/server/route')>()),
+  resolveGatewayRoutes: async () => ({}),
+}));
+
 // Expose the handler so these tests exercise its real credit preflight with
 // an authenticated context, without the server-fn transport or middleware.
 vi.doMock('@tanstack/react-start', async () => ({

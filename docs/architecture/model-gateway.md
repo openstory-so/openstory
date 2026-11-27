@@ -210,14 +210,15 @@ Not served, and why:
 product uses (`productGatewayModels()`) against its card: a typical request
 (the card's own example) and, where a builder is wired
 (`coverage-bodies.ts`: fal stills and motion, native Grok video), the body
-the product sends. On the recording: 43 of 75 hold a typical request; 23 of
-57 hold the product's body. The 18 with no builder in the check (pinned
+the product sends. On the recording: 43 of 76 hold a typical request; 23 of
+57 hold the product's body. The 19 with no builder in the check (pinned
 in `coverage.test.ts`): the fal routes the product's builders never pick
 (`fal/xai/grok-imagine-video/v1.5/text-to-video`,
 `fal/xai/grok-imagine-video/v1.5/reference-to-video`,
 `fal/fal-ai/kling-video/v3/pro/text-to-video`), audio and lip-sync
 (`fal/fal-ai/ace-step-1.5`, `fal/fal-ai/ace-step/prompt-to-audio`,
-`fal/fal-ai/sync-lipsync/v3`, `byteplus/seed-audio-1.0`), Ark
+`fal/fal-ai/sync-lipsync/v3`, `byteplus/seed-audio-1.0`,
+`elevenlabs/music_v2_5`), Ark
 (`byteplus/dola-seedream-5-0-pro-260628`,
 `byteplus/dreamina-seedance-2-0-260128`,
 `byteplus/dreamina-seedance-2-5-260628`,
@@ -262,6 +263,9 @@ fixed upstream; no local estimate, sibling price or guess stands in.
   estimate. TanStack/schemas#764
 - `fal/fal-ai/sync-lipsync/v3` (`minutes`), `gemini/gemini-omni-1.2-flash`
   (`input_tokens`): usage-only cards with no estimate. TanStack/schemas#765
+- `elevenlabs/music_v2_5`: no rate card. The only ElevenLabs model the
+  gateway serves (`ELEVENLABS_GATEWAY_MODELS`); voice design, dialogue and
+  speech-to-speech stay direct. TanStack/schemas#756
 
 Holdable on a typical request but refused when the product sends a field the
 card types differently from the schema (TanStack/schemas#766):
@@ -310,7 +314,10 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    reserved, and the run triggered. The run's payload carries the body, the
    provider endpoint and **the rate card as it read at submit**; the run
    reads no job row and does not fetch modelschemas.
-2. **Run:** `start` sends the body. A provider that answers at once (images
+2. **Run:** `start` claims the row (`markRunning`) and sends the body; a
+   replayed `start` that finds the row already `running` fails and releases
+   rather than send again (`claimAndStartGatewayRun`, shared with the
+   in-process transport). A provider that answers at once (images
    on Grok, BytePlus and Gemini) has its media stored to R2 inside that step
    (#1645). A queued job (fal, Grok and BytePlus video) has its provider id
    stamped on the row, then is polled in batches; the batch that sees it
@@ -324,9 +331,10 @@ through `scopedDb.gatewayJobs`; it has no selection pointer, so it is a
    trigger itself failed). The base class zeroes the hold
    (`ownsReservation`). A settled job is never marked failed.
 
-A provider `4xx` is the answer to that body and is not retried; `408`, `429`
-and `5xx` retry the step. Unlike Studio, a run does not resubmit after a
-content flag or after Ark's InternalServiceError.
+A start's error follows one rule, in § Audio on the gateway (the start-error
+paragraph): only a start the provider answered without running is sent
+again. Unlike Studio, a run does not resubmit after a content flag or after
+Ark's InternalServiceError.
 
 ### Keys and money
 
@@ -1032,6 +1040,123 @@ Kept only for own keys and unholdable models: the direct submit branches in
 `pollVideoJob`, `videoCostFromUsage`, the motion and studio
 `deduct-credits` / `price-motion-generation` / `price-video-generation`
 steps, `recordFalUsageStep` for video, and `lipsyncFalClient`.
+
+## Audio on the gateway (#2436)
+
+### Coverage (read 2026-11-26)
+
+Every ElevenLabs model on modelschemas answers `pricing: null`
+(TanStack/schemas#756; #120 closed, but no card is served), so no ElevenLabs
+call can be held today and every one runs on the direct path, platform key
+only, unchanged. The `elevenlabs` provider and driver exist so Music moves
+the day its card does.
+
+- **In-process only.** The platform key reaches the whole shared account,
+  where saved voices are account-wide slots the product owns
+  (`voiceProviderOf`, `releaseVoiceIfUnreferenced`). Until the gateway owns
+  voices per organization, the public endpoint refuses every ElevenLabs
+  model, so no caller can name another organization's `voice_id`, and the
+  driver calls only `ELEVENLABS_ENDPOINTS` (`v1/music`); any other endpoint
+  is "not configured" and refused before the hold.
+- **Driver** (`providers.ts`): platform key only (`OWN_KEY.elevenlabs` is
+  null in `route.ts`); `configured()` is that list and
+  `isElevenLabsConfigured()`; the
+  key is resolved per call; a 429 (the account's concurrency cap, never
+  run) is resent by `retryOnRateLimit`. An `audio/*` answer is one media
+  file; any other answer fails the job.
+- **No JSON result.** The issue's JSON result (voice ids, timestamps) is
+  not built: every call that answers one (voice design, dialogue with
+  timestamps) cannot be a gateway body today (below), so nothing would
+  produce it.
+- **A body is JSON only.** A query parameter has no place in it, and the
+  driver never moves a field out of the body. Voice design needs
+  `output_format=mp3_44100_128` (the 192 kbps default needs the Creator
+  tier) and dialogue needs `output_format=wav_44100` (the ranges are cut
+  from PCM WAV), so neither is routed even once a card exists. Scribe,
+  isolation and speech-to-speech take a multipart file, which a gateway
+  body cannot carry either. Both are limits of our gateway's design (a JSON
+  body, sent as it is), not gaps in modelschemas.
+- **Routes.** Seed takes and Music read the run's `gatewayRoutes`
+  (`gatewayRunRoute`); the audio root triggers resolve
+  `AUDIO_ROUTE_TARGETS` (`src/audio/gateway-targets.ts`) and children
+  inherit them. A payload with no routes runs direct, so a run queued
+  before the deploy finishes on its old path. Both callers go through
+  `runAudioOnGateway` (`src/audio/server/audio-gateway.ts`), which passes
+  the run's `reservationId` as the transport's `reservation`: a run that
+  reserved at its trigger is charged against that and holds nothing more.
+
+| Product call               | modelschemas                                                                                                            | Card                       | Where it runs                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------- |
+| Music                      | `elevenlabs/music_v2_5`, `v1/music`                                                                                     | no, TanStack/schemas#756   | direct; the gateway once a card exists       |
+| Voice design               | `elevenlabs/eleven_ttv_v3`, `v1/text-to-voice/design`                                                                   | no, TanStack/schemas#756   | direct: `output_format` is a query parameter |
+| Save a designed voice      | no model, `v1/text-to-voice`                                                                                            | account state, not a model | direct                                       |
+| Dialogue                   | `elevenlabs/eleven_v3`, `v1/text-to-dialogue/with-timestamps`; the row names only text-to-speech (TanStack/schemas#757) | no, TanStack/schemas#756   | direct: `output_format` is a query parameter |
+| Mic take, ElevenLabs voice | `elevenlabs/eleven_multilingual_sts_v2`; the row names text-to-speech, not `v1/speech-to-speech` (TanStack/schemas#757) | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Scribe                     | `elevenlabs/scribe_v2`, `v1/speech-to-text`; no row (TanStack/schemas#757)                                              | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Isolation                  | no model, `v1/audio-isolation` (TanStack/schemas#757)                                                                   | no, TanStack/schemas#756   | direct: a multipart file                     |
+| Seed Audio takes           | `byteplus/seed-audio-1.0`, `tts/create`                                                                                 | yes                        | gateway on a platform key                    |
+
+`seed-asr` has a card with no estimate (TanStack/schemas#672) but the product
+does not call it.
+
+### Seed takes
+
+A Seed take is recorded by a `SeedRecorder` (`seedRecorderFor` in
+`seed-audio.ts`, which picks per take from the run's routes):
+`gatewaySeedRecorder` holds and charges each take through the in-process
+adapter, `platformSeedRecorder` calls Seed Speech on the platform key and the
+caller books `seed-audio` itself (`seedCharge`). The body is the same.
+
+- **One key per take.** `${runId}:${step}:${take}`, with no attempt: a
+  step retried after Scribe, isolation, R2 or D1 throws gets its charged
+  takes back and records nothing new. A take that fails the transcription
+  check is retaken inside the step under the next take number (the range
+  read up to three takes, dialogue and mic takes in their own loops).
+- **Every take is charged.** On the platform key only the kept take is
+  billed and the platform absorbs the rest; on the gateway every take that
+  answered is charged. Needs sign-off.
+- **The WAV is read back.** The gateway stores the take in R2 in the step
+  that recorded it; the caller reads it back to transcribe and cut it, so no
+  bytes cross a `step.do`.
+- **Cloning.** `references[]` with `audio_url` or `audio_data` is refused on
+  the public endpoint (the likeness check cannot hear whose voice a clip
+  is) and held for an in-process caller. `seed-audio.ts` is on the
+  `UPLOAD_RIGHTS_CHECKED` allowlist (through `audio-gateway.ts`): its clips are the organization's Seed
+  voice clips, made from text, and a mic take is the user's own recording
+  made in the app. The job row keeps inline media (`audio_data`,
+  `inlineData` and the other inline keys) as `{ sha256, length }`, never
+  the bytes, and so is any `data:` URL over 256 characters in any field, so
+  a 30 second clip stays under D1's 2 MB row; a replayed key
+  is compared on the digest, and the provider still gets the whole body.
+- Pacing stays on the BytePlus governor: the Seed Audio driver calls
+  `acquireSeedSpeechToken` before every call.
+- Scribe and isolation stay ElevenLabs ledger lines (`deductWorkflowCredits`).
+
+Real run on `bun dev` (2026-11-26): Generate voice, one Seed take, routed
+`openstory`. The first attempt's Seed call answered 500 (`audio risk audit`),
+so the step retried under attempt 2 and a new key; that take was held $0.30
+and charged $0.11975 once (47.9 s), one debit and one line. The run booked
+Scribe ($0.0029) and isolation ($0.0718) and no `seed-audio` line. That run
+found two hold bugs, both fixed since: the charged take kept $0.18025 of its
+hold until the hold expired (a settled job now zeroes its own hold in the
+settle step), and the 500 left its job `running` with its hold. Now a
+start's error is read by whether the driver answers at once
+(`answersAtOnce`: Seed, Ark images, Grok images, Gemini, ElevenLabs) or
+queues a job (Ark tasks, Grok video, fal). The rule, for both the public
+run and the in-process transport (`claimAndStartGatewayRun` in
+`phases.ts`):
+
+- A 4xx fails and releases.
+- A 429 from any start, or the origin's own 500 or 503 from a start that
+  answers at once, ran nothing: the job goes back to `queued` with its hold
+  and the retried step sends it again under the same key.
+- Anything else fails and releases, and is never sent twice: any 5xx from a
+  queued start, a proxy's 502, 504 or 52x (Cloudflare in front of xAI or the
+  Seed edge, which can follow a request that finished and was billed), a
+  timeout or a dropped connection. A 500 or 503 from a queued start fails at
+  once; the rest fail when the retried step finds the job `running` with no
+  provider id. fal's SDK errors carry `status`, not `statusCode`, so a fal
+  submit error takes that last path.
 
 ## Not in this stack
 

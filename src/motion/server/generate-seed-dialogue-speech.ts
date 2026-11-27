@@ -22,10 +22,6 @@ import {
   scribeCost,
 } from '@/billing/elevenlabs-pricing';
 import {
-  SEED_AUDIO_ENDPOINT,
-  seedAudioCost,
-} from '@/billing/seed-speech-pricing';
-import {
   voiceProviderOf,
   moodForTone,
   SEED_AUDIO_MODEL,
@@ -38,6 +34,8 @@ import {
   SEED_AUDIO_MAX_REFERENCES,
   recordCheckedTake,
   SEED_BOOTH_PROMPT,
+  seedCharge,
+  type SeedRecorder,
 } from '@/cast/server/voice/seed-audio';
 import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
 import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
@@ -128,7 +126,7 @@ export function seedScenePrompt(
 }
 
 export async function generateSeedDialogueSpeech(input: {
-  seedKey: string;
+  record: SeedRecorder;
   elevenLabsKey: string;
   organizationId: string;
   sequenceId: string;
@@ -184,7 +182,8 @@ export async function generateSeedDialogueSpeech(input: {
   let best: { take: Take; worstShare: number } | null = null;
   for (let attempt = 1; attempt <= SEED_TAKE_ATTEMPTS; attempt++) {
     const take = await recordCheckedTake({
-      seedKey: input.seedKey,
+      record: input.record,
+      take: attempt,
       elevenLabsKey: input.elevenLabsKey,
       prompt,
       references,
@@ -262,8 +261,7 @@ export async function generateSeedDialogueSpeech(input: {
       take.wav,
       { contentType: 'audio/wav', upsert: true }
     );
-    // ponytail: only the kept take is billed to the organization; the platform eats
-    // the tries it threw away.
+    // ponytail: on the platform key only the kept take is billed; on the gateway every take is.
     return {
       speechId,
       storageKey: uploaded.fullPath,
@@ -273,11 +271,7 @@ export async function generateSeedDialogueSpeech(input: {
       turns,
       windows,
       charges: [
-        {
-          endpointId: SEED_AUDIO_ENDPOINT,
-          model: SEED_AUDIO_MODEL,
-          costMicros: seedAudioCost(take.billedSeconds),
-        },
+        ...seedCharge(take.billedSeconds),
         {
           endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
           model: SCRIBE_MODEL,

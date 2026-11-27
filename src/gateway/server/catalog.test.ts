@@ -411,6 +411,12 @@ describe('listGatewayModels', () => {
       '/v1/models?provider=grok': {
         models: [record({ activity: 'audio', displayName: 'Grok Voice' })],
       },
+      // No ElevenLabs record carries a card yet (TanStack/schemas#756).
+      '/v1/models?provider=elevenlabs': {
+        models: [
+          record({ rawId: 'music_v1', activity: 'audio', pricing: null }),
+        ],
+      },
     };
     expect(await listGatewayModels()).toEqual([
       {
@@ -447,6 +453,7 @@ describe('a record with no display name', () => {
       '/v1/models?provider=fal': { models: [] },
       '/v1/models?provider=gemini': { models: [] },
       '/v1/models?provider=grok': { models: [] },
+      '/v1/models?provider=elevenlabs': { models: [] },
       '/v1/models?provider=byteplus': {
         models: [
           record({

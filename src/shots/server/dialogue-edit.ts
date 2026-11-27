@@ -3,6 +3,8 @@
  * pick a version of the lines, pick or discard a reading (section), record
  * the lines again, cancel a recording in flight.
  */
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import {
   DIALOGUE_TTS_MODEL,
   dialogueAudioMaxSeconds,
@@ -431,6 +433,7 @@ export async function regenerateShotDialogue(
       ],
       minDurationSeconds: dialogueAudioMinSeconds([model]),
       maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+      gatewayRoutes: await resolveGatewayRoutes(scopedDb, AUDIO_ROUTE_TARGETS),
     };
     return {
       workflowRunId: await triggerWorkflow('/dialogue-audio', input),

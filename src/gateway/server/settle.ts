@@ -10,9 +10,8 @@ import {
 } from '@/billing/billing-observability';
 import { type Microdollars, ZERO_MICROS } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type { MediaVia } from '@/models/via';
 import { gatewayCharge } from '@/gateway/charge-lines';
-import type { GatewayJobOutput } from '@/gateway/schema';
+import type { GatewayJobOutput, GatewayVia } from '@/gateway/schema';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const WORKFLOW_NAME = 'GatewayGenerationWorkflow';
@@ -34,7 +33,7 @@ export async function settleGatewayJob(params: {
   usedOwnKey: boolean;
   /** Replay-stable, e.g. `${instanceId}:gateway-settle`. */
   idempotencyKey: string;
-  result: { outputs: GatewayJobOutput[]; via: MediaVia };
+  result: { outputs: GatewayJobOutput[]; via: GatewayVia };
   metadata?: Record<string, unknown>;
 }): Promise<Microdollars> {
   const { scopedDb, jobId } = params;

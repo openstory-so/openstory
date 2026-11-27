@@ -654,6 +654,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 ...payload,
                 targetVersionId: claim.version.id,
                 reservationId: input.reservationId,
+                gatewayRoutes: input.gatewayRoutes,
               },
               spawnStepName: `spawn-character-voice-${id}`,
               awaitStepName: `await-character-voice-${id}`,
@@ -1451,6 +1452,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               minDurationSeconds: dialogueSpeech.minDurationSeconds,
               maxDurationSeconds: dialogueSpeech.maxDurationSeconds,
               analysisModelId: plan.promptContext?.analysisModelId,
+              gatewayRoutes: input.gatewayRoutes,
             },
             spawnStepName: 'spawn-dialogue-audio',
             awaitStepName: 'await-dialogue-audio',
@@ -2052,6 +2054,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     // other models open their own.
                     ...(index === 0 ? { variantId: claimedTrack } : {}),
                     reservationId: input.reservationId,
+                    gatewayRoutes: input.gatewayRoutes,
                   },
                   spawnStepName: `spawn-music-track${suffix}`,
                   awaitStepName: `await-music-track${suffix}`,

@@ -3,6 +3,7 @@
 import {
   resolveGatewayRoutes,
   type GatewayRoutes,
+  type GatewayRouteTarget,
 } from '@/gateway/server/route';
 import {
   getEffectiveFalPricing,
@@ -17,19 +18,20 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { typedEntries } from '@/platform/typed-object';
 
 /** Grok only: the product builds no gateway body for fal, Seedream or Gemini stills yet (docs/architecture/model-gateway.md). */
-export function imageGatewayRoutes(
-  scopedDb: Pick<ScopedDb, 'apiKeys'>
-): Promise<GatewayRoutes> {
+export function imageRouteTargets(): GatewayRouteTarget[] {
   const ids = new Set(
     typedEntries(IMAGE_MODELS).flatMap(([key]) => {
       const id = nativeGrokImageModel(key);
       return id ? [id] : [];
     })
   );
-  return resolveGatewayRoutes(
-    scopedDb,
-    [...ids].map((modelId) => ({ provider: 'grok' as const, modelId }))
-  );
+  return [...ids].map((modelId) => ({ provider: 'grok' as const, modelId }));
+}
+
+export function imageGatewayRoutes(
+  scopedDb: Pick<ScopedDb, 'apiKeys'>
+): Promise<GatewayRoutes> {
+  return resolveGatewayRoutes(scopedDb, imageRouteTargets());
 }
 
 /**

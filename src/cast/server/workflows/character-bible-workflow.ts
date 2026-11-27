@@ -312,6 +312,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             voiceProvider: newVoiceProvider(),
             takes: SEED_VOICE_DEFAULT_TAKES,
             targetVersionId: claim.version.id,
+            gatewayRoutes: input.gatewayRoutes,
           };
           const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,

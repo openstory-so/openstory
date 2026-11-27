@@ -36,6 +36,8 @@
  * separately.
  */
 
+import { resolveGatewayRoutes } from '@/gateway/server/route';
+import { AUDIO_ROUTE_TARGETS } from '@/audio/gateway-targets';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { getRequestCountry } from '@/platform/server/request-country';
@@ -67,7 +69,7 @@ import {
 } from '@/sequences/pipeline';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
+import { imageRouteTargets } from '@/stills/server/image-gateway-routes';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
@@ -228,7 +230,10 @@ async function resolveStoryboardPayload(
     sequenceId,
     gatewayRoutes: {
       ...input.gatewayRoutes,
-      ...(await imageGatewayRoutes(scopedDb)),
+      ...(await resolveGatewayRoutes(scopedDb, [
+        ...imageRouteTargets(),
+        ...AUDIO_ROUTE_TARGETS,
+      ])),
     },
     cast,
     suggestedLocationIds,
