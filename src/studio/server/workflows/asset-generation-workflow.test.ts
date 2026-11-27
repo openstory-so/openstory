@@ -30,6 +30,24 @@ vi.doMock('@/gateway/server/phases', async (importOriginal) => ({
   releaseGatewayRun,
 }));
 
+const remoteTransport = vi.hoisted(() => ({
+  routes: [] as unknown[],
+  submit: vi.fn(),
+  poll: vi.fn(),
+}));
+vi.doMock('@/gateway/server/adapter/http', () => ({
+  gatewayTransport: (route: unknown) => {
+    remoteTransport.routes.push(route);
+    return {
+      modelId: '',
+      transport: {
+        submit: remoteTransport.submit,
+        poll: remoteTransport.poll,
+      },
+    };
+  },
+}));
+
 const { AssetGenerationWorkflow } = await import('./asset-generation-workflow');
 
 type Event = Readonly<WorkflowEvent<AssetGenerationWorkflowInput>>;
@@ -143,6 +161,52 @@ describe('AssetGenerationWorkflow', () => {
     expect(result.outputs).toEqual([
       { url: '/r2/a.png', contentType: 'image/png' },
     ]);
+  });
+
+  it('runs a remote route on the hosted gateway, records it as openstory, and holds or releases nothing here (#2438)', async () => {
+    remoteTransport.submit.mockResolvedValue({
+      kind: 'done',
+      jobId: 'hosted-1',
+      outputs: [{ url: '/r2/a.png', path: 'a.png', contentType: 'image/png' }],
+    });
+    const db = scopedDb('platform');
+    const completed = vi.spyOn(db.generatedAssets, 'markCompleted');
+    const result = await makeWorkflow().runBody(
+      event({
+        via: 'remote',
+        provider: 'grok',
+        endpointId: 'grok-imagine-image',
+      }),
+      step,
+      db
+    );
+    expect(remoteTransport.routes).toEqual([
+      {
+        via: 'remote',
+        target: { provider: 'grok', modelId: 'grok-imagine-image' },
+      },
+    ]);
+    expect(remoteTransport.submit).toHaveBeenCalledWith(
+      { prompt: 'Mara signs the log' },
+      'asset:asset-1'
+    );
+    expect(result.outputs).toEqual([
+      { url: '/r2/a.png', contentType: 'image/png' },
+    ]);
+    expect(completed).toHaveBeenCalledWith(
+      'asset-1',
+      expect.objectContaining({ provider: 'openstory' })
+    );
+    releaseGatewayRun.mockClear();
+    await makeWorkflow().fail(
+      event({
+        via: 'remote',
+        provider: 'grok',
+        endpointId: 'grok-imagine-image',
+      }),
+      db
+    );
+    expect(releaseGatewayRun).not.toHaveBeenCalled();
   });
 
   it('lets the click hold go when a gateway run fails', async () => {

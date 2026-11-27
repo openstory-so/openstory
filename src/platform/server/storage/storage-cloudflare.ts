@@ -9,6 +9,7 @@ import { env as workerEnv } from 'cloudflare:workers';
 import {
   buildR2Key,
   getPublicUrl,
+  StorageFileExistsError,
   type MultipartPart,
   type StorageBucket,
   type StorageFileInfo,
@@ -47,12 +48,17 @@ export async function uploadFile(
     const r2 = getR2Bucket();
     // R2 natively accepts all types in our union (ReadableStream, ArrayBuffer,
     // ArrayBufferView, Blob) — no conversion needed.
-    await r2.put(key, file, {
+    const written = await r2.put(key, file, {
       httpMetadata: {
         contentType: options?.contentType,
         cacheControl: options?.cacheControl ?? 'public, max-age=31536000',
       },
+      // `upsert: false` is create-only: R2 refuses atomically when the key exists.
+      ...(options?.upsert === false && {
+        onlyIf: new Headers({ 'if-none-match': '*' }),
+      }),
     });
+    if (written === null) throw new StorageFileExistsError(key);
 
     const publicUrl = getPublicUrl(bucket, path);
 
@@ -62,6 +68,7 @@ export async function uploadFile(
       fullPath: key,
     };
   } catch (error) {
+    if (error instanceof StorageFileExistsError) throw error;
     throw new Error(
       `Failed to upload file to ${bucket}/${path}: ${error instanceof Error ? error.message : 'Unknown error'}`
     );

@@ -37,11 +37,11 @@ import type { MediaVia, ProductVia } from '@/models/via';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
 import { openstoryImage } from '@/gateway/server/adapter';
-import { inProcessGateway } from '@/gateway/server/adapter/in-process';
-import type { GatewayModel } from '@/gateway/server/catalog';
+import { gatewayTransport } from '@/gateway/server/adapter/http';
 import {
   gatewayRouteKey,
   gatewayRunRoute,
+  type GatewayCallRoute,
   type GatewayRoute,
   type GatewayRoutes,
   type GatewayRouteTarget,
@@ -271,12 +271,12 @@ export function imageGatewayRoute(
   return { route: gatewayRunRoute(routes, target, body), body };
 }
 
-/** The gateway model and body when the route for this still is `openstory`; else null (direct). */
+/** The gateway route and body when this still goes to the gateway (in-process or hosted); else null (direct). */
 export function gatewayImageRequest(
   params: ImageGenerationParams,
   routes: GatewayRoutes | undefined,
   organizationId: string
-): { model: GatewayModel; body: GatewayJobInput } | null {
+): { route: GatewayCallRoute; body: GatewayJobInput } | null {
   const { route, body } = imageGatewayRoute(params, routes, organizationId);
   if (route.via === 'direct') {
     logger.info(`Image stays direct: ${route.reason}`, {
@@ -284,7 +284,7 @@ export function gatewayImageRequest(
     });
     return null;
   }
-  return { model: route.model, body };
+  return { route, body };
 }
 
 /** xAI takes references as data or CDN URIs. */
@@ -304,7 +304,7 @@ async function inlinedReferences(
 /** One gateway job: held, run, stored and charged in this step; a content refusal is released and rethrown. */
 async function generateOnGateway(
   params: ImageGenerationParams,
-  request: { model: GatewayModel; body: GatewayJobInput },
+  request: { route: GatewayCallRoute; body: GatewayJobInput },
   call: ImageGatewayCall
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
@@ -321,9 +321,8 @@ async function generateOnGateway(
     );
   }
   const folder = `gateway/${generateId()}`;
-  const transport = inProcessGateway({
+  const { modelId, transport } = gatewayTransport(request.route, {
     scopedDb: call.scopedDb,
-    model: request.model,
     runId: call.runId,
     store: (media, index) =>
       storeGatewayOutput({
@@ -339,7 +338,9 @@ async function generateOnGateway(
     reservation: call.runReservationId ? { id: call.runReservationId } : null,
     // Held with the stored URLs; sent with ones the provider can fetch, made only when it starts.
     wireBody:
-      request.model.provider === 'fal'
+      (request.route.via === 'openstory'
+        ? request.route.model.provider
+        : request.route.target.provider) === 'fal'
         ? async (held) =>
             jsonBody.parse(
               await fetchableFalBody(held, call.scopedDb.organizationId)
@@ -352,7 +353,7 @@ async function generateOnGateway(
             ).body,
   });
   const result = await generateImage({
-    adapter: openstoryImage(request.model.id, transport, {
+    adapter: openstoryImage(modelId, transport, {
       idempotencyKey: call.idempotencyKey,
     }),
     prompt: '',
@@ -374,7 +375,10 @@ async function generateOnGateway(
     metadata: {
       prompt: params.prompt,
       model: params.model,
-      endpointId: request.model.endpointId,
+      endpointId:
+        request.route.via === 'openstory'
+          ? request.route.model.endpointId
+          : modelId,
       numImages: imageUrls.length,
       seed: params.seed,
       usedOwnKey: false,

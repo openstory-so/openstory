@@ -29,6 +29,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { storeGatewayModel } from '@/gateway/server/db/gateway-models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import type { OwnKeyVia } from '@/models/server/create-adapter';
 import {
   forCall,
   openstoryText,
@@ -408,6 +409,29 @@ describe('openstoryText on the card route', () => {
     expect((await ledger()).charges).toEqual([2000]);
   });
 
+  it('charges a streamed structured run once, as the hosted chat endpoint runs it (#2438)', async () => {
+    const inner = adapter(() => []);
+    const structured = {
+      ...inner,
+      async *structuredOutputStream() {
+        inner.calls++;
+        yield* run();
+      },
+    };
+    await drain(
+      chat({
+        adapter: openstoryText(structured, meter(), 'vendor/model'),
+        messages: OPTIONS.messages,
+        modelOptions: OPTIONS.modelOptions,
+        threadId: 't',
+        outputSchema: { type: 'object', properties: {} },
+        stream: true,
+      })
+    );
+    expect(inner.calls).toBe(1);
+    expect((await ledger()).charges).toEqual([2000]);
+  });
+
   it('refuses before the provider call when the organization cannot cover the hold', async () => {
     await db
       .update(credits)
@@ -726,7 +750,7 @@ describe('the transaction description', () => {
 describe('withTextGateway', () => {
   const key = (
     source: 'organization' | 'platform',
-    via: ResolvedLlmKey['via']
+    via: OwnKeyVia
   ): ResolvedLlmKey =>
     source === 'organization'
       ? { key: 'k', source, via, meter: { uncharged: 'own key' } }
@@ -767,6 +791,21 @@ describe('withTextGateway', () => {
       expect(
         (await keys(resolved).resolveLlmKey('vendor/model')).meter
       ).toEqual({ uncharged: 'own key' });
+    }
+  });
+
+  it('leaves a hosted gateway key unmetered: the hosted side holds and charges (#2438)', async () => {
+    const hosted: ResolvedLlmKey = {
+      key: '',
+      source: 'platform',
+      via: 'openstory',
+      meter: { uncharged: 'hosted gateway' },
+    };
+    for (const resolved of [
+      await keys(hosted).resolveLlmKey('vendor/model'),
+      await keys(hosted).resolveRunLlmKey('vendor/model', 'res-1'),
+    ]) {
+      expect(resolved.meter).toEqual({ uncharged: 'hosted gateway' });
     }
   });
 

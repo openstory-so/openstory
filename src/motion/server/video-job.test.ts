@@ -70,11 +70,20 @@ vi.doMock('@/platform/server/storage/external-url', () => ({
       JSON.stringify(body).replaceAll('/r2/', 'https://fal.media/upload-')
     ),
 }));
+const remoteJobCharge = vi.fn();
+const actualHttp = await vi.importActual<
+  typeof import('@/gateway/server/adapter/http')
+>('@/gateway/server/adapter/http');
+vi.doMock('@/gateway/server/adapter/http', () => ({
+  ...actualHttp,
+  remoteJobCharge,
+}));
 vi.doMock('#env', () => ({
   getEnv: () => ({ FAL_KEY: 'platform-fal', XAI_API_KEY: 'platform-xai' }),
 }));
 
 const {
+  falApiKey,
   readGatewayCharge,
   pollVideoJob,
   releaseTimedOutVideoJob,
@@ -397,6 +406,27 @@ describe('a gateway clip after its run gives up or finishes (#2435)', () => {
     await expect(
       readGatewayCharge(step, { jobId: 'x', via: 'fal' }, scopedDb)
     ).resolves.toBeNull();
+  });
+
+  it('reads a hosted clip charge for display only: an outage answers null, never fails the run', async () => {
+    const step = asStub<WorkflowStep>({
+      do: (_name: string, fn: () => Promise<unknown>) => fn(),
+    });
+    const scopedDb = asStub<WorkflowScopedDb>({});
+    const job = {
+      jobId: 'remote:01M8B00000000000000000JB01',
+      via: 'openstory',
+    };
+    remoteJobCharge.mockResolvedValueOnce(12_000);
+    await expect(readGatewayCharge(step, job, scopedDb)).resolves.toBe(12_000);
+    remoteJobCharge.mockRejectedValueOnce(new Error('HTTP 503'));
+    await expect(readGatewayCharge(step, job, scopedDb)).resolves.toBeNull();
+  });
+
+  it('sends no placeholder as a fal key: a remote route has none, and only the body capture may run without one', () => {
+    expect(falApiKey({ key: 'k', source: 'platform' }, undefined)).toBe('k');
+    expect(falApiKey(null, fetch)).toBe('');
+    expect(() => falApiKey(null, undefined)).toThrow('no local fal key');
   });
 
   it('answers for the provider behind a gateway job, so Ark failures read as Ark', () => {

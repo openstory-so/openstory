@@ -51,8 +51,25 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
 vi.doMock('@/gateway/server/catalog', () => ({
   getGatewayModel: mockGetGatewayModel,
 }));
+const grokConfigured = vi.fn(() => true);
 vi.doMock('@/gateway/server/providers', () => ({
-  GATEWAY_DRIVERS: { grok: { configured: () => true } },
+  GATEWAY_DRIVERS: { grok: { configured: grokConfigured } },
+}));
+const mockRequireCheckedUploadRights = vi.fn();
+const actualUploadCheck = await vi.importActual<
+  typeof import('@/cast/server/upload-check')
+>('@/cast/server/upload-check');
+vi.doMock('@/cast/server/upload-check', () => ({
+  ...actualUploadCheck,
+  requireCheckedUploadRights: mockRequireCheckedUploadRights,
+}));
+const remoteConfigured = vi.fn(() => false);
+const actualRemote = await vi.importActual<
+  typeof import('@/gateway/server/remote-config')
+>('@/gateway/server/remote-config');
+vi.doMock('@/gateway/server/remote-config', () => ({
+  ...actualRemote,
+  remoteGatewayConfigured: remoteConfigured,
 }));
 
 const {
@@ -99,7 +116,11 @@ const GROK: GatewayModel = {
 
 const ORGANIZATION_ID = generateId();
 const USER_ID = 'user-1';
-const REQUEST = { ipAddress: null, userAgent: null };
+const REQUEST = {
+  ipAddress: null,
+  userAgent: null,
+  origin: 'https://openstory.so',
+};
 
 beforeAll(async () => {
   ({ db, close: closeDb } = await createTestDb());
@@ -123,6 +144,9 @@ beforeEach(async () => {
   mockTriggerWorkflow.mockResolvedValue('wf-run-1');
   mockRequireGenerationAllowed.mockResolvedValue(undefined);
   mockGetGatewayModel.mockResolvedValue(GROK);
+  grokConfigured.mockReturnValue(true);
+  remoteConfigured.mockReturnValue(false);
+  mockRequireCheckedUploadRights.mockResolvedValue(undefined);
 });
 
 function scoped(ownFalKey: boolean) {
@@ -240,6 +264,65 @@ describe('createGeneratedAsset', () => {
       }),
       { deduplicationId: `asset-${result.id}` }
     );
+  });
+
+  it('sends a model this install has no key for to the hosted gateway: no local job, hold or check (#2438)', async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({ prompt: 'Mara wipes her hands on a rag' }),
+      REQUEST
+    );
+    if (!result.ok) throw new Error('refused');
+    expect(await db.select().from(gatewayJobs)).toEqual([]);
+    expect(await db.select().from(creditReservations)).toEqual([]);
+    expect(mockGetGatewayModel).not.toHaveBeenCalled();
+    const [row] = await db.select().from(generatedAssets);
+    expect(row?.provider).toBe('openstory');
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/asset',
+      expect.objectContaining({
+        route: { via: 'remote', provider: 'grok', endpointId: GROK.id },
+      }),
+      { deduplicationId: `asset-${result.id}` }
+    );
+  });
+
+  it('runs the rights check on a remote click before anything ships (#2438)', async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const image = `/r2/characters/${ORGANIZATION_ID}/sheet.png`;
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({ prompt: 'Mara at the dryer', image }),
+      REQUEST
+    );
+    expect(result.ok).toBe(true);
+    expect(mockRequireCheckedUploadRights).toHaveBeenCalledWith(
+      expect.anything(),
+      [image],
+      REQUEST
+    );
+  });
+
+  it("refuses another organization's stored file on a remote click, leaving no row (#2438)", async () => {
+    grokConfigured.mockReturnValue(false);
+    remoteConfigured.mockReturnValue(true);
+    const result = await createGeneratedAsset(
+      scoped(false),
+      grokData({
+        prompt: 'Mara at the dryer',
+        image: '/r2/characters/other-org/sheet.png',
+      }),
+      REQUEST
+    );
+    expect(result).toEqual({
+      ok: false,
+      issues: [{ path: '', message: 'This file is not an upload of yours' }],
+    });
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 
   it('shows the charge on the run once its gateway job settles', async () => {

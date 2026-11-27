@@ -18,6 +18,10 @@ export const STORAGE_BUCKETS = {
   ELEMENTS: 'elements',
   /** Shared stitches (#2127): `<organizationId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
   STITCHES: 'stitches',
+  /** A self-hosted install's gateway inputs (#2438): `<organizationId>/<ULID>.<ext>`, `<organizationId>/keys/<hash>` pointers; expired by an R2 lifecycle rule. */
+  GATEWAY_UPLOADS: 'gateway-uploads',
+  /** A self-hosted install's record of which local objects are hosted gateway outputs (#2438): `<sha256 of the local key>` holds the hosted URL. */
+  GATEWAY_PROVENANCE: 'gateway-provenance',
 } as const;
 
 export type StorageBucket =
@@ -66,6 +70,14 @@ export const LIKENESS_CHECKED_BUCKETS: ReadonlySet<StorageBucket> = new Set([
   STORAGE_BUCKETS.TALENT,
   STORAGE_BUCKETS.ELEMENTS,
 ]);
+
+/** A create-only write (`upsert: false`) found an object already at the key; nothing was written. */
+export class StorageFileExistsError extends Error {
+  constructor(key: string) {
+    super(`An object already exists at ${key}`);
+    this.name = 'StorageFileExistsError';
+  }
+}
 
 export type UploadResult = {
   path: string;

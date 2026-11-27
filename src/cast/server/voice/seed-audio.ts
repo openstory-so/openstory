@@ -160,8 +160,8 @@ export function seedRecorderFor(params: AudioRun): SeedRecorder {
   const { routes, ...call } = params;
   return async (body, take) => {
     const route = gatewayRunRoute(routes, SEED_AUDIO_TARGET, body);
-    if (route.via === 'openstory') {
-      return gatewaySeedRecorder({ ...call, model: route.model })(body, take);
+    if (route.via !== 'direct') {
+      return gatewaySeedRecorder({ ...call, route })(body, take);
     }
     const { key } = await call.scopedDb.credentials.resolveKey('seed-speech');
     return platformSeedRecorder(key)(body, take);

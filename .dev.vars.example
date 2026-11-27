@@ -15,6 +15,9 @@ BETTER_AUTH_SECRET=
 API_KEY_ENCRYPTION_KEY=
 
 # AI keys are intentionally NOT prompted at deploy time. Add them either:
+#   - one key for every provider, paid from your openstory.so credits:
+#       wrangler secret put OPENSTORY_API_KEY   # openstory.so → Settings → API keys
+#     (a provider key set below still wins for its provider), or
 #   - per team, in the app (Settings → API Keys; OpenRouter also supports OAuth), or
 #   - server-wide, as Worker secrets after deploy:
 #       wrangler secret put FAL_KEY          # https://fal.ai/dashboard/keys

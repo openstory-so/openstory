@@ -9,10 +9,12 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { getEnv } from '#env';
 import {
+  getHostedLlmKey,
   getPlatformLlmKey,
   NO_ORGANIZATION,
   OWN_KEY,
   type LlmKeyInfo,
+  type OwnKeyVia,
 } from '@/models/server/create-adapter';
 import {
   getElevenLabsApiKey,
@@ -81,10 +83,7 @@ export type ResolvedApiKey =
 export type ResolvedLlmKey = LlmKeyInfo;
 
 /** Unmetered until `withTextGateway` puts a meter on a platform key. */
-function withVia(
-  key: ResolvedApiKey,
-  via: ResolvedLlmKey['via']
-): ResolvedLlmKey {
+function withVia(key: ResolvedApiKey, via: OwnKeyVia): ResolvedLlmKey {
   return key.source === 'organization'
     ? { ...key, via, meter: OWN_KEY }
     : { ...key, via, meter: NO_ORGANIZATION };
@@ -518,10 +517,10 @@ export function createApiKeysReadMethods(db: Database, organizationId: string) {
       }
     }
 
-    const platform = getPlatformLlmKey(model);
+    const platform = getPlatformLlmKey(model) ?? getHostedLlmKey();
     if (!platform) {
       throw new Error(
-        'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)'
+        'No platform LLM key available (set OPENROUTER_KEY, FAL_KEY or OPENSTORY_API_KEY)'
       );
     }
     if (fallbackReason) {

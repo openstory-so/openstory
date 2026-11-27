@@ -4,7 +4,7 @@
  * pinned on the key the run actually resolved — not blindly on OpenRouter.
  */
 
-import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import type { OwnKeyVia } from '@/models/server/create-adapter';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isLlmAuthError } from './sanitize-fail-response';
 
@@ -33,7 +33,7 @@ export async function handleLlmAuthFailure(
   return `Your ${LLM_KEY_LABELS[llmKey.via]} API key is invalid — update it in Settings.`;
 }
 
-const LLM_KEY_LABELS: Record<ResolvedLlmKey['via'], string> = {
+const LLM_KEY_LABELS: Record<OwnKeyVia, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
   xai: 'xAI',

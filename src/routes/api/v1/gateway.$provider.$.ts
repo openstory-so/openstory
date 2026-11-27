@@ -36,7 +36,7 @@ export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
             );
           }
           const body = bodySchema.parse(json);
-          await assertGatewayRate(context.organizationId);
+          await assertGatewayRate(context.organizationId, 'calls');
           const { job } = await submitGatewayJob(
             { provider, modelId, body },
             {
@@ -45,6 +45,7 @@ export const Route = createFileRoute('/api/v1/gateway/$provider/$')({
                 ipAddress: request.headers.get('cf-connecting-ip'),
                 userAgent: request.headers.get('user-agent'),
               },
+              origin: new URL(request.url).origin,
               idempotencyKey: readIdempotencyKey(request.headers),
               oauthClientId: context.oauth?.clientId ?? null,
             }

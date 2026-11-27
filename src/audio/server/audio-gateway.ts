@@ -2,9 +2,8 @@
 
 import type { GatewayJobInput } from '@/gateway/schema';
 import { runGatewayToEnd } from '@/gateway/server/adapter';
-import { inProcessGateway } from '@/gateway/server/adapter/in-process';
-import type { GatewayModel } from '@/gateway/server/catalog';
-import type { GatewayRoutes } from '@/gateway/server/route';
+import { gatewayTransport } from '@/gateway/server/adapter/http';
+import type { GatewayCallRoute, GatewayRoutes } from '@/gateway/server/route';
 import { storeGatewayOutput } from '@/gateway/server/storage';
 import { UPLOAD_RIGHTS_CHECKED } from '@/gateway/server/submit-job';
 import { generateId } from '@/platform/id';
@@ -13,8 +12,8 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 /** A call routed to the gateway: the run's own step, model and key. */
 export type AudioGatewayCall = {
   readonly scopedDb: WorkflowScopedDb;
-  /** The model as it read at the trigger. */
-  readonly model: GatewayModel;
+  /** The run's route for this call: the model as it read at the trigger, or the hosted gateway. */
+  readonly route: GatewayCallRoute;
   readonly runId: string;
   /** The run's reservation: each job charges it instead of holding again (#2435). */
   readonly reservationId: string | undefined;
@@ -22,8 +21,8 @@ export type AudioGatewayCall = {
   readonly idempotencyKey: string;
 };
 
-/** A run's audio calls: its routes and what a gateway call needs; the model comes from the route. */
-export type AudioRun = Omit<AudioGatewayCall, 'model'> & {
+/** A run's audio calls: its routes and what a gateway call needs; the route is per call. */
+export type AudioRun = Omit<AudioGatewayCall, 'route'> & {
   readonly routes: GatewayRoutes | undefined;
 };
 
@@ -36,11 +35,10 @@ export function runAudioOnGateway(
   call: AudioGatewayCall,
   body: GatewayJobInput
 ) {
-  const { scopedDb, model, runId } = call;
+  const { scopedDb, runId } = call;
   const folder = `audio-gateway/${generateId()}`;
-  const gateway = inProcessGateway({
+  const { transport } = gatewayTransport(call.route, {
     scopedDb,
-    model,
     runId,
     store: (media, index) =>
       storeGatewayOutput({
@@ -55,7 +53,7 @@ export function runAudioOnGateway(
     wireBody: async (body) => body,
   });
   return runGatewayToEnd(
-    gateway,
+    transport,
     { idempotencyKey: call.idempotencyKey },
     body
   );

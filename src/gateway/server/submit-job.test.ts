@@ -17,6 +17,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { createTestDb } from '@/platform/server/db/test-d1';
 import { generateId } from '@/platform/id';
+import { ulid } from 'ulid';
 import type { Database } from '@/platform/server/db/client';
 import {
   chargeLines,
@@ -213,6 +214,14 @@ vi.doMock('@/gateway/server/providers', () => ({
 vi.doMock('@/gateway/server/catalog', () => ({ getGatewayModel }));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/cast/server/upload-check', () => ({ requireCheckedUploadRights }));
+/** The R2 keys still stored: a hosted output must be one. */
+const storedKeys = new Set<string>();
+const realStorage =
+  await import('@/platform/server/storage/storage-cloudflare');
+vi.doMock('#storage', () => ({
+  ...realStorage,
+  storageObjectSize: async (key: string) => (storedKeys.has(key) ? 1 : null),
+}));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
@@ -231,6 +240,7 @@ const otherOrganizationId = generateId();
 const brokeOrganizationId = generateId();
 const userId = generateId();
 const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
+const ORIGIN = 'https://openstory.so';
 
 const PROMPT =
   'Mara, a ferry mechanic, wipes her hands on a rag in the engine room';
@@ -241,12 +251,19 @@ const VIDEO = {
   body: BODY,
 } as const;
 
+/** A live gateway upload of the organization: stored now, so within its expiry. */
+function liveUpload(orgId: string): string {
+  const key = `gateway-uploads/${orgId}/${generateId()}.png`;
+  storedKeys.add(key);
+  return `${ORIGIN}/r2/${key}`;
+}
+
 function ctx(
   scopedDb: ReturnType<typeof createScopedDb>,
   idempotencyKey: string | null = null,
   oauthClientId: string | null = null
 ) {
-  return { scopedDb, request, idempotencyKey, oauthClientId };
+  return { scopedDb, request, origin: ORIGIN, idempotencyKey, oauthClientId };
 }
 
 function lastPayload(): GatewayGenerationWorkflowInput {
@@ -721,6 +738,125 @@ describe('submitGatewayJob', () => {
     expect(replay).toBe(false);
   });
 
+  it("refuses another organization's gateway upload, and accepts the caller's own (#2438)", async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const foreign = {
+      ...VIDEO,
+      body: {
+        ...BODY,
+        image: {
+          url: 'https://openstory.so/r2/gateway-uploads/01OTHERORGANIZATION0000000/01J00000000000000000000000.png',
+        },
+      },
+    };
+    const error = await refused(foreign);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toMatchObject({
+      message: 'An uploaded file belongs to another organization',
+    });
+    expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+
+    const own = {
+      ...VIDEO,
+      body: {
+        ...BODY,
+        image: { url: liveUpload(organizationId) },
+      },
+    };
+    const { replay } = await submitGatewayJob(own, ctx(scopedDb));
+    expect(replay).toBe(false);
+  });
+
+  describe("an output of the caller's own hosted job is generated media, not an upload (#2438)", () => {
+    const outputOf = async (orgId: string) => {
+      const scopedDb = createScopedDb(orgId, userId);
+      const { job } = await submitGatewayJob(VIDEO, ctx(scopedDb));
+      const stored = `/r2/thumbnails/org/${orgId}/gateway/${job.id}/output-0.png`;
+      await scopedDb.gatewayJobs.markSucceeded(job.id, {
+        outputs: [{ url: stored, path: 'x', contentType: 'image/png' }],
+        costMicros: 0,
+        via: 'xai',
+      });
+      storedKeys.add(stored.slice('/r2/'.length));
+      requireCheckedUploadRights.mockClear();
+      triggerWorkflow.mockClear();
+      return { stored, url: `${ORIGIN}${stored}`, jobId: job.id };
+    };
+    const withImage = (url: string) => ({
+      ...VIDEO,
+      body: { ...BODY, image: { url } },
+    });
+
+    it('is accepted as an input without the classifier', async () => {
+      const { url } = await outputOf(organizationId);
+      const scopedDb = createScopedDb(organizationId, userId);
+      const { replay } = await submitGatewayJob(withImage(url), ctx(scopedDb));
+      expect(replay).toBe(false);
+      expect(requireCheckedUploadRights).toHaveBeenCalledWith(
+        expect.anything(),
+        [],
+        request
+      );
+    });
+
+    it("is refused when it is another organization's", async () => {
+      const { url } = await outputOf(otherOrganizationId);
+      const error = await refused(withImage(url));
+      expect(error).toMatchObject({
+        message: 'An uploaded file belongs to another organization',
+      });
+      expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+    });
+
+    it('is classified when it only looks like one: no such output, another host, or deleted', async () => {
+      const { stored, jobId } = await outputOf(organizationId);
+      const scopedDb = createScopedDb(organizationId, userId);
+      const lookalikes = [
+        `${ORIGIN}/r2/thumbnails/org/${organizationId}/gateway/${jobId}/output-1.png`,
+        `https://media.example.com${stored}`,
+      ];
+      for (const url of lookalikes) {
+        requireCheckedUploadRights.mockClear();
+        await submitGatewayJob(withImage(url), ctx(scopedDb));
+        expect(requireCheckedUploadRights).toHaveBeenCalledWith(
+          expect.anything(),
+          [url],
+          request
+        );
+      }
+      storedKeys.delete(stored.slice('/r2/'.length));
+      requireCheckedUploadRights.mockClear();
+      await submitGatewayJob(withImage(`${ORIGIN}${stored}`), ctx(scopedDb));
+      expect(requireCheckedUploadRights).toHaveBeenCalledWith(
+        expect.anything(),
+        [`${ORIGIN}${stored}`],
+        request
+      );
+    });
+
+    it('leaves an upload showing a photoreal face refused as before', async () => {
+      requireCheckedUploadRights.mockRejectedValueOnce(
+        new AttestationRequiredError('needs a portrait attestation')
+      );
+      const error = await refused(withImage(liveUpload(organizationId)));
+      expect(error).toBeInstanceOf(AttestationRequiredError);
+    });
+
+    it('refuses an expired or deleted upload cleanly, so the caller sends it again', async () => {
+      const expired = `${ORIGIN}/r2/gateway-uploads/${organizationId}/${ulid(Date.now() - 25 * 60 * 60 * 1000)}.png`;
+      storedKeys.add(expired.slice(`${ORIGIN}/r2/`.length));
+      const deleted = `${ORIGIN}/r2/gateway-uploads/${organizationId}/${generateId()}.png`;
+      for (const url of [expired, deleted]) {
+        const error = await refused(withImage(url));
+        expect(error).toBeInstanceOf(ValidationError);
+        expect(error).toMatchObject({
+          message: 'Upload expired; send it again',
+        });
+      }
+      expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+    });
+  });
+
   it('refuses a provider with no platform key before the hold, as a 503', async () => {
     configured.mockReturnValueOnce(false);
     const error = await refused(VIDEO);
@@ -786,7 +922,7 @@ describe('submitGatewayJob', () => {
     const hold = () =>
       holdGatewayJob(model, VIDEO.body, {
         scopedDb,
-        rights: { scopedDb, request },
+        rights: { scopedDb, request, origin: ORIGIN },
         idempotencyKey: 'hold-1',
         oauthClientId: null,
         runReservationId: null,
@@ -825,7 +961,7 @@ describe('submitGatewayJob', () => {
     const hold = (body: GatewayJobInput) =>
       holdGatewayJob(model, body, {
         scopedDb,
-        rights: { scopedDb, request },
+        rights: { scopedDb, request, origin: ORIGIN },
         idempotencyKey: 'hold-2',
         oauthClientId: null,
         runReservationId: null,

@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  gatewayChatBodySchema,
+  MAX_OUTPUT_SCHEMA_BYTES,
+} from '@/gateway/chat-schema';
 import { streamGatewayChat } from './chat';
 
 const body = {
@@ -37,5 +41,48 @@ describe('streamGatewayChat', () => {
       streamGatewayChat(db, 'anthropic/claude-sonnet-5.5', body, null)
     ).rejects.toThrow('cannot be priced');
     expect(db.apiKeys.resolvePlatformLlmKey).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an oversized, non-object or invalid outputSchema at the body, before any hold (#2438)', () => {
+    const big = {
+      type: 'object',
+      description: 'x'.repeat(MAX_OUTPUT_SCHEMA_BYTES),
+    };
+    for (const [outputSchema, message] of [
+      [big, 'above'],
+      [{ type: 'string' }, 'type "object"'],
+      [{ type: 'object', properties: { a: { type: 7 } } }, 'not a JSON Schema'],
+      // A remote $ref is never fetched: zod refuses it while compiling.
+      [
+        {
+          type: 'object',
+          properties: { a: { $ref: 'https://example.com/s.json' } },
+        },
+        'not a JSON Schema',
+      ],
+    ] as const) {
+      const parsed = gatewayChatBodySchema.safeParse({ ...body, outputSchema });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toContain(message);
+    }
+    expect(
+      gatewayChatBodySchema.safeParse({
+        ...body,
+        outputSchema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+      }).success
+    ).toBe(true);
+    // A self-referencing schema compiles once at the body (zod builds it lazily) and is held as usual.
+    const tree = gatewayChatBodySchema.safeParse({
+      ...body,
+      outputSchema: {
+        type: 'object',
+        properties: { child: { $ref: '#' } },
+      },
+    });
+    expect(tree.success).toBe(true);
   });
 });

@@ -13,7 +13,12 @@ export async function uploadResponse(
   response: Response,
   bucket: StorageBucket,
   path: string,
-  options?: { contentType?: string; cacheControl?: string }
+  options?: {
+    contentType?: string;
+    cacheControl?: string;
+    /** `false`: create-only, never replace an object. */
+    upsert?: boolean;
+  }
 ): Promise<UploadResult> {
   const body = response.body;
   if (!body) {
@@ -45,7 +50,7 @@ export async function uploadResponse(
       });
       return uploadFile(bucket, path, fixed.readable, {
         ...options,
-        upsert: true,
+        upsert: options?.upsert ?? true,
       });
     }
 
@@ -54,8 +59,14 @@ export async function uploadResponse(
     // generated images, motion clips, music tracks), so this stays
     // within Worker memory limits.
     const buffer = await response.arrayBuffer();
-    return uploadFile(bucket, path, buffer, { ...options, upsert: true });
+    return uploadFile(bucket, path, buffer, {
+      ...options,
+      upsert: options?.upsert ?? true,
+    });
   }
 
-  return uploadFile(bucket, path, body, { ...options, upsert: true });
+  return uploadFile(bucket, path, body, {
+    ...options,
+    upsert: options?.upsert ?? true,
+  });
 }

@@ -88,7 +88,7 @@ const still = {
 describe('gatewayImageRequest', () => {
   it("sends a Grok still with no references as xAI's own body", () => {
     const request = gatewayImageRequest(still, OPENSTORY, ORG);
-    expect(request?.model).toEqual(GROK);
+    expect(request?.route).toEqual({ via: 'openstory', model: GROK });
     expect(request?.body).toMatchObject({
       model: 'grok-imagine-image-2.0',
       n: 1,
@@ -139,9 +139,11 @@ describe('withGatewayImageQuotes', () => {
 
   it('quotes an openstory Grok still at exactly the gateway hold', () => {
     const request = gatewayImageRequest(still, OPENSTORY, ORG);
-    if (!request) throw new Error('expected an openstory request');
+    if (request?.route.via !== 'openstory') {
+      throw new Error('expected an openstory request');
+    }
     const hold = gatewayHoldMicros(
-      priceGatewayJob(request.model.card, request.body)
+      priceGatewayJob(request.route.model.card, request.body)
     );
     const quote = estimateImageCost('grok_imagine_image', '16:9', 1, {
       pricing: withGatewayImageQuotes(fal, OPENSTORY),
@@ -249,16 +251,31 @@ const FAL_ROWS_EDIT = {
   [NANO_EDIT.id]: { unitPrice: micros(1), unit: 'images' },
 };
 
+/** The held model when a still runs in-process on the gateway. */
+function heldModel(
+  request: NonNullable<ReturnType<typeof gatewayImageRequest>>
+) {
+  if (request.route.via !== 'openstory') throw new Error('not held here');
+  return request.route.model;
+}
+
+/** The held model's id when a still runs in-process on the gateway. */
+function heldModelId(
+  request: ReturnType<typeof gatewayImageRequest>
+): string | null {
+  return request?.route.via === 'openstory' ? request.route.model.id : null;
+}
+
 describe('a fal still', () => {
   it('runs on the gateway with no references', () => {
     const request = gatewayImageRequest(falStill, FAL_ROUTES, ORG);
-    expect(request?.model.id).toBe(NANO.id);
+    expect(heldModelId(request)).toBe(NANO.id);
     expect(request?.body).toMatchObject({ prompt: falStill.prompt });
   });
 
   it('runs on the gateway with references, through the edit endpoint', () => {
     const request = gatewayImageRequest(withRefs, FAL_ROUTES, ORG);
-    expect(request?.model.id).toBe(NANO_EDIT.id);
+    expect(heldModelId(request)).toBe(NANO_EDIT.id);
     expect(request?.body).toMatchObject({
       image_urls: [stableMediaUrl(`/r2/characters/org/${ORG}/a.png`, ORG)],
     });
@@ -272,7 +289,9 @@ describe('a fal still', () => {
         reason: 'text_input_tokens (text_input_tokens): required',
       },
     };
-    expect(gatewayImageRequest(falStill, routes, ORG)?.model.id).toBe(NANO.id);
+    expect(heldModelId(gatewayImageRequest(falStill, routes, ORG))).toBe(
+      NANO.id
+    );
     expect(gatewayImageRequest(withRefs, routes, ORG)).toBeNull();
   });
 
@@ -298,7 +317,9 @@ describe('a fal still', () => {
           edit: params === withRefs,
         });
         expect(quote).toBe(
-          gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
+          gatewayHoldMicros(
+            priceGatewayJob(heldModel(request).card, request.body)
+          )
         );
       }
     }
@@ -330,7 +351,7 @@ describe('a fal still', () => {
     const request = gatewayImageRequest(falStill, routes, ORG);
     if (!request) throw new Error('expected an openstory request');
     expect(estimateImageCost('nano_banana_2', '16:9', 1, { pricing })).toBe(
-      gatewayHoldMicros(priceGatewayJob(request.model.card, request.body))
+      gatewayHoldMicros(priceGatewayJob(heldModel(request).card, request.body))
     );
     const direct = withGatewayImageQuotes(FAL_ROWS, {});
     expect(estimateImageCost('nano_banana_2', '16:9', 2, { pricing })).toBe(
@@ -421,7 +442,7 @@ describe('a stored relative reference on a `format: uri` field', () => {
       try {
         const first = gatewayImageRequest(withRefs, routes(), ORG);
         const retried = gatewayImageRequest(withRefs, routes(), ORG);
-        expect(first?.model.id).toBe(NANO_EDIT.id);
+        expect(heldModelId(first)).toBe(NANO_EDIT.id);
         expect(first?.body).toMatchObject({ image_urls: [held] });
         expect(retried?.body).toEqual(first?.body);
         // The quote makes the same decision.

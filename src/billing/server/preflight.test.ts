@@ -17,6 +17,11 @@ import {
 } from './preflight';
 import { asStub } from '@/test/as-stub';
 
+const env = vi.hoisted((): { current: Record<string, string> } => ({
+  current: {},
+}));
+vi.mock('#env', () => ({ getEnv: () => env.current }));
+
 type StubProvider = 'fal' | 'openrouter' | 'llmtr';
 
 function fakeScopedDb(opts: {
@@ -247,4 +252,55 @@ describe('releaseReservationOnThrow', () => {
 
     expect(zeroReservation).not.toHaveBeenCalled();
   });
+});
+
+describe('an install on the hosted gateway (#2438)', () => {
+  const ONE_KEY = { OPENSTORY_API_KEY: 'osk_test' };
+  const withEnv = async (
+    values: Record<string, string>,
+    run: () => Promise<void>
+  ) => {
+    env.current = values;
+    try {
+      await run();
+    } finally {
+      env.current = {};
+    }
+  };
+
+  it('all remote: an OpenStory key and no platform key holds and checks nothing here', () =>
+    withEnv(ONE_KEY, async () => {
+      const db = fakeScopedDb({ keys: [], canAfford: false });
+      const hold = vi.spyOn(db.billing, 'createReservation');
+      expect(await reserveRunCredits(db, COST)).toBeUndefined();
+      await expect(requireCredits(db, COST)).resolves.toBeUndefined();
+      expect(hold).not.toHaveBeenCalled();
+    }));
+
+  it('mixed: an OpenStory key beside a platform key still checks and holds', () =>
+    withEnv({ ...ONE_KEY, OPENROUTER_KEY: 'or' }, async () => {
+      const db = fakeScopedDb({ keys: [], canAfford: false });
+      await expect(reserveRunCredits(db, COST)).rejects.toThrow(
+        InsufficientCreditsError
+      );
+      await expect(requireCredits(db, COST)).rejects.toThrow(
+        InsufficientCreditsError
+      );
+      const funded = fakeScopedDb({ keys: [], canAfford: true });
+      expect(await reserveRunCredits(funded, COST)).toBe('res_1');
+    }));
+
+  it('all local: no OpenStory key is unchanged', () =>
+    withEnv({ FAL_KEY: 'fal' }, async () => {
+      const db = fakeScopedDb({ keys: [], canAfford: true });
+      expect(await reserveRunCredits(db, COST)).toBe('res_1');
+    }));
+
+  it('still holds platform-only work, which runs on this server', () =>
+    withEnv(ONE_KEY, async () => {
+      const db = fakeScopedDb({ keys: [], canAfford: true });
+      expect(await reserveRunCredits(db, COST, { providers: [] })).toBe(
+        'res_1'
+      );
+    }));
 });

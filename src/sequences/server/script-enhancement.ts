@@ -77,7 +77,12 @@ export async function prepareBilling(
     // #1567: the call's own hold decides; one it cannot take runs free.
     ...(opts?.allowUnfunded && { whenShort: 'run free' as const }),
   });
-  if (llmKey.source === 'organization' || opts?.allowUnfunded) {
+  // A hosted gateway call is checked and charged there (#2438).
+  if (
+    llmKey.source === 'organization' ||
+    llmKey.via === 'openstory' ||
+    opts?.allowUnfunded
+  ) {
     return { llmKey };
   }
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));

@@ -45,7 +45,7 @@ import {
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { MediaVia, ProductVia } from '@/models/via';
-import type { GatewayRouteTarget } from '@/gateway/server/route';
+import { routesRemote, type GatewayRouteTarget } from '@/gateway/server/route';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -80,6 +80,7 @@ import {
   createNativeGeminiVideoAdapter,
   createNativeGrokVideoAdapter,
   isArkDraftTask,
+  falApiKey,
   resolveFalKey,
   resolveOptionalFalKey,
   resolveOptionalXaiKey,
@@ -223,8 +224,13 @@ async function submitFalStudioVideoJob(
       `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this organization`
     );
   }
+  // The hosted gateway sends this body: no fal key here, and the transport uploads local URLs (#2438).
+  const remote = routesRemote(options.gateway?.routes, {
+    provider: 'fal',
+    modelId: studioVideoEndpointId(modelKey, mode),
+  });
+  const key = remote ? null : await resolveFalKey(options.credentials);
   if (mode !== 'text') {
-    const key = await resolveFalKey(options.credentials);
     const { endpointId, built } = buildStudioImageModeInput(
       options,
       modelKey,
@@ -237,16 +243,21 @@ async function submitFalStudioVideoJob(
       via: 'fal',
       modelId: endpointId,
       threadId,
-      usedOwnKey: key.source === 'organization',
-      send: (fetch = fetchableFalFetch(key.key, workersSafeFetch)) =>
-        generateVideo({
-          adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+      usedOwnKey: key?.source === 'organization',
+      send: (capture) => {
+        const apiKey = falApiKey(key, capture);
+        return generateVideo({
+          adapter: falVideo(endpointId, {
+            apiKey,
+            fetch: capture ?? fetchableFalFetch(apiKey, workersSafeFetch),
+          }),
           prompt: built.prompt,
           modelOptions: built.modelOptions,
           timeout: FAL_REQUEST_TIMEOUT_MS,
           threadId,
           debug: false,
-        }),
+        });
+      },
     });
     return { ...sent, modelKey, endpointId, threadId };
   }
@@ -258,7 +269,6 @@ async function submitFalStudioVideoJob(
     resolution: options.resolution,
     generateAudio: options.generateAudio,
   });
-  const key = await resolveFalKey(options.credentials);
   const endpointId = studioVideoEndpointId(modelKey, mode);
   const sent = await sendVideoJob({
     gateway: options.gateway,
@@ -267,10 +277,10 @@ async function submitFalStudioVideoJob(
     via: 'fal',
     modelId: endpointId,
     threadId,
-    usedOwnKey: key.source === 'organization',
+    usedOwnKey: key?.source === 'organization',
     send: (fetch) =>
       generateVideo({
-        adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+        adapter: falVideo(endpointId, { apiKey: falApiKey(key, fetch), fetch }),
         prompt: built.prompt,
         modelOptions: built.modelOptions,
         timeout: FAL_REQUEST_TIMEOUT_MS,

@@ -57,6 +57,13 @@ vi.doMock('./providers', () => ({
     ])
   ),
 }));
+let remoteKey = false;
+const remoteConfig =
+  await vi.importActual<typeof import('./remote-config')>('./remote-config');
+vi.doMock('./remote-config', () => ({
+  ...remoteConfig,
+  remoteGatewayConfigured: () => remoteKey,
+}));
 const {
   gatewayCannotRun,
   gatewayRunRoute,
@@ -236,5 +243,98 @@ describe('gatewayRunRoute', () => {
       gatewayRunRoute(routes, target, {})
     );
     expect(snapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe('self-hosted on one key (#2438)', () => {
+  const resolve = (provider: 'grok' | 'elevenlabs', modelId: string) =>
+    resolveGatewayRoute({
+      scopedDb: scopedDb(false),
+      provider,
+      modelId,
+      body: { n: 1 },
+    });
+
+  it('sends a provider with no key here to the hosted gateway, snapshot or not', async () => {
+    remoteKey = true;
+    configured.mockReturnValue(false);
+    try {
+      expect(await resolve('grok', HOLDABLE.id)).toEqual({
+        via: 'remote',
+        target: { provider: 'grok', modelId: HOLDABLE.id },
+      });
+      expect((await resolve('grok', 'missing')).via).toBe('remote');
+    } finally {
+      remoteKey = false;
+      configured.mockReturnValue(true);
+    }
+  });
+
+  it('keeps a provider key on this install winning over the OpenStory key', async () => {
+    remoteKey = true;
+    try {
+      expect((await resolve('grok', HOLDABLE.id)).via).toBe('openstory');
+      expect(await resolve('grok', 'missing')).toEqual({
+        via: 'direct',
+        reason: 'not in the gateway snapshot',
+      });
+    } finally {
+      remoteKey = false;
+    }
+  });
+
+  it('keeps an organization key on the direct path', async () => {
+    remoteKey = true;
+    configured.mockReturnValue(false);
+    try {
+      const route = await resolveGatewayRoute({
+        scopedDb: scopedDb(true),
+        provider: 'grok',
+        modelId: HOLDABLE.id,
+        body: { n: 1 },
+      });
+      expect(route.via).toBe('direct');
+    } finally {
+      remoteKey = false;
+      configured.mockReturnValue(true);
+    }
+  });
+
+  it('never sends ElevenLabs to the hosted gateway', async () => {
+    remoteKey = true;
+    configured.mockReturnValue(false);
+    try {
+      expect(await resolve('elevenlabs', 'music_v1')).toMatchObject({
+        via: 'direct',
+        reason: expect.stringMatching(/saved voices/),
+      });
+    } finally {
+      remoteKey = false;
+      configured.mockReturnValue(true);
+    }
+  });
+
+  it('carries the remote route on the payload and skips the local body check in the run', async () => {
+    remoteKey = true;
+    configured.mockReturnValue(false);
+    try {
+      const routes = await resolveGatewayRoutes(scopedDb(false), [
+        { provider: 'grok', modelId: HOLDABLE.id },
+      ]);
+      expect(routes).toEqual({ 'grok/grok-imagine-image': { via: 'remote' } });
+      expect(
+        gatewayRunRoute(
+          routes,
+          { provider: 'grok', modelId: HOLDABLE.id },
+          { anything: 'the hosted side checks it' }
+        )
+      ).toEqual({
+        via: 'remote',
+        target: { provider: 'grok', modelId: HOLDABLE.id },
+      });
+    } finally {
+      remoteKey = false;
+      configured.mockReturnValue(true);
+    }
   });
 });

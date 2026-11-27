@@ -26,9 +26,13 @@ import {
   openstoryVideoStatus,
 } from '@/gateway/server/adapter';
 import {
-  inProcessGateway,
+  gatewayPoller,
+  gatewayTransport,
+  remoteJobCharge,
+} from '@/gateway/server/adapter/http';
+import { remoteJobOf } from '@/gateway/server/remote-config';
+import {
   gatewayRunOf,
-  inProcessPoller,
   releaseInProcessJob,
 } from '@/gateway/server/adapter/in-process';
 import type { GatewayStore } from '@/gateway/server/phases';
@@ -73,6 +77,7 @@ import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 import { getVideoJobStatus } from './video-job-status';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
@@ -84,6 +89,16 @@ export async function resolveFalKey(
 ): Promise<ResolvedApiKey> {
   if (credentials) return credentials.resolveKey('fal');
   return { key: getEnv().FAL_KEY, source: 'platform' };
+}
+
+/** A remote route resolves no fal key: its `send` only runs under the body capture, which sends nothing. */
+export function falApiKey(
+  key: ResolvedApiKey | null,
+  capture: typeof globalThis.fetch | undefined
+): string {
+  if (key) return key.key;
+  if (capture) return '';
+  throw new NonRetryableError('A hosted-gateway clip has no local fal key');
 }
 
 export async function resolveOptionalFalKey(
@@ -261,9 +276,8 @@ export async function sendVideoJob(params: {
         reason: route.reason,
       });
     } else {
-      const transport = inProcessGateway({
+      const { modelId, transport } = gatewayTransport(route, {
         scopedDb: gateway.scopedDb,
-        model: route.model,
         runId: gateway.runId,
         store: gateway.store,
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
@@ -279,7 +293,7 @@ export async function sendVideoJob(params: {
             : async (held) => held,
       });
       const job = await generateVideo({
-        adapter: openstoryVideo(route.model.id, transport, {
+        adapter: openstoryVideo(modelId, transport, {
           idempotencyKey: gateway.idempotencyKey,
         }),
         prompt: '',
@@ -307,7 +321,8 @@ export async function releaseTimedOutVideoJob(
   scopedDb: WorkflowScopedDb,
   error: string
 ): Promise<void> {
-  if (job.via !== 'openstory') return;
+  // A hosted job cannot be stopped from here; it ends and is charged there.
+  if (job.via !== 'openstory' || remoteJobOf(job.jobId)) return;
   await releaseInProcessJob(scopedDb, job.jobId, error).catch(
     (err: unknown) => {
       logger.error('Releasing a timed-out gateway video job failed', { err });
@@ -324,6 +339,15 @@ export async function readGatewayCharge(
   if (job.via !== 'openstory') return null;
   const charge = await step.do('read-gateway-charge', async () => {
     const done = doneVideoJob(job.jobId);
+    const handle = done ? done.jobId : job.jobId;
+    const remote = handle ? remoteJobOf(handle) : null;
+    // The hosted organization paid: shown, never debited here, so an outage reads as unknown.
+    if (remote) {
+      return remoteJobCharge(remote).catch((error: unknown) => {
+        logger.warn('Could not read a hosted clip charge', { error });
+        return null;
+      });
+    }
     const jobId = done ? done.jobId : (gatewayRunOf(job.jobId)?.jobId ?? null);
     if (!jobId) {
       logger.warn('A gateway clip names no job: its charge is not recorded');
@@ -368,7 +392,10 @@ export async function pollVideoJob(
       throw new Error(`Video job on the gateway polled without its store`);
     }
     return getVideoJobStatus({
-      adapter: openstoryVideoStatus(endpointId, inProcessPoller(ctx.gateway)),
+      adapter: openstoryVideoStatus(
+        endpointId,
+        gatewayPoller(job.jobId, ctx.gateway)
+      ),
       jobId: job.jobId,
       ...thread,
     });

@@ -21,6 +21,8 @@ declare namespace Cloudflare {
     SEED_SPEECH_API_KEY?: string;
     SEED_SPEECH_BASE_URL?: string;
     SEED_SPEECH_QPM?: string;
+    /** A self-hosted install's `osk_` key: providers with no key here run on the hosted gateway (#2438). */
+    OPENSTORY_API_KEY?: string;
     /** Served at /.well-known/openai-apps-challenge (#2138). */
     OPENAI_APPS_CHALLENGE?: string;
     /** Storage CDN domain; unset means the worker's `/r2/$` route serves. */
@@ -44,6 +46,8 @@ declare namespace Cloudflare {
     XAI_BASE_URL?: string;
     GEMINI_BASE_URL?: string;
     OPENROUTER_BASE_URL?: string;
+    /** The hosted gateway `OPENSTORY_API_KEY` calls; default https://openstory.so. */
+    OPENSTORY_GATEWAY_URL?: string;
     /** `'1'` while recording e2e fixtures against the real providers. */
     E2E_RECORD?: string;
     /** `'true'` when e2e runs real workflows instead of mock trigger ids. */

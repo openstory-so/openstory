@@ -3,6 +3,7 @@
  */
 
 import type { GatewayModel } from '@/gateway/server/catalog';
+import type { GatewayProvider } from '@/gateway/schema';
 import type { GatewayRoutes } from '@/gateway/server/route';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
@@ -1881,7 +1882,9 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
         /** The click's job and hold, so a failed run lets the hold go. */
         hold: { jobId: string; reservationId: string };
       }
-    | { via: 'fal'; endpointId: string };
+    | { via: 'fal'; endpointId: string }
+    /** No key on this install: the hosted gateway holds and charges its key's organization (#2438). */
+    | { via: 'remote'; provider: GatewayProvider; endpointId: string };
 }
 
 /**

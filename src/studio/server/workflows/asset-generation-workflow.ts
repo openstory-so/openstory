@@ -23,6 +23,7 @@ import {
   openstoryVideo,
   openstoryVideoStatus,
 } from '@/gateway/server/adapter';
+import { gatewayTransport } from '@/gateway/server/adapter/http';
 import { inProcessGateway } from '@/gateway/server/adapter/in-process';
 import {
   type GatewayStore,
@@ -102,6 +103,8 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     const { assetId, activity, input, route, organizationId, userId } =
       event.payload;
     const model = route.via === 'openstory' ? route.model.id : route.endpointId;
+    // A hosted run is the gateway's too, on another server.
+    const via = route.via === 'remote' ? 'openstory' : route.via;
 
     const store: GatewayStore = (media, index) =>
       storeGatewayOutput({
@@ -122,7 +125,22 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
             reservation: null,
             wireBody: async (body) => body,
           })
-        : directFal(scopedDb, route.endpointId, store);
+        : route.via === 'remote'
+          ? gatewayTransport(
+              {
+                via: 'remote',
+                target: { provider: route.provider, modelId: route.endpointId },
+              },
+              {
+                scopedDb,
+                runId: event.instanceId,
+                store,
+                uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
+                reservation: null,
+                wireBody: async (body) => body,
+              }
+            ).transport
+          : directFal(scopedDb, route.endpointId, store);
     // The click held under this key: the run finds that job and its hold.
     const call = { idempotencyKey: `asset:${assetId}` };
 
@@ -241,7 +259,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
     await step.do('persist-result', async () => {
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs: assetOutputs,
-        provider: route.via,
+        provider: via,
       });
     });
 
@@ -254,7 +272,7 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
           assetKind: 'generated_asset',
           assetId: outputs.length > 1 ? `${assetId}#${index}` : assetId,
           storageKey: output.path,
-          provider: route.via,
+          provider: via,
           model,
           providerRequestId: null,
           workflowRunId: event.instanceId,

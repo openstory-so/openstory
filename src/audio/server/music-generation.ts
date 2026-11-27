@@ -247,9 +247,9 @@ async function callElevenLabsAudio(
     ELEVENLABS_MUSIC_TARGET,
     body
   );
-  if (route.via === 'openstory') {
+  if (route.via !== 'direct') {
     return gatewayMusic(
-      { ...options.run, model: route.model },
+      { ...options.run, route },
       body,
       modelConfig,
       billedDuration
@@ -340,7 +340,7 @@ async function gatewayMusic(
     audioUrl: output.url,
     storagePath: output.path,
     metadata: {
-      model: call.model.id,
+      model: ELEVENLABS_MUSIC_TARGET.modelId,
       vendor: modelConfig.vendor,
       endpointId: ELEVENLABS_MUSIC_ENDPOINT,
       duration: billedDuration,

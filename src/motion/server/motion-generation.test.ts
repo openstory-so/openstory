@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { asStub } from '@/test/as-stub';
+import { z } from 'zod';
 import { estimateFalCost } from '@/billing/fal-cost';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
@@ -81,6 +84,22 @@ const registeredAssets: ArkAssetMap = new Proxy(
   { get: (_, key) => (typeof key === 'string' ? `asset://${key}` : undefined) }
 );
 
+const remoteSubmits: Array<{ body: unknown; key: string }> = [];
+const actualHttp = await vi.importActual('@/gateway/server/adapter/http');
+vi.doMock('@/gateway/server/adapter/http', () => ({
+  ...actualHttp,
+  gatewayTransport: (route: { via: string; target?: { modelId: string } }) => ({
+    modelId: route.target?.modelId ?? '',
+    transport: {
+      submit: async (body: unknown, key: string) => {
+        remoteSubmits.push({ body, key });
+        return { kind: 'queued', handle: 'remote:hosted-job-1' };
+      },
+      poll: async () => ({ kind: 'pending' }),
+    },
+  }),
+}));
+
 const {
   arkStillsForMotion,
   arkStillsToRegister,
@@ -90,6 +109,7 @@ const {
   resolveMotionVia,
 } = await import('./motion-generation');
 const { pollVideoJob, videoCostFromUsage } = await import('./video-job');
+const { gatewayRouteKey } = await import('@/gateway/server/route');
 
 const direct = { credentials: undefined, gateway: null };
 /** A stamped job as the submit step returns it. */
@@ -297,6 +317,75 @@ describe('Motion Service', () => {
   });
 
   describe('submitMotionJob', () => {
+    it('a fal clip routed to the hosted gateway needs no fal key and keeps local URLs for the transport to upload (#2438)', async () => {
+      testEnv.FAL_KEY = undefined;
+      remoteSubmits.length = 0;
+      // The fal call only runs to capture its body: replay its one request through the adapter's fetch.
+      mockGenerateVideo.mockImplementationOnce(
+        async ({ modelOptions }: { modelOptions: unknown }) => {
+          const options: unknown = mockFalVideo.mock.lastCall?.at(1);
+          const capture = z
+            .object({
+              fetch: z.custom<typeof fetch>((v) => typeof v === 'function'),
+            })
+            .parse(options);
+          await capture.fetch('https://queue.fal.run/x', {
+            method: 'POST',
+            body: JSON.stringify(modelOptions),
+          });
+          return { jobId: 'never-sent' };
+        }
+      );
+      mockGenerateVideo.mockImplementationOnce(
+        async ({
+          adapter,
+          modelOptions,
+        }: {
+          adapter: {
+            createVideoJob: (o: unknown) => Promise<{ jobId: string }>;
+          };
+          modelOptions: unknown;
+        }) =>
+          adapter.createVideoJob({
+            prompt: '',
+            modelOptions,
+            logger: { request: () => {} },
+          })
+      );
+      const endpointId = motionGatewayTarget(
+        { model: 'kling_v3_pro', imageUrl: '/r2/stills/a.png' },
+        'fal'
+      )?.modelId;
+      if (!endpointId) throw new Error('no gateway target');
+      const result = await submitMotionJob({
+        heldSeedanceEditSeconds: null,
+        arkAssets: registeredAssets,
+        imageUrl: '/r2/stills/a.png',
+        prompt: 'Mara turns the valve',
+        model: 'kling_v3_pro',
+        duration: 5,
+        gateway: {
+          // The hosted route reads only whose files these are.
+          scopedDb: asStub<WorkflowScopedDb>({ organizationId: 'o' }),
+          runId: 'run-1',
+          idempotencyKey: 'run-1:submit-motion',
+          store: async () => ({ url: '', path: '', contentType: '' }),
+          routes: { [gatewayRouteKey('fal', endpointId)]: { via: 'remote' } },
+          reservation: null,
+        },
+      });
+      expect(result.via).toBe('openstory');
+      expect(mockFalVideo).toHaveBeenLastCalledWith(
+        endpointId,
+        expect.objectContaining({ apiKey: '' })
+      );
+      expect(remoteSubmits).toHaveLength(1);
+      expect(remoteSubmits[0]?.key).toBe('run-1:submit-motion');
+      expect(remoteSubmits[0]?.body).toMatchObject({
+        start_image_url: '/r2/stills/a.png',
+      });
+    });
+
     it('should submit job with Kling v3 Pro model options', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'test-kling-v3-request-id',

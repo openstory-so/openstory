@@ -32,7 +32,7 @@ export const Route = createFileRoute('/api/v1/gateway/chat/$')({
             userId: context.user.id,
             organizationId: context.organizationId,
           });
-          await assertGatewayRate(context.organizationId);
+          await assertGatewayRate(context.organizationId, 'calls');
           return streamGatewayChat(
             context.scopedDb,
             model,
