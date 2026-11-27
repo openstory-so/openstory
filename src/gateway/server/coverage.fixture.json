@@ -1,0 +1,7052 @@
+[
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-video/v1.5/image-to-video",
+    "record": {
+      "rawId": "xai/grok-imagine-video/v1.5/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "xai/grok-imagine-video/v1.5/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "usage",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p", "1080p"],
+            "default": "480p"
+          },
+          "image_url": {
+            "param": "image_url",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "per_sec": {
+            "480p": 0.08,
+            "720p": 0.14,
+            "1080p": 0.25
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "duration"
+                },
+                {
+                  "lookup": {
+                    "table": "per_sec",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "image_url"
+                },
+                0.01,
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "480p"
+            },
+            "usd": 0.4,
+            "quote": "A 5-second clip costs $0.40 at 480p"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "720p"
+            },
+            "usd": 0.7,
+            "quote": "A 5-second clip costs $0.70 at 720p"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "1080p"
+            },
+            "usd": 1.25,
+            "quote": "A 5-second clip costs $1.25 at 1080p"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p",
+              "image_url": true
+            },
+            "usd": 0.09,
+            "quote": "Each reference image adds $0.01"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-video/v1.5/image-to-video/llms.txt",
+          "hash": "29c8ddab13c1e15df797727333de3a4ab3b939f0abf9bad2f291808c4713b3c8",
+          "extractedAt": "2026-10-22T07:01:38.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/gemini-omni-flash/v1.2/image-to-video",
+    "record": {
+      "rawId": "google/gemini-omni-flash/v1.2/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "google/gemini-omni-flash/v1.2/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["360p", "720p", "1080p", "4K"],
+            "default": "720p"
+          }
+        },
+        "tables": {
+          "per_second": {
+            "360p": 0.0273,
+            "720p": 0.0819,
+            "1080p": 0.1229,
+            "4K": 0.2457
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "per_second",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "360p"
+            },
+            "usd": 0.0273,
+            "quote": "For **360p**, your request will cost **$0.0273** per second"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "720p"
+            },
+            "usd": 0.82,
+            "quote": "A **10-second 720p** clip costs about **$0.82**"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "1080p"
+            },
+            "usd": 1.23,
+            "quote": "the same clip at **1080p** costs about **$1.23**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.2457,
+            "quote": "and **4K**, **$0.2457** per second"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/gemini-omni-flash/v1.2/image-to-video/llms.txt",
+          "hash": "4fdfcc0cc3c6c71d7bcb537c9fa077c906e1392e33c0ef92781a85adfd0682d1",
+          "extractedAt": "2026-11-10T10:00:30.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/kling-video/v3/pro/image-to-video",
+    "record": {
+      "rawId": "fal-ai/kling-video/v3/pro/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "fal-ai/kling-video/v3/pro/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "generate_audio": {
+            "param": "generate_audio",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["off", "on", "voice_control"],
+            "default": "off"
+          }
+        },
+        "tables": {
+          "rate": {
+            "off": 0.112,
+            "on": 0.168,
+            "voice_control": 0.196
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "generate_audio"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": "off"
+            },
+            "usd": 0.112,
+            "quote": "For every second of video you generated, you will be charged $0.112 (audio off)"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": "on"
+            },
+            "usd": 0.168,
+            "quote": "For every second of video you generated, you will be charged $0.168 (audio on)"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "generate_audio": "voice_control"
+            },
+            "usd": 0.98,
+            "quote": "For example, a 5s video with audio on and voice control will cost $0.98"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video/llms.txt",
+          "hash": "c63f3c7228bd5227f480c172af5ffbad50a151f8b30a71fcd0e7edf9009aa1c4",
+          "extractedAt": "2026-10-01T11:00:57.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "kling/v4/image-to-video",
+    "record": {
+      "rawId": "kling/v4/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "kling/v4/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["720p", "1080p", "4K"],
+            "default": "720p"
+          },
+          "hdr": {
+            "param": "hdr",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "rate": {
+            "720p": 0.157,
+            "1080p": 0.235,
+            "4K": 0.549
+          },
+          "hdr_add": {
+            "720p": 0,
+            "1080p": 0.047,
+            "4K": 0.078
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "+": [
+                {
+                  "lookup": {
+                    "table": "rate",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "if": [
+                    {
+                      "var": "hdr"
+                    },
+                    {
+                      "lookup": {
+                        "table": "hdr_add",
+                        "keys": [
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      }
+                    },
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "720p"
+            },
+            "usd": 0.157,
+            "quote": "Each second of output costs **$0.157** at **720p**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p"
+            },
+            "usd": 0.235,
+            "quote": "**$0.235** at **1080p**"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "4K"
+            },
+            "usd": 2.745,
+            "quote": "a 5-second 4K video costs **$2.745** in SDR"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "4K",
+              "hdr": true
+            },
+            "usd": 3.135,
+            "quote": "a 5-second 4K video costs **$2.745** in SDR or **$3.135** in HDR"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p",
+              "hdr": true
+            },
+            "usd": 0.282,
+            "quote": "HDR adds **$0.047** per output second at **1080p**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/kling/v4/image-to-video/llms.txt",
+          "hash": "fcb3d2ea1f008b9ec7564ca5f2203d707e4cc8c8c2e5ef4e8df6fae5bce34e61",
+          "extractedAt": "2026-11-20T09:00:38.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "minimax/h3-max/image-to-video",
+    "record": {
+      "rawId": "minimax/h3-max/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "minimax/h3-max/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "768p", "1080p"],
+            "default": "768p"
+          }
+        },
+        "tables": {
+          "rate": {
+            "480p": 0.05,
+            "768p": 0.08,
+            "1080p": 0.16
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p"
+            },
+            "usd": 0.05,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "768p"
+            },
+            "usd": 0.08,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p"
+            },
+            "usd": 0.16,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/minimax/h3-max/image-to-video/llms.txt",
+          "hash": "83b638d53730d00377b6e96c2a81ee95fbdac849551ede44b02eab1342b07c7d",
+          "extractedAt": "2026-11-16T10:00:30.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/enterprise/v2/image-to-video",
+    "record": null,
+    "schema": false
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.5/image-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.5/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.5/image-to-video",
+      "pricing": {
+        "inputs": {
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p", "1080p"],
+            "default": "480p"
+          },
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {
+          "video_rate": {
+            "480p": 0.2205,
+            "720p": 0.473,
+            "1080p": 1.164
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "lookup": {
+                "table": "video_rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            {
+              "var": "duration"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "resolution": "480p",
+              "duration": 1
+            },
+            "usd": 0.2205,
+            "quote": "For 480p, your request will cost roughly $0.2205 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "720p",
+              "duration": 1
+            },
+            "usd": 0.473,
+            "quote": "for 720p, you will be charged roughly $0.4730 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "1080p",
+              "duration": 1
+            },
+            "usd": 1.164,
+            "quote": "and for 1080p, roughly $1.164 per second of generated video"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.5/image-to-video/llms.txt",
+          "hash": "f8704060c796cf5b1ac888dc3f9cccf146493bd73160702e6626d7c81af29c2e",
+          "extractedAt": "2026-09-30T11:00:26.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/mini/image-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.0/mini/image-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.0/mini/image-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p"],
+            "default": "480p"
+          }
+        },
+        "tables": {
+          "price_per_sec": {
+            "480p": 0.0721,
+            "720p": 0.1547
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "price_per_sec",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p"
+            },
+            "usd": 0.0721,
+            "quote": "For every second of video generated, you will be charged roughly **$0.0721**/second for **480p**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "720p"
+            },
+            "usd": 0.1547,
+            "quote": "For every second of video generated, you will be charged roughly **$0.1547**/second for **720p**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.0/mini/image-to-video/llms.txt",
+          "hash": "eec6674f49a234b8702a8cb101371a0dbfd95e6a22528abf9f972921a39ec939",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-video/v1.5/text-to-video",
+    "record": {
+      "rawId": "xai/grok-imagine-video/v1.5/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "xai/grok-imagine-video/v1.5/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p", "1080p"],
+            "default": "480p"
+          }
+        },
+        "tables": {
+          "rate": {
+            "480p": 0.08,
+            "720p": 0.14,
+            "1080p": 0.25
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            {
+              "var": "duration"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "480p"
+            },
+            "usd": 0.4,
+            "quote": "A 5-second 480p clip costs $0.40"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "720p"
+            },
+            "usd": 0.7,
+            "quote": "720p costs $0.70"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p"
+            },
+            "usd": 0.08,
+            "quote": "480p at $0.08/sec"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "720p"
+            },
+            "usd": 0.14,
+            "quote": "720p at $0.14/sec"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p"
+            },
+            "usd": 0.25,
+            "quote": "1080p at $0.25/sec"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-video/v1.5/text-to-video/llms.txt",
+          "hash": "a9db71a7ff8b33cda6e3d10c8f9c21416e58c9dc55e17c5d8d2a97fecbde92c1",
+          "extractedAt": "2026-09-30T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/gemini-omni-flash/v1.2/text-to-video",
+    "record": {
+      "rawId": "google/gemini-omni-flash/v1.2/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "google/gemini-omni-flash/v1.2/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["360p", "720p", "1080p", "4K"],
+            "default": "720p"
+          },
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "per_second": {
+            "360p": 0.0273,
+            "720p": 0.0819,
+            "1080p": 0.1229,
+            "4K": 0.2457
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "duration"
+                },
+                {
+                  "lookup": {
+                    "table": "per_second",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                {
+                  "/": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    1000000
+                  ]
+                },
+                1.5
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "360p"
+            },
+            "usd": 0.0273,
+            "quote": "For **360p**, your request will cost **$0.0273** per second"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.2457,
+            "quote": "and for **4K**, **$0.2457** per second"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "720p"
+            },
+            "usd": 0.82,
+            "quote": "A **10-second 720p** clip costs about **$0.82**"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "1080p"
+            },
+            "usd": 1.23,
+            "quote": "the same clip at **1080p** costs about **$1.23**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/gemini-omni-flash/v1.2/text-to-video/llms.txt",
+          "hash": "35d86bd6039048f76b2711372230365a96cec6064953ac80a0e1a771fefebfa6",
+          "extractedAt": "2026-11-10T10:00:30.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/kling-video/v3/pro/text-to-video",
+    "record": {
+      "rawId": "fal-ai/kling-video/v3/pro/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "fal-ai/kling-video/v3/pro/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "generate_audio": {
+            "param": "generate_audio",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["off", "on", "voice_control"],
+            "default": "off"
+          }
+        },
+        "tables": {
+          "rate": {
+            "off": 0.112,
+            "on": 0.168,
+            "voice_control": 0.196
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "generate_audio"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": "off"
+            },
+            "usd": 0.112,
+            "quote": "For every second of video you generated, you will be charged $0.112 (audio off)"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": "on"
+            },
+            "usd": 0.168,
+            "quote": "For every second of video you generated, you will be charged $0.168 (audio on)"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "generate_audio": "voice_control"
+            },
+            "usd": 0.98,
+            "quote": "For example, a 5s video with audio on and voice control will cost $0.98"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/kling-video/v3/pro/text-to-video/llms.txt",
+          "hash": "c63f3c7228bd5227f480c172af5ffbad50a151f8b30a71fcd0e7edf9009aa1c4",
+          "extractedAt": "2026-10-01T11:00:57.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "kling/v4/text-to-video",
+    "record": {
+      "rawId": "kling/v4/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "kling/v4/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["720p", "1080p", "4K"],
+            "default": "720p"
+          },
+          "hdr": {
+            "param": "hdr",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "rate": {
+            "720p": 0.157,
+            "1080p": 0.235,
+            "4K": 0.549
+          },
+          "hdr_add": {
+            "720p": 0,
+            "1080p": 0.047,
+            "4K": 0.078
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "+": [
+                {
+                  "lookup": {
+                    "table": "rate",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "if": [
+                    {
+                      "var": "hdr"
+                    },
+                    {
+                      "lookup": {
+                        "table": "hdr_add",
+                        "keys": [
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      }
+                    },
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "720p"
+            },
+            "usd": 0.157,
+            "quote": "Each second of output costs **$0.157** at **720p**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p"
+            },
+            "usd": 0.235,
+            "quote": "**$0.235** at **1080p**"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "4K"
+            },
+            "usd": 2.745,
+            "quote": "a 5-second 4K video costs **$2.745** in SDR"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "4K",
+              "hdr": true
+            },
+            "usd": 3.135,
+            "quote": "a 5-second 4K video costs **$2.745** in SDR or **$3.135** in HDR"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p",
+              "hdr": true
+            },
+            "usd": 0.282,
+            "quote": "HDR adds **$0.047** per output second at **1080p**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/kling/v4/text-to-video/llms.txt",
+          "hash": "fcb3d2ea1f008b9ec7564ca5f2203d707e4cc8c8c2e5ef4e8df6fae5bce34e61",
+          "extractedAt": "2026-11-20T09:00:38.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "minimax/h3-max/text-to-video",
+    "record": {
+      "rawId": "minimax/h3-max/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "minimax/h3-max/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "768p", "1080p"],
+            "default": "768p"
+          }
+        },
+        "tables": {
+          "rate": {
+            "480p": 0.05,
+            "768p": 0.08,
+            "1080p": 0.16
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p"
+            },
+            "usd": 0.05,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "768p"
+            },
+            "usd": 0.08,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "1080p"
+            },
+            "usd": 0.16,
+            "quote": "From **November 16, 2026**, standard rates are **$0.05**, **$0.08**, and **$0.16** per second at **480p**, **768p**, and **1080p**, respectively."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/minimax/h3-max/text-to-video/llms.txt",
+          "hash": "83b638d53730d00377b6e96c2a81ee95fbdac849551ede44b02eab1342b07c7d",
+          "extractedAt": "2026-11-16T10:00:30.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/enterprise/v2/text-to-video",
+    "record": null,
+    "schema": false
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.5/text-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.5/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.5/text-to-video",
+      "pricing": {
+        "inputs": {
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p", "1080p"],
+            "default": "480p"
+          },
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {
+          "video_rate": {
+            "480p": 0.2205,
+            "720p": 0.473,
+            "1080p": 1.164
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "lookup": {
+                "table": "video_rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            {
+              "var": "duration"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "resolution": "480p",
+              "duration": 1
+            },
+            "usd": 0.2205,
+            "quote": "For 480p, your request will cost roughly $0.2205 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "720p",
+              "duration": 1
+            },
+            "usd": 0.473,
+            "quote": "for 720p, you will be charged roughly $0.4730 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "1080p",
+              "duration": 1
+            },
+            "usd": 1.164,
+            "quote": "and for 1080p, roughly $1.164 per second of generated video"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.5/text-to-video/llms.txt",
+          "hash": "f8704060c796cf5b1ac888dc3f9cccf146493bd73160702e6626d7c81af29c2e",
+          "extractedAt": "2026-09-30T11:00:26.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/mini/text-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.0/mini/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.0/mini/text-to-video",
+      "pricing": {
+        "inputs": {
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p"],
+            "default": "480p"
+          },
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {
+          "rate": {
+            "480p": 0.0721,
+            "720p": 0.1547
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            {
+              "var": "duration"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "resolution": "480p",
+              "duration": 1
+            },
+            "usd": 0.0721,
+            "quote": "For every second of video generated, you will be charged roughly **$0.0721/second** for 480p and **$0.1547/second** for 720p."
+          },
+          {
+            "params": {
+              "resolution": "720p",
+              "duration": 1
+            },
+            "usd": 0.1547,
+            "quote": "For every second of video generated, you will be charged roughly **$0.0721/second** for 480p and **$0.1547/second** for 720p."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.0/mini/text-to-video/llms.txt",
+          "hash": "143352b0548fe1a70545c61894b5a985d161e29a18e4e817b152b5b8c9df8fdf",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/enterprise/v2/reference-to-video",
+    "record": null,
+    "schema": false
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.5/reference-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.5/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.5/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p", "1080p"],
+            "default": "480p"
+          },
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "video_urls": {
+            "param": "video_urls",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "per_sec": {
+            "480p": 0.2205,
+            "720p": 0.473,
+            "1080p": 1.164
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "per_sec",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            {
+              "if": [
+                {
+                  "var": "video_urls"
+                },
+                0.6,
+                1
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "resolution": "480p",
+              "duration": 1,
+              "video_urls": false
+            },
+            "usd": 0.2205,
+            "quote": "For 480p, your request will cost roughly $0.2205 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "720p",
+              "duration": 1,
+              "video_urls": false
+            },
+            "usd": 0.473,
+            "quote": "for 720p, you will be charged roughly $0.4730 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "1080p",
+              "duration": 1,
+              "video_urls": false
+            },
+            "usd": 1.164,
+            "quote": "and for 1080p, roughly $1.164 per second of generated video"
+          },
+          {
+            "params": {
+              "resolution": "720p",
+              "duration": 1,
+              "video_urls": true
+            },
+            "usd": 0.2838,
+            "quote": "With video inputs and 720p resolution, the price is roughly $0.2838 per second of generated video"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.5/reference-to-video/llms.txt",
+          "hash": "f39fba2e60a1dc164ab90c87effd79c31c3b4349e31600a25db26f000bca1cb9",
+          "extractedAt": "2026-09-30T11:00:26.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedance-2.0/mini/reference-to-video",
+    "record": {
+      "rawId": "bytedance/seedance-2.0/mini/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "bytedance/seedance-2.0/mini/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "tokens": {
+            "param": "tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 100000
+          },
+          "video_urls": {
+            "param": "video_urls",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "/": [
+                {
+                  "var": "tokens"
+                },
+                1000
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "video_urls"
+                },
+                0.0042,
+                0.007
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "tokens": 100000,
+              "video_urls": false
+            },
+            "usd": 0.7,
+            "quote": "For example, 100,000 provider-reported tokens cost $0.70 without video references or $0.42 with video references."
+          },
+          {
+            "params": {
+              "tokens": 100000,
+              "video_urls": true
+            },
+            "usd": 0.42,
+            "quote": "For example, 100,000 provider-reported tokens cost $0.70 without video references or $0.42 with video references."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedance-2.0/mini/reference-to-video/llms.txt",
+          "hash": "f150a2450f96a542c38f84469b14cd0c122323fca031ba68a32d72f2f191f6d8",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-video/v1.5/reference-to-video",
+    "record": {
+      "rawId": "xai/grok-imagine-video/v1.5/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "xai/grok-imagine-video/v1.5/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "720p"],
+            "default": "480p"
+          },
+          "reference_image_urls": {
+            "param": "reference_image_urls",
+            "bound": "request",
+            "kind": "count"
+          }
+        },
+        "tables": {
+          "per_sec": {
+            "480p": 0.08,
+            "720p": 0.14
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "duration"
+                },
+                {
+                  "lookup": {
+                    "table": "per_sec",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "reference_image_urls"
+                },
+                0.01
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "480p"
+            },
+            "usd": 0.4,
+            "quote": "A 5-second 480p clip costs $0.40"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "720p"
+            },
+            "usd": 0.7,
+            "quote": "720p costs $0.70"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "480p",
+              "reference_image_urls": ["https://example.com/ref.jpg"]
+            },
+            "usd": 0.09,
+            "quote": "Each reference image adds $0.01 (1\u20137 supported)"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-video/v1.5/reference-to-video/llms.txt",
+          "hash": "121e121d8722d786654b37d509da82d4678172adb883a0c9f3395284d71a3547",
+          "extractedAt": "2026-09-30T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/kling-video/o3/pro/reference-to-video",
+    "record": {
+      "rawId": "fal-ai/kling-video/o3/pro/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "fal-ai/kling-video/o3/pro/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "generate_audio": {
+            "param": "generate_audio",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "if": [
+                {
+                  "var": "generate_audio"
+                },
+                0.14,
+                0.112
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": false
+            },
+            "usd": 0.112,
+            "quote": "For every second of video you generated, you will be charged **$0.112** (audio off)"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": true
+            },
+            "usd": 0.14,
+            "quote": "or **$0.14** (audio on)"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "generate_audio": true
+            },
+            "usd": 0.7,
+            "quote": "For example, a 5s video with audio on will cost **$0.70**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/kling-video/o3/pro/reference-to-video/llms.txt",
+          "hash": "ff59cc76ad4e00dcf385a945fddbc6402a7e31b73779696e296f07c32cbc56f6",
+          "extractedAt": "2026-10-01T09:00:58.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "kling/v4/reference-to-video",
+    "record": {
+      "rawId": "kling/v4/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "kling/v4/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["720p", "1080p", "4K"],
+            "default": "720p"
+          },
+          "hdr": {
+            "param": "hdr",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          },
+          "video_urls": {
+            "param": "video_urls",
+            "bound": "request",
+            "kind": "count"
+          },
+          "input_video_seconds": {
+            "param": "input_video_seconds",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "plain_rate": {
+            "720p": 0.157,
+            "1080p": 0.235,
+            "4K": 0.549
+          },
+          "video_rate": {
+            "720p": 0.094,
+            "1080p": 0.141,
+            "4K": 0.329
+          },
+          "hdr_rate": {
+            "720p": 0,
+            "1080p": 0.047,
+            "4K": 0.078
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "video_urls"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "lookup": {
+                        "table": "video_rate",
+                        "keys": [
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "max": [
+                        {
+                          "+": [
+                            {
+                              "var": "input_video_seconds"
+                            },
+                            {
+                              "var": "duration"
+                            }
+                          ]
+                        },
+                        {
+                          "*": [
+                            2,
+                            {
+                              "var": "duration"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "lookup": {
+                        "table": "plain_rate",
+                        "keys": [
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "var": "duration"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "hdr"
+                },
+                {
+                  "*": [
+                    {
+                      "lookup": {
+                        "table": "hdr_rate",
+                        "keys": [
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "var": "duration"
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "720p"
+            },
+            "usd": 0.157,
+            "quote": "each second of output costs **$0.157** at **720p**"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "1080p"
+            },
+            "usd": 1.175,
+            "quote": "**$0.235** at **1080p**"
+          },
+          {
+            "params": {
+              "duration": 2,
+              "resolution": "4K"
+            },
+            "usd": 1.098,
+            "quote": "or **$0.549** at **4K**"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "720p",
+              "video_urls": ["https://example.com/a.mp4"],
+              "input_video_seconds": 5
+            },
+            "usd": 0.94,
+            "quote": "the rate is **$0.094** per billable second at **720p**"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "1080p",
+              "video_urls": ["https://example.com/a.mp4"],
+              "input_video_seconds": 10
+            },
+            "usd": 2.115,
+            "quote": "Billable seconds equal the input plus output duration, with a minimum of twice the output duration."
+          },
+          {
+            "params": {
+              "duration": 4,
+              "resolution": "1080p",
+              "hdr": true
+            },
+            "usd": 1.128,
+            "quote": "HDR adds **$0.047** per output second at **1080p**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "4K",
+              "hdr": true
+            },
+            "usd": 0.627,
+            "quote": "**$0.078** per output second at **4K**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/kling/v4/reference-to-video/llms.txt",
+          "hash": "3ac42e6a5480dafe7f7c5727022bb3b0b760d6049de565b4738181bf6f52893a",
+          "extractedAt": "2026-11-20T09:00:38.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/gemini-omni-flash/v1.2/reference-to-video",
+    "record": {
+      "rawId": "google/gemini-omni-flash/v1.2/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "google/gemini-omni-flash/v1.2/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 5
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["360p", "720p", "1080p", "4K"],
+            "default": "720p"
+          }
+        },
+        "tables": {
+          "rate": {
+            "360p": 0.0273,
+            "720p": 0.0819,
+            "1080p": 0.1229,
+            "4K": 0.2457
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "360p"
+            },
+            "usd": 0.0273,
+            "quote": "For **360p**, your request will cost **$0.0273** per second"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "720p"
+            },
+            "usd": 0.819,
+            "quote": "A **10-second 720p** clip costs about **$0.82** for video generation"
+          },
+          {
+            "params": {
+              "duration": 10,
+              "resolution": "1080p"
+            },
+            "usd": 1.229,
+            "quote": "the same clip at **1080p** costs about **$1.23**"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.2457,
+            "quote": "and for **4K**, **$0.2457** per second"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/gemini-omni-flash/v1.2/reference-to-video/llms.txt",
+          "hash": "13b432f84dc94ef6b0837d28c26b63fe27b64aef5fffc55b12fd4a2acc080fd4",
+          "extractedAt": "2026-11-14T10:00:30.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "minimax/h3-max/reference-to-video",
+    "record": {
+      "rawId": "minimax/h3-max/reference-to-video",
+      "activity": "video",
+      "schemaEndpointId": "minimax/h3-max/reference-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["480p", "768p", "1080p"],
+            "default": "768p"
+          },
+          "extra_reference_tokens": {
+            "param": "extra_reference_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rates": {
+            "480p": 0.05,
+            "768p": 0.08,
+            "1080p": 0.16
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "duration"
+                },
+                {
+                  "lookup": {
+                    "table": "rates",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "extra_reference_tokens"
+                },
+                2e-5
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "768p"
+            },
+            "usd": 0.4,
+            "quote": "a 5-second 768p output costs $0.40 with up to four square reference images"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "resolution": "768p",
+              "extra_reference_tokens": 1024
+            },
+            "usd": 0.42048,
+            "quote": "or $0.42048 with five"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/minimax/h3-max/reference-to-video/llms.txt",
+          "hash": "71b57442074179399f9147d3a0794ed090e1e27108c73fc812e453830413d2f3",
+          "extractedAt": "2026-10-23T10:00:49.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/nano-banana-2.1",
+    "record": {
+      "rawId": "google/nano-banana-2.1",
+      "activity": "image",
+      "schemaEndpointId": "google/nano-banana-2.1",
+      "pricing": {
+        "inputs": {
+          "text_input_million": {
+            "param": "text_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_output_million": {
+            "param": "text_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_input_million": {
+            "param": "image_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_output_million": {
+            "param": "image_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_million"
+                },
+                1.764
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_million"
+                },
+                8.823
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_million"
+                },
+                1.764
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_million"
+                },
+                35.294
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_million": 1
+            },
+            "usd": 1.764,
+            "quote": "Text/thinking tokens (per 1M): **$1.764** input, **$8.823** output."
+          },
+          {
+            "params": {
+              "text_output_million": 1
+            },
+            "usd": 8.823,
+            "quote": "Text/thinking tokens (per 1M): **$1.764** input, **$8.823** output."
+          },
+          {
+            "params": {
+              "image_input_million": 1
+            },
+            "usd": 1.764,
+            "quote": "Image tokens (per 1M): **$1.764** input, **$35.294** output."
+          },
+          {
+            "params": {
+              "image_output_million": 1
+            },
+            "usd": 35.294,
+            "quote": "Image tokens (per 1M): **$1.764** input, **$35.294** output."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/nano-banana-2.1/llms.txt",
+          "hash": "03bd5b509f246c8126217a2cbdfe48508d4ffef8ea4979cb501489893540eb35",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/nano-banana-2",
+    "record": {
+      "rawId": "fal-ai/nano-banana-2",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/nano-banana-2",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["0.5K", "1K", "2K", "4K"],
+            "default": "1K"
+          },
+          "enable_web_search": {
+            "param": "enable_web_search",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          },
+          "thinking_level": {
+            "param": "thinking_level",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["normal", "high"],
+            "default": "normal"
+          }
+        },
+        "tables": {
+          "multiplier": {
+            "0.5K": 0.75,
+            "1K": 1,
+            "2K": 1.5,
+            "4K": 2
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                0.08,
+                {
+                  "lookup": {
+                    "table": "multiplier",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "enable_web_search"
+                },
+                0.015,
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "thinking_level"
+                    },
+                    "high"
+                  ]
+                },
+                0.002,
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1
+            },
+            "usd": 0.08,
+            "quote": "Your request will cost $0.08 per image."
+          },
+          {
+            "params": {
+              "resolution": "2K"
+            },
+            "usd": 0.12,
+            "quote": "2K and 4K outputs will be charged at 1.5 times and 2 times the standard rate, respectively."
+          },
+          {
+            "params": {
+              "resolution": "4K"
+            },
+            "usd": 0.16,
+            "quote": "2K and 4K outputs will be charged at 1.5 times and 2 times the standard rate, respectively."
+          },
+          {
+            "params": {
+              "resolution": "0.5K"
+            },
+            "usd": 0.06,
+            "quote": "0.5K (512px) resolution outputs will be charged at 0.75 times the standard rate."
+          },
+          {
+            "params": {
+              "enable_web_search": true
+            },
+            "usd": 0.095,
+            "quote": "If web search is used, an additional $0.015 will be charged."
+          },
+          {
+            "params": {
+              "thinking_level": "high"
+            },
+            "usd": 0.082,
+            "quote": "If high thinking is used, an additional $0.002 will be charged."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/nano-banana-2/llms.txt",
+          "hash": "cdb333f67d656a55ff674d9b630f7a4e417c84bf25e199f6072998eea0fc12f1",
+          "extractedAt": "2026-10-21T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/nano-banana-2-lite",
+    "record": {
+      "rawId": "google/nano-banana-2-lite",
+      "activity": "image",
+      "schemaEndpointId": "google/nano-banana-2-lite",
+      "pricing": {
+        "inputs": {
+          "text_input_tokens": {
+            "param": "text_input_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_output_tokens": {
+            "param": "text_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_input_tokens": {
+            "param": "image_input_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_tokens"
+                },
+                3.125e-7
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_tokens"
+                },
+                1.875e-6
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_tokens"
+                },
+                3.125e-7
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_tokens"
+                },
+                3.75e-5
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_tokens": 1000000
+            },
+            "usd": 0.3125,
+            "quote": "Text tokens (per 1M): $0.3125 input"
+          },
+          {
+            "params": {
+              "text_output_tokens": 1000000
+            },
+            "usd": 1.875,
+            "quote": "Text tokens (per 1M): $1.875 output"
+          },
+          {
+            "params": {
+              "image_input_tokens": 1000000
+            },
+            "usd": 0.3125,
+            "quote": "Image tokens (per 1M): $0.3125 input"
+          },
+          {
+            "params": {
+              "image_output_tokens": 1000000
+            },
+            "usd": 37.5,
+            "quote": "Image tokens (per 1M): $37.50 output"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/nano-banana-2-lite/llms.txt",
+          "hash": "d4aac58810fe8ab482d77b7171af50c33841871dc4bd759e25bc0311e04fd74c",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/nano-banana-pro",
+    "record": {
+      "rawId": "fal-ai/nano-banana-pro",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/nano-banana-pro",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["standard", "4K"],
+            "default": "standard"
+          },
+          "enable_web_search": {
+            "param": "enable_web_search",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "multiplier": {
+            "standard": 1,
+            "4K": 2
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                0.15,
+                {
+                  "lookup": {
+                    "table": "multiplier",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "enable_web_search"
+                },
+                0.015,
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1
+            },
+            "usd": 0.15,
+            "quote": "Your request will cost $0.15 per image."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.3,
+            "quote": "4K outputs will be charged at double the standard rate."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "enable_web_search": true
+            },
+            "usd": 0.165,
+            "quote": "If web search is used, an additional $0.015 will be charged."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/nano-banana-pro/llms.txt",
+          "hash": "3ad5848d8681b06a08730a438a0a91cd89a6796c4d46b279ff1ede75420ee1a4",
+          "extractedAt": "2026-10-01T11:00:57.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "openai/gpt-image-2.6/flare/text-to-image",
+    "record": {
+      "rawId": "openai/gpt-image-2.6/flare/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "openai/gpt-image-2.6/flare/text-to-image",
+      "pricing": {
+        "inputs": {
+          "text_input_million": {
+            "param": "text_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_cached_million": {
+            "param": "text_cached_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_output_million": {
+            "param": "text_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_input_million": {
+            "param": "image_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_cached_million": {
+            "param": "image_cached_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_output_million": {
+            "param": "image_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_million"
+                },
+                5
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_cached_million"
+                },
+                1.25
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_million"
+                },
+                10
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_million"
+                },
+                8
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_cached_million"
+                },
+                2
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_million"
+                },
+                30
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_million": 1
+            },
+            "usd": 5,
+            "quote": "Text tokens (per 1M): **$5.00** input"
+          },
+          {
+            "params": {
+              "text_cached_million": 1
+            },
+            "usd": 1.25,
+            "quote": "**$1.25** cached"
+          },
+          {
+            "params": {
+              "text_output_million": 1
+            },
+            "usd": 10,
+            "quote": "**$10.00** output"
+          },
+          {
+            "params": {
+              "image_input_million": 1
+            },
+            "usd": 8,
+            "quote": "Image tokens (per 1M): **$8.00** input"
+          },
+          {
+            "params": {
+              "image_cached_million": 1
+            },
+            "usd": 2,
+            "quote": "**$2.00** cached"
+          },
+          {
+            "params": {
+              "image_output_million": 1
+            },
+            "usd": 30,
+            "quote": "**$30.00** output"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/openai/gpt-image-2.6/flare/text-to-image/llms.txt",
+          "hash": "90dac95ace42740077cff16ad397297884d209796209365cca8f28fd72084434",
+          "extractedAt": "2026-11-05T06:00:48.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-image/v2.0/text-to-image",
+    "record": {
+      "rawId": "xai/grok-imagine-image/v2.0/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "xai/grok-imagine-image/v2.0/text-to-image",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "2K"],
+            "default": "1K"
+          },
+          "quality": {
+            "param": "quality",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["low", "medium"],
+            "default": "low"
+          }
+        },
+        "tables": {
+          "prices": {
+            "1K": {
+              "low": 0.04,
+              "medium": 0.06
+            },
+            "2K": {
+              "low": 0.06,
+              "medium": 0.08
+            }
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            {
+              "lookup": {
+                "table": "prices",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  },
+                  {
+                    "var": "quality"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "quality": "low"
+            },
+            "usd": 0.04,
+            "quote": "Your request will cost $0.04 (low) or $0.06 (medium) per image for 1K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "quality": "medium"
+            },
+            "usd": 0.06,
+            "quote": "Your request will cost $0.04 (low) or $0.06 (medium) per image for 1K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K",
+              "quality": "low"
+            },
+            "usd": 0.06,
+            "quote": "and $0.06 (low) or $0.08 (medium) per image for 2K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K",
+              "quality": "medium"
+            },
+            "usd": 0.08,
+            "quote": "and $0.06 (low) or $0.08 (medium) per image for 2K"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-image/v2.0/text-to-image/llms.txt",
+          "hash": "44de1c2321c86809c162cc3a02205878641ae619b927260e09bdeb6001553e30",
+          "extractedAt": "2026-09-30T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-image/quality/text-to-image",
+    "record": {
+      "rawId": "xai/grok-imagine-image/quality/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "xai/grok-imagine-image/quality/text-to-image",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "2K"],
+            "default": "1K"
+          }
+        },
+        "tables": {
+          "price_per_image": {
+            "1K": 0.05,
+            "2K": 0.07
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            {
+              "lookup": {
+                "table": "price_per_image",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K"
+            },
+            "usd": 0.05,
+            "quote": "Your request will cost $0.05 per image for 1K and $0.07 per image for 2K."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K"
+            },
+            "usd": 0.07,
+            "quote": "Your request will cost $0.05 per image for 1K and $0.07 per image for 2K."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-image/quality/text-to-image/llms.txt",
+          "hash": "e26d1b7b08e283cef54a6997a6be4782c44b6eed99d528f9d7a19d421f1d8290",
+          "extractedAt": "2026-10-22T07:01:38.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2-max",
+    "record": {
+      "rawId": "fal-ai/flux-2-max",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2-max",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            0.07,
+            {
+              "*": [
+                {
+                  "max": [
+                    {
+                      "-": [
+                        {
+                          "var": "megapixels"
+                        },
+                        1
+                      ]
+                    },
+                    0
+                  ]
+                },
+                0.03
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.07,
+            "quote": "The first processed megapixel will cost $0.07"
+          },
+          {
+            "params": {
+              "megapixels": 2
+            },
+            "usd": 0.1,
+            "quote": "Each additional megapixel will cost $0.03"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2-max/llms.txt",
+          "hash": "2cf6d65a084777e5107abb2f51e2f9208034a3915df2f355a750cfd48b859bb1",
+          "extractedAt": "2026-10-21T06:00:34.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/phota",
+    "record": {
+      "rawId": "fal-ai/phota",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/phota",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "4K"],
+            "default": "1K"
+          }
+        },
+        "tables": {
+          "units": {
+            "1K": 1,
+            "4K": 2
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            0.09,
+            {
+              "lookup": {
+                "table": "units",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K"
+            },
+            "usd": 0.09,
+            "quote": "Your request will cost **$0.09** per 1K image"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.18,
+            "quote": "Your request will cost **$0.18** per 4K image"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/phota/llms.txt",
+          "hash": "3150e298cb20685c5488932128b444d3d1d9aed3bd388b37cff53e225a2ee388",
+          "extractedAt": "2026-09-30T06:01:33.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/hunyuan-image/v3/text-to-image",
+    "record": {
+      "rawId": "fal-ai/hunyuan-image/v3/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/hunyuan-image/v3/text-to-image",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.1
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.1,
+            "quote": "- **Price**: $0.1 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/hunyuan-image/v3/text-to-image/llms.txt",
+          "hash": "2c4f3ac14740d35341c55543f648c5339b9ccaf9c3e3189ccb9000e3a8943694",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2",
+    "record": {
+      "rawId": "fal-ai/flux-2",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.012
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.012,
+            "quote": "- **Price**: $0.012 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/llms.txt",
+          "hash": "edd33dc00c2582f0716d240f9b8817bf3e8ff76b12c5731dfba704e0995eb072",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/qwen-image-2/pro/text-to-image",
+    "record": {
+      "rawId": "fal-ai/qwen-image-2/pro/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/qwen-image-2/pro/text-to-image",
+      "pricing": null
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/hidream-i1-full",
+    "record": {
+      "rawId": "fal-ai/hidream-i1-full",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/hidream-i1-full",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.05
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.05,
+            "quote": "- **Price**: $0.05 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/hidream-i1-full/llms.txt",
+          "hash": "18d0c722cd0fd30319bed7f01ee1976bdf99e5e2277de5b9aa4077f497011797",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedream/v5/pro/text-to-image",
+    "record": {
+      "rawId": "bytedance/seedream/v5/pro/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "bytedance/seedream/v5/pro/text-to-image",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "image_size": {
+            "param": "image_size",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1536x1536", "2048x2048"],
+            "default": "1536x1536"
+          }
+        },
+        "tables": {
+          "price_per_image": {
+            "1536x1536": 0.0675,
+            "2048x2048": 0.135
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            {
+              "lookup": {
+                "table": "price_per_image",
+                "keys": [
+                  {
+                    "var": "image_size"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "1536x1536"
+            },
+            "usd": 0.0675,
+            "quote": "Tentative pricing is $0.0675 per output image for an area up to and including 1536 \u00d7 1536 pixels"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "2048x2048"
+            },
+            "usd": 0.135,
+            "quote": "$0.135 per output image for an area above 1536 \u00d7 1536 and up to 2048 \u00d7 2048 pixels"
+          },
+          {
+            "params": {
+              "num_images": 2,
+              "image_size": "1536x1536"
+            },
+            "usd": 0.135,
+            "quote": "For example, 2 images at 1536 \u00d7 1536 would cost $0.135"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedream/v5/pro/text-to-image/llms.txt",
+          "hash": "8be62739e51838020aada3757e5b9a5e78a320c13dc5d267216f0bbf3eaaff41",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2/flash",
+    "record": {
+      "rawId": "fal-ai/flux-2/flash",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2/flash",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.005
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.005,
+            "quote": "- **Price**: $0.005 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/flash/llms.txt",
+          "hash": "cd98409d7563e8e4e36c8fb8d4cac5e9676914598add7e551197951ab18d8249",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2/turbo",
+    "record": {
+      "rawId": "fal-ai/flux-2/turbo",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2/turbo",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.008
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.008,
+            "quote": "- **Price**: $0.008 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/turbo/llms.txt",
+          "hash": "523b41f56919b9bccccf44aacbe76e6634e3b18510bc028106b0228567ae5fb2",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "krea/v3/text-to-image",
+    "record": {
+      "rawId": "krea/v3/text-to-image",
+      "activity": "image",
+      "schemaEndpointId": "krea/v3/text-to-image",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.025
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.025,
+            "quote": "Billed per megapixel at $0.025/MP"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/krea/v3/text-to-image/llms.txt",
+          "hash": "94a210b48786d1760470fe4cde368bca71dcd2dfcd41dc26b02f498d4834adc0",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/krea-2/turbo",
+    "record": {
+      "rawId": "fal-ai/krea-2/turbo",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/krea-2/turbo",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.008
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.008,
+            "quote": "- **Price**: $0.008 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/krea-2/turbo/llms.txt",
+          "hash": "523b41f56919b9bccccf44aacbe76e6634e3b18510bc028106b0228567ae5fb2",
+          "extractedAt": "2026-09-23T07:04:02.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/nano-banana-2.1/edit",
+    "record": {
+      "rawId": "google/nano-banana-2.1/edit",
+      "activity": "image",
+      "schemaEndpointId": "google/nano-banana-2.1/edit",
+      "pricing": {
+        "inputs": {
+          "text_input_tokens": {
+            "param": "text_input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "text_output_tokens": {
+            "param": "text_output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_input_tokens": {
+            "param": "image_input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K"],
+            "default": "1K"
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_tokens"
+                },
+                1.764e-6
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_tokens"
+                },
+                8.823e-6
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_tokens"
+                },
+                1.764e-6
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_tokens"
+                },
+                3.5294e-5
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_tokens": 1000000,
+              "text_output_tokens": 0,
+              "image_input_tokens": 0,
+              "image_output_tokens": 0
+            },
+            "usd": 1.764,
+            "quote": "Text/thinking tokens (per 1M): $1.764 input"
+          },
+          {
+            "params": {
+              "text_input_tokens": 0,
+              "text_output_tokens": 1000000,
+              "image_input_tokens": 0,
+              "image_output_tokens": 0
+            },
+            "usd": 8.823,
+            "quote": "Text/thinking tokens (per 1M): $8.823 output"
+          },
+          {
+            "params": {
+              "text_input_tokens": 0,
+              "text_output_tokens": 0,
+              "image_input_tokens": 1000000,
+              "image_output_tokens": 0
+            },
+            "usd": 1.764,
+            "quote": "Image tokens (per 1M): $1.764 input"
+          },
+          {
+            "params": {
+              "text_input_tokens": 0,
+              "text_output_tokens": 0,
+              "image_input_tokens": 0,
+              "image_output_tokens": 1000000
+            },
+            "usd": 35.294,
+            "quote": "Image tokens (per 1M): $35.294 output"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/nano-banana-2.1/edit/llms.txt",
+          "hash": "3eacac2ac12ed128fb698480a995cebfba0b445ee9be028283e918cfab0a97ef",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/nano-banana-2/edit",
+    "record": {
+      "rawId": "fal-ai/nano-banana-2/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/nano-banana-2/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["0.5K", "1K", "2K", "4K"],
+            "default": "1K"
+          },
+          "enable_web_search": {
+            "param": "enable_web_search",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          },
+          "thinking_level": {
+            "param": "thinking_level",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["normal", "high"],
+            "default": "normal"
+          }
+        },
+        "tables": {
+          "multiplier": {
+            "0.5K": 0.75,
+            "1K": 1,
+            "2K": 1.5,
+            "4K": 2
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                0.08,
+                {
+                  "lookup": {
+                    "table": "multiplier",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "enable_web_search"
+                },
+                0.015,
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "thinking_level"
+                    },
+                    "high"
+                  ]
+                },
+                0.002,
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1
+            },
+            "usd": 0.08,
+            "quote": "Your request will cost $0.08 per image."
+          },
+          {
+            "params": {
+              "resolution": "2K"
+            },
+            "usd": 0.12,
+            "quote": "2K and 4K outputs will be charged at 1.5 times and 2 times the standard rate, respectively."
+          },
+          {
+            "params": {
+              "resolution": "4K"
+            },
+            "usd": 0.16,
+            "quote": "2K and 4K outputs will be charged at 1.5 times and 2 times the standard rate, respectively."
+          },
+          {
+            "params": {
+              "resolution": "0.5K"
+            },
+            "usd": 0.06,
+            "quote": "0.5K (512px) resolution outputs will be charged at 0.75 times the standard rate."
+          },
+          {
+            "params": {
+              "enable_web_search": true
+            },
+            "usd": 0.095,
+            "quote": "If web search is used, an additional $0.015 will be charged."
+          },
+          {
+            "params": {
+              "thinking_level": "high"
+            },
+            "usd": 0.082,
+            "quote": "If high thinking is used, an additional $0.002 will be charged."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/nano-banana-2/edit/llms.txt",
+          "hash": "cdb333f67d656a55ff674d9b630f7a4e417c84bf25e199f6072998eea0fc12f1",
+          "extractedAt": "2026-10-21T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "google/nano-banana-lite/edit",
+    "record": {
+      "rawId": "google/nano-banana-lite/edit",
+      "activity": "image",
+      "schemaEndpointId": "google/nano-banana-lite/edit",
+      "pricing": {
+        "inputs": {
+          "text_input_tokens": {
+            "param": "text_input_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_output_tokens": {
+            "param": "text_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_input_tokens": {
+            "param": "image_input_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_tokens"
+                },
+                3.125e-7
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_tokens"
+                },
+                1.875e-6
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_tokens"
+                },
+                3.125e-7
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_tokens"
+                },
+                3.75e-5
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_tokens": 1000000
+            },
+            "usd": 0.3125,
+            "quote": "Text tokens (per 1M): $0.3125 input"
+          },
+          {
+            "params": {
+              "text_output_tokens": 1000000
+            },
+            "usd": 1.875,
+            "quote": "Text tokens (per 1M): $1.875 output"
+          },
+          {
+            "params": {
+              "image_input_tokens": 1000000
+            },
+            "usd": 0.3125,
+            "quote": "Image tokens (per 1M): $0.3125 input"
+          },
+          {
+            "params": {
+              "image_output_tokens": 1000000
+            },
+            "usd": 37.5,
+            "quote": "Image tokens (per 1M): $37.50 output"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/google/nano-banana-lite/edit/llms.txt",
+          "hash": "d4aac58810fe8ab482d77b7171af50c33841871dc4bd759e25bc0311e04fd74c",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/nano-banana-pro/edit",
+    "record": {
+      "rawId": "fal-ai/nano-banana-pro/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/nano-banana-pro/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["standard", "4K"],
+            "default": "standard"
+          },
+          "enable_web_search": {
+            "param": "enable_web_search",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "multiplier": {
+            "standard": 1,
+            "4K": 2
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                0.15,
+                {
+                  "lookup": {
+                    "table": "multiplier",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": [
+                {
+                  "var": "enable_web_search"
+                },
+                0.015,
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1
+            },
+            "usd": 0.15,
+            "quote": "Your request will cost $0.15 per image."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.3,
+            "quote": "4K outputs will be charged at double the standard rate."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "enable_web_search": true
+            },
+            "usd": 0.165,
+            "quote": "If web search is used, an additional $0.015 will be charged."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/nano-banana-pro/edit/llms.txt",
+          "hash": "3ad5848d8681b06a08730a438a0a91cd89a6796c4d46b279ff1ede75420ee1a4",
+          "extractedAt": "2026-10-01T11:00:57.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "openai/gpt-image-2.6/flare/edit",
+    "record": {
+      "rawId": "openai/gpt-image-2.6/flare/edit",
+      "activity": "image",
+      "schemaEndpointId": "openai/gpt-image-2.6/flare/edit",
+      "pricing": {
+        "inputs": {
+          "text_input_million": {
+            "param": "text_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_cached_million": {
+            "param": "text_cached_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "text_output_million": {
+            "param": "text_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_input_million": {
+            "param": "image_input_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_cached_million": {
+            "param": "image_cached_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          },
+          "image_output_million": {
+            "param": "image_output_million",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {},
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "text_input_million"
+                },
+                5
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_cached_million"
+                },
+                1.25
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "text_output_million"
+                },
+                10
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_input_million"
+                },
+                8
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_cached_million"
+                },
+                2
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "image_output_million"
+                },
+                30
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "text_input_million": 1
+            },
+            "usd": 5,
+            "quote": "Text tokens (per 1M): **$5.00** input"
+          },
+          {
+            "params": {
+              "text_cached_million": 1
+            },
+            "usd": 1.25,
+            "quote": "**$1.25** cached"
+          },
+          {
+            "params": {
+              "text_output_million": 1
+            },
+            "usd": 10,
+            "quote": "**$10.00** output"
+          },
+          {
+            "params": {
+              "image_input_million": 1
+            },
+            "usd": 8,
+            "quote": "Image tokens (per 1M): **$8.00** input"
+          },
+          {
+            "params": {
+              "image_cached_million": 1
+            },
+            "usd": 2,
+            "quote": "**$2.00** cached"
+          },
+          {
+            "params": {
+              "image_output_million": 1
+            },
+            "usd": 30,
+            "quote": "**$30.00** output"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/openai/gpt-image-2.6/flare/edit/llms.txt",
+          "hash": "90dac95ace42740077cff16ad397297884d209796209365cca8f28fd72084434",
+          "extractedAt": "2026-11-05T06:00:48.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-image/v2.0/edit",
+    "record": {
+      "rawId": "xai/grok-imagine-image/v2.0/edit",
+      "activity": "image",
+      "schemaEndpointId": "xai/grok-imagine-image/v2.0/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "2K"],
+            "default": "1K"
+          },
+          "quality": {
+            "param": "quality",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["low", "medium"],
+            "default": "low"
+          },
+          "image_urls": {
+            "param": "image_urls",
+            "bound": "request",
+            "kind": "count"
+          }
+        },
+        "tables": {
+          "base": {
+            "1K": {
+              "low": 0.04,
+              "medium": 0.06
+            },
+            "2K": {
+              "low": 0.06,
+              "medium": 0.08
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                {
+                  "lookup": {
+                    "table": "base",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      },
+                      {
+                        "var": "quality"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                0.01,
+                {
+                  "var": "image_urls"
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "quality": "low"
+            },
+            "usd": 0.04,
+            "quote": "Your request will cost $0.04 (low) per image for 1K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "quality": "medium"
+            },
+            "usd": 0.06,
+            "quote": "Your request will cost $0.06 (medium) per image for 1K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K",
+              "quality": "low"
+            },
+            "usd": 0.06,
+            "quote": "Your request will cost $0.06 (low) per image for 2K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K",
+              "quality": "medium"
+            },
+            "usd": 0.08,
+            "quote": "Your request will cost $0.08 (medium) per image for 2K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "quality": "low",
+              "image_urls": ["https://example.com/image.png"]
+            },
+            "usd": 0.05,
+            "quote": "plus $0.01 per input image"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-image/v2.0/edit/llms.txt",
+          "hash": "1594d31215e3b2f80476fd5d1e9fe5f67016024ca8dadbf21d9ab42304e1abd1",
+          "extractedAt": "2026-09-30T10:00:24.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "xai/grok-imagine-image/quality/edit",
+    "record": {
+      "rawId": "xai/grok-imagine-image/quality/edit",
+      "activity": "image",
+      "schemaEndpointId": "xai/grok-imagine-image/quality/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "2K"],
+            "default": "1K"
+          },
+          "num_input_images": {
+            "param": "image_urls",
+            "bound": "request",
+            "kind": "count"
+          }
+        },
+        "tables": {
+          "output_price": {
+            "1K": 0.05,
+            "2K": 0.07
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "num_images"
+                },
+                {
+                  "lookup": {
+                    "table": "output_price",
+                    "keys": [
+                      {
+                        "var": "resolution"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "num_input_images"
+                },
+                0.01
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K",
+              "image_urls": []
+            },
+            "usd": 0.05,
+            "quote": "$0.05 per output image for 1K"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "2K",
+              "image_urls": []
+            },
+            "usd": 0.07,
+            "quote": "$0.07 per output image for 2K"
+          },
+          {
+            "params": {
+              "num_images": 0,
+              "resolution": "1K",
+              "image_urls": ["https://example.com/img.jpg"]
+            },
+            "usd": 0.01,
+            "quote": "$0.01 per input image"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/xai/grok-imagine-image/quality/edit/llms.txt",
+          "hash": "5da337bd735b38f23edfb141bdd63f86a1afe66655ff9cd7fd1c66e6ef284dbe",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2-max/edit",
+    "record": {
+      "rawId": "fal-ai/flux-2-max/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2-max/edit",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {},
+        "price": {
+          "if": [
+            {
+              "<=": [
+                {
+                  "var": "megapixels"
+                },
+                1
+              ]
+            },
+            {
+              "*": [
+                {
+                  "var": "megapixels"
+                },
+                0.07
+              ]
+            },
+            {
+              "+": [
+                0.07,
+                {
+                  "*": [
+                    {
+                      "-": [
+                        {
+                          "var": "megapixels"
+                        },
+                        1
+                      ]
+                    },
+                    0.03
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.07,
+            "quote": "The first processed megapixel will cost $0.07."
+          },
+          {
+            "params": {
+              "megapixels": 2
+            },
+            "usd": 0.1,
+            "quote": "Each additional megapixel will cost $0.03."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2-max/edit/llms.txt",
+          "hash": "9758d0a9f524fdb644fec12511452d2cfebe6962923839666079d7d04ceddce6",
+          "extractedAt": "2026-10-21T06:00:34.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/phota/edit",
+    "record": {
+      "rawId": "fal-ai/phota/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/phota/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1K", "4K"],
+            "default": "1K"
+          }
+        },
+        "tables": {
+          "units": {
+            "1K": 1,
+            "4K": 2
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            {
+              "lookup": {
+                "table": "units",
+                "keys": [
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            },
+            0.09
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "1K"
+            },
+            "usd": 0.09,
+            "quote": "Your request will cost **$0.09** per 1K image"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "resolution": "4K"
+            },
+            "usd": 0.18,
+            "quote": "Your request will cost **$0.18** per 4K image"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/phota/edit/llms.txt",
+          "hash": "897256f6c5d74ca88f0288bb053c8d5c12958044af6f6d9efe7f2756a8d01d3d",
+          "extractedAt": "2026-09-30T06:01:33.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/hunyuan-image/v3/instruct/edit",
+    "record": {
+      "rawId": "fal-ai/hunyuan-image/v3/instruct/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/hunyuan-image/v3/instruct/edit",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.09
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.09,
+            "quote": "- **Price**: $0.09 per megapixels"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/hunyuan-image/v3/instruct/edit/llms.txt",
+          "hash": "982dab43c435a1c02b7aa16bf98d30e8b5e8ba21cf3883bbb3eaed506278d320",
+          "extractedAt": "2026-09-23T07:00:21.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2/edit",
+    "record": {
+      "rawId": "fal-ai/flux-2/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "input_megapixels": {
+            "param": "input_megapixels",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          },
+          "output_megapixels": {
+            "param": "output_megapixels",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            0.012,
+            {
+              "+": [
+                {
+                  "var": "input_megapixels"
+                },
+                {
+                  "var": "output_megapixels"
+                }
+              ]
+            },
+            {
+              "var": "num_images"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "input_megapixels": 1,
+              "output_megapixels": 1
+            },
+            "usd": 0.024,
+            "quote": "a 1024x1024 generation with 512*512 size image input will cost $0.024 (1 MP input + 1 MP output, each costing $0.012)"
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "input_megapixels": 1,
+              "output_megapixels": 1
+            },
+            "usd": 0.024,
+            "quote": "Requests cost $0.012 per megapixel of input and output."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/edit/llms.txt",
+          "hash": "1112e49ffa6d1c0f50a72309254efd18bc2830c4d8a0595af3b4cf326acbc5fd",
+          "extractedAt": "2026-10-21T06:00:34.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2/flash/edit",
+    "record": {
+      "rawId": "fal-ai/flux-2/flash/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2/flash/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "image_size": {
+            "param": "image_size",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1024x1024"],
+            "default": "1024x1024"
+          },
+          "image_urls": {
+            "param": "image_urls",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {
+          "mp": {
+            "1024x1024": 1
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            0.005,
+            {
+              "+": [
+                {
+                  "if": [
+                    {
+                      "var": "image_urls"
+                    },
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "lookup": {
+                    "table": "mp",
+                    "keys": [
+                      {
+                        "var": "image_size"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "1024x1024",
+              "image_urls": true
+            },
+            "usd": 0.01,
+            "quote": "a 1024x1024 generation with 512*512 size image input will cost **$0.010** (1 MP input + 1 MP output, each costing **$0.005**)"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/flash/edit/llms.txt",
+          "hash": "4dc69dc15ea0cef9c226b6b77263f2003a53c51ec01dfbec74f8726a9a20978c",
+          "extractedAt": "2026-10-21T06:00:34.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/flux-2/turbo/edit",
+    "record": {
+      "rawId": "fal-ai/flux-2/turbo/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/flux-2/turbo/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "mp_input": {
+            "param": "mp_input",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          },
+          "mp_output": {
+            "param": "mp_output",
+            "bound": "usage",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            0.008,
+            {
+              "+": [
+                {
+                  "var": "mp_input"
+                },
+                {
+                  "var": "mp_output"
+                }
+              ]
+            },
+            {
+              "var": "num_images"
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "mp_input": 1,
+              "mp_output": 1
+            },
+            "usd": 0.016,
+            "quote": "For example, a 1024x1024 generation with 512*512 size image input will cost $0.016 (1 MP input + 1 MP output, each costing $0.008)."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/flux-2/turbo/edit/llms.txt",
+          "hash": "f1eca0dca4623d3c93bdfe61b01076392e38886f2cee7cf8f37bf30db8810c51",
+          "extractedAt": "2026-10-21T06:00:34.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/qwen-image-2/pro/edit",
+    "record": {
+      "rawId": "fal-ai/qwen-image-2/pro/edit",
+      "activity": "image",
+      "schemaEndpointId": "fal-ai/qwen-image-2/pro/edit",
+      "pricing": null
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "bytedance/seedream/v5/pro/edit",
+    "record": {
+      "rawId": "bytedance/seedream/v5/pro/edit",
+      "activity": "image",
+      "schemaEndpointId": "bytedance/seedream/v5/pro/edit",
+      "pricing": {
+        "inputs": {
+          "num_images": {
+            "param": "num_images",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "image_size": {
+            "param": "image_size",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1536x1536", "2048x2048"],
+            "default": "1536x1536"
+          },
+          "image_urls": {
+            "param": "image_urls",
+            "bound": "request",
+            "kind": "count"
+          }
+        },
+        "tables": {
+          "base": {
+            "1536x1536": 0.0675,
+            "2048x2048": 0.135
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "num_images"
+            },
+            {
+              "+": [
+                {
+                  "lookup": {
+                    "table": "base",
+                    "keys": [
+                      {
+                        "var": "image_size"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "*": [
+                    0.0045,
+                    {
+                      "max": [
+                        {
+                          "-": [
+                            {
+                              "var": "image_urls"
+                            },
+                            1
+                          ]
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "1536x1536",
+              "image_urls": []
+            },
+            "usd": 0.0675,
+            "quote": "Tentative pricing is $0.0675+ $(0.0045 x number of additional input images) per output image for images of total area less than or equal to 1536x1536 pixels."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "2048x2048",
+              "image_urls": []
+            },
+            "usd": 0.135,
+            "quote": "For output images with area in between 1536x1536 and 2048x2048 pixels, the price is $0.135 + $(0.0045 x number of additional input images) per image."
+          },
+          {
+            "params": {
+              "num_images": 1,
+              "image_size": "1536x1536",
+              "image_urls": ["url1", "url2"]
+            },
+            "usd": 0.072,
+            "quote": "The first input image is not charged, and every additional input image will cost $0.0045."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/bytedance/seedream/v5/pro/edit/llms.txt",
+          "hash": "95a47b250f234603d8d850d18d43175b22e86e6919143155e72d036288d0b9a6",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "krea/v3/edit",
+    "record": {
+      "rawId": "krea/v3/edit",
+      "activity": "image",
+      "schemaEndpointId": "krea/v3/edit",
+      "pricing": {
+        "inputs": {
+          "megapixels": {
+            "param": "megapixels",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "megapixels"
+            },
+            0.025
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "megapixels": 1
+            },
+            "usd": 0.025,
+            "quote": "Billed per megapixel at $0.025/MP"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/krea/v3/edit/llms.txt",
+          "hash": "94a210b48786d1760470fe4cde368bca71dcd2dfcd41dc26b02f498d4834adc0",
+          "extractedAt": "2026-10-22T06:00:29.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/ace-step-1.5",
+    "record": null,
+    "schema": false
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/ace-step/prompt-to-audio",
+    "record": {
+      "rawId": "fal-ai/ace-step/prompt-to-audio",
+      "activity": "audio",
+      "schemaEndpointId": "fal-ai/ace-step/prompt-to-audio",
+      "pricing": {
+        "inputs": {
+          "seconds": {
+            "param": "seconds",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "seconds"
+            },
+            0.0002
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "seconds": 1
+            },
+            "usd": 0.0002,
+            "quote": "Your request will cost **$0.0002** per second of generated audio. For **$1** you can generate 5,000 seconds (approximately 83.33 minutes) of music from lyrics."
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/ace-step/prompt-to-audio/llms.txt",
+          "hash": "ed1bd4fc4deabaa6009795a31e57e992213ec2906ebbc72721a1f32a71f069ea",
+          "extractedAt": "2026-10-22T10:00:32.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/kling-video/o3/pro/text-to-video",
+    "record": {
+      "rawId": "fal-ai/kling-video/o3/pro/text-to-video",
+      "activity": "video",
+      "schemaEndpointId": "fal-ai/kling-video/o3/pro/text-to-video",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "generate_audio": {
+            "param": "generate_audio",
+            "bound": "request",
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            {
+              "if": [
+                {
+                  "var": "generate_audio"
+                },
+                0.14,
+                0.112
+              ]
+            }
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": false
+            },
+            "usd": 0.112,
+            "quote": "For every second of video you generated, you will be charged **$0.112** (audio off)"
+          },
+          {
+            "params": {
+              "duration": 1,
+              "generate_audio": true
+            },
+            "usd": 0.14,
+            "quote": "or **$0.14** (audio on)"
+          },
+          {
+            "params": {
+              "duration": 5,
+              "generate_audio": true
+            },
+            "usd": 0.7,
+            "quote": "For example, a 5s video with audio on will cost **$0.70**"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/kling-video/o3/pro/text-to-video/llms.txt",
+          "hash": "ff59cc76ad4e00dcf385a945fddbc6402a7e31b73779696e296f07c32cbc56f6",
+          "extractedAt": "2026-10-01T09:00:58.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "fal",
+    "id": "fal-ai/sync-lipsync/v3",
+    "record": {
+      "rawId": "fal-ai/sync-lipsync/v3",
+      "activity": "video",
+      "schemaEndpointId": "fal-ai/sync-lipsync/v3",
+      "pricing": {
+        "inputs": {
+          "minutes": {
+            "param": "minutes",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "minutes"
+            },
+            8
+          ]
+        },
+        "examples": [
+          {
+            "params": {
+              "minutes": 1
+            },
+            "usd": 8,
+            "quote": "- **Price**: $8 per minutes"
+          }
+        ],
+        "source": {
+          "url": "https://fal.ai/models/fal-ai/sync-lipsync/v3/llms.txt",
+          "hash": "911cb71aa27378e8b9fd3e7c7e8df04f0e3f903f53a2dc364c48a4bd5789ae03",
+          "extractedAt": "2026-09-23T10:00:10.000Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "byteplus",
+    "id": "dola-seedream-5-0-pro-260628",
+    "record": {
+      "rawId": "dola-seedream-5-0-pro-260628",
+      "activity": "image",
+      "schemaEndpointId": "images/generations",
+      "pricing": {
+        "inputs": {
+          "size": {
+            "param": "size",
+            "kind": "dimensions",
+            "levels": ["1K", "1.5K", "2K"],
+            "default": "2K"
+          },
+          "layer_decomposition": {
+            "param": "layer_decomposition",
+            "kind": "boolean",
+            "default": false
+          },
+          "input_images": {
+            "param": "input_images",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "generated_images": {
+            "param": "generated_images",
+            "bound": "usage",
+            "kind": "number"
+          }
+        },
+        "tables": {
+          "output": {
+            "generation": {
+              "low": 0.045,
+              "high": 0.09
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "*": [
+                {
+                  "var": "generated_images"
+                },
+                {
+                  "lookup": {
+                    "table": "output",
+                    "keys": [
+                      {
+                        "if": [
+                          {
+                            "var": "layer_decomposition"
+                          },
+                          "layer_decomposition",
+                          "generation"
+                        ]
+                      },
+                      {
+                        "if": [
+                          {
+                            "missing": "size.level"
+                          },
+                          {
+                            "if": [
+                              {
+                                "<=": [
+                                  {
+                                    "*": [
+                                      {
+                                        "var": "size.width"
+                                      },
+                                      {
+                                        "var": "size.height"
+                                      }
+                                    ]
+                                  },
+                                  2610000
+                                ]
+                              },
+                              "low",
+                              "high"
+                            ]
+                          },
+                          {
+                            "if": [
+                              {
+                                "==": [
+                                  {
+                                    "var": "size.level"
+                                  },
+                                  "1K"
+                                ]
+                              },
+                              "low",
+                              {
+                                "==": [
+                                  {
+                                    "var": "size.level"
+                                  },
+                                  "1.5K"
+                                ]
+                              },
+                              "low",
+                              {
+                                "==": [
+                                  {
+                                    "var": "size.level"
+                                  },
+                                  "2K"
+                                ]
+                              },
+                              "high"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "*": [
+                {
+                  "max": [
+                    0,
+                    {
+                      "-": [
+                        {
+                          "var": "input_images"
+                        },
+                        1
+                      ]
+                    }
+                  ]
+                },
+                0.003
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+          "hash": "4ae8d997b368ec4d9b1cf0a3057f3330820bcbc573a156f4b454985ab1f49616",
+          "extractedAt": "2026-11-13T06:31:29.368Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "byteplus",
+    "id": "dreamina-seedance-2-0-260128",
+    "record": {
+      "rawId": "dreamina-seedance-2-0-260128",
+      "activity": "video",
+      "schemaEndpointId": "contents/generations/tasks",
+      "pricing": {
+        "inputs": {
+          "service_tier": {
+            "param": "service_tier",
+            "kind": "enum",
+            "values": ["default"],
+            "default": "default"
+          },
+          "draft": {
+            "param": "draft",
+            "kind": "boolean",
+            "default": false
+          },
+          "completion_tokens": {
+            "param": "completion_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "estimate": {
+              "inputs": {
+                "ratio": {
+                  "param": "ratio",
+                  "kind": "enum",
+                  "values": ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"]
+                },
+                "duration": {
+                  "param": "duration",
+                  "kind": "number"
+                },
+                "input_video_duration": {
+                  "param": "input_video_duration",
+                  "kind": "number",
+                  "default": 0
+                }
+              },
+              "value": {
+                "*": [
+                  {
+                    "lookup": {
+                      "table": "estimate_supported",
+                      "keys": [
+                        {
+                          "if": [
+                            {
+                              "var": "input_video"
+                            },
+                            "input_video",
+                            "no_input_video"
+                          ]
+                        },
+                        {
+                          "if": [
+                            {
+                              "var": "draft"
+                            },
+                            "draft",
+                            "not_draft"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "/": [
+                      {
+                        "*": [
+                          {
+                            "if": [
+                              {
+                                "var": "input_video"
+                              },
+                              {
+                                "+": [
+                                  {
+                                    "max": [
+                                      {
+                                        "var": "input_video_duration"
+                                      },
+                                      {
+                                        "lookup": {
+                                          "table": "min_input_seconds",
+                                          "keys": [
+                                            {
+                                              "var": "duration"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "var": "duration"
+                                  }
+                                ]
+                              },
+                              {
+                                "var": "duration"
+                              }
+                            ]
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "w"
+                              ]
+                            }
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "h"
+                              ]
+                            }
+                          },
+                          24
+                        ]
+                      },
+                      1024
+                    ]
+                  }
+                ]
+              },
+              "source": {
+                "url": "https://docs.byteplus.com/en/docs/modelark/video-generation-tutorial",
+                "hash": "79a518807ae16a4252471e12aae3da6f8b015b0fbdd0b8c71b7937c95b34a262"
+              }
+            }
+          },
+          "resolution": {
+            "param": "resolution",
+            "kind": "enum",
+            "values": ["1080p", "480p", "4k", "720p"]
+          },
+          "input_video": {
+            "param": "input_video",
+            "bound": "usage",
+            "kind": "boolean"
+          }
+        },
+        "tables": {
+          "rate": {
+            "default": {
+              "1080p": {
+                "no_video": 7.7,
+                "video": 4.7
+              },
+              "480p": {
+                "no_video": 7,
+                "video": 4.3
+              },
+              "4k": {
+                "no_video": 4,
+                "video": 2.4
+              },
+              "720p": {
+                "no_video": 7,
+                "video": 4.3
+              }
+            }
+          },
+          "pixels": {
+            "1080p": {
+              "16:9": {
+                "h": 1080,
+                "w": 1920
+              },
+              "1:1": {
+                "h": 1440,
+                "w": 1440
+              },
+              "21:9": {
+                "h": 946,
+                "w": 2206
+              },
+              "3:4": {
+                "h": 1664,
+                "w": 1248
+              },
+              "4:3": {
+                "h": 1248,
+                "w": 1664
+              },
+              "9:16": {
+                "h": 1920,
+                "w": 1080
+              }
+            },
+            "480p": {
+              "16:9": {
+                "h": 496,
+                "w": 864
+              },
+              "1:1": {
+                "h": 640,
+                "w": 640
+              },
+              "21:9": {
+                "h": 432,
+                "w": 992
+              },
+              "3:4": {
+                "h": 752,
+                "w": 560
+              },
+              "4:3": {
+                "h": 560,
+                "w": 752
+              },
+              "9:16": {
+                "h": 864,
+                "w": 496
+              }
+            },
+            "4k": {
+              "16:9": {
+                "h": 2160,
+                "w": 3840
+              },
+              "1:1": {
+                "h": 2880,
+                "w": 2880
+              },
+              "21:9": {
+                "h": 1886,
+                "w": 4398
+              },
+              "3:4": {
+                "h": 3326,
+                "w": 2494
+              },
+              "4:3": {
+                "h": 2494,
+                "w": 3326
+              },
+              "9:16": {
+                "h": 3840,
+                "w": 2160
+              }
+            },
+            "720p": {
+              "16:9": {
+                "h": 720,
+                "w": 1280
+              },
+              "1:1": {
+                "h": 960,
+                "w": 960
+              },
+              "21:9": {
+                "h": 630,
+                "w": 1470
+              },
+              "3:4": {
+                "h": 1112,
+                "w": 834
+              },
+              "4:3": {
+                "h": 834,
+                "w": 1112
+              },
+              "9:16": {
+                "h": 1280,
+                "w": 720
+              }
+            }
+          },
+          "min_input_seconds": {
+            "4": 3,
+            "5": 4,
+            "6": 4,
+            "7": 5,
+            "8": 6,
+            "9": 6,
+            "10": 7,
+            "11": 8,
+            "12": 8,
+            "13": 9,
+            "14": 10,
+            "15": 10
+          },
+          "estimate_supported": {
+            "no_input_video": {
+              "not_draft": 1
+            },
+            "input_video": {
+              "not_draft": 1
+            }
+          }
+        },
+        "price": {
+          "/": [
+            {
+              "*": [
+                {
+                  "lookup": {
+                    "table": "rate",
+                    "keys": [
+                      {
+                        "var": "service_tier"
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "draft"
+                          },
+                          "draft",
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "input_video"
+                          },
+                          "video",
+                          "no_video"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "var": "completion_tokens"
+                }
+              ]
+            },
+            1000000
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+          "hash": "188fd33439e6c535ce49965149c484441f0f473d528826daaf48cc1731e285bf",
+          "extractedAt": "2026-11-16T20:46:20.857Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "byteplus",
+    "id": "dreamina-seedance-2-5-260628",
+    "record": {
+      "rawId": "dreamina-seedance-2-5-260628",
+      "activity": "video",
+      "schemaEndpointId": "contents/generations/tasks",
+      "pricing": {
+        "inputs": {
+          "service_tier": {
+            "param": "service_tier",
+            "kind": "enum",
+            "values": ["default"],
+            "default": "default"
+          },
+          "draft": {
+            "param": "draft",
+            "kind": "boolean",
+            "default": false
+          },
+          "completion_tokens": {
+            "param": "completion_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "estimate": {
+              "inputs": {
+                "ratio": {
+                  "param": "ratio",
+                  "kind": "enum",
+                  "values": ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"]
+                },
+                "duration": {
+                  "param": "duration",
+                  "kind": "number"
+                },
+                "input_video_duration": {
+                  "param": "input_video_duration",
+                  "kind": "number",
+                  "default": 0
+                }
+              },
+              "value": {
+                "*": [
+                  {
+                    "lookup": {
+                      "table": "estimate_supported",
+                      "keys": [
+                        {
+                          "if": [
+                            {
+                              "var": "input_video"
+                            },
+                            "input_video",
+                            "no_input_video"
+                          ]
+                        },
+                        {
+                          "if": [
+                            {
+                              "var": "draft"
+                            },
+                            "draft",
+                            "not_draft"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "/": [
+                      {
+                        "*": [
+                          {
+                            "if": [
+                              {
+                                "var": "input_video"
+                              },
+                              {
+                                "+": [
+                                  {
+                                    "max": [
+                                      {
+                                        "var": "input_video_duration"
+                                      },
+                                      {
+                                        "lookup": {
+                                          "table": "min_input_seconds",
+                                          "keys": [
+                                            {
+                                              "var": "duration"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "var": "duration"
+                                  }
+                                ]
+                              },
+                              {
+                                "var": "duration"
+                              }
+                            ]
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "w"
+                              ]
+                            }
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "h"
+                              ]
+                            }
+                          },
+                          24
+                        ]
+                      },
+                      1024
+                    ]
+                  }
+                ]
+              },
+              "source": {
+                "url": "https://docs.byteplus.com/en/docs/modelark/video-generation-tutorial",
+                "hash": "79a518807ae16a4252471e12aae3da6f8b015b0fbdd0b8c71b7937c95b34a262"
+              }
+            }
+          },
+          "resolution": {
+            "param": "resolution",
+            "kind": "enum",
+            "values": ["1080p", "480p", "4k", "720p"]
+          },
+          "input_video": {
+            "param": "input_video",
+            "bound": "usage",
+            "kind": "boolean"
+          }
+        },
+        "tables": {
+          "rate": {
+            "default": {
+              "1080p": {
+                "no_video": 11.7,
+                "video": 7
+              },
+              "480p": {
+                "no_video": 10.7,
+                "video": 6.4
+              },
+              "4k": {
+                "no_video": 4.7,
+                "video": 2.9
+              },
+              "720p": {
+                "no_video": 10.7,
+                "video": 6.4
+              }
+            }
+          },
+          "pixels": {
+            "1080p": {
+              "16:9": {
+                "h": 1080,
+                "w": 1920
+              },
+              "1:1": {
+                "h": 1440,
+                "w": 1440
+              },
+              "21:9": {
+                "h": 946,
+                "w": 2206
+              },
+              "3:4": {
+                "h": 1664,
+                "w": 1248
+              },
+              "4:3": {
+                "h": 1248,
+                "w": 1664
+              },
+              "9:16": {
+                "h": 1920,
+                "w": 1080
+              }
+            },
+            "480p": {
+              "16:9": {
+                "h": 480,
+                "w": 854
+              },
+              "1:1": {
+                "h": 640,
+                "w": 640
+              },
+              "21:9": {
+                "h": 432,
+                "w": 992
+              },
+              "3:4": {
+                "h": 752,
+                "w": 560
+              },
+              "4:3": {
+                "h": 560,
+                "w": 752
+              },
+              "9:16": {
+                "h": 854,
+                "w": 480
+              }
+            },
+            "4k": {
+              "16:9": {
+                "h": 2160,
+                "w": 3840
+              },
+              "1:1": {
+                "h": 2880,
+                "w": 2880
+              },
+              "21:9": {
+                "h": 1886,
+                "w": 4398
+              },
+              "3:4": {
+                "h": 3326,
+                "w": 2494
+              },
+              "4:3": {
+                "h": 2494,
+                "w": 3326
+              },
+              "9:16": {
+                "h": 3840,
+                "w": 2160
+              }
+            },
+            "720p": {
+              "16:9": {
+                "h": 720,
+                "w": 1280
+              },
+              "1:1": {
+                "h": 960,
+                "w": 960
+              },
+              "21:9": {
+                "h": 630,
+                "w": 1470
+              },
+              "3:4": {
+                "h": 1112,
+                "w": 834
+              },
+              "4:3": {
+                "h": 834,
+                "w": 1112
+              },
+              "9:16": {
+                "h": 1280,
+                "w": 720
+              }
+            }
+          },
+          "min_input_seconds": {
+            "4": 3,
+            "5": 4,
+            "6": 4,
+            "7": 5,
+            "8": 6,
+            "9": 6,
+            "10": 7,
+            "11": 8,
+            "12": 8,
+            "13": 9,
+            "14": 10,
+            "15": 10,
+            "16": 11,
+            "17": 12,
+            "18": 12,
+            "19": 13,
+            "20": 14,
+            "21": 14,
+            "22": 15,
+            "23": 16,
+            "24": 16,
+            "25": 17,
+            "26": 18,
+            "27": 18,
+            "28": 19,
+            "29": 20,
+            "30": 20
+          },
+          "estimate_supported": {
+            "no_input_video": {
+              "not_draft": 1
+            },
+            "input_video": {
+              "not_draft": 1
+            }
+          }
+        },
+        "price": {
+          "/": [
+            {
+              "*": [
+                {
+                  "lookup": {
+                    "table": "rate",
+                    "keys": [
+                      {
+                        "var": "service_tier"
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "draft"
+                          },
+                          "draft",
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "input_video"
+                          },
+                          "video",
+                          "no_video"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "var": "completion_tokens"
+                }
+              ]
+            },
+            1000000
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+          "hash": "188fd33439e6c535ce49965149c484441f0f473d528826daaf48cc1731e285bf",
+          "extractedAt": "2026-11-16T20:46:20.857Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "byteplus",
+    "id": "dreamina-seedance-2-0-mini-260615",
+    "record": {
+      "rawId": "dreamina-seedance-2-0-mini-260615",
+      "activity": "video",
+      "schemaEndpointId": "contents/generations/tasks",
+      "pricing": {
+        "inputs": {
+          "service_tier": {
+            "param": "service_tier",
+            "kind": "enum",
+            "values": ["default"],
+            "default": "default"
+          },
+          "draft": {
+            "param": "draft",
+            "kind": "boolean",
+            "default": false
+          },
+          "completion_tokens": {
+            "param": "completion_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "estimate": {
+              "inputs": {
+                "ratio": {
+                  "param": "ratio",
+                  "kind": "enum",
+                  "values": ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"]
+                },
+                "duration": {
+                  "param": "duration",
+                  "kind": "number"
+                },
+                "input_video_duration": {
+                  "param": "input_video_duration",
+                  "kind": "number",
+                  "default": 0
+                }
+              },
+              "value": {
+                "*": [
+                  {
+                    "lookup": {
+                      "table": "estimate_supported",
+                      "keys": [
+                        {
+                          "if": [
+                            {
+                              "var": "input_video"
+                            },
+                            "input_video",
+                            "no_input_video"
+                          ]
+                        },
+                        {
+                          "if": [
+                            {
+                              "var": "draft"
+                            },
+                            "draft",
+                            "not_draft"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "/": [
+                      {
+                        "*": [
+                          {
+                            "if": [
+                              {
+                                "var": "input_video"
+                              },
+                              {
+                                "+": [
+                                  {
+                                    "max": [
+                                      {
+                                        "var": "input_video_duration"
+                                      },
+                                      {
+                                        "lookup": {
+                                          "table": "min_input_seconds",
+                                          "keys": [
+                                            {
+                                              "var": "duration"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "var": "duration"
+                                  }
+                                ]
+                              },
+                              {
+                                "var": "duration"
+                              }
+                            ]
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "w"
+                              ]
+                            }
+                          },
+                          {
+                            "lookup": {
+                              "table": "pixels",
+                              "keys": [
+                                {
+                                  "var": "resolution"
+                                },
+                                {
+                                  "var": "ratio"
+                                },
+                                "h"
+                              ]
+                            }
+                          },
+                          24
+                        ]
+                      },
+                      1024
+                    ]
+                  }
+                ]
+              },
+              "source": {
+                "url": "https://docs.byteplus.com/en/docs/modelark/video-generation-tutorial",
+                "hash": "79a518807ae16a4252471e12aae3da6f8b015b0fbdd0b8c71b7937c95b34a262"
+              }
+            }
+          },
+          "resolution": {
+            "param": "resolution",
+            "kind": "enum",
+            "values": ["480p", "720p"]
+          },
+          "input_video": {
+            "param": "input_video",
+            "bound": "usage",
+            "kind": "boolean"
+          }
+        },
+        "tables": {
+          "rate": {
+            "default": {
+              "480p": {
+                "no_video": 3.5,
+                "video": 2.1
+              },
+              "720p": {
+                "no_video": 3.5,
+                "video": 2.1
+              }
+            }
+          },
+          "pixels": {
+            "480p": {
+              "16:9": {
+                "h": 496,
+                "w": 864
+              },
+              "1:1": {
+                "h": 640,
+                "w": 640
+              },
+              "21:9": {
+                "h": 432,
+                "w": 992
+              },
+              "3:4": {
+                "h": 752,
+                "w": 560
+              },
+              "4:3": {
+                "h": 560,
+                "w": 752
+              },
+              "9:16": {
+                "h": 864,
+                "w": 496
+              }
+            },
+            "720p": {
+              "16:9": {
+                "h": 720,
+                "w": 1280
+              },
+              "1:1": {
+                "h": 960,
+                "w": 960
+              },
+              "21:9": {
+                "h": 630,
+                "w": 1470
+              },
+              "3:4": {
+                "h": 1112,
+                "w": 834
+              },
+              "4:3": {
+                "h": 834,
+                "w": 1112
+              },
+              "9:16": {
+                "h": 1280,
+                "w": 720
+              }
+            }
+          },
+          "min_input_seconds": {
+            "4": 3,
+            "5": 4,
+            "6": 4,
+            "7": 5,
+            "8": 6,
+            "9": 6,
+            "10": 7,
+            "11": 8,
+            "12": 8,
+            "13": 9,
+            "14": 10,
+            "15": 10
+          },
+          "estimate_supported": {
+            "no_input_video": {
+              "not_draft": 1
+            },
+            "input_video": {
+              "not_draft": 1
+            }
+          }
+        },
+        "price": {
+          "/": [
+            {
+              "*": [
+                {
+                  "lookup": {
+                    "table": "rate",
+                    "keys": [
+                      {
+                        "var": "service_tier"
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "draft"
+                          },
+                          "draft",
+                          {
+                            "var": "resolution"
+                          }
+                        ]
+                      },
+                      {
+                        "if": [
+                          {
+                            "var": "input_video"
+                          },
+                          "video",
+                          "no_video"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "var": "completion_tokens"
+                }
+              ]
+            },
+            1000000
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+          "hash": "188fd33439e6c535ce49965149c484441f0f473d528826daaf48cc1731e285bf",
+          "extractedAt": "2026-11-16T20:46:20.857Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "byteplus",
+    "id": "seed-audio-1.0",
+    "record": {
+      "rawId": "seed-audio-1.0",
+      "activity": "audio",
+      "schemaEndpointId": "tts/create",
+      "pricing": {
+        "inputs": {
+          "original_duration": {
+            "param": "original_duration",
+            "bound": "usage",
+            "kind": "number",
+            "estimate": {
+              "inputs": {},
+              "value": 120,
+              "source": {
+                "url": "https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01",
+                "hash": "77cef5930c7e50950c38141bef1df8ed6964c5dcfefc7f4cd44494a3fe341048"
+              }
+            }
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "original_duration"
+            },
+            0.0025
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.byteplus.com/en/docs/byteplusvoice/audiopricing",
+          "hash": "13b489c619919e3868d4079f7d44f020cd97049115b2b6ebe6d3b1c69c8e3138",
+          "extractedAt": "2026-11-17T08:31:16.047Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "grok",
+    "id": "grok-imagine-image-2.0",
+    "record": {
+      "rawId": "grok-imagine-image-2.0",
+      "activity": "image",
+      "schemaEndpointId": "v1/images/generations",
+      "pricing": {
+        "inputs": {
+          "n": {
+            "param": "n",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          },
+          "quality": {
+            "param": "quality",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["low", "medium", "auto"],
+            "default": "auto"
+          },
+          "resolution": {
+            "param": "resolution",
+            "bound": "request",
+            "kind": "enum",
+            "values": ["1k", "2k", "1.5k"],
+            "default": "1k"
+          }
+        },
+        "tables": {
+          "rate": {
+            "low": {
+              "1k": 0.04,
+              "2k": 0.060000000000000005,
+              "1.5k": 0.05
+            },
+            "medium": {
+              "1k": 0.060000000000000005,
+              "2k": 0.08,
+              "1.5k": 0.07
+            },
+            "auto": {
+              "1k": 0.04,
+              "2k": 0.060000000000000005,
+              "1.5k": 0.05
+            }
+          }
+        },
+        "price": {
+          "*": [
+            {
+              "var": "n"
+            },
+            {
+              "lookup": {
+                "table": "rate",
+                "keys": [
+                  {
+                    "var": "quality"
+                  },
+                  {
+                    "var": "resolution"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://api.x.ai/v1/image-generation-models",
+          "hash": "4b64bb23ba76bb73d7ea5350a97f59e29839ed9f4b8543e6ffe0d5a52b5870ae",
+          "extractedAt": "2026-10-05T05:16:00.263Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "grok",
+    "id": "grok-imagine-image-quality",
+    "record": {
+      "rawId": "grok-imagine-image-quality",
+      "activity": "image",
+      "schemaEndpointId": "v1/images/generations",
+      "pricing": {
+        "inputs": {
+          "n": {
+            "param": "n",
+            "bound": "request",
+            "kind": "number",
+            "default": 1
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "n"
+            },
+            0.05
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://api.x.ai/v1/image-generation-models",
+          "hash": "951ceeb17093fffec3927314aca330bd3cdc80b8b09f6e14a5cce0d07382ab0f",
+          "extractedAt": "2026-09-18T08:17:12.134Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "grok",
+    "id": "grok-imagine-video-1.5",
+    "record": {
+      "rawId": "grok-imagine-video-1.5",
+      "activity": "video",
+      "schemaEndpointId": "v1/videos/generations",
+      "pricing": {
+        "inputs": {
+          "duration": {
+            "param": "duration",
+            "bound": "request",
+            "kind": "number"
+          }
+        },
+        "tables": {},
+        "price": {
+          "*": [
+            {
+              "var": "duration"
+            },
+            0.08
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://docs.x.ai/docs/models.md",
+          "hash": "00a114c77d4c9d95e339df40623043d8e1e4b34874341a69b61709898975a3d8",
+          "extractedAt": "2026-09-18T08:17:12.134Z"
+        }
+      }
+    },
+    "schema": true
+  },
+  {
+    "provider": "gemini",
+    "id": "gemini-nano-banana-2.1",
+    "record": {
+      "rawId": "gemini-nano-banana-2.1",
+      "activity": "image",
+      "schemaEndpointId": "v1beta/models/{modelsId}:generateContent",
+      "pricing": {
+        "inputs": {
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "output_tokens": {
+            "param": "output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rate": {
+            "base": {
+              "input_tokens": 1.5e-6,
+              "output_tokens": 7.5e-6,
+              "image_output_tokens": 3e-5
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "input_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "image_output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://aistudio.google.com/docs/pricing.md",
+          "hash": "40202cdd6fc4eb04984af6ba5426b234540a0b37d819ed0c1d9d34f1d38fd155",
+          "extractedAt": "2026-11-21T03:45:30.374Z"
+        }
+      }
+    },
+    "schema": false
+  },
+  {
+    "provider": "gemini",
+    "id": "gemini-3.1-flash-image",
+    "record": {
+      "rawId": "gemini-3.1-flash-image",
+      "activity": "image",
+      "schemaEndpointId": "v1beta/models/{modelsId}:generateContent",
+      "pricing": {
+        "inputs": {
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "output_tokens": {
+            "param": "output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rate": {
+            "base": {
+              "input_tokens": 5e-7,
+              "output_tokens": 3e-6,
+              "image_output_tokens": 6e-5
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "input_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "image_output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://aistudio.google.com/docs/pricing.md",
+          "hash": "40202cdd6fc4eb04984af6ba5426b234540a0b37d819ed0c1d9d34f1d38fd155",
+          "extractedAt": "2026-11-21T03:45:30.374Z"
+        }
+      }
+    },
+    "schema": false
+  },
+  {
+    "provider": "gemini",
+    "id": "gemini-3.1-flash-lite-image",
+    "record": {
+      "rawId": "gemini-3.1-flash-lite-image",
+      "activity": "image",
+      "schemaEndpointId": "v1beta/models/{modelsId}:generateContent",
+      "pricing": {
+        "inputs": {
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "output_tokens": {
+            "param": "output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rate": {
+            "base": {
+              "input_tokens": 2.5e-7,
+              "output_tokens": 1.5e-6,
+              "image_output_tokens": 3e-5
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "input_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "image_output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://aistudio.google.com/docs/pricing.md",
+          "hash": "ee19928adc7f14039d8c36141415818b0e5b77c1d3160211332890e137cbe63d",
+          "extractedAt": "2026-11-11T18:45:25.982Z"
+        }
+      }
+    },
+    "schema": false
+  },
+  {
+    "provider": "gemini",
+    "id": "gemini-3-pro-image",
+    "record": {
+      "rawId": "gemini-3-pro-image",
+      "activity": "image",
+      "schemaEndpointId": "v1beta/models/{modelsId}:generateContent",
+      "pricing": {
+        "inputs": {
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "output_tokens": {
+            "param": "output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "image_output_tokens": {
+            "param": "image_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rate": {
+            "base": {
+              "input_tokens": 2e-6,
+              "output_tokens": 1.2e-5,
+              "image_output_tokens": 0.00012
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "input_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "image_output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "image_output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://aistudio.google.com/docs/pricing.md",
+          "hash": "40202cdd6fc4eb04984af6ba5426b234540a0b37d819ed0c1d9d34f1d38fd155",
+          "extractedAt": "2026-11-21T03:45:30.374Z"
+        }
+      }
+    },
+    "schema": false
+  },
+  {
+    "provider": "gemini",
+    "id": "gemini-omni-1.2-flash",
+    "record": {
+      "rawId": "gemini-omni-1.2-flash",
+      "activity": "video",
+      "schemaEndpointId": "gemini-omni-1.2-flash",
+      "pricing": {
+        "inputs": {
+          "input_tokens": {
+            "param": "input_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "output_tokens": {
+            "param": "output_tokens",
+            "bound": "usage",
+            "kind": "number"
+          },
+          "video_output_tokens": {
+            "param": "video_output_tokens",
+            "bound": "usage",
+            "kind": "number",
+            "default": 0
+          }
+        },
+        "tables": {
+          "rate": {
+            "base": {
+              "input_tokens": 1.5e-6,
+              "output_tokens": 9e-6,
+              "video_output_tokens": 1.2e-5
+            }
+          }
+        },
+        "price": {
+          "+": [
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "input_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "input_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            {
+              "if": [
+                {
+                  ">": [
+                    {
+                      "var": "video_output_tokens"
+                    },
+                    0
+                  ]
+                },
+                {
+                  "*": [
+                    {
+                      "var": "video_output_tokens"
+                    },
+                    {
+                      "lookup": {
+                        "table": "rate",
+                        "keys": ["base", "video_output_tokens"]
+                      }
+                    }
+                  ]
+                },
+                0
+              ]
+            }
+          ]
+        },
+        "examples": [],
+        "source": {
+          "url": "https://aistudio.google.com/docs/pricing.md",
+          "hash": "702a838ff6cf7b45e5bd6d69874fbb271821fd04e01111e6fd209c100b9bf397",
+          "extractedAt": "2026-11-16T20:15:25.290Z"
+        }
+      }
+    },
+    "schema": true
+  }
+]
