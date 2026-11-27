@@ -11,7 +11,7 @@ import {
   type EffectiveFalPricing,
 } from '@/billing/server/fal-pricing-live';
 import { priceGatewayJob } from '@/gateway/server/price';
-import { gatewayHoldMicros } from '@/gateway/server/submit-job';
+import { gatewayHoldMicros } from '@/gateway/server/platform-fee';
 import { nativeGrokImageModel } from '@/models/grok-native';
 import {
   imageGatewayRoute,

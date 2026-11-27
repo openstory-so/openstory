@@ -29,6 +29,7 @@ import {
   ELEVENLABS_ENDPOINTS,
   type GatewayJobInput,
   type GatewayProvider,
+  jsonObjectSchema,
 } from '@/gateway/schema';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
 import { createFalClient } from '@fal-ai/client';
@@ -38,8 +39,7 @@ import { z } from 'zod';
 // A synchronous image call holds the connection until the image exists.
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
-const jsonObject = z.record(z.string(), z.json());
-type JsonObject = z.infer<typeof jsonObject>;
+type JsonObject = z.infer<typeof jsonObjectSchema>;
 
 /** One provider-hosted output file found in a fal queue result. */
 type AssetOutputRef = {
@@ -157,7 +157,7 @@ async function callJson(
   init: ProviderRequest
 ): Promise<JsonObject> {
   const response = await callProvider(url, init);
-  return jsonObject.parse(await response.json());
+  return jsonObjectSchema.parse(await response.json());
 }
 
 async function callProvider(
@@ -196,7 +196,7 @@ function requireNative(baseUrl: string | undefined, name: string): void {
 }
 
 function recordOrNull(value: unknown): JsonObject | null {
-  const parsed = jsonObject.safeParse(value);
+  const parsed = jsonObjectSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 
@@ -496,7 +496,7 @@ const geminiAnswer = z.object({
     )
     .default([]),
   promptFeedback: z.object({ blockReason: z.string().optional() }).optional(),
-  usageMetadata: jsonObject.optional(),
+  usageMetadata: jsonObjectSchema.optional(),
   responseId: z.string().optional(),
 });
 

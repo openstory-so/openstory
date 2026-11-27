@@ -47,6 +47,7 @@ async function runningJob(runId: string, ageMs: number) {
     input: { model: 'grok-imagine-image', prompt: 'Mara in the engine room' },
     idempotencyKey: null,
     oauthClientId: null,
+    platformFeeBps: 0,
   });
   const held = await createBillingMethods(
     db,

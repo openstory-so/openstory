@@ -15,6 +15,7 @@ import {
   type GatewayJobKind,
   type GatewayProvider,
   type TextGatewayProvider,
+  jsonObjectSchema,
 } from '@/gateway/schema';
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
@@ -101,7 +102,7 @@ export async function fetchGatewayModel(
   // fal ids are paths and go in as they are; the other providers' ids are one segment.
   const schemaPath = provider === 'fal' ? endpointId : encodeURI(endpointId);
   const schema = z
-    .object({ schema: z.record(z.string(), z.json()) })
+    .object({ schema: jsonObjectSchema })
     .parse(
       await getJson(
         `/v1/schemas/${provider}/${kind}/${schemaPath}?kind=input`,

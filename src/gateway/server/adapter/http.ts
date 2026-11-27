@@ -43,6 +43,7 @@ import { sha256Hex } from '@/platform/compliance/hash';
 import { getLogger } from '@/platform/logger';
 import { readStorageObject, uploadFile } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
+import { jsonObjectSchema } from '@/gateway/schema';
 import { z } from 'zod';
 
 const logger = getLogger(['openstory', 'gateway', 'http']);
@@ -133,7 +134,7 @@ async function withUploadedMedia(
     return value;
   };
   const walked = await walk(body);
-  return z.record(z.string(), z.json()).parse(walked);
+  return jsonObjectSchema.parse(walked);
 }
 
 // ponytail: reads the whole file into the isolate; stream it when reference clips grow past a few MB.

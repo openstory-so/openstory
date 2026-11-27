@@ -3,6 +3,7 @@
 import { ELEVENLABS_MUSIC_MODEL } from '@/billing/elevenlabs-pricing';
 import type { MediaVia } from '@/models/via';
 import type { JsonValue } from '@/platform/server/db/schema';
+import { z } from 'zod';
 
 /** modelschemas provider ids: the `{provider}` in `/gateway/{provider}/{model}`. */
 export const GATEWAY_PROVIDERS = [
@@ -73,6 +74,9 @@ export type GatewayJobStatus = (typeof GATEWAY_JOB_STATUSES)[number];
 
 /** The provider's own request body, as the caller sent it. */
 export type GatewayJobInput = { readonly [key: string]: JsonValue };
+
+/** A JSON object: a provider body, a request schema, a provider answer. */
+export const jsonObjectSchema = z.record(z.string(), z.json());
 
 /** One stored output; `url` is origin-relative R2 until the API absolutizes it. */
 export type GatewayJobOutput = {

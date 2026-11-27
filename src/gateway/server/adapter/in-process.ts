@@ -13,6 +13,7 @@ import {
   GATEWAY_VIA,
   type GatewayJobInput,
   type GatewayJobOutput,
+  jsonObjectSchema,
 } from '@/gateway/schema';
 import type { GatewayPoller, GatewayTransport } from '@/gateway/server/adapter';
 import type { GatewayJob } from '@/platform/server/db/schema';
@@ -44,12 +45,12 @@ const handleSchema = z.object({
     kind: z.enum(GATEWAY_JOB_KINDS),
     target: z.object({ modelId: z.string(), endpointId: z.string() }),
     card: rateCardSchema,
-    input: z.record(z.string(), z.json()),
+    input: jsonObjectSchema,
     estimateMicros: z.number().transform(micros),
     platformFeeBps: z.number(),
     oauthClientId: z.string().nullable(),
     reservationId: z.string(),
-    // A handle from before #2435 always owned its hold.
+    // A handle from before #2435 always owned its hold. Drop once the whole stack has been deployed longer than one run.
     ownsReservation: z.boolean().default(true),
   }),
   providerJobId: z.string(),

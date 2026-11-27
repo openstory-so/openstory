@@ -52,6 +52,7 @@ import type { GatewayJobInput } from '@/gateway/schema';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
+import { resolveOptionalXaiKey } from '@/models/server/optional-keys';
 import type {
   CredentialScopedDb,
   WorkflowScopedDb,
@@ -85,7 +86,7 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import { requireUploadRights } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
 import { AttestationRequiredError } from '@/platform/errors';
-import { z } from 'zod';
+import { jsonObjectSchema } from '@/gateway/schema';
 
 export type { ImageGenerationParams } from '@/stills/build-image-request';
 
@@ -230,8 +231,6 @@ export async function generateImageWithProvider(
   }
 }
 
-const jsonBody = z.record(z.string(), z.json());
-
 /**
  * Where a still goes on the gateway and the body it sends there: native Grok
  * when the trigger routed it on xAI, else the fal endpoint `buildImageRequest`
@@ -246,7 +245,7 @@ function imageGatewayTarget(
   if (grokId && routes?.[gatewayRouteKey('grok', grokId)]) {
     return {
       target: { provider: 'grok', modelId: grokId },
-      body: jsonBody.parse(
+      body: jsonObjectSchema.parse(
         stableMediaBody(buildGrokImageBody(params, grokId), organizationId)
       ),
     };
@@ -255,7 +254,7 @@ function imageGatewayTarget(
   return {
     target: { provider: 'fal', modelId: endpointId },
     // As fal receives it (JSON drops an undefined option), stored URLs absolute and stable.
-    body: jsonBody.parse(
+    body: jsonObjectSchema.parse(
       stableMediaBody(JSON.parse(JSON.stringify(input)), organizationId)
     ),
   };
@@ -342,7 +341,7 @@ async function generateOnGateway(
         ? request.route.model.provider
         : request.route.target.provider) === 'fal'
         ? async (held) =>
-            jsonBody.parse(
+            jsonObjectSchema.parse(
               await fetchableFalBody(held, call.scopedDb.organizationId)
             )
         : async () =>
@@ -384,14 +383,6 @@ async function generateOnGateway(
       usedOwnKey: false,
     },
   };
-}
-
-async function resolveOptionalXaiKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('xai');
-  const platformKey = getEnv().XAI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 /** The via and its keys, in order: native xAI, Google, BytePlus (not for a BYOK fal organization), fal. */

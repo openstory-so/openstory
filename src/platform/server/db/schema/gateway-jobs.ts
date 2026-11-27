@@ -52,6 +52,8 @@ export const gatewayJobs = snakeCase.table(
     error: text({ mode: 'json' }).$type<GatewayJobError>(),
     costMicros: integer(),
     reservationId: text(),
+    // The fee held at submit, so a replay holds and settles at it; rows before it were 0.
+    platformFeeBps: integer().default(0).notNull(),
     workflowRunId: text(),
     idempotencyKey: text({ length: 255 }),
     // The OAuth client that submitted, when one did; null for `osk_` keys.

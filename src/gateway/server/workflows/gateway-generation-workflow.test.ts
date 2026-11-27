@@ -738,6 +738,7 @@ describe('a throw after the charge', () => {
       input: INPUT,
       idempotencyKey: null,
       oauthClientId: null,
+      platformFeeBps: 0,
     });
     const held = await billing.createReservation(ESTIMATE, {
       idempotencyKey: `gateway:${job.id}`,

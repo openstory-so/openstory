@@ -1,4 +1,8 @@
 import { getEnv } from '#env';
+import {
+  resolveOptionalFalKey,
+  resolveOptionalXaiKey,
+} from '@/models/server/optional-keys';
 import { registersWithArk } from '@/cast/likeness';
 import { toArkFetchableUrl } from '@/models/server/byteplus-asset-ingest';
 import {
@@ -76,8 +80,6 @@ import {
   isArkDraftTask,
   falApiKey,
   resolveFalKey,
-  resolveOptionalFalKey,
-  resolveOptionalXaiKey,
   sendVideoJob,
   videoGatewayProvider,
   type VideoGatewayCall,

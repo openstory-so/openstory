@@ -2,13 +2,18 @@
 
 The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or ElevenLabs (`elevenlabs.md`). The rules that hold for every via are in `AGENTS.md` → Media vias.
 
-## The `openstory` via (#2433)
+## The `openstory` via
 
 `openstory` is the gateway: a product call held and charged by a gateway job
 (`docs/architecture/model-gateway.md` § The openstory adapter). The product
 row records `openstory`; the gateway job underneath records the provider's
-own via, and its poll follows that stamp. Only the Models page uses it so
-far; an organization's own key keeps the direct path.
+own via, and its poll follows that stamp. Stills, video, Seed takes, Music
+and the Models page use it when the trigger routed them there
+(`model-gateway.md` § Routing); LLM calls are metered on the key instead
+(§ Text). An organization's own key, and any model the gateway cannot hold,
+keeps the direct path below, which is unchanged until the decision in
+`model-gateway.md` § For the maintainer. On a self-hosted install with only
+an `OPENSTORY_API_KEY` the same via runs on the hosted gateway over HTTP.
 
 ## Prompt length (#1754)
 

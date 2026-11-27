@@ -54,6 +54,10 @@ export const chargeLines = snakeCase.table(
       table.payeeOrganizationId,
       table.createdAt
     ),
+    index('idx_charge_lines_organization_created').on(
+      table.organizationId,
+      table.createdAt
+    ),
     index('idx_charge_lines_organization_gateway_job').on(
       table.organizationId,
       table.gatewayJobId

@@ -1,0 +1,2 @@
+ALTER TABLE `gateway_jobs` ADD `platform_fee_bps` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX `idx_charge_lines_organization_created` ON `charge_lines` (`organization_id`,`created_at`);

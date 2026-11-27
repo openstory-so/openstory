@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { micros } from '@/billing/money';
-import { GATEWAY_PLATFORM_FEE_BPS, gatewayCharge } from './charge-lines';
+import { gatewayCharge } from './charge-lines';
 
 const sum = (lines: { amountMicros: number }[]) =>
   lines.reduce((total, line) => total + line.amountMicros, 0);
 
 describe('gatewayCharge', () => {
-  it('ships with the platform fee off', () => {
-    expect(GATEWAY_PLATFORM_FEE_BPS).toBe(0);
-  });
-
   it('writes no fee line when the fee is zero', () => {
     expect(
       gatewayCharge({ providerCostMicros: micros(12_345), platformFeeBps: 0 })

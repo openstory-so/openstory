@@ -6,9 +6,6 @@
 import type { ChargeLineKind } from '@/billing/charge-lines';
 import { type Microdollars, micros } from '@/billing/money';
 
-/** The gateway's own fee on provider cost, in basis points. Off for now. */
-export const GATEWAY_PLATFORM_FEE_BPS = 0;
-
 const BPS_DENOMINATOR = 10_000;
 
 type GatewayChargeLine = {

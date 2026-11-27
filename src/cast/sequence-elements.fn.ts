@@ -105,7 +105,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { scopedDb } = context;
-    // Charged once per upload URL: a repeat description calls the provider again unbilled (#2439).
+    // Charged once per upload URL; a retried request re-describes unbilled, as no answer is stored to replay.
     const chargeOnce = async (model: TextModel) =>
       forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
         describe: (answered) => `Element vision (${answered})`,

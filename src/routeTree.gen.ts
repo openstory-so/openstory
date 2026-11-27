@@ -65,6 +65,7 @@ import { Route as AppSettingsApiKeysRouteImport } from './routes/_app/settings/a
 import { Route as AppSettingsDeveloperRouteImport } from './routes/_app/settings/developer'
 import { Route as AppSettingsOrganizationRouteImport } from './routes/_app/settings/organization'
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
+import { Route as AppSettingsUsageRouteImport } from './routes/_app/settings/usage'
 import { Route as AppStudioIndexRouteImport } from './routes/_app/studio/index'
 import { Route as AppStylesIndexRouteImport } from './routes/_app/styles/index'
 import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
@@ -398,6 +399,11 @@ const AppSettingsPasskeysRoute = AppSettingsPasskeysRouteImport.update({
   path: '/passkeys',
   getParentRoute: () => AppSettingsRouteRoute,
 } as any)
+const AppSettingsUsageRoute = AppSettingsUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
 const AppStudioIndexRoute = AppStudioIndexRouteImport.update({
   id: '/studio/',
   path: '/studio/',
@@ -723,6 +729,7 @@ export interface FileRoutesByFullPath {
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
@@ -829,6 +836,7 @@ export interface FileRoutesByTo {
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/organization': typeof AppSettingsOrganizationRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
@@ -941,6 +949,7 @@ export interface FileRoutesById {
   '/_app/settings/developer': typeof AppSettingsDeveloperRoute
   '/_app/settings/organization': typeof AppSettingsOrganizationRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/_app/settings/usage': typeof AppSettingsUsageRoute
   '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
@@ -1052,6 +1061,7 @@ export interface FileRouteTypes {
     | '/settings/developer'
     | '/settings/organization'
     | '/settings/passkeys'
+    | '/settings/usage'
     | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
@@ -1158,6 +1168,7 @@ export interface FileRouteTypes {
     | '/settings/developer'
     | '/settings/organization'
     | '/settings/passkeys'
+    | '/settings/usage'
     | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
@@ -1269,6 +1280,7 @@ export interface FileRouteTypes {
     | '/_app/settings/developer'
     | '/_app/settings/organization'
     | '/_app/settings/passkeys'
+    | '/_app/settings/usage'
     | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
@@ -1770,6 +1782,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsPasskeysRouteImport
       parentRoute: typeof AppSettingsRouteRoute
     }
+    '/_app/settings/usage': {
+      id: '/_app/settings/usage'
+      path: '/usage'
+      fullPath: '/settings/usage'
+      preLoaderRoute: typeof AppSettingsUsageRouteImport
+      parentRoute: typeof AppSettingsRouteRoute
+    }
     '/_app/studio/': {
       id: '/_app/studio/'
       path: '/studio'
@@ -2170,6 +2189,7 @@ interface AppSettingsRouteRouteChildren {
   AppSettingsDeveloperRoute: typeof AppSettingsDeveloperRoute
   AppSettingsOrganizationRoute: typeof AppSettingsOrganizationRoute
   AppSettingsPasskeysRoute: typeof AppSettingsPasskeysRoute
+  AppSettingsUsageRoute: typeof AppSettingsUsageRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -2178,6 +2198,7 @@ const AppSettingsRouteRouteChildren: AppSettingsRouteRouteChildren = {
   AppSettingsDeveloperRoute: AppSettingsDeveloperRoute,
   AppSettingsOrganizationRoute: AppSettingsOrganizationRoute,
   AppSettingsPasskeysRoute: AppSettingsPasskeysRoute,
+  AppSettingsUsageRoute: AppSettingsUsageRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

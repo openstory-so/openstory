@@ -58,7 +58,7 @@ const DONE = 'done:';
 const outputsSchema = z.array(
   z.object({ url: z.string(), path: z.string(), contentType: z.string() })
 );
-// A `done:` handle from before #2435 is the bare outputs, with no job id.
+// A `done:` handle from before #2435 is the bare outputs, with no job id. Drop once the whole stack has been deployed longer than one run.
 const doneSchema = z.union([
   z.object({ jobId: z.string().nullable(), outputs: outputsSchema }),
   outputsSchema.transform((outputs) => ({ jobId: null, outputs })),

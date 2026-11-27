@@ -210,9 +210,15 @@ export async function getGeneratedAssetWithCharge(
   const job = asset.gatewayJobId
     ? await scopedDb.gatewayJobs.getById(asset.gatewayJobId)
     : null;
-  const charged =
-    job?.status === 'succeeded' && job.costMicros !== null
-      ? microsToDisplayUsd(micros(job.costMicros))
-      : null;
-  return { ...asset, charged };
+  if (job?.status !== 'succeeded' || job.costMicros === null) {
+    return { ...asset, charged: null, platformFee: null };
+  }
+  const fee = (await scopedDb.gatewayJobs.getChargeLines(job.id)).find(
+    (line) => line.kind === 'platform_fee'
+  );
+  return {
+    ...asset,
+    charged: microsToDisplayUsd(micros(job.costMicros)),
+    platformFee: fee ? microsToDisplayUsd(fee.amountMicros) : null,
+  };
 }

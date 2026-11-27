@@ -346,6 +346,11 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
                   Charged {activeAsset.charged}
                 </p>
               ) : null}
+              {activeAsset.platformFee ? (
+                <p className="text-sm text-muted-foreground tabular-nums">
+                  Includes platform fee {activeAsset.platformFee}
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed">

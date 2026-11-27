@@ -10,7 +10,7 @@ import { gatewayRouteKey, type GatewayRoutes } from '@/gateway/server/route';
 import { estimateImageCost } from '@/billing/cost-estimation';
 import { micros } from '@/billing/money';
 import { priceGatewayJob } from '@/gateway/server/price';
-import { gatewayHoldMicros } from '@/gateway/server/submit-job';
+import { gatewayHoldMicros } from '@/gateway/server/platform-fee';
 import { stableMediaUrl } from '@/platform/server/storage/external-url';
 
 const inProcessGateway = vi.fn(() => ({}));

@@ -38,10 +38,7 @@ import {
 } from '@/platform/errors';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { micros } from '@/billing/money';
-import {
-  GATEWAY_PLATFORM_FEE_BPS,
-  gatewayCharge,
-} from '@/gateway/charge-lines';
+import { gatewayCharge } from '@/gateway/charge-lines';
 import type { GatewayJobInput, GatewayProvider } from '@/gateway/schema';
 import type { GatewayModel } from '@/gateway/server/catalog';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
@@ -383,7 +380,7 @@ describe('submitGatewayJob', () => {
         card: PER_SECOND,
         input,
         estimateMicros: 400_000,
-        platformFeeBps: GATEWAY_PLATFORM_FEE_BPS,
+        platformFeeBps: 0,
         oauthClientId: null,
       },
       { deduplicationId: `gateway-${job.id}` }
@@ -637,6 +634,35 @@ describe('submitGatewayJob', () => {
     );
     expect(job.status).toBe('queued');
     expect(requireCheckedUploadRights).not.toHaveBeenCalled();
+  });
+
+  it('holds a replayed key at the fee its job was submitted at, not the current one', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const model = await getGatewayModel('byteplus', 'seed-audio-1.0');
+    const hold = () =>
+      holdGatewayJob(
+        model,
+        { text_prompt: 'The port engine is done for', duration: 5 },
+        {
+          scopedDb,
+          rights: submitJob.UPLOAD_RIGHTS_CHECKED,
+          idempotencyKey: 'fee-replay-1',
+          oauthClientId: null,
+          runReservationId: null,
+        }
+      );
+    vi.stubEnv('GATEWAY_PLATFORM_FEE_BPS', '250');
+    const first = await hold();
+    vi.stubEnv('GATEWAY_PLATFORM_FEE_BPS', '500');
+    try {
+      const replay = await hold();
+      expect(replay.created).toBe(false);
+      expect(replay.job.platformFeeBps).toBe(250);
+      expect(replay.run.platformFeeBps).toBe(250);
+      expect(replay.run.reservationId).toBe(first.run.reservationId);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('keeps a digest of inline media on the row, sends the provider the whole body, and still refuses a changed clip', async () => {
@@ -1235,7 +1261,7 @@ describe('the charge', () => {
       ctx(scopedDb, null, 'client-1')
     );
     const payload = lastPayload();
-    expect(payload.platformFeeBps).toBe(GATEWAY_PLATFORM_FEE_BPS);
+    expect(payload.platformFeeBps).toBe(0);
     expect(payload.oauthClientId).toBe('client-1');
     expect(payload.estimateMicros).toBeGreaterThan(0);
     const [hold] = (await reservationsFor(organizationId)).filter(
