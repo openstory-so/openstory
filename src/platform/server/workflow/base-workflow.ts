@@ -21,7 +21,7 @@ import { ensureE2eModelPricing } from '@/billing/server/seed-model-pricing';
 import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import {
-  toWorkflowScopedDb,
+  forWorkflowRun,
   type WorkflowScopedDb,
 } from '@/platform/server/db/scoped-workflow';
 import {
@@ -198,8 +198,9 @@ export abstract class OpenStoryWorkflowEntrypoint<
       );
     }
 
-    const scopedDb = toWorkflowScopedDb(
-      createScopedDb(event.payload.organizationId, event.payload.userId)
+    const scopedDb = forWorkflowRun(
+      createScopedDb(event.payload.organizationId, event.payload.userId),
+      event.payload.reservationId ?? null
     );
 
     // Install the fal→proxy middleware on the global `fal` singleton before any

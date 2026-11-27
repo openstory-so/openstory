@@ -342,6 +342,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'sk-or',
       source: 'organization',
       via: 'openrouter',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -353,6 +354,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'sk-fal-only',
       source: 'organization',
       via: 'fal',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -365,6 +367,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'platform-openrouter-key',
       source: 'platform',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' },
       fallbackReason: undefined,
     });
   });
@@ -379,6 +382,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'sk-fal-good',
       source: 'organization',
       via: 'fal',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -393,6 +397,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'platform-openrouter-key',
       source: 'platform',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' },
       fallbackReason: 'openrouter rejected',
     });
   });
@@ -405,6 +410,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'platform-fal-key',
       source: 'platform',
       via: 'fal',
+      meter: { uncharged: 'no organization' },
       fallbackReason: undefined,
     });
   });
@@ -420,6 +426,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'platform-openrouter-key',
       source: 'platform',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' },
       fallbackReason: 'fal rejected',
     });
   });
@@ -435,6 +442,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'sk-fal',
       source: 'organization',
       via: 'fal',
+      meter: { uncharged: 'own key' },
     });
 
     const orKey = (await scope.listKeys()).find(
@@ -456,6 +464,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
       key: 'platform-openrouter-key',
       source: 'platform',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' },
       fallbackReason: 'Could not decrypt stored key: bad auth tag',
     });
   });
@@ -517,6 +526,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'llmtr-organization',
       source: 'organization',
       via: 'llmtr',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -529,6 +539,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'sk-or',
       source: 'organization',
       via: 'openrouter',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -541,6 +552,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'sk-or',
       source: 'organization',
       via: 'openrouter',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -552,6 +564,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'llmtr-organization',
       source: 'organization',
       via: 'llmtr',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -564,6 +577,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'platform-google',
       source: 'platform',
       via: 'google',
+      meter: { uncharged: 'no organization' },
     });
   });
 
@@ -576,6 +590,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
+      meter: { uncharged: 'no organization' },
     });
   });
 
@@ -590,6 +605,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'platform-openrouter-key',
       source: 'platform',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' },
       fallbackReason: 'llmtr rejected',
     });
   });
@@ -606,6 +622,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       key: 'sk-fal',
       source: 'organization',
       via: 'fal',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -665,6 +682,7 @@ describe('native xAI key resolution (issue #1167)', () => {
       key: 'xai-organization',
       source: 'organization',
       via: 'xai',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -696,6 +714,7 @@ describe('native xAI key resolution (issue #1167)', () => {
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
+      meter: { uncharged: 'no organization' },
     });
   });
 
@@ -734,6 +753,7 @@ describe('native Google key resolution', () => {
       key: 'google-organization',
       source: 'organization',
       via: 'google',
+      meter: { uncharged: 'own key' },
     });
   });
 
@@ -760,6 +780,7 @@ describe('native Google key resolution', () => {
       key: 'platform-google',
       source: 'platform',
       via: 'google',
+      meter: { uncharged: 'no organization' },
     });
   });
 

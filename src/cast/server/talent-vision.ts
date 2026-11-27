@@ -6,7 +6,6 @@
  * call returns; recorded fixtures still parse them.
  */
 
-import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
 import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
@@ -16,7 +15,7 @@ import type {
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { z } from 'zod';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { talentSubjectKindSchema } from '@/cast/subject-kind';
 
@@ -45,7 +44,7 @@ export type AnalyzeTalentMediaInput = {
    * (the mock matches `userMessage`, not image bytes).
    */
   filenames?: string[];
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
    * was resolved for {@link TALENT_VISION_MODEL}; the fallback may not be
@@ -57,10 +56,8 @@ export type AnalyzeTalentMediaInput = {
 
 export type TalentVisionResult = TalentMediaAnalysis & {
   /** The model that actually answered — the region fallback may have run
-   *  instead of {@link TALENT_VISION_MODEL}. Bill and log this one. */
+   *  instead of {@link TALENT_VISION_MODEL}. Log this one; the key's meter charged it. */
   model: TextModel;
-  costMicros: Microdollars;
-  usedOwnKey: boolean;
 };
 
 // Recorded e2e fixtures match this prompt text; changing it means
@@ -205,18 +202,17 @@ export async function analyzeTalentClip(input: {
 async function runTalentVision(input: {
   model: TextModel;
   messages: ChatMessage[];
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   observability?: AIObservabilityMeta;
 }): Promise<TalentVisionResult> {
   let parsed: TalentMediaAnalysis | undefined;
-  let usage;
   let model = input.model;
-  let via = input.llmKey?.via;
   for await (const chunk of callLLMStream({
     model: input.model,
     messages: input.messages,
     temperature: 0.2,
+    max_tokens: 4096,
     responseSchema: talentMediaAnalysisSchema,
     apiKey: input.llmKey,
     resolveApiKey: input.resolveLlmKey,
@@ -226,9 +222,7 @@ async function runTalentVision(input: {
   })) {
     if (chunk.done) {
       parsed = chunk.parsed;
-      usage = chunk.usage;
       model = chunk.model;
-      via = chunk.via;
     }
   }
   if (!parsed) {
@@ -238,7 +232,5 @@ async function runTalentVision(input: {
   return {
     ...parsed,
     model,
-    costMicros: llmCostFromUsage(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

@@ -17,9 +17,9 @@ import { buildMotionRender } from '@/motion/server/build-motion-render';
 
 import {
   describeElementImage,
+  elementVisionKeys,
   ELEMENT_VISION_MODEL,
 } from '@/cast/server/element-vision';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   DEFAULT_IMAGE_MODEL,
   safeTextToImageModel,
@@ -252,13 +252,15 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         elementId,
         'analyzing'
       );
-      const llmKeyInfo =
-        await scopedDb.credentials.resolveLlmKey(ELEMENT_VISION_MODEL);
+      const elementVisionKey = elementVisionKeys((model) =>
+        scopedDb.credentials.resolveLlmKey(model)
+      );
+      const llmKeyInfo = await elementVisionKey(ELEMENT_VISION_MODEL);
       const result = await describeElementImage({
         imageUrl: newImageUrl,
         filename: input.newFilename,
         llmKey: llmKeyInfo,
-        resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),
+        resolveLlmKey: elementVisionKey,
         observability: {
           userId: input.userId,
           sessionId: input.sequenceId,
@@ -271,22 +273,6 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         result.consistencyTag
       );
       return result;
-    });
-
-    await step.do('deduct-vision-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: visionResult.costMicros,
-        usedOwnKey: visionResult.usedOwnKey,
-        description: `Element vision (${visionResult.model})`,
-        idempotencyKey: `${event.instanceId}:vision`,
-        metadata: {
-          model: visionResult.model,
-          elementId,
-          sequenceId,
-        },
-        workflowName: 'ReplaceElementWorkflow',
-      });
     });
 
     // Vision-driven auto-rename: if the new image suggests a meaningfully

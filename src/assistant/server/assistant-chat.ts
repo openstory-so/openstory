@@ -2,10 +2,10 @@
  * One assistant turn (#2155): the signed-in user's message, the page they
  * are on, the MCP tool set under their organization, streamed back as SSE and
  * persisted per thread. The LLM is the organization's configured one
- * (`resolveLlmKey`); a platform key bills the turn to the organization at
- * `llmCostFromUsage`.
+ * (`resolveLlmKey`); a platform key's meter charges each model call (#2437).
  */
 
+import { forCall } from '@/gateway/server/text';
 import {
   chat,
   chatParamsFromRequest,
@@ -16,7 +16,6 @@ import {
   type ChatMiddleware,
   type ImagePart,
   type ModelMessage,
-  type TokenUsage,
   type UIMessage,
 } from '@tanstack/ai';
 import { reconstructChat, withPersistence } from '@tanstack/ai-persistence';
@@ -24,11 +23,8 @@ import { z } from 'zod';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { getRequestCountry } from '@/platform/server/request-country';
 import { createAdapter, type LlmKeyInfo } from '@/models/server/create-adapter';
-import { llmCostFromUsage } from '@/models/server/llm-client';
-import { generateId } from '@/platform/id';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -131,13 +127,22 @@ const WEB_PROMPT =
  * `web` plugin searches and reads pages server-side for any model, so the
  * model sees results in its context and nothing leaves this Worker but the
  * query. Only the OpenRouter via has it; a native or LLMTR key runs without.
- * Its per-result charge lands on the OpenRouter bill, outside
- * `llmCostFromUsage`, like every native spend.
+ * The meter prices its searches on the card's `web_searches` lever.
  */
 function webSearchFor(via: LlmKeyInfo['via']) {
   return via === 'openrouter'
     ? { plugins: [{ id: 'web' as const, maxResults: 3, maxUses: 3 }] }
     : {};
+}
+
+/** One model call's output budget, under the name its route reads; the hold is priced on it. */
+const TURN_MAX_OUTPUT_TOKENS = 8192;
+
+function outputBudgetFor(via: LlmKeyInfo['via']) {
+  if (via === 'google') return { maxOutputTokens: TURN_MAX_OUTPUT_TOKENS };
+  if (via === 'xai') return { max_output_tokens: TURN_MAX_OUTPUT_TOKENS };
+  if (via === 'llmtr') return { max_tokens: TURN_MAX_OUTPUT_TOKENS };
+  return { maxTokens: TURN_MAX_OUTPUT_TOKENS };
 }
 
 function systemPrompts(
@@ -204,68 +209,6 @@ function lastUserText(
 }
 
 /**
- * Bill the turn to the organization unless its own key paid for it. Each model
- * iteration is charged as the provider reports its usage, not once at the
- * end: the run goes on after the browser disconnects, and a run the host
- * drops before its terminal hook has then already paid for every
- * iteration that finished. The idempotency key is minted here, never taken
- * from the client: a repeated client run id would otherwise be billed once
- * and run free. TanStack swallows what a hook throws, so a failed charge
- * is logged here or it is lost.
- */
-function billingMiddleware(
-  caller: AssistantCaller,
-  model: string,
-  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr',
-  usedOwnKey: boolean,
-  runId: string
-): ChatMiddleware[] {
-  const chargeKey = `assistant:${caller.organizationId}:${generateId()}`;
-  let iteration = 0;
-  const charge = async (usage: TokenUsage) => {
-    if (usedOwnKey) return;
-    iteration += 1;
-    // Nothing reported means nothing was used (the model never answered).
-    if (usage.totalTokens === 0) return;
-    const cost = llmCostFromUsage(usage, model, via);
-    if (cost <= 0) {
-      reportMissingBillingCost({
-        source: 'assistant-chat',
-        modelId: model,
-        organizationId: caller.organizationId,
-        metadata: { usage, via, runId, iteration },
-      });
-      return;
-    }
-    try {
-      await caller.scopedDb.billing.deductCredits(cost, {
-        description: `Assistant (${model})`,
-        metadata: { model, runId, iteration },
-        idempotencyKey: `${chargeKey}:${iteration}`,
-      });
-    } catch (error) {
-      logger.error('assistant charge failed', {
-        organizationId: caller.organizationId,
-        runId,
-        iteration,
-        cost,
-        err: toErrorPayload(error),
-      });
-      throw error;
-    }
-  };
-  return [
-    {
-      name: 'assistant-billing',
-      onUsage: (_ctx, usage) => charge(usage),
-      // A provider that reports no per-iteration usage reports a total here.
-      onFinish: (_ctx, info) =>
-        iteration === 0 && info.usage ? charge(info.usage) : undefined,
-    },
-  ];
-}
-
-/**
  * POST: one turn, streamed through the run's log. A reconnect after a drop
  * re-sends the same POST with `Last-Event-ID`; that is a read of the log,
  * never a second run, so it answers before any gate or thread write.
@@ -293,8 +236,9 @@ export async function handleAssistantChat(
   const { scopedDb } = caller;
   // The composer's pick; the default when it is missing or not selectable.
   const model = chatModelFor(params.forwardedProps.model, getRequestCountry());
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
-  const usedOwnKey = llmKey.source === 'organization';
+  const llmKey = forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+    describe: (answered) => `Assistant (${answered})`,
+  });
   // A restricted account may read but not spend (#1180); the request
   // middleware checked access, this checks generation before any credit.
   await requireGenerationAllowed({
@@ -341,7 +285,6 @@ export async function handleAssistantChat(
       userId: caller.user.id,
       sessionId: thread.id,
     }),
-    ...billingMiddleware(caller, model, llmKey.via, usedOwnKey, params.runId),
     withPersistence(scopedDb.assistant.persistence(thread.id)),
   ];
   const stream = chat({
@@ -352,7 +295,10 @@ export async function handleAssistantChat(
       pageContext.data,
       llmKey.via === 'openrouter'
     ),
-    modelOptions: webSearchFor(llmKey.via),
+    modelOptions: {
+      ...webSearchFor(llmKey.via),
+      ...outputBudgetFor(llmKey.via),
+    },
     // A draft on the page adds the one browser-executed tool: the server
     // advertises the definition, the client's `useChat` runs it.
     tools: hasDraft(pageContext.data)

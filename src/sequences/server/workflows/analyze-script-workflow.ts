@@ -198,7 +198,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             script,
             aspectRatio,
             analysisModelId,
-            reservationId: input.reservationId,
           })
         : null;
     stylePromise?.catch(() => {});

@@ -10,18 +10,15 @@
 
 import {
   createAdapter,
-  getPlatformLlmKey,
   resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from './create-adapter';
 import { llmtrCompatibleApi } from '@/models/llmtr';
 import {
-  createUsageCapture,
   extractRunError,
   glmReasoningEffortForCall,
   isForcedGlmReasoningModel,
-  llmCostFromUsage,
   openRouterProviderForModel,
   PROMPT_REASONING,
   regionRetriesFor,
@@ -43,8 +40,6 @@ import {
 } from '@/models/models.config';
 import { withRegionFallback } from '@/models/region-policy';
 import { extractStreamingStringField } from '@/platform/server/ai/stream-extract';
-import type { Microdollars } from '@/billing/money';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
@@ -236,9 +231,9 @@ function assertStructuredOutput<T>(
 export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
-  reasoning: boolean | undefined
+  reasoning: boolean | undefined,
+  maxTokens: number = getMaxOutputTokens(modelId)
 ) {
-  const maxTokens = getMaxOutputTokens(modelId);
   if (resolveNativeGrokModel(modelId, llmKeyInfo)) {
     return {
       ...(reasoning
@@ -303,10 +298,8 @@ export type DurableLLMCallContext = {
    * can't double-charge.
    */
   workflowRunId: string;
-  /** Scoped DB context for resolving organization API keys + deducting credits. */
-  scopedDb?: WorkflowScopedDb;
-  /** Run envelope to capture against when the parent held one (#1310). */
-  reservationId?: string;
+  /** The run's scoped DB: its key is resolved, and charged, through it. */
+  scopedDb: WorkflowScopedDb;
 };
 
 export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
@@ -317,11 +310,8 @@ export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
   };
 };
 
-type LlmKeySource = 'organization' | 'platform';
-
 /**
- * Resolve the key for the LLM call — the organization's key via ScopedDb, or the
- * platform key for anonymous workflows. MUST be awaited INSIDE the LLM
+ * Resolve the key for the LLM call through the run's ScopedDb. MUST be awaited INSIDE the LLM
  * `step.do`: it reads (and, via `decryptOrMarkInvalid`, writes) mutable D1
  * state, so resolving between steps would re-execute on replay while the LLM
  * step is cache-served, and the billing attribution could flip. The step
@@ -332,17 +322,7 @@ async function resolveCallKey(
   callContext: DurableLLMCallContext,
   model?: string
 ) {
-  if (callContext.scopedDb) {
-    return callContext.scopedDb.credentials.resolveLlmKey(model);
-  }
-  const platform = getPlatformLlmKey(model);
-  if (!platform) {
-    throw new NonRetryableError(
-      'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)',
-      'WorkflowValidationError'
-    );
-  }
-  return platform;
+  return callContext.scopedDb.credentials.resolveLlmKey(model);
 }
 
 /**
@@ -350,8 +330,7 @@ async function resolveCallKey(
  *
  * Step layout (deterministic names):
  *   1. `prepare-${name}` — resolve the chat prompt
- *   2. `${name}` — LLM call (JSON-stringified result for step boundary)
- *   3. `deduct-llm-credits-${name}` — credit deduction (only if scopedDb passed)
+ *   2. `${name}` — LLM call, charged by the key's meter (JSON-stringified result for step boundary)
  */
 export async function durableLLMCallCf<TSchema extends z.ZodType>(
   step: WorkflowStep,
@@ -384,15 +363,10 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
 
   // Step 2: Durable LLM call. JSON-stringifies the parsed object so CF's
   // Rpc.Serializable<T> check passes regardless of the Zod-inferred shape, and
-  // carries the provider-reported cost + resolved key source across the step
-  // boundary for deduction.
-  const { jsonText, costMicros, keySource } = await step.do(
+  // the key's meter charges the call inside the step (#2437).
+  const { jsonText } = await step.do(
     name,
-    async (): Promise<{
-      jsonText: string;
-      costMicros: Microdollars;
-      keySource: LlmKeySource;
-    }> => {
+    async (): Promise<{ jsonText: string }> => {
       // Region-block fallback (#1259): workflows egress from the colo nearest
       // the user, so an Anthropic model can be geo-blocked even "server-side".
       // Retry once on a region-available model instead of burning step retries.
@@ -441,7 +415,6 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
               () => abortController.abort(),
               LLM_CALL_TIMEOUT_MS
             );
-            const usageCapture = createUsageCapture();
             try {
               const commonOptions = {
                 adapter,
@@ -464,9 +437,8 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                     // deduction) but often not `userId`, which silently produced
                     // anonymous generations — see the media-side note in
                     // image-generation.ts.
-                    userId: callContext.userId ?? callContext.scopedDb?.userId,
+                    userId: callContext.userId ?? callContext.scopedDb.userId,
                   }),
-                  ...usageCapture.middleware,
                 ],
                 debug: false,
                 threadId: generateId(),
@@ -481,7 +453,6 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
               let structuredObject: unknown;
               let runError = null;
               for await (const event of eventStream) {
-                usageCapture.noteFromStreamEvent(event);
                 const noted = extractRunError(event);
                 if (noted) {
                   runError ??= noted;
@@ -507,12 +478,6 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
               // CF's Rpc.Serializable constraint on the Zod-inferred shape.
               return {
                 jsonText: JSON.stringify(structuredObject),
-                costMicros: llmCostFromUsage(
-                  usageCapture.get(),
-                  model,
-                  llmKeyInfo.via
-                ),
-                keySource: llmKeyInfo.source,
               };
             } finally {
               clearTimeout(timeout);
@@ -524,28 +489,6 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
       });
     }
   );
-
-  if (callContext.scopedDb) {
-    const scopedDb = callContext.scopedDb;
-    await step.do(`deduct-llm-credits-${name}`, async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros,
-        usedOwnKey: keySource === 'organization',
-        description: `LLM analysis (${modelId})`,
-        idempotencyKey: `${callContext.workflowRunId}:llm-${name}`,
-        reservationId: callContext.reservationId,
-        metadata: {
-          model: modelId,
-          phase: phase.number,
-          phaseName: phase.name,
-          stepName: name,
-          sequenceId: callContext.sequenceId,
-          costMicros,
-        },
-      });
-    });
-  }
 
   return config.responseSchema.parse(JSON.parse(jsonText));
 }
@@ -591,13 +534,9 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
     return { messages };
   });
 
-  const { jsonText, costMicros, keySource } = await step.do(
+  const { jsonText } = await step.do(
     `${name}-stream`,
-    async (): Promise<{
-      jsonText: string;
-      costMicros: Microdollars;
-      keySource: LlmKeySource;
-    }> => {
+    async (): Promise<{ jsonText: string }> => {
       // Region-block fallback (#1259) — see durableLLMCallCf. A geo-blocked
       // model errors before its first token, so the realtime channel has seen
       // nothing when the retry restarts the stream. Resolve the key for the
@@ -646,7 +585,6 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
             let lastExtracted = '';
             let pendingDelta = '';
             let lastEmitAt = 0;
-            const usageCapture = createUsageCapture();
 
             const flushDelta = async () => {
               if (!pendingDelta) return;
@@ -673,9 +611,8 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
                   metadata: logMetadata,
                   sessionId: callContext.sequenceId,
                   // Same scopedDb fallback as the non-streaming path above.
-                  userId: callContext.userId ?? callContext.scopedDb?.userId,
+                  userId: callContext.userId ?? callContext.scopedDb.userId,
                 }),
-                ...usageCapture.middleware,
               ],
               debug: false,
               threadId: generateId(),
@@ -694,7 +631,6 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
             let runError = null;
             try {
               for await (const event of eventStream) {
-                usageCapture.noteFromStreamEvent(event);
                 const noted = extractRunError(event);
                 if (noted) {
                   runError ??= noted;
@@ -740,12 +676,6 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
               logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
               return {
                 jsonText: structuredJson,
-                costMicros: llmCostFromUsage(
-                  usageCapture.get(),
-                  model,
-                  llmKeyInfo.via
-                ),
-                keySource: llmKeyInfo.source,
               };
             } finally {
               clearTimeout(timeout);
@@ -757,28 +687,6 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
       });
     }
   );
-
-  if (callContext.scopedDb) {
-    const scopedDb = callContext.scopedDb;
-    await step.do(`deduct-llm-credits-${name}`, async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros,
-        usedOwnKey: keySource === 'organization',
-        description: `LLM analysis (${modelId})`,
-        idempotencyKey: `${callContext.workflowRunId}:llm-${name}`,
-        reservationId: callContext.reservationId,
-        metadata: {
-          model: modelId,
-          phase: phase.number,
-          phaseName: phase.name,
-          stepName: name,
-          sequenceId: callContext.sequenceId,
-          costMicros,
-        },
-      });
-    });
-  }
 
   return config.responseSchema.parse(JSON.parse(jsonText));
 }

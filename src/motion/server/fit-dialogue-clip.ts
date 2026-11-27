@@ -70,7 +70,6 @@ export type ShortenDialogueArgs = {
   sequenceId: string;
   /** For the LLM call's metadata and the rewrite brief. */
   shotId: string;
-  reservationId?: string;
   analysisModelId?: AnalysisModelId;
   /** The turns to tighten, with the indexes the merge happens on. */
   lines: readonly VoicedDialogueLine[];
@@ -115,7 +114,6 @@ export async function shortenDialogueLines(
       userId: args.userId,
       workflowRunId: args.workflowRunId,
       scopedDb: args.scopedDb,
-      reservationId: args.reservationId,
     }
   );
 

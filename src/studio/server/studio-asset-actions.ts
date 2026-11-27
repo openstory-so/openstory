@@ -3,7 +3,8 @@
  * tools (#1985): favourite, delete, edit history and the AI prompt draft.
  */
 
-import { reportMissingBillingCost } from '@/billing/billing-observability';
+import { forCall } from '@/gateway/server/text';
+import type { TextModel } from '@/models/models';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -106,7 +107,11 @@ export async function draftStudioPromptForOrganization(
   scopedDb: ScopedDb,
   data: StudioPromptDraftInput
 ): Promise<{ prompt: string }> {
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(STUDIO_DRAFT_MODEL);
+  const keyFor = async (model: TextModel) =>
+    forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+      describe: (answered) => `Studio prompt draft (${answered})`,
+    });
+  const llmKey = await keyFor(STUDIO_DRAFT_MODEL);
   if (llmKey.source !== 'organization') {
     const canAfford = await scopedDb.billing.hasEnoughCredits(
       estimateLLMCost(1)
@@ -121,23 +126,9 @@ export async function draftStudioPromptForOrganization(
   const result = await draftStudioPrompt({
     ...data,
     llmKey,
-    resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
+    resolveLlmKey: keyFor,
     observability: { userId: scopedDb.userId, tags: ['studio', 'draft'] },
   });
 
-  if (!result.usedOwnKey) {
-    if (result.costMicros > 0) {
-      await scopedDb.billing.deductCredits(result.costMicros, {
-        description: `Studio prompt draft (${result.model})`,
-        metadata: { model: result.model },
-      });
-    } else {
-      reportMissingBillingCost({
-        source: 'studio-prompt-draft',
-        modelId: result.model,
-        metadata: { references: data.references.length },
-      });
-    }
-  }
   return { prompt: result.prompt };
 }

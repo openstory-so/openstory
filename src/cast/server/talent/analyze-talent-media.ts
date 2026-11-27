@@ -11,7 +11,8 @@ import {
   TALENT_VISION_MODEL,
   type TalentVisionResult,
 } from '@/cast/server/talent-vision';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
+import { forCall } from '@/gateway/server/text';
+import type { TextModel } from '@/models/models';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
@@ -19,9 +20,11 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
  * What a billed vision call reads and writes. Narrow so a request and a
  * workflow (`UploadCheckWorkflow`, through its named hatches) both satisfy it.
  */
+const talentVision = (model: string) => `Talent vision (${model})`;
+
 export type VisionBillingDb = {
   apiKeys: Pick<ScopedDb['apiKeys'], 'resolveLlmKey'>;
-  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'deductCredits'>;
+  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits'>;
 };
 import { InsufficientCreditsError } from '@/platform/errors';
 import {
@@ -48,8 +51,12 @@ export type AnalyzeTalentMediaForOrganizationInput = {
 export async function analyzeTalentMediaForOrganization(
   input: AnalyzeTalentMediaForOrganizationInput
 ): Promise<TalentVisionResult> {
-  const llmKeyInfo =
-    await input.scopedDb.apiKeys.resolveLlmKey(TALENT_VISION_MODEL);
+  const chargeOnce = async (model: TextModel) =>
+    forCall(await input.scopedDb.apiKeys.resolveLlmKey(model), {
+      describe: talentVision,
+      chargeKey: input.idempotencyKey,
+    });
+  const llmKeyInfo = await chargeOnce(TALENT_VISION_MODEL);
   await requireVisionCredits(input.scopedDb, llmKeyInfo);
   const result = await analyzeTalentMedia({
     imageUrls: input.imageUrls,
@@ -57,13 +64,12 @@ export async function analyzeTalentMediaForOrganization(
     llmKey: llmKeyInfo,
     // The region fallback swaps the model; re-resolve so the retry's via is
     // one that carries it (#1259).
-    resolveLlmKey: (model) => input.scopedDb.apiKeys.resolveLlmKey(model),
+    resolveLlmKey: chargeOnce,
     observability: {
       userId: input.userId,
       tags: ['vision', 'likeness'],
     },
   });
-  await billTalentVision(input, result, input.imageUrls.length);
   return result;
 }
 
@@ -80,7 +86,10 @@ export async function analyzeTalentClipForOrganization(input: {
   mimeType: string;
   idempotencyKey: string;
 }): Promise<TalentVisionResult> {
-  const llmKey = await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL);
+  const llmKey = forCall(
+    await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL),
+    { describe: talentVision, chargeKey: input.idempotencyKey }
+  );
   if (llmKey.via !== 'google') {
     throw geminiUnavailableError(
       'Checking a clip for a real person needs a Gemini API key. Add one in Settings → API Keys.'
@@ -104,13 +113,11 @@ async function checkUploadedClip(
 ): Promise<TalentVisionResult> {
   const file = await uploadClipToGemini(input.key, input.mimeType, llmKey.key);
   try {
-    const result = await analyzeTalentClip({
+    return await analyzeTalentClip({
       clip: file,
       llmKey,
       observability: { userId: input.userId, tags: ['vision', 'likeness'] },
     });
-    await billTalentVision(input, result, 1);
-    return result;
   } finally {
     await deleteGeminiFile(file.name, llmKey.key).catch((error: unknown) => {
       logger.warn('Could not delete a clip from Gemini Files', {
@@ -131,26 +138,5 @@ async function requireVisionCredits(
     throw new InsufficientCreditsError(
       'Insufficient credits for talent vision'
     );
-  }
-}
-
-async function billTalentVision(
-  input: { scopedDb: VisionBillingDb; idempotencyKey: string },
-  result: TalentVisionResult,
-  mediaCount: number
-): Promise<void> {
-  if (result.usedOwnKey) return;
-  if (result.costMicros > 0) {
-    await input.scopedDb.billing.deductCredits(result.costMicros, {
-      description: `Talent vision (${result.model})`,
-      metadata: { model: result.model },
-      idempotencyKey: input.idempotencyKey,
-    });
-  } else {
-    reportMissingBillingCost({
-      source: 'talent-vision',
-      modelId: result.model,
-      metadata: { imageCount: mediaCount },
-    });
   }
 }

@@ -10,6 +10,7 @@
  * and the server-only API layer, so the client transform drops them.
  */
 
+import { forCall } from '@/gateway/server/text';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { longestTakeSeconds } from '@/shots/shot-list-pass';
 import { getEnv } from '#env';
@@ -17,10 +18,12 @@ import type { EnhanceScriptInput } from '@/models/ai.fn';
 import {
   callLLMStream,
   ENHANCE_REASONING,
-  llmCostFromUsage,
   RECOMMENDED_MODELS,
 } from '@/models/server/llm-client';
-import { isValidAnalysisModelId } from '@/models/models.config';
+import {
+  getMaxOutputTokens,
+  isValidAnalysisModelId,
+} from '@/models/models.config';
 import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/models/models';
 import {
   checkForInjectionAttempts,
@@ -31,9 +34,7 @@ import {
   runEnhanceScriptTurns,
 } from '@/sequences/enhance-script-turns';
 import { createUserPrompt } from '@/sequences/script-enhancer';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
-import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
@@ -59,52 +60,31 @@ export type { EnhanceChunk } from '@/sequences/enhance-script-turns';
 
 const logger = getLogger(['openstory', 'serverFn', 'ai']);
 
-/**
- * Check pre-flight billing and resolve the key for the LLM call.
- * `deduct` is undefined when billing is skipped — the organization's own key pays,
- * either their OpenRouter key or their fal key routed through fal's
- * OpenRouter endpoint (issue #895).
- */
+/** The enhanced script's output budget, under each model's own ceiling. */
+const ENHANCE_MAX_OUTPUT_TOKENS = 32_000;
+
+/** Check pre-flight credit and resolve the key; the key's meter charges the call (#2437). */
 export async function prepareBilling(
   scopedDb: ScopedDb,
   description: string,
   metadata?: Record<string, unknown>,
   opts?: { allowUnfunded?: boolean }
-): Promise<{
-  llmKey: ResolvedLlmKey;
-  deduct?: (actualCost: Microdollars) => Promise<void>;
-}> {
+): Promise<{ llmKey: ResolvedLlmKey }> {
   const model =
     typeof metadata?.model === 'string' ? metadata.model : undefined;
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
-  if (llmKey.source === 'organization') return { llmKey };
-
-  const estimatedCost = estimateLLMCost(1);
-  const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
-  if (!canAfford) {
-    if (opts?.allowUnfunded) return { llmKey };
-    throw new InsufficientCreditsError(
-      `Insufficient credits for ${description.toLowerCase()}`
-    );
+  const llmKey = forCall(await scopedDb.apiKeys.resolveLlmKey(model), {
+    describe: () => description,
+    // #1567: the call's own hold decides; one it cannot take runs free.
+    ...(opts?.allowUnfunded && { whenShort: 'run free' as const }),
+  });
+  if (llmKey.source === 'organization' || opts?.allowUnfunded) {
+    return { llmKey };
   }
-
-  return {
-    llmKey,
-    deduct: async (actualCost) => {
-      if (actualCost > 0) {
-        await scopedDb.billing.deductCredits(actualCost, {
-          description,
-          metadata,
-        });
-        return;
-      }
-      reportMissingBillingCost({
-        source: 'server-fn-deduct',
-        description,
-        metadata,
-      });
-    },
-  };
+  const canAfford = await scopedDb.billing.hasEnoughCredits(estimateLLMCost(1));
+  if (canAfford) return { llmKey };
+  throw new InsufficientCreditsError(
+    `Insufficient credits for ${description.toLowerCase()}`
+  );
 }
 
 /**
@@ -137,7 +117,7 @@ export async function* streamScriptEnhancement(
       : DEFAULT_VIDEO_MODEL;
   const targetSeconds = data.targetDuration ?? 30;
 
-  const { llmKey, deduct } = await prepareBilling(
+  const { llmKey } = await prepareBilling(
     ctx.scopedDb,
     'Script enhancement',
     { model },
@@ -231,17 +211,16 @@ export async function* streamScriptEnhancement(
   // Gate it out of E2E entirely (record + replay): live search results would
   // make the recorded OpenRouter request/response non-deterministic.
   const useWebSearch = getEnv().E2E_TEST !== 'true';
-  let totalCost: Microdollars = ZERO_MICROS;
 
   async function* generate(turnMessages: ChatMessage[]) {
     for await (const chunk of callLLMStream({
       model,
       messages: turnMessages,
-      // No max_tokens: every model routes through OpenRouter, which falls back
-      // to the model's own max output when the field is omitted — so long
-      // scripts use the full available output budget instead of an artificial
-      // cap, and the #915 truncation (seen when this was a flat 4000) can't
-      // recur.
+      // Room for a feature-length script with low reasoning; 4,000 truncated (#915).
+      max_tokens: Math.min(
+        ENHANCE_MAX_OUTPUT_TOKENS,
+        getMaxOutputTokens(model)
+      ),
       temperature: 0.7,
       ...(useWebSearch && { webSearch: true }),
       // Always on at `low`. Omitting this on Grok 4.6 (the default) falls through
@@ -265,14 +244,7 @@ export async function* streamScriptEnhancement(
         videoModel,
       },
     })) {
-      if (chunk.done) {
-        // A region block retries on another model (#1259); bill what answered.
-        totalCost = addMicros(
-          totalCost,
-          llmCostFromUsage(chunk.usage, chunk.model, chunk.via)
-        );
-        continue;
-      }
+      if (chunk.done) continue;
       if (chunk.delta) yield { delta: chunk.delta };
       if (chunk.reasoning) yield { delta: '', reasoning: chunk.reasoning };
     }
@@ -287,8 +259,6 @@ export async function* streamScriptEnhancement(
   } finally {
     await releaseGeminiFiles(uploadedStills, llmKey.key);
   }
-
-  await deduct?.(totalCost);
 }
 
 /**

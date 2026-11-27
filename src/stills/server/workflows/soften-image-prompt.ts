@@ -464,7 +464,6 @@ export async function generateImageWithContentRetry(
         analysisModelId: analysisModelFor(provenance.analysisModel),
         shotId: input.shotId,
         model: params.model,
-        reservationId: input.reservationId,
       });
     } catch (error) {
       logger.warn(

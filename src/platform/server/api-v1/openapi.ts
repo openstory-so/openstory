@@ -13,6 +13,7 @@
 
 import { oneShotResultSchema, oneShotWaitResultSchema } from './create';
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
+import { gatewayChatBodySchema } from '@/gateway/chat-schema';
 import { API_V1_BASE, halLinksSchema } from './hal';
 import { apiCreateSequenceSchema } from './input-schema';
 import { sequenceListPageSchema } from './list';
@@ -136,6 +137,7 @@ export function buildOpenApiDocument(): JsonObject {
   const { root: enhanceRequest, defs: enhanceDefs } = componentSchemas(
     apiEnhanceScriptSchema
   );
+  const { root: gatewayChatRequest } = componentSchemas(gatewayChatBodySchema);
   const { root: createStyleRequest, defs: styleDefs } =
     componentSchemas(apiCreateStyleSchema);
   const { root: createStitchRequest, defs: stitchDefs } = componentSchemas(
@@ -193,7 +195,7 @@ export function buildOpenApiDocument(): JsonObject {
       {
         name: 'gateway',
         description:
-          'Run image and video models on platform keys, billed to the organization.',
+          'Run text, image, video and audio models on platform keys, billed to the organization.',
       },
     ],
     paths: {
@@ -899,6 +901,61 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/gateway/chat/{model}`]: {
+        post: {
+          tags: ['gateway'],
+          summary: 'Stream a text run',
+          description:
+            "Run one text model on OpenStory's platform keys and stream the reply as AG-UI Server-Sent Events. Before the first byte the model's rate card is held on the prompt's size and `maxTokens`; at the end the card is charged on the usage the model reported (cached and reasoning tokens at their own rates), and the rest is released. A run cut off part way is charged for what streamed, never above the hold; one that streamed nothing is charged nothing. Text turns only: no tools and no media.",
+          parameters: [
+            {
+              name: 'model',
+              in: 'path',
+              required: true,
+              description:
+                'An OpenStory analysis model id, slashes kept (e.g. `anthropic/claude-sonnet-5.5`).',
+              schema: { type: 'string' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GatewayChatRequest' },
+                example: {
+                  messages: [
+                    { role: 'user', content: 'Give the baker a name.' },
+                  ],
+                  maxTokens: 64,
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description:
+                'AG-UI events, ending in `RUN_FINISHED` with the usage.',
+              content: {
+                'text/event-stream': { schema: { type: 'string' } },
+              },
+            },
+            '400': errorResponse(
+              'Invalid JSON or body, `maxTokens` above the model, or a model the rate card cannot price yet.'
+            ),
+            '401': errorResponse('Missing or invalid API key.'),
+            '402': errorResponse(
+              'INSUFFICIENT_CREDITS — the organization cannot cover the hold.'
+            ),
+            '403': errorResponse(
+              'No organization, a restricted account, or an OAuth token without `models:invoke`.'
+            ),
+            '404': errorResponse('Unknown model.'),
+            '429': errorResponse(
+              'RATE_LIMITED — too many runs for this organization; honour Retry-After.'
+            ),
+          },
+        },
+      },
       [`${API_V1_BASE}/gateway/jobs/{id}`]: {
         get: {
           tags: ['gateway'],
@@ -942,6 +999,7 @@ export function buildOpenApiDocument(): JsonObject {
         CreateSequenceRequest: createRequest,
         ...defs,
         EnhanceScriptRequest: enhanceRequest,
+        GatewayChatRequest: gatewayChatRequest,
         ...enhanceDefs,
         CreateStyleRequest: createStyleRequest,
         ...styleDefs,

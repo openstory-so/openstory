@@ -44,6 +44,7 @@ import { aiDebugLogger } from '@/platform/server/ai/ai-debug-logger';
 import { generateId } from '@/platform/id';
 import {
   createAdapter,
+  getPlatformLlmKey,
   resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
@@ -58,22 +59,6 @@ import {
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'llm-client']);
-
-function isTokenUsage(value: unknown): value is TokenUsage {
-  if (!value || typeof value !== 'object') return false;
-  if (
-    !('promptTokens' in value) ||
-    !('completionTokens' in value) ||
-    !('totalTokens' in value)
-  ) {
-    return false;
-  }
-  return (
-    typeof value.promptTokens === 'number' &&
-    typeof value.completionTokens === 'number' &&
-    typeof value.totalTokens === 'number'
-  );
-}
 
 function usageHasCost(usage: TokenUsage | undefined): usage is TokenUsage & {
   cost: number;
@@ -194,6 +179,24 @@ export function llmCostFromUsage(
   return ZERO_MICROS;
 }
 
+/** A metered key's own resolver, for a re-run on another route or model. */
+function meteredResolve(key: ResolvedLlmKey) {
+  return 'resolve' in key.meter ? key.meter.resolve : undefined;
+}
+
+export function isTokenUsage(value: unknown): value is TokenUsage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'promptTokens' in value &&
+    'completionTokens' in value &&
+    'totalTokens' in value &&
+    typeof value.promptTokens === 'number' &&
+    typeof value.completionTokens === 'number' &&
+    typeof value.totalTokens === 'number'
+  );
+}
+
 export type StreamChunk<T = never> =
   | {
       done: false;
@@ -257,7 +260,7 @@ export type LLMRequestParams<T = unknown> = {
   sessionId?: string;
   responseSchema?: z.ZodType<T>;
   /** Resolved LLM key info — `via` decides endpoint routing + auth scheme. */
-  apiKey?: ResolvedLlmKey;
+  apiKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `apiKey`
    * was resolved for `model`; a via that carries it need not carry the
@@ -265,7 +268,7 @@ export type LLMRequestParams<T = unknown> = {
    * not a fallback), so callers that can resolve per-model pass this and the
    * retry asks again. Omitted: the retry reuses `apiKey`.
    */
-  resolveApiKey?: (model: TextModel) => Promise<ResolvedLlmKey | undefined>;
+  resolveApiKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   /**
    * Enable OpenRouter's web-search server tool for this request. The model
    * decides when to search; OpenRouter runs the search server-side inside the
@@ -1042,8 +1045,15 @@ export function throwNotedRunError(
 }
 
 /** Who pays for a call: no key means `createAdapter` uses the platform's. */
-function payerOf(key: ResolvedLlmKey | undefined): ResolvedLlmKey['source'] {
-  return key?.source ?? 'platform';
+function payerOf(key: ResolvedLlmKey): ResolvedLlmKey['source'] {
+  return key.source;
+}
+
+/** With no resolver, only an uncharged platform call re-runs on the platform's key; an own key is refused, as before #2437. */
+function unchargedPlatformRerun(key: ResolvedLlmKey, model: string) {
+  return 'uncharged' in key.meter && key.meter.uncharged !== 'own key'
+    ? getPlatformLlmKey(model)
+    : undefined;
 }
 
 export function callLLMStream<T>(
@@ -1077,12 +1087,13 @@ export async function* callLLMStream<T>(
         googleBlockedAtStart
       )
     ) {
-      const apiKey = params.resolveApiKey
-        ? await params.resolveApiKey(params.model)
-        : params.apiKey?.via === 'google'
-          ? undefined
+      const resolve = params.resolveApiKey ?? meteredResolve(params.apiKey);
+      const apiKey = resolve
+        ? await resolve(params.model)
+        : params.apiKey.via === 'google'
+          ? unchargedPlatformRerun(params.apiKey, params.model)
           : params.apiKey;
-      if (payerOf(apiKey) !== payerOf(params.apiKey)) throw error;
+      if (!apiKey || payerOf(apiKey) !== payerOf(params.apiKey)) throw error;
       try {
         yield* callLLMStreamOnce({ ...params, apiKey });
       } catch (retryError) {
@@ -1103,9 +1114,8 @@ export async function* callLLMStream<T>(
     logger.warn(
       `Model ${params.model} is region-blocked here; retrying with ${fallback}`
     );
-    const apiKey = params.resolveApiKey
-      ? await params.resolveApiKey(fallback)
-      : params.apiKey;
+    const resolve = params.resolveApiKey ?? meteredResolve(params.apiKey);
+    const apiKey = resolve ? await resolve(fallback) : params.apiKey;
     yield* callLLMStreamOnce({
       ...params,
       model: fallback,

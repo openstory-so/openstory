@@ -22,6 +22,7 @@
  *   bun scripts/eval-enhance-creativity.ts
  *   bun scripts/eval-enhance-creativity.ts --model openai/gpt-5.5 --runs 2
  */
+import { NO_ORGANIZATION } from '@/models/server/create-adapter';
 import { callLLM, RECOMMENDED_MODELS } from '@/models/server/llm-client';
 import type { TextModel } from '@/models/models';
 import {
@@ -219,7 +220,12 @@ async function enhance(
     temperature: TEMP,
     ...(REASONING && { reasoning: { effort: REASONING } }),
     observationName: 'eval-enhance-creativity',
-    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
+    apiKey: {
+      key: openRouterKey,
+      via: 'openrouter',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    },
   });
 }
 
@@ -288,7 +294,12 @@ async function judge(
     max_tokens: 700,
     temperature: 0,
     observationName: 'eval-enhance-creativity-judge',
-    apiKey: { key: openRouterKey, via: 'openrouter', source: 'platform' },
+    apiKey: {
+      key: openRouterKey,
+      via: 'openrouter',
+      source: 'platform',
+      meter: NO_ORGANIZATION,
+    },
   });
   return verdictSchema.parse(JSON.parse(extractJson(reply)));
 }

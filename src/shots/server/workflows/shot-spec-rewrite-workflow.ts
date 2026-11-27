@@ -82,7 +82,6 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         userId: input.userId,
         workflowRunId: event.instanceId,
         scopedDb,
-        reservationId: input.reservationId,
       }
     );
 

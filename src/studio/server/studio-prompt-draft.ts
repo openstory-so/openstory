@@ -8,14 +8,13 @@
  * activity is supported but not yet reachable from the composer.
  */
 
-import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
 import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { StudioActivity, StudioReferenceKind } from '@/studio/schema';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 
 export const STUDIO_DRAFT_MODEL = DEFAULT_VISION_MODEL;
@@ -35,7 +34,7 @@ export type DraftStudioPromptInput = {
   endImageUrl?: string;
   /** What the user has typed so far, if anything — kept as intent. */
   currentPrompt?: string;
-  llmKey?: ResolvedLlmKey;
+  llmKey: ResolvedLlmKey;
   /**
    * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
    * was resolved for {@link STUDIO_DRAFT_MODEL}; the fallback may not be
@@ -48,10 +47,8 @@ export type DraftStudioPromptInput = {
 type DraftStudioPromptResult = {
   prompt: string;
   /** The model that actually answered — the region fallback may have run
-   *  instead of {@link STUDIO_DRAFT_MODEL}. Bill and log this one. */
+   *  instead of {@link STUDIO_DRAFT_MODEL}. Log this one; the key's meter charged it. */
   model: TextModel;
-  costMicros: Microdollars;
-  usedOwnKey: boolean;
 };
 
 function tokensFor(references: DraftReference[]): string[] {
@@ -65,7 +62,7 @@ function tokensFor(references: DraftReference[]): string[] {
 }
 
 export async function buildDraftMessages(
-  input: DraftStudioPromptInput
+  input: Omit<DraftStudioPromptInput, 'llmKey'>
 ): Promise<{ systemPrompts: string[]; messages: ChatMessage[] }> {
   const tokens = tokensFor(input.references);
   const frames = input.startImageUrl
@@ -142,9 +139,7 @@ export async function draftStudioPrompt(
   // effort on the GLM-5.3 Flash fallback, which cannot disable thinking and
   // defaults to `max` (#1494) — a composer draft must not stall for minutes.
   let text = '';
-  let usage;
   let model = STUDIO_DRAFT_MODEL;
-  let via = input.llmKey?.via;
   for await (const chunk of callLLMStream({
     model: STUDIO_DRAFT_MODEL,
     messages: [
@@ -158,6 +153,7 @@ export async function draftStudioPrompt(
       })),
     ],
     temperature: 0.7,
+    max_tokens: 2048,
     apiKey: input.llmKey,
     resolveApiKey: input.resolveLlmKey,
     observationName: 'studio-prompt-draft',
@@ -165,11 +161,7 @@ export async function draftStudioPrompt(
     ...input.observability,
   })) {
     text = chunk.accumulated;
-    if (chunk.done) {
-      usage = chunk.usage;
-      model = chunk.model;
-      via = chunk.via;
-    }
+    if (chunk.done) model = chunk.model;
   }
 
   // Strip any @ the model added anyway; pills store the bare token.
@@ -182,7 +174,5 @@ export async function draftStudioPrompt(
   return {
     prompt,
     model,
-    costMicros: llmCostFromUsage(usage, model, via),
-    usedOwnKey: input.llmKey?.source === 'organization',
   };
 }

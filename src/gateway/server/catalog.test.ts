@@ -42,6 +42,7 @@ vi.doMock('#db-client', () => ({ getDb: () => db }));
 let products: { provider: 'grok'; id: string }[] = [];
 vi.doMock('@/gateway/product-models', () => ({
   productGatewayModels: () => products,
+  productTextModels: () => [],
 }));
 
 const {

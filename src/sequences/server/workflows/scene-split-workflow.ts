@@ -68,11 +68,7 @@ import {
   castTags,
   formatCastBlock,
 } from '@/cast/attached-cast';
-import {
-  callLLMStream,
-  llmCostFromUsage,
-  PROMPT_REASONING,
-} from '@/models/server/llm-client';
+import { callLLMStream, PROMPT_REASONING } from '@/models/server/llm-client';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
 import {
   type SceneSplitBiblesResult,
@@ -115,9 +111,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
-import { addMicros, type Microdollars, ZERO_MICROS } from '@/billing/money';
 import { parsePartialJSON, type TokenUsage } from '@tanstack/ai';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   buildSceneInsert,
   buildSceneNarrative,
@@ -314,30 +308,17 @@ type StreamResult = {
   title: string;
   /** Raw-script start offset per final scene (a true partition of the script). */
   offsets: number[];
-  /** Provider-reported cost for the LLM call(s), billed after reconciliation. */
-  llmCostMicros: Microdollars;
-  /**
-   * Non-secret source of the key the streaming call actually used. Carried out
-   * of the step so the (much later) deduction bills the same resolution
-   * instead of re-reading mutable key state mid-run.
-   */
-  llmKeySource: 'organization' | 'platform';
-};
-
-type LlmStepBilling = {
-  llmCostMicros: Microdollars;
-  llmKeySource: 'organization' | 'platform';
 };
 
 /** Shape produced by the bibles step (post JSON round-trip). */
-type BiblesStepResult = SceneSplitBiblesResult & LlmStepBilling;
+type BiblesStepResult = SceneSplitBiblesResult;
 
 /** Shape produced by one shot-list batch step (post JSON round-trip). */
 type ShotListStepResult = {
   /** The batch's scenes with their shots attached, in order. */
   scenes: SceneSplittingScene[];
   shotMapping: SceneSplitWorkflowResult['shotMapping'];
-} & LlmStepBilling;
+};
 
 /**
  * One structured call consumed to completion, shared by the bibles and
@@ -368,7 +349,7 @@ async function runStructuredCall<T extends object>({
   responseSchema: z.ZodType<T>;
   maxTokens: number;
   onAccumulated?: (accumulated: string, done: boolean) => Promise<void>;
-}): Promise<T & LlmStepBilling> {
+}): Promise<T> {
   const { modelId } = input;
   const { messages } = await getChatPrompt(promptName, promptVars);
   const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
@@ -424,11 +405,7 @@ async function runStructuredCall<T extends object>({
       `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload (model=${modelId}${atCap ? ', output hit the token cap' : ''})`
     );
   }
-  return {
-    ...parsed,
-    llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
-    llmKeySource: llmKeyInfo.source,
-  };
+  return parsed;
 }
 
 /**
@@ -729,11 +706,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         let assembled = assembleScenes(script, parsedResult, sceneIdFor);
         let resolvedTitle = parsedResult.projectMetadata.title;
         let finalBoundaries = parsedResult.boundaries;
-        let llmCostMicros = llmCostFromUsage(
-          firstPass.usage,
-          SCENE_SPLIT_MODEL,
-          llmKeyInfo.via
-        );
 
         const degraded = isExcessivelyRepaired(
           assembled.resolution,
@@ -768,14 +740,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             { withEvents: false }
           );
           if (retryPass.parsed) {
-            llmCostMicros = addMicros(
-              llmCostMicros,
-              llmCostFromUsage(
-                retryPass.usage,
-                SCENE_SPLIT_MODEL,
-                llmKeyInfo.via
-              )
-            );
             const retryAssembled = assembleScenes(
               script,
               retryPass.parsed,
@@ -835,8 +799,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           scenes,
           title: resolvedTitle || 'Untitled',
           offsets,
-          llmCostMicros,
-          llmKeySource: llmKeyInfo.source,
         };
         return JSON.stringify(streamResult);
       }
@@ -1075,8 +1037,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             return JSON.stringify({
               scenes,
               shotMapping,
-              llmCostMicros: result.llmCostMicros,
-              llmKeySource: result.llmKeySource,
             } satisfies ShotListStepResult);
           }
         )
@@ -1097,13 +1057,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       );
     }
     const scenesWithShots = shotListBatches.flatMap((batch) => batch.scenes);
-    const shotListStep: LlmStepBilling = {
-      llmCostMicros: shotListBatches.reduce(
-        (sum, batch) => addMicros(sum, batch.llmCostMicros),
-        ZERO_MICROS
-      ),
-      llmKeySource: shotListBatches[0]?.llmKeySource ?? 'platform',
-    };
 
     // Step 3: title + workflow stamp, and the result the parent reads. The
     // shot rows are already written and announced by the batch steps.
@@ -1297,62 +1250,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
       );
     }
-
-    // Step 5: Deduct credits — one deduction per LLM call.
-    await step.do('deduct-llm-credits-scene-splitting', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: streamResult.llmCostMicros,
-        usedOwnKey: streamResult.llmKeySource === 'organization',
-        description: `LLM analysis (${SCENE_SPLIT_MODEL})`,
-        idempotencyKey: `${event.instanceId}:llm-${STEP_NAME}`,
-        reservationId: input.reservationId,
-        metadata: {
-          model: SCENE_SPLIT_MODEL,
-          phase: PHASE.number,
-          phaseName: PHASE.name,
-          stepName: STEP_NAME,
-          sequenceId,
-          costMicros: streamResult.llmCostMicros,
-        },
-      });
-    });
-    await step.do('deduct-llm-credits-scene-bibles', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: biblesResult.llmCostMicros,
-        usedOwnKey: biblesResult.llmKeySource === 'organization',
-        description: `LLM analysis (${modelId})`,
-        idempotencyKey: `${event.instanceId}:llm-${BIBLES_STEP_NAME}`,
-        reservationId: input.reservationId,
-        metadata: {
-          model: modelId,
-          phase: PHASE.number,
-          phaseName: PHASE.name,
-          stepName: BIBLES_STEP_NAME,
-          sequenceId,
-          costMicros: biblesResult.llmCostMicros,
-        },
-      });
-    });
-    await step.do('deduct-llm-credits-scene-shot-list', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: shotListStep.llmCostMicros,
-        usedOwnKey: shotListStep.llmKeySource === 'organization',
-        description: `LLM analysis (${modelId})`,
-        idempotencyKey: `${event.instanceId}:llm-${SHOT_LIST_STEP_NAME}`,
-        reservationId: input.reservationId,
-        metadata: {
-          model: modelId,
-          phase: PHASE.number,
-          phaseName: PHASE.name,
-          stepName: SHOT_LIST_STEP_NAME,
-          sequenceId,
-          costMicros: shotListStep.llmCostMicros,
-        },
-      });
-    });
 
     return { ...reconciled, dialogueVersionIdByShotId };
   }

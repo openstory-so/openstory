@@ -6,11 +6,11 @@
  * any other LLM call.
  */
 
+import { forCall } from '@/gateway/server/text';
 import { estimateLLMCost } from '@/billing/cost-estimation';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
 import type { TextModel } from '@/models/models';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
-import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
+import { callLLMStream } from '@/models/server/llm-client';
 import {
   deleteGeminiFile,
   uploadClipToGemini,
@@ -44,7 +44,10 @@ export async function watchClipForOrganization(
       'Only a clip stored in this workspace can be watched: pass an upload value or a media URL read from a tool.'
     );
   }
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL);
+  const llmKey = forCall(
+    await scopedDb.apiKeys.resolveLlmKey(WATCH_CLIP_MODEL),
+    { describe: (answered) => `Watched a clip (${answered})` }
+  );
   if (llmKey.via !== 'google') {
     throw geminiUnavailableError(
       'Watching a clip needs a Gemini API key. Add one in Settings → API Keys.'
@@ -94,13 +97,12 @@ async function watchUploadedClip(
       },
     ];
     let answer = '';
-    let usage;
     let model = WATCH_CLIP_MODEL;
-    let via: ResolvedLlmKey['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model: WATCH_CLIP_MODEL,
       messages,
       temperature: 0.2,
+      max_tokens: 4096,
       apiKey: llmKey,
       observationName: 'watch-clip',
       tags: ['vision', 'clip'],
@@ -108,9 +110,7 @@ async function watchUploadedClip(
     })) {
       answer = chunk.accumulated;
       if (chunk.done) {
-        usage = chunk.usage;
         model = chunk.model;
-        via = chunk.via;
       }
     }
     // A region fallback answers on another model, which never saw the clip.
@@ -118,21 +118,6 @@ async function watchUploadedClip(
       throw new Error(
         `The clip was answered on ${model}, not ${WATCH_CLIP_MODEL}`
       );
-    }
-    if (llmKey.source !== 'organization') {
-      const costMicros = llmCostFromUsage(usage, model, via);
-      if (costMicros > 0) {
-        await scopedDb.billing.deductCredits(costMicros, {
-          description: `Watched a clip (${model})`,
-          metadata: { model },
-        });
-      } else {
-        reportMissingBillingCost({
-          source: 'watch-clip',
-          modelId: model,
-          metadata: {},
-        });
-      }
     }
     return { answer: answer.trim(), model };
   } finally {

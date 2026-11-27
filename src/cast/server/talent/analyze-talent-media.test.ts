@@ -25,6 +25,7 @@ describe('analyzeTalentClipForOrganization', () => {
           key: 'k',
           via: 'openrouter',
           source: 'platform',
+          meter: { uncharged: 'no organization' },
         }),
       },
     });

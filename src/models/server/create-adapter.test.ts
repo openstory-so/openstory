@@ -131,6 +131,13 @@ const {
 } = await import('./create-adapter');
 
 const MODEL = 'x-ai/grok-4.7';
+
+/** The key a caller with no organization passes: the platform's, marked uncharged. */
+function platformKey(model: string) {
+  const key = getPlatformLlmKey(model);
+  if (!key) throw new Error('no platform key configured');
+  return key;
+}
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
 const LLMTR_URL = 'https://llmtr.com/v1';
 
@@ -196,6 +203,8 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('x-ai/grok-4.20', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
 
     const call = lastLlmtrCall();
@@ -213,6 +222,8 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('anthropic/claude-fable-5.1', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
 
     const call = lastLlmtrCall();
@@ -225,6 +236,8 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('openai/gpt-5.4-mini', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
     expect(lastLlmtrCall().config.api).toBe('responses');
     expect(lastLlmtrCall().model).toBe('openai/gpt-5.4-mini');
@@ -235,6 +248,8 @@ describe('createAdapter LLMTR routing', () => {
       createAdapter('anthropic/claude-opus-5-fast', {
         key: 'llmtr-organization',
         via: 'llmtr',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/LLMTR does not carry model/);
     expect(openaiCompatibleTextMock).not.toHaveBeenCalled();
@@ -248,6 +263,8 @@ describe('createAdapter LLMTR routing', () => {
     createAdapter('x-ai/grok-4.20', {
       key: 'llmtr-organization',
       via: 'llmtr',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
 
     expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
@@ -260,6 +277,7 @@ describe('createAdapter LLMTR routing', () => {
     expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toEqual({
       key: 'platform-or',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });
@@ -267,7 +285,12 @@ describe('createAdapter LLMTR routing', () => {
 
 describe('createAdapter routing (issue #895)', () => {
   it('routes via:"fal" to fal’s OpenRouter endpoint and rewrites auth to "Key"', async () => {
-    createAdapter(MODEL, { key: 'sk-fal-organization', via: 'fal' });
+    createAdapter(MODEL, {
+      key: 'sk-fal-organization',
+      via: 'fal',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
@@ -285,7 +308,12 @@ describe('createAdapter routing (issue #895)', () => {
   });
 
   it('routes via:"openrouter" directly: no serverURL override, no auth hook', () => {
-    createAdapter(MODEL, { key: 'sk-or-organization', via: 'openrouter' });
+    createAdapter(MODEL, {
+      key: 'sk-or-organization',
+      via: 'openrouter',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
@@ -297,16 +325,21 @@ describe('createAdapter routing (issue #895)', () => {
 
   it('lets OPENROUTER_BASE_URL (aimock) win over the fal proxy URL', () => {
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
-    createAdapter(MODEL, { key: 'sk-fal-organization', via: 'fal' });
+    createAdapter(MODEL, {
+      key: 'sk-fal-organization',
+      via: 'fal',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     // E2E stays hermetic regardless of which key the organization resolved.
     expect(lastCall().config.serverURL).toBe('http://localhost:4010/v1');
   });
 
-  it('falls back to the platform OpenRouter key when no keyInfo is passed', () => {
+  it('uses the platform OpenRouter key getPlatformLlmKey picks', () => {
     testEnv.OPENROUTER_KEY = 'platform-or';
     testEnv.FAL_KEY = 'platform-fal';
-    createAdapter(MODEL);
+    createAdapter(MODEL, platformKey(MODEL));
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
@@ -318,7 +351,7 @@ describe('createAdapter routing (issue #895)', () => {
 
   it('falls back to the platform fal key (fal-routed) when only FAL_KEY is set', async () => {
     testEnv.FAL_KEY = 'platform-fal';
-    createAdapter(MODEL);
+    createAdapter(MODEL, platformKey(MODEL));
 
     const call = lastCall();
     expect(call.kind).toBe('keyed');
@@ -332,25 +365,13 @@ describe('createAdapter routing (issue #895)', () => {
     expect(sent.headers.get('Authorization')).toBe('Key platform-fal');
   });
 
-  it('falls back to openRouterText when no key is configured', () => {
-    createAdapter(MODEL);
-
-    const call = lastCall();
-    expect(call.kind).toBe('env');
-    expect(openRouterTextMock).toHaveBeenCalledTimes(1);
-    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
-    expect(call.config.serverURL).toBeUndefined();
-    expect(call.config.httpClient).toBeUndefined();
-  });
-});
-
-describe('getPlatformLlmKey', () => {
   it('prefers OPENROUTER_KEY over FAL_KEY', () => {
     testEnv.OPENROUTER_KEY = 'platform-or';
     testEnv.FAL_KEY = 'platform-fal';
     expect(getPlatformLlmKey()).toStrictEqual({
       key: 'platform-or',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });
@@ -360,6 +381,7 @@ describe('getPlatformLlmKey', () => {
     expect(getPlatformLlmKey()).toStrictEqual({
       key: 'platform-fal',
       via: 'fal',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });
@@ -371,7 +393,12 @@ describe('getPlatformLlmKey', () => {
 
 describe('native xAI routing (issue #1167)', () => {
   it('sends a Grok model to xAI under its native model name', () => {
-    createAdapter(MODEL, { key: 'xai-organization', via: 'xai' });
+    createAdapter(MODEL, {
+      key: 'xai-organization',
+      via: 'xai',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     expect(grokCalls).toStrictEqual([
       {
@@ -387,7 +414,12 @@ describe('native xAI routing (issue #1167)', () => {
   });
 
   it('maps grok-4.20 onto the reasoning build xAI actually serves', () => {
-    createAdapter('x-ai/grok-4.20', { key: 'xai-organization', via: 'xai' });
+    createAdapter('x-ai/grok-4.20', {
+      key: 'xai-organization',
+      via: 'xai',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     expect(grokCalls.at(-1)?.model).toBe('grok-4.20-0309-reasoning');
   });
@@ -400,6 +432,8 @@ describe('native xAI routing (issue #1167)', () => {
       createAdapter('anthropic/claude-opus-5-fast', {
         key: 'xai-organization',
         via: 'xai',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/xAI key cannot be sent to OpenRouter/);
 
@@ -410,7 +444,7 @@ describe('native xAI routing (issue #1167)', () => {
 
   it('falls back to OpenRouter for a Grok model with no xAI key', () => {
     testEnv.OPENROUTER_KEY = 'platform-or';
-    createAdapter(MODEL);
+    createAdapter(MODEL, platformKey(MODEL));
 
     expect(createGrokTextMock).not.toHaveBeenCalled();
     const call = lastCall();
@@ -426,12 +460,19 @@ describe('native Google routing', () => {
     createAdapter('google/gemini-3.8-flash', {
       key: 'google-organization',
       via: 'google',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
     expect(geminiCalls.at(-1)?.model).toBe('gemini-3.8-flash');
   });
 
   it('sends a Gemini model to Google under its native model name', () => {
-    createAdapter(GEMINI_MODEL, { key: 'google-organization', via: 'google' });
+    createAdapter(GEMINI_MODEL, {
+      key: 'google-organization',
+      via: 'google',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
+    });
 
     expect(geminiCalls).toStrictEqual([
       {
@@ -452,6 +493,8 @@ describe('native Google routing', () => {
     createAdapter('google/gemini-3-flash-preview', {
       key: 'google-organization',
       via: 'google',
+      source: 'platform' as const,
+      meter: { uncharged: 'no organization' as const },
     });
 
     expect(geminiCalls.at(-1)).toStrictEqual({
@@ -468,6 +511,8 @@ describe('native Google routing', () => {
       createAdapter('anthropic/claude-sonnet-5.5', {
         key: 'google-organization',
         via: 'google',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
       })
     ).toThrow(/Google key cannot be sent to OpenRouter/);
 
@@ -478,7 +523,7 @@ describe('native Google routing', () => {
 
   it('falls back to OpenRouter for a Gemini model with no Google key', () => {
     testEnv.OPENROUTER_KEY = 'platform-or';
-    createAdapter(GEMINI_MODEL);
+    createAdapter(GEMINI_MODEL, platformKey(GEMINI_MODEL));
 
     expect(createGeminiChatMock).not.toHaveBeenCalled();
     const call = lastCall();
@@ -494,9 +539,10 @@ describe('native Google routing', () => {
       expect(getPlatformLlmKey(GEMINI_MODEL)).toStrictEqual({
         key: 'platform-or',
         via: 'openrouter',
+        meter: { uncharged: 'no organization' as const },
         source: 'platform',
       });
-      createAdapter(GEMINI_MODEL);
+      createAdapter(GEMINI_MODEL, platformKey(GEMINI_MODEL));
       expect(createGeminiChatMock).not.toHaveBeenCalled();
       const call = lastCall();
       if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
@@ -513,16 +559,25 @@ describe('resolveNativeGeminiModel', () => {
       resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
         key: 'k',
         via: 'google',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
       })
     ).toBe('gemini-3.1-pro-preview');
     expect(
       resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
         key: 'k',
         via: 'openrouter',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
       })
     ).toBeUndefined();
     expect(
-      resolveNativeGeminiModel('openai/gpt-5.5', { key: 'k', via: 'google' })
+      resolveNativeGeminiModel('openai/gpt-5.5', {
+        key: 'k',
+        via: 'google',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
+      })
     ).toBeUndefined();
   });
 });
@@ -536,6 +591,7 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
     expect(getPlatformLlmKey('google/gemini-3-flash-preview')).toStrictEqual({
       key: 'platform-google',
       via: 'google',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });
@@ -560,14 +616,29 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
 
 describe('resolveNativeGrokModel', () => {
   it('agrees with createAdapter about which route a request takes', () => {
-    expect(resolveNativeGrokModel(MODEL, { key: 'k', via: 'xai' })).toBe(
-      'grok-4.7'
-    );
     expect(
-      resolveNativeGrokModel(MODEL, { key: 'k', via: 'openrouter' })
+      resolveNativeGrokModel(MODEL, {
+        key: 'k',
+        via: 'xai',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
+      })
+    ).toBe('grok-4.7');
+    expect(
+      resolveNativeGrokModel(MODEL, {
+        key: 'k',
+        via: 'openrouter',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
+      })
     ).toBeUndefined();
     expect(
-      resolveNativeGrokModel('openai/gpt-5.5', { key: 'k', via: 'xai' })
+      resolveNativeGrokModel('openai/gpt-5.5', {
+        key: 'k',
+        via: 'xai',
+        source: 'platform' as const,
+        meter: { uncharged: 'no organization' as const },
+      })
     ).toBeUndefined();
   });
 });
@@ -581,6 +652,7 @@ describe('getPlatformLlmKey with XAI_API_KEY (issue #1167)', () => {
     expect(getPlatformLlmKey(MODEL)).toStrictEqual({
       key: 'platform-xai',
       via: 'xai',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });
@@ -592,6 +664,7 @@ describe('getPlatformLlmKey with XAI_API_KEY (issue #1167)', () => {
     expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toStrictEqual({
       key: 'platform-or',
       via: 'openrouter',
+      meter: { uncharged: 'no organization' as const },
       source: 'platform',
     });
   });

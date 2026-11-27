@@ -125,7 +125,6 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             userId: input.userId,
             workflowRunId: event.instanceId,
             scopedDb,
-            reservationId: input.reservationId,
           }
         )
       ).voiceDescription;
@@ -356,7 +355,6 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         userId: input.userId,
         workflowRunId: event.instanceId,
         scopedDb,
-        reservationId: input.reservationId,
       }
     );
 

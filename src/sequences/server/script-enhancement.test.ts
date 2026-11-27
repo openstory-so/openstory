@@ -9,6 +9,7 @@ vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
 const callLLMStream = vi.fn(
   (_params: {
     messages: ChatMessage[];
+    apiKey: { meter: unknown };
     resolveApiKey?: () => Promise<unknown>;
   }) => ({
     async *[Symbol.asyncIterator]() {
@@ -44,6 +45,7 @@ function context() {
       resolveLlmKey: vi.fn(async () => ({
         source: 'organization',
         via: 'openrouter',
+        meter: { uncharged: 'own key' },
       })),
     },
   });
@@ -107,6 +109,7 @@ describe('Enhance with a still on the Gemini Files API (#2400)', () => {
           source: 'organization',
           via: 'google',
           key: 'g',
+          meter: { uncharged: 'own key' },
         })),
       },
     });
@@ -126,5 +129,43 @@ describe('Enhance with a still on the Gemini Files API (#2400)', () => {
       [{ name: 'files/big' }],
       'g'
     );
+  });
+});
+
+describe('Enhance on an unfunded script (#1567)', () => {
+  it('lets its own hold decide, running free when the balance cannot take it, with no credit pre-check', async () => {
+    const hasEnoughCredits = vi.fn(async () => false);
+    const scopedDb = asStub<ScopedDb>({
+      apiKeys: {
+        resolveLlmKey: vi.fn(async () => ({
+          key: 'p',
+          source: 'platform',
+          via: 'openrouter',
+          meter: {
+            via: 'openrouter',
+            card: null,
+            chargeKey: null,
+            whenShort: 'refuse',
+            describe: null,
+            resolve: vi.fn(),
+          },
+        })),
+      },
+      billing: { hasEnoughCredits },
+    });
+    await enhanceScriptToString(
+      { script: 'A cyclist races home.' },
+      { scopedDb, userId: 'u1', organizationId: 't1' }
+    );
+    const meter = callLLMStream.mock.calls[0]?.[0].apiKey.meter;
+    expect(meter).toMatchObject({ whenShort: 'run free' });
+    expect(
+      typeof meter === 'object' &&
+        meter !== null &&
+        'describe' in meter &&
+        typeof meter.describe === 'function' &&
+        meter.describe('x-ai/grok-4.7')
+    ).toBe('Script enhancement');
+    expect(hasEnoughCredits).not.toHaveBeenCalled();
   });
 });
