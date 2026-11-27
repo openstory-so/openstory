@@ -8,6 +8,7 @@ import {
  */
 
 import { gateEstimate } from '@/billing/cost-estimation';
+import { ZERO_MICROS } from '@/billing/money';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   deductWorkflowCredits,
@@ -51,15 +52,26 @@ import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import { packedPromptFitsLimit } from '@/motion/server/build-motion-render';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import { cutSpanningSection } from '@/motion/server/cut-audio-section';
+import type { GatewayRoutes } from '@/gateway/server/route';
 import {
   arkStillsForMotion,
   calculateMotionMetadata,
   canRenderReferenceOnly,
-  motionCostFromUsage,
-  pollMotionJob,
+  motionGatewayTarget,
   resolveMotionVia,
   submitMotionJob,
 } from '@/motion/server/motion-generation';
+import {
+  pollVideoJob,
+  readGatewayCharge,
+  releaseTimedOutVideoJob,
+  routeVideoJob,
+  videoCostFromUsage,
+  videoGatewayStore,
+  videoJobProviderVia,
+  type VideoGatewayCall,
+} from '@/motion/server/video-job';
+import type { GatewayStore } from '@/gateway/server/phases';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import {
@@ -781,8 +793,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // exhausts its budget fails only its own slot — motion-batch's
     // Promise.allSettled keeps sibling clips and the sequence alive.
     let videoUrl = '';
-    // Raw usage for the clip that succeeded — `motionCostFromUsage` turns
-    // this into a billed cost + unit count below, switching on the job's via.
+    // Raw usage of the clip that succeeded; `videoCostFromUsage` prices it on a direct via.
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
     // Every rejection in order: the rescue's may lack the `body.<field>`
@@ -881,6 +892,44 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         });
         return rescued;
       });
+
+    // The `openstory` via stores the clip where upload-to-storage would, inside the poll that saw it (#1645).
+    const { shotId: gatewayShotId, sequenceId: gatewaySequenceId } = input;
+    const gatewayStore: GatewayStore | null =
+      gatewayShotId && gatewaySequenceId
+        ? videoGatewayStore(async (videoUrl) => {
+            const stored = await uploadVideoToStorage({
+              videoUrl,
+              organizationId: input.organizationId,
+              sequenceId: gatewaySequenceId,
+              shotId: gatewayShotId,
+              sequenceTitle: input.sequenceTitle ?? 'sequence',
+              sceneTitle: input.sceneTitle,
+            });
+            if (!stored.success) throw new Error(stored.error);
+            return {
+              url: stored.url,
+              path: stored.path,
+              contentType: 'video/mp4',
+            };
+          })
+        : null;
+    const gatewayCall = (
+      idempotencyKey: string,
+      routes: GatewayRoutes
+    ): VideoGatewayCall | null =>
+      gatewayStore
+        ? {
+            scopedDb,
+            runId: workflowRunId,
+            idempotencyKey,
+            store: gatewayStore,
+            routes,
+            reservation: input.reservationId
+              ? { id: input.reservationId }
+              : null,
+          }
+        : null;
 
     let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
@@ -1053,6 +1102,26 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             })
           : {};
 
+      // Its own step per attempt, so a retried submit takes the route it was given and a rescue model gets its own (#2435).
+      const gatewayRoutes = gatewayStore
+        ? await step.do(`route-motion${tag}`, () =>
+            routeVideoJob(
+              scopedDb,
+              motionGatewayTarget(
+                {
+                  model: activeModel,
+                  referenceImages,
+                  imageUrl: startImageUrl ?? undefined,
+                  referenceOnly: input.referenceOnly,
+                  draft: input.draft,
+                  finalFromDraftTaskId: input.finalFromDraft?.taskId,
+                },
+                submitVia
+              )
+            )
+          )
+        : {};
+
       // Step 3a: Submit. A content rejection surfaces as a sentinel (not
       // thrown) so the loop owns the retry; a non-content 422 stays a hard
       // stop; anything else throws for CF's per-step retry.
@@ -1106,6 +1175,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             multiPrompt,
             draft: input.draft,
             finalFromDraftTaskId: input.finalFromDraft?.taskId,
+            gateway: gatewayCall(
+              `${workflowRunId}:submit-motion${tag}`,
+              gatewayRoutes
+            ),
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -1240,16 +1313,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
 
             while (Date.now() < deadline) {
-              let pollResult: Awaited<ReturnType<typeof pollMotionJob>>;
+              let pollResult: Awaited<ReturnType<typeof pollVideoJob>>;
               try {
-                pollResult = await pollMotionJob(
-                  job.jobId,
-                  job.modelKey,
-                  scopedDb.credentials,
-                  job.via,
-                  job.endpointId,
-                  job.threadId
-                );
+                pollResult = await pollVideoJob(job, {
+                  credentials: scopedDb.credentials,
+                  gateway: gatewayStore
+                    ? { scopedDb, store: gatewayStore }
+                    : null,
+                });
               } catch (error) {
                 if (isContentRejectionError(error)) {
                   return {
@@ -1353,13 +1424,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           if (
             !seedanceInternalRetried &&
             !isRescue &&
-            isSeedanceInternalServiceError(poll.error, job.via)
+            isSeedanceInternalServiceError(poll.error, videoJobProviderVia(job))
           ) {
             retrySeedanceInternal = true;
             internalError = poll.error;
             break;
           }
-          const explained = explainSeedanceFailure(poll.error, job.via);
+          const explained = explainSeedanceFailure(
+            poll.error,
+            videoJobProviderVia(job)
+          );
           if (explained) {
             logger.warn(
               `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}: ${poll.error}`
@@ -1418,9 +1492,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       // Neither completed nor content-rejected → this attempt timed out. A
       // timeout isn't a content flag; reseeding won't help and would burn
       // another full poll budget, so stop here as before.
-      throw new Error(
-        `Motion generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`
+      const timedOut = `Motion generation timed out after ${(MAX_BATCHES * POLL_BATCH_DURATION_MS) / 60_000} minutes`;
+      await step.do(`release-motion-job${tag}`, () =>
+        releaseTimedOutVideoJob(job, scopedDb, timedOut)
       );
+      throw new Error(timedOut);
     }
 
     if (!videoUrl) {
@@ -1508,22 +1584,17 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // interaction above is already memoized in completed steps, so a failed
     // read replays just this lookup instead of falling through to a $0 charge
     // that the `actualCost > 0` guard below would silently skip (#1069).
-    const billing = await step.do('price-motion-generation', async () =>
-      motionCostFromUsage(job.via, billedUsage, {
-        modelKey: job.modelKey,
-        // The same question submit asked (#1559): references this model can
-        // actually carry. A shot whose only attachment is an audio element
-        // went to the prompt-only endpoint, and must be billed at its rate.
-        hasReferenceImages:
-          bindableReferences(
-            getMotionReferenceEndpoint(job.modelKey),
-            referenceImages ?? [],
-            Boolean(input.imageUrl)
-          ).length > 0,
-        referenceOnly: input.referenceOnly,
-      })
-    );
-    const actualCost = billing.cost;
+    // The `openstory` via was charged by the gateway in the poll that finished it.
+    const jobVia = job.via;
+    const billing =
+      jobVia === 'openstory'
+        ? null
+        : await step.do('price-motion-generation', async () =>
+            videoCostFromUsage({ ...job, via: jobVia }, billedUsage, 'motion')
+          );
+    const actualCost = billing?.cost ?? ZERO_MICROS;
+    // The gateway's charge, for the span (#2435).
+    const gatewayCharge = await readGatewayCharge(step, job, scopedDb);
 
     // Motion is submitted to an async queue and collected by polling, so the
     // `generateVideo()` call returns before the video exists — a middleware
@@ -1535,9 +1606,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         provider: job.via,
         activity: 'video',
         durationMs: Date.now() - job.submittedAt,
-        costMicros: actualCost,
-        unitsBilled: billing.unitsBilled,
-        billedUnit: billing.billedUnit,
+        ...(billing && {
+          costMicros: actualCost,
+          unitsBilled: billing.unitsBilled,
+          billedUnit: billing.billedUnit,
+        }),
+        ...(gatewayCharge !== null && { costMicros: gatewayCharge }),
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,
@@ -1553,7 +1627,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
     // Before the deduction guard — see recordFalUsageStep (#1069). Native
     // providers whose units would corrupt a fal median skip the sample.
-    const falUsage = billing.recordFalUsage
+    const falUsage = billing?.recordFalUsage
       ? await recordFalUsageStep(step, scopedDb, {
           endpointId: billing.endpointId,
           unitsBilled: billing.unitsBilled,
@@ -1703,7 +1777,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             storageKey: buildR2Key(STORAGE_BUCKETS.VIDEOS, storageResult.path),
             provider: job.via,
             model: activeModel,
-            providerRequestId: job.jobId,
+            // A gateway job id is the transport's handle, not the provider's request id.
+            providerRequestId: job.via === 'openstory' ? null : job.jobId,
             workflowRunId: event.instanceId,
             prompt,
             sequenceId: input.sequenceId,

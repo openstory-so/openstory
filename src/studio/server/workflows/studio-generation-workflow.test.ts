@@ -17,6 +17,9 @@ const mockGenerateImageWithProvider = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
 const mockRecordProvenance = vi.fn();
 const mockSubmit = vi.fn();
+const mockGatewayCharge = vi.fn(async (_step: unknown, job: { via?: string }) =>
+  job.via === 'openstory' ? 480_000 : null
+);
 const mockPoll = vi.fn();
 const mockCost = vi.fn();
 const mockRecordMediaGenerationSpan = vi.fn();
@@ -51,9 +54,18 @@ vi.doMock('@/studio/server/upload', () => ({
 }));
 vi.doMock('@/studio/server/studio-video-generation', () => ({
   submitStudioVideoJob: mockSubmit,
-  pollStudioVideoJob: mockPoll,
-  studioVideoCostFromUsage: mockCost,
   arkStillsForStudio: () => [],
+  studioGatewayTarget: () => null,
+}));
+vi.doMock('@/motion/server/video-job', () => ({
+  pollVideoJob: mockPoll,
+  releaseTimedOutVideoJob: vi.fn(async () => {}),
+  readGatewayCharge: mockGatewayCharge,
+  videoJobProviderVia: (job: { via?: string }) =>
+    job.via === 'openstory' ? 'byteplus' : job.via,
+  videoGatewayStore: (upload: unknown) => upload,
+  routeVideoJob: async () => ({}),
+  videoCostFromUsage: mockCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
   ingestArkAssets: mockIngestArkAssets,
@@ -264,6 +276,52 @@ describe('StudioGenerationWorkflow image', () => {
 });
 
 describe('StudioGenerationWorkflow video', () => {
+  it('a gateway job on Ark gets one new job after InternalServiceError (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: '{"run":{}}',
+      modelKey: 'seedance_v2_5',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      via: 'openstory',
+      usedOwnKey: false,
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.names).toContain('submit-video-internal');
+  });
+
+  it('records the gateway job charge on a gateway asset, with no deduct (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: '{"run":{}}',
+      modelKey: 'grok_imagine_video_1_5',
+      endpointId: 'grok-imagine-video-1.5',
+      via: 'openstory',
+      usedOwnKey: false,
+    });
+    const step = makeStep();
+    const { scopedDb, generatedAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+    expect(generatedAssets.markCompleted).toHaveBeenCalledWith(
+      'asset-1',
+      expect.objectContaining({ costMicros: 480_000, provider: 'openstory' })
+    );
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({ costMicros: 480_000 })
+    );
+  });
+
   it('resubmits on a content flag, then bills and persists', async () => {
     mockSubmit
       .mockRejectedValueOnce(new Error('flagged by a content checker'))
@@ -278,10 +336,14 @@ describe('StudioGenerationWorkflow video', () => {
       // The via is resolved per attempt so the stills are registered with
       // BytePlus before submit only when the model is going there (#1519).
       'resolve-video-via',
+      // The route is its own step, so a retried submit keeps it (#2435).
+      'route-video',
       'submit-video',
       'resolve-video-via-retry-1',
+      'route-video-retry-1',
       'submit-video-retry-1',
       'resolve-video-via-retry-2',
+      'route-video-retry-2',
       'submit-video-retry-2',
       'video-poll-batch-2-0',
       // Unpins every still the run leased on Ark, whatever via won (#1531).

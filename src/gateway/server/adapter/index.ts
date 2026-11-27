@@ -26,7 +26,8 @@ import { z } from 'zod';
 
 type GatewaySubmitted =
   | { kind: 'queued'; handle: string }
-  | { kind: 'done'; outputs: GatewayJobOutput[] };
+  // `jobId`: the gateway job that charged it; null on a transport that holds no job (an own key).
+  | { kind: 'done'; jobId: string | null; outputs: GatewayJobOutput[] };
 
 type GatewayPollResult =
   | { kind: 'pending' }
@@ -57,6 +58,18 @@ const DONE = 'done:';
 const outputsSchema = z.array(
   z.object({ url: z.string(), path: z.string(), contentType: z.string() })
 );
+// A `done:` handle from before #2435 is the bare outputs, with no job id.
+const doneSchema = z.union([
+  z.object({ jobId: z.string().nullable(), outputs: outputsSchema }),
+  outputsSchema.transform((outputs) => ({ jobId: null, outputs })),
+]);
+
+/** A video job that answered at submit: its gateway job and stored outputs; null for a queued handle. */
+export function doneVideoJob(handle: string) {
+  return handle.startsWith(DONE)
+    ? doneSchema.parse(JSON.parse(handle.slice(DONE.length)))
+    : null;
+}
 
 /** The body is `modelOptions`. TanStack's normalised fields are refused: the gateway never builds a body. */
 function bodyOf(options: {
@@ -162,8 +175,8 @@ class OpenstoryAudioAdapter extends BaseAudioAdapter<string, GatewayJobInput> {
 }
 
 /**
- * The job id is the transport's handle, or `done:` and the stored outputs
- * when the provider answered at once.
+ * The job id is the transport's handle, or `done:` with the gateway job and
+ * its stored outputs when the provider answered at once.
  */
 class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
   readonly name = 'openstory';
@@ -193,7 +206,7 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
       jobId:
         submitted.kind === 'queued'
           ? submitted.handle
-          : `${DONE}${JSON.stringify(submitted.outputs)}`,
+          : `${DONE}${JSON.stringify({ jobId: submitted.jobId, outputs: submitted.outputs })}`,
       model: this.model,
     };
   }
@@ -210,9 +223,7 @@ class OpenstoryVideoAdapter extends BaseVideoAdapter<string, GatewayJobInput> {
   }
 
   async getVideo(jobId: string): Promise<VideoUrlResult> {
-    const outputs = jobId.startsWith(DONE)
-      ? outputsSchema.parse(JSON.parse(jobId.slice(DONE.length)))
-      : this.finished.get(jobId);
+    const outputs = doneVideoJob(jobId)?.outputs ?? this.finished.get(jobId);
     const url = outputs?.[0]?.url;
     if (!url) throw new Error('Ask getVideoStatus first: no stored video');
     return { jobId, url };

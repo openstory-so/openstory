@@ -4,7 +4,6 @@
  * endpoint (frames).
  */
 
-import { getEnv } from '#env';
 import { generateId } from '@/platform/id';
 import { toArkFetchableUrl } from '@/models/server/byteplus-asset-ingest';
 import {
@@ -24,26 +23,15 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
 import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
-import { billedFields } from '@/billing/billed-quantity';
-import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
-import {
-  resolveGoogleKeyForNewCall,
-  resolveGoogleKeyForStampedJob,
-} from '@/models/server/google-key';
+import { resolveGoogleKeyForNewCall } from '@/models/server/google-key';
 import { withGoogleRegionFallback } from '@/models/google-region';
-import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
+import { FAL_REQUEST_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import {
-  createDeadlineFetch,
-  FAL_REQUEST_TIMEOUT_MS,
-} from '@/models/server/fal-deadline-fetch';
-import {
-  geminiVideoCostFromUsage,
   isNativeGeminiVideoModel,
   NATIVE_GEMINI_VIDEO_MODEL,
 } from '@/models/gemini-native';
 import {
-  grokVideoCost,
   isNativeGrokVideoModel,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/models/grok-native';
@@ -56,14 +44,11 @@ import {
 } from '@/models/models';
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
-import { assertMediaVia, type MediaVia } from '@/models/via';
+import type { MediaVia, ProductVia } from '@/models/via';
+import type { GatewayRouteTarget } from '@/gateway/server/route';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
-import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
-import { ZERO_MICROS } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
-import type { ResolvedApiKey } from '@/models/server/db/api-keys';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { applyMotionTransform } from '@/motion/server/endpoint-map';
 import {
@@ -83,20 +68,24 @@ import {
   type StudioVideoMode,
   type StudioVideoRequest,
 } from '@/studio/text-to-video';
-import { generateVideo, type TokenUsage } from '@tanstack/ai';
-import { getVideoJobStatus } from '@/motion/server/video-job-status';
+import { generateVideo } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
-import { createGeminiVideo } from '@tanstack/ai-gemini';
-import { createGrokVideo } from '@tanstack/ai-grok';
 import {
   geminiImagePart,
   geminiNativeModelOptions,
   geminiVideoSize,
 } from '@/motion/server/build-gemini-video-request';
 import {
-  getGeminiFileState,
-  isGeminiFilesVideoUrl,
-} from '@/motion/server/video-storage';
+  createNativeGeminiVideoAdapter,
+  createNativeGrokVideoAdapter,
+  isArkDraftTask,
+  resolveFalKey,
+  resolveOptionalFalKey,
+  resolveOptionalXaiKey,
+  sendVideoJob,
+  videoGatewayProvider,
+  type VideoGatewayCall,
+} from '@/motion/server/video-job';
 
 type StudioVideoJobOptions = {
   credentials?: CredentialScopedDb;
@@ -124,7 +113,7 @@ export type StudioVideoJobSubmission = {
   jobId: string;
   modelKey: ImageToVideoModel;
   endpointId: string;
-  via: MediaVia;
+  via: ProductVia;
   usedOwnKey: boolean;
   /**
    * AG-UI thread for this submission. Polls pass it back so a later
@@ -135,46 +124,6 @@ export type StudioVideoJobSubmission = {
   /** Set when the clip went out as an Ark draft (#1756). */
   draftTaskId?: string;
 };
-
-async function resolveFalKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey> {
-  if (credentials) return credentials.resolveKey('fal');
-  return { key: getEnv().FAL_KEY, source: 'platform' };
-}
-
-async function resolveOptionalXaiKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('xai');
-  const platformKey = getEnv().XAI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
-async function resolveOptionalFalKey(
-  credentials?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (credentials) return credentials.resolveOptionalKey('fal');
-  const platformKey = getEnv().FAL_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
-function createNativeVideoAdapter(apiKey: string) {
-  const env = getEnv();
-  return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
-    fetch: workersSafeFetch,
-    ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
-  });
-}
-
-function createNativeGeminiVideoAdapter(apiKey: string) {
-  const env = getEnv();
-  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
-    ...(env.GEMINI_BASE_URL && {
-      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
-    }),
-  });
-}
 
 /**
  * Reference: the T2V body plus the stills/clips/audio fields. Frames: see
@@ -264,10 +213,11 @@ async function buildStudioImageModeInput(
 }
 
 async function submitFalStudioVideoJob(
-  options: StudioVideoJobOptions,
+  options: SubmitStudioVideoOptions,
   modelKey: ImageToVideoModel,
   mode: StudioVideoMode,
-  threadId: string
+  threadId: string,
+  arkTask: boolean
 ): Promise<StudioVideoJobSubmission> {
   // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
   // offered where Ark is claimed, so this is a BYOK-fal organization or a bug.
@@ -284,22 +234,25 @@ async function submitFalStudioVideoJob(
       mode,
       key.key
     );
-    const job = await generateVideo({
-      adapter: falVideo(endpointId, { apiKey: key.key }),
-      prompt: built.prompt,
-      modelOptions: built.modelOptions,
-      timeout: FAL_REQUEST_TIMEOUT_MS,
-      threadId,
-      debug: false,
-    });
-    return {
-      jobId: job.jobId,
-      modelKey,
-      endpointId,
+    const sent = await sendVideoJob({
+      gateway: options.gateway,
+      draft: arkTask,
+      provider: 'fal',
       via: 'fal',
-      usedOwnKey: key.source === 'organization',
+      modelId: endpointId,
       threadId,
-    };
+      usedOwnKey: key.source === 'organization',
+      send: (fetch) =>
+        generateVideo({
+          adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+          prompt: built.prompt,
+          modelOptions: built.modelOptions,
+          timeout: FAL_REQUEST_TIMEOUT_MS,
+          threadId,
+          debug: false,
+        }),
+    });
+    return { ...sent, modelKey, endpointId, threadId };
   }
   const built = buildStudioVideoInput({
     prompt: options.prompt,
@@ -310,23 +263,26 @@ async function submitFalStudioVideoJob(
     generateAudio: options.generateAudio,
   });
   const key = await resolveFalKey(options.credentials);
-  const endpointId = studioVideoEndpointId(modelKey);
-  const job = await generateVideo({
-    adapter: falVideo(endpointId, { apiKey: key.key }),
-    prompt: built.prompt,
-    modelOptions: built.modelOptions,
-    timeout: FAL_REQUEST_TIMEOUT_MS,
-    threadId,
-    debug: false,
-  });
-  return {
-    jobId: job.jobId,
-    modelKey,
-    endpointId,
+  const endpointId = studioVideoEndpointId(modelKey, mode);
+  const sent = await sendVideoJob({
+    gateway: options.gateway,
+    draft: arkTask,
+    provider: 'fal',
     via: 'fal',
-    usedOwnKey: key.source === 'organization',
+    modelId: endpointId,
     threadId,
-  };
+    usedOwnKey: key.source === 'organization',
+    send: (fetch) =>
+      generateVideo({
+        adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
+        prompt: built.prompt,
+        modelOptions: built.modelOptions,
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        threadId,
+        debug: false,
+      }),
+  });
+  return { ...sent, modelKey, endpointId, threadId };
 }
 
 function urlPart(
@@ -471,7 +427,41 @@ async function buildStudioBytePlusPrompt(
 export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
   /** From `ingestArkAssets` over `arkStillsForStudio` — see `SubmitMotionOptions.arkAssets`. */
   arkAssets: ArkAssetMap;
+  /** See `SubmitMotionOptions.gateway`. */
+  gateway: VideoGatewayCall | null;
 };
+
+/** The provider model a studio submit on this via sends to; the submit and the route step both read it. */
+function studioModelId(
+  model: ImageToVideoModel,
+  mode: StudioVideoMode,
+  via: MediaVia
+): string | undefined {
+  switch (via) {
+    case 'xai':
+      return NATIVE_GROK_VIDEO_MODEL;
+    case 'google':
+      return NATIVE_GEMINI_VIDEO_MODEL;
+    case 'byteplus':
+      return getBytePlusVideoModelId(model);
+    case 'fal':
+      return studioVideoEndpointId(model, mode);
+  }
+}
+
+/** The model a studio submit on this via would send through the gateway, for the route step; null where it never goes (#2435). */
+export function studioGatewayTarget(
+  options: Pick<
+    SubmitStudioVideoOptions,
+    'model' | 'mode' | 'draft' | 'finalFromDraftTaskId'
+  >,
+  via: MediaVia
+): GatewayRouteTarget | null {
+  const provider = videoGatewayProvider(via);
+  if (!provider || isArkDraftTask(options.model, options)) return null;
+  const modelId = studioModelId(options.model, options.mode ?? 'text', via);
+  return modelId ? { provider, modelId } : null;
+}
 
 /** Omni Flash 1.2 takes up to 15 s, but at most 10 s with an end frame. */
 function endFrameDurationCap(
@@ -548,6 +538,7 @@ async function submitStudioVideoJobOnce(
 
   // Draft mode is an Ark feature (#1756) — see `submitMotionJob`.
   const draft = Boolean(options.draft) && supportsDraftMode(modelKey);
+  const arkTask = isArkDraftTask(modelKey, options);
   if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
     throw new Error(
       `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this organization`
@@ -591,21 +582,29 @@ async function submitStudioVideoJobOnce(
             }))
           )),
         ];
-        const job = await generateVideo({
-          adapter: createNativeVideoAdapter(xaiKey.key),
-          prompt: parts,
-          duration: built.duration,
-          ...(grokSize && { size: grokSize }),
-          timeout: FAL_REQUEST_TIMEOUT_MS,
+        const sent = await sendVideoJob({
+          gateway: options.gateway,
+          draft: arkTask,
+          provider: 'grok',
+          via: 'xai',
+          modelId: NATIVE_GROK_VIDEO_MODEL,
           threadId,
-          debug: false,
+          usedOwnKey: xaiKey.source === 'organization',
+          send: (fetch) =>
+            generateVideo({
+              adapter: createNativeGrokVideoAdapter(xaiKey.key, fetch),
+              prompt: parts,
+              duration: built.duration,
+              ...(grokSize && { size: grokSize }),
+              timeout: FAL_REQUEST_TIMEOUT_MS,
+              threadId,
+              debug: false,
+            }),
         });
         return {
-          jobId: job.jobId,
+          ...sent,
           modelKey,
           endpointId: NATIVE_GROK_VIDEO_MODEL,
-          via: 'xai',
-          usedOwnKey: xaiKey.source === 'organization',
           threadId,
         };
       }
@@ -617,21 +616,29 @@ async function submitStudioVideoJobOnce(
         resolution: options.resolution,
         generateAudio: options.generateAudio,
       });
-      const job = await generateVideo({
-        adapter: createNativeVideoAdapter(xaiKey.key),
-        prompt: built.prompt,
-        duration: built.duration,
-        ...(grokSize && { size: grokSize }),
-        timeout: FAL_REQUEST_TIMEOUT_MS,
+      const sent = await sendVideoJob({
+        gateway: options.gateway,
+        draft: arkTask,
+        provider: 'grok',
+        via: 'xai',
+        modelId: NATIVE_GROK_VIDEO_MODEL,
         threadId,
-        debug: false,
+        usedOwnKey: xaiKey.source === 'organization',
+        send: (fetch) =>
+          generateVideo({
+            adapter: createNativeGrokVideoAdapter(xaiKey.key, fetch),
+            prompt: built.prompt,
+            duration: built.duration,
+            ...(grokSize && { size: grokSize }),
+            timeout: FAL_REQUEST_TIMEOUT_MS,
+            threadId,
+            debug: false,
+          }),
       });
       return {
-        jobId: job.jobId,
+        ...sent,
         modelKey,
         endpointId: NATIVE_GROK_VIDEO_MODEL,
-        via: 'xai',
-        usedOwnKey: xaiKey.source === 'organization',
         threadId,
       };
     }
@@ -718,7 +725,7 @@ async function submitStudioVideoJobOnce(
       if (!arkKey) {
         throw new Error('ARK_API_KEY is required for the BytePlus studio via');
       }
-      const modelId = getBytePlusVideoModelId(modelKey);
+      const modelId = studioModelId(modelKey, mode, 'byteplus');
       if (!modelId) {
         throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
       }
@@ -763,34 +770,45 @@ async function submitStudioVideoJobOnce(
       );
       const createBytePlusVideo = await loadBytePlusVideo();
       try {
-        const job = await withBytePlusQuotaRetry('studio motion submit', () =>
-          generateVideo({
-            adapter: createBytePlusVideo(modelId, apiKey, config),
-            prompt,
-            duration: built.duration,
-            ...(arkSize && { size: arkSize }),
-            modelOptions: {
-              watermark: false,
-              // Sent verbatim, over the snapped generic `duration`: the model
-              // picks the length. An edit requires it (#1925), and
-              // `createStudioAssets` snaps every edit to auto (#2036).
-              ...(built.auto && { duration: ARK_AUTO_DURATION }),
-              ...(draft && { draft: true }),
-              ...(options.generateAudio !== undefined && {
-                generate_audio: options.generateAudio,
-              }),
-            },
-            timeout: FAL_REQUEST_TIMEOUT_MS,
-            threadId,
-            debug: false,
-          })
-        );
+        const job = await sendVideoJob({
+          gateway: options.gateway,
+          draft: arkTask,
+          provider: 'byteplus',
+          via: 'byteplus',
+          modelId,
+          threadId,
+          usedOwnKey: false,
+          send: (fetch = config.fetch) =>
+            withBytePlusQuotaRetry('studio motion submit', () =>
+              generateVideo({
+                adapter: createBytePlusVideo(modelId, apiKey, {
+                  ...config,
+                  fetch,
+                }),
+                prompt,
+                duration: built.duration,
+                ...(arkSize && { size: arkSize }),
+                modelOptions: {
+                  watermark: false,
+                  // Sent verbatim, over the snapped generic `duration`: the model
+                  // picks the length. An edit requires it (#1925), and
+                  // `createStudioAssets` snaps every edit to auto (#2036).
+                  ...(built.auto && { duration: ARK_AUTO_DURATION }),
+                  ...(draft && { draft: true }),
+                  ...(options.generateAudio !== undefined && {
+                    generate_audio: options.generateAudio,
+                  }),
+                },
+                timeout: FAL_REQUEST_TIMEOUT_MS,
+                threadId,
+                debug: false,
+              })
+            ),
+        });
         return {
-          jobId: job.jobId,
+          ...job,
           modelKey,
           endpointId: modelId,
-          via: 'byteplus',
-          usedOwnKey: false,
           threadId,
           ...(draft && { draftTaskId: job.jobId }),
         };
@@ -804,181 +822,13 @@ async function submitStudioVideoJobOnce(
       }
     }
     case 'fal': {
-      return submitFalStudioVideoJob(options, modelKey, mode, threadId);
-    }
-  }
-}
-
-export async function pollStudioVideoJob(
-  job: Pick<
-    StudioVideoJobSubmission,
-    'jobId' | 'via' | 'endpointId' | 'threadId'
-  >,
-  credentials?: CredentialScopedDb
-) {
-  const via = assertMediaVia(job.via);
-  const thread = job.threadId ? { threadId: job.threadId } : {};
-  switch (via) {
-    case 'xai': {
-      const key = await resolveOptionalXaiKey(credentials);
-      if (!key) {
-        throw new Error(
-          `Studio video job ${job.jobId} was submitted to xAI but no xAI key is available to poll it`
-        );
-      }
-      return getVideoJobStatus({
-        adapter: createNativeVideoAdapter(key.key),
-        jobId: job.jobId,
-        ...thread,
-      });
-    }
-    case 'fal': {
-      const key = await resolveFalKey(credentials);
-      return getVideoJobStatus({
-        adapter: falVideo(job.endpointId, {
-          apiKey: key.key,
-          fetch: createDeadlineFetch(
-            FAL_REQUEST_TIMEOUT_MS,
-            'Studio video job status'
-          ),
-        }),
-        jobId: job.jobId,
-        ...thread,
-      });
-    }
-    case 'google': {
-      const key = await resolveGoogleKeyForStampedJob(credentials);
-      if (!key) {
-        throw new Error(
-          `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`
-        );
-      }
-      const result = await getVideoJobStatus({
-        adapter: createNativeGeminiVideoAdapter(key.key),
-        jobId: job.jobId,
-        ...thread,
-      });
-      if (
-        result.status === 'completed' &&
-        result.url &&
-        isGeminiFilesVideoUrl(result.url)
-      ) {
-        const fileState = await getGeminiFileState(result.url, key.key);
-        if (fileState === 'FAILED') {
-          return {
-            ...result,
-            status: 'failed' as const,
-            error: 'Gemini Files API marked the generated video as FAILED',
-          };
-        }
-        if (fileState !== 'ACTIVE') {
-          return { jobId: result.jobId, status: 'processing' as const };
-        }
-      }
-      return result;
-    }
-    case 'byteplus': {
-      const arkKey = getArkApiKey();
-      if (!arkKey) {
-        throw new Error(
-          `Studio video job ${job.jobId} was submitted to BytePlus but no ARK_API_KEY is available to poll it`
-        );
-      }
-      const { apiKey, ...config } = arkAdapterConfig(
-        arkKey,
-        FAL_REQUEST_TIMEOUT_MS
+      return submitFalStudioVideoJob(
+        options,
+        modelKey,
+        mode,
+        threadId,
+        arkTask
       );
-      const createBytePlusVideo = await loadBytePlusVideo();
-      return withBytePlusQuotaRetry('studio motion poll', () =>
-        getVideoJobStatus({
-          adapter: createBytePlusVideo(job.endpointId, apiKey, config),
-          jobId: job.jobId,
-          ...thread,
-        })
-      );
-    }
-  }
-}
-
-export async function studioVideoCostFromUsage(
-  job: Pick<StudioVideoJobSubmission, 'via' | 'endpointId' | 'modelKey'>,
-  usage: TokenUsage | undefined
-) {
-  const billed = billedFields(usage);
-  switch (job.via) {
-    case 'xai': {
-      const cost = grokVideoCost(usage?.cost);
-      if (cost === undefined) {
-        reportMissingBillingCost({
-          source: 'studio-video-cost-from-usage-xai',
-          modelId: job.modelKey,
-          metadata: { usage },
-        });
-      }
-      if (billed.missingUnitsReason) {
-        reportMissingBillingCost({
-          source: 'studio-video-cost-from-usage-xai',
-          modelId: job.modelKey,
-          description: billed.missingUnitsReason,
-          metadata: { usage },
-        });
-      }
-      return {
-        endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: cost ?? ZERO_MICROS,
-        recordFalUsage: false,
-      };
-    }
-    case 'google': {
-      const cost = geminiVideoCostFromUsage(usage);
-      if (cost === undefined) {
-        reportMissingBillingCost({
-          source: 'studio-video-cost-from-usage-google',
-          modelId: job.modelKey,
-          metadata: { usage },
-        });
-      }
-      if (billed.missingUnitsReason) {
-        reportMissingBillingCost({
-          source: 'studio-video-cost-from-usage-google',
-          modelId: job.modelKey,
-          description: billed.missingUnitsReason,
-          metadata: { usage },
-        });
-      }
-      return {
-        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: cost ?? ZERO_MICROS,
-        recordFalUsage: false,
-      };
-    }
-    case 'fal': {
-      return {
-        endpointId: job.endpointId,
-        unitsBilled: billed.unitsBilled,
-        billedUnit: billed.billedUnit,
-        cost: await falCostFromUnits(
-          job.endpointId,
-          billed.unitsBilled,
-          undefined,
-          { missingUnitsReason: billed.missingUnitsReason }
-        ),
-        recordFalUsage: true,
-      };
-    }
-    case 'byteplus': {
-      const unitsBilled = bytePlusVideoUnitsBilled(usage?.totalTokens);
-      return {
-        endpointId: job.endpointId,
-        unitsBilled,
-        billedUnit: undefined,
-        cost: await falCostFromUnits(job.endpointId, unitsBilled),
-        recordFalUsage: false,
-      };
     }
   }
 }

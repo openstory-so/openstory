@@ -15,6 +15,7 @@ import {
   vi,
 } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   generateAudio,
   generateImage,
@@ -56,9 +57,15 @@ vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   requireGenerationAllowed: vi.fn(async () => undefined),
 }));
 
-const { inProcessGateway, inProcessPoller } = await import('./in-process');
-const { openstoryAudio, openstoryImage, openstoryVideo, openstoryVideoStatus } =
-  await import('./index');
+const { inProcessGateway, inProcessPoller, releaseInProcessJob } =
+  await import('./in-process');
+const {
+  doneVideoJob,
+  openstoryAudio,
+  openstoryImage,
+  openstoryVideo,
+  openstoryVideoStatus,
+} = await import('./index');
 const submitJob = await import('../submit-job');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 const { toWorkflowScopedDb } =
@@ -288,6 +295,17 @@ describe('the openstory adapter, in-process', () => {
     expect(store).toHaveBeenCalledTimes(1);
     const job = await onlyJob(VIDEO.id);
     expect(job).toMatchObject({ status: 'succeeded', providerJobId: 'xai-1' });
+    // A submit replayed after the job finished answers `done:`, still naming the job so its charge can be read.
+    const replayed = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-3:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    expect(doneVideoJob(replayed.jobId)?.jobId).toBe(job.id);
+    expect(start).toHaveBeenCalledOnce();
     expect(await chargesFor(job.id)).toEqual({
       debits: 1,
       linesMicros: 20_000,
@@ -425,6 +443,59 @@ describe('the openstory adapter, in-process', () => {
     expect(hold?.remainingAmount).toBe(0);
   });
 
+  it('polls a handle checkpointed before #2435 as owning its hold', async () => {
+    start.mockResolvedValue({ jobId: 'xai-7' });
+    poll.mockResolvedValue({ status: 'failed', error: 'Job failed' });
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-7:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    const { run, providerJobId } = z
+      .object({
+        run: z.object({ ownsReservation: z.boolean() }).passthrough(),
+        providerJobId: z.string(),
+      })
+      .parse(JSON.parse(jobId));
+    const { ownsReservation: _dropped, ...oldRun } = run;
+    const oldHandle = JSON.stringify({ run: oldRun, providerJobId });
+    expect(
+      await getVideoJobStatus({
+        adapter: statusAdapter(VIDEO),
+        jobId: oldHandle,
+      })
+    ).toMatchObject({ status: 'failed' });
+    const job = await onlyJob(VIDEO.id);
+    const [hold] = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    expect(hold?.remainingAmount).toBe(0);
+  });
+
+  it('releases its own hold when the run gives up on a queued job', async () => {
+    start.mockResolvedValue({ jobId: 'xai-6' });
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO), {
+        idempotencyKey: 'run-6:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await releaseInProcessJob(workflowDb(), jobId, 'timed out');
+    const job = await onlyJob(VIDEO.id);
+    expect(job.status).toBe('failed');
+    const [hold] = await db
+      .select()
+      .from(creditReservations)
+      .where(eq(creditReservations.idempotencyKey, `gateway:${job.id}`));
+    expect(hold?.remainingAmount).toBe(0);
+  });
+
   it('returns one stored audio file', async () => {
     start.mockResolvedValue({
       result: {
@@ -546,6 +617,36 @@ describe('on the caller run reservation (#2435)', () => {
     expect(await remainingOf(reservationId)).toBe(10_000);
   });
 
+  it('grows a borrowed reservation the charge outruns when the balance covers it', async () => {
+    start.mockResolvedValue(answered);
+    const reservationId = await runReservation(5_000);
+    await image(reservationId, 'run-r6:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(await chargesFor(job.id)).toEqual({
+      debits: 1,
+      linesMicros: 20_000,
+      usageRows: 1,
+      balanceDrop: 20_000,
+    });
+    expect(await remainingOf(reservationId)).toBe(0);
+  });
+
+  it('captures only what the balance holds past a borrowed reservation, lines summing to the debit', async () => {
+    start.mockResolvedValue(answered);
+    await db
+      .update(credits)
+      .set({ balance: 5_000 })
+      .where(eq(credits.organizationId, organizationId));
+    const reservationId = await runReservation(5_000);
+    await image(reservationId, 'run-r7:image');
+    const job = await onlyJob(IMAGE.id);
+    expect(job.status).toBe('succeeded');
+    const charged = await chargesFor(job.id);
+    expect(charged).toMatchObject({ debits: 1, linesMicros: 5_000 });
+    expect(job.costMicros).toBe(5_000);
+    expect(await remainingOf(reservationId)).toBe(0);
+  });
+
   it('reuses the job and charges once when the step is replayed', async () => {
     start.mockResolvedValue(answered);
     const reservationId = await runReservation(30_000);
@@ -555,6 +656,22 @@ describe('on the caller run reservation (#2435)', () => {
     const job = await onlyJob(IMAGE.id);
     expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
     expect(await remainingOf(reservationId)).toBe(10_000);
+  });
+
+  it('a run that gives up ends its job at once and keeps its reservation', async () => {
+    start.mockResolvedValue({ jobId: 'xai-r5' });
+    const reservationId = await runReservation(30_000);
+    const { jobId } = await generateVideo({
+      threadId: 'thread-1',
+      adapter: openstoryVideo(VIDEO.id, transport(VIDEO, reservationId), {
+        idempotencyKey: 'run-r5:submit',
+      }),
+      prompt: '',
+      modelOptions: BODY,
+    });
+    await releaseInProcessJob(workflowDb(), jobId, 'timed out');
+    expect((await onlyJob(VIDEO.id)).status).toBe('failed');
+    expect(await remainingOf(reservationId)).toBe(30_000);
   });
 
   it('leaves the run reservation intact when the job fails', async () => {

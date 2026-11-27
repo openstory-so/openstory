@@ -44,7 +44,7 @@ import { ensureExternallyFetchableUrl } from '@/platform/server/storage/external
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { OpenStoryFailureContext } from '@/platform/server/workflow/base-workflow';
 import type { LipsyncWorkflowInput } from '@/platform/server/workflow/types';
-import { fal } from '@fal-ai/client';
+import { createFalClient } from '@fal-ai/client';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -59,15 +59,16 @@ type OpenedVersion = {
   videoVersionId: string | null;
 };
 
-async function configureFal(
-  scopedDb: WorkflowScopedDb
-): Promise<{ usedOwnKey: boolean; key: string }> {
-  const keyInfo = await scopedDb.credentials.resolveKey('fal');
-  fal.config({
-    credentials: keyInfo.key,
+/** A client per call: the shared `fal.config` let two runs in one isolate send each other's key. */
+export async function lipsyncFalClient(
+  credentials: Pick<WorkflowScopedDb['credentials'], 'resolveKey'>
+) {
+  const { key } = await credentials.resolveKey('fal');
+  const fal = createFalClient({
+    credentials: key,
     fetch: createDeadlineFetch(FAL_REQUEST_TIMEOUT_MS, 'Lip-sync request'),
   });
-  return { usedOwnKey: keyInfo.source === 'organization', key: keyInfo.key };
+  return { fal, key };
 }
 
 function providerVideoUrl(data: unknown): string | null {
@@ -243,7 +244,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
     const videoVersionId = opened.videoVersionId;
 
     const { requestId } = await step.do('submit-lipsync', async () => {
-      const { key } = await configureFal(scopedDb);
+      const { fal, key } = await lipsyncFalClient(scopedDb.credentials);
       const [videoUrl, audioUrl] = await Promise.all([
         ensureExternallyFetchableUrl(input.videoUrl, key),
         ensureExternallyFetchableUrl(input.audioUrl, key),
@@ -267,7 +268,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
     for (let batch = 0; batch < MAX_BATCHES && !completed; batch++) {
       if (batch > 0) await step.sleep(`lipsync-poll-wait-${batch}`, 1);
       completed = await step.do(`lipsync-poll-batch-${batch}`, async () => {
-        await configureFal(scopedDb);
+        const { fal } = await lipsyncFalClient(scopedDb.credentials);
         const deadline = Date.now() + POLL_BATCH_DURATION_MS;
         while (Date.now() < deadline) {
           const status = await fal.queue.status(LIPSYNC_FAL_ENDPOINT, {
@@ -287,7 +288,7 @@ export class LipsyncWorkflow extends OpenStoryWorkflowEntrypoint<LipsyncWorkflow
     }
 
     const providerUrl = await step.do('fetch-lipsync', async () => {
-      await configureFal(scopedDb);
+      const { fal } = await lipsyncFalClient(scopedDb.credentials);
       try {
         const result = await fal.queue.result(LIPSYNC_FAL_ENDPOINT, {
           requestId,

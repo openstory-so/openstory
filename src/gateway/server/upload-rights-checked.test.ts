@@ -16,6 +16,8 @@ const ALLOWED: readonly string[] = [
   'src/studio/server/workflows/asset-generation-workflow.ts',
   // Product stills (#2434): refs are stored uploads, classified when they were uploaded.
   'src/stills/server/image-generation.ts',
+  // Motion and studio video: uploads gated when saved or at the click (`requireCheckedUploadRights`), clips in `check-reference-clip-rights`.
+  'src/motion/server/video-job.ts',
 ];
 
 function* walk(dir: string): Generator<string> {

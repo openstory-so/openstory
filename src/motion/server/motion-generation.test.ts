@@ -4,6 +4,7 @@ import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
 import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
 import { micros } from '@/billing/money';
+import type { ImageToVideoModel } from '@/models/models';
 import {
   markGoogleRegionBlocked,
   resetGoogleRegionBlock,
@@ -48,7 +49,9 @@ const mockCreateGrokVideo = vi.fn(() => ({
   name: 'grok',
   model: 'grok-imagine-video-1.5',
 }));
+const actualGrok = await vi.importActual('@tanstack/ai-grok');
 vi.doMock('@tanstack/ai-grok', () => ({
+  ...actualGrok,
   createGrokVideo: mockCreateGrokVideo,
 }));
 
@@ -57,7 +60,9 @@ const mockCreateGeminiVideo = vi.fn(() => ({
   name: 'gemini',
   model: 'gemini-omni-1.2-flash',
 }));
+const actualGemini = await vi.importActual('@tanstack/ai-gemini');
 vi.doMock('@tanstack/ai-gemini', () => ({
+  ...actualGemini,
   createGeminiVideo: mockCreateGeminiVideo,
 }));
 
@@ -80,11 +85,20 @@ const {
   arkStillsForMotion,
   arkStillsToRegister,
   submitMotionJob,
-  pollMotionJob,
-  motionCostFromUsage,
   calculateMotionMetadata,
+  motionGatewayTarget,
   resolveMotionVia,
 } = await import('./motion-generation');
+const { pollVideoJob, videoCostFromUsage } = await import('./video-job');
+
+const direct = { credentials: undefined, gateway: null };
+/** A stamped job as the submit step returns it. */
+const stamped = (
+  jobId: string,
+  modelKey: ImageToVideoModel,
+  via?: string,
+  endpointId?: string
+) => pollVideoJob({ jobId, modelKey, via, endpointId }, direct);
 
 describe('arkStillsForMotion', () => {
   it('registers the start frame and character sheets that may show a person (#1682)', () => {
@@ -291,6 +305,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -329,6 +344,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'opens the door\n\nthe hallway beyond the door',
@@ -367,6 +383,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
@@ -394,6 +411,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Test prompt',
@@ -410,6 +428,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Smooth camera movement',
@@ -436,6 +455,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
@@ -454,6 +474,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
@@ -479,6 +500,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
@@ -499,6 +521,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
@@ -516,6 +539,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: {},
         prompt: 'Dynamic action sequence',
         model: 'seedance_v2_5',
@@ -548,6 +572,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: {
           'https://example.com/still.jpg': 'asset://still.jpg',
           'https://example.com/robot.png': 'https://example.com/robot.png',
@@ -593,6 +618,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT waves the LOGO',
@@ -649,6 +675,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         prompt: 'PHOTO beside LOGO',
         model: 'seedance_v2_5',
@@ -698,6 +725,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         // Only the start frame is registered — audio clips are never
         // ingested by `ingestArkAssets`, so a still-registered check on the
         // audio ref would throw before this fix (unlike `registeredAssets`,
@@ -741,6 +769,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: {},
           imageUrl: 'https://example.com/still.jpg',
           prompt: 'Dynamic action sequence',
@@ -762,6 +791,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
@@ -783,6 +813,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
@@ -805,6 +836,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
@@ -823,6 +855,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -841,6 +874,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT waves',
@@ -871,6 +905,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'A person walking',
@@ -882,7 +917,7 @@ describe('Motion Service', () => {
     });
   });
 
-  describe('pollMotionJob', () => {
+  describe('pollVideoJob', () => {
     it('polls fal by default so pre-#1216 submissions keep working', async () => {
       mockGetVideoJobStatus.mockResolvedValue({
         jobId: 'job-1',
@@ -891,7 +926,7 @@ describe('Motion Service', () => {
         usage: { unitsBilled: 12 },
       });
 
-      const result = await pollMotionJob('job-1', 'kling_v3_pro');
+      const result = await stamped('job-1', 'kling_v3_pro');
 
       expect(result.status).toBe('completed');
       expect(result.url).toBe('https://example.com/video.mp4');
@@ -901,9 +936,9 @@ describe('Motion Service', () => {
     });
 
     it('throws on an unknown via stamp', async () => {
-      await expect(
-        pollMotionJob('job-1', 'kling_v3_pro', undefined, 'openai')
-      ).rejects.toThrow('Unknown media via: openai');
+      await expect(stamped('job-1', 'kling_v3_pro', 'openai')).rejects.toThrow(
+        'Unknown media via: openai'
+      );
     });
 
     it('polls xAI when the submission stamped via xai', async () => {
@@ -915,12 +950,7 @@ describe('Motion Service', () => {
         usage: { cost: 0.4 },
       });
 
-      const result = await pollMotionJob(
-        'xai-job',
-        'grok_imagine_video_1_5',
-        undefined,
-        'xai'
-      );
+      const result = await stamped('xai-job', 'grok_imagine_video_1_5', 'xai');
 
       expect(result.status).toBe('completed');
       expect(mockCreateGrokVideo).toHaveBeenCalled();
@@ -935,12 +965,7 @@ describe('Motion Service', () => {
         usage: { totalTokens: 108_000 },
       });
 
-      const result = await pollMotionJob(
-        'ark-job-1',
-        'seedance_v2_5',
-        undefined,
-        'byteplus'
-      );
+      const result = await stamped('ark-job-1', 'seedance_v2_5', 'byteplus');
 
       expect(result.status).toBe('completed');
       expect(mockGetVideoJobStatus).toHaveBeenCalledWith(
@@ -955,10 +980,9 @@ describe('Motion Service', () => {
         url: 'https://example.com/video.mp4',
       });
 
-      await pollMotionJob(
+      await stamped(
         'h3-r2v-job',
         'minimax_h3_max',
-        undefined,
         'fal',
         'minimax/h3-max/reference-to-video'
       );
@@ -976,7 +1000,7 @@ describe('Motion Service', () => {
         url: 'https://example.com/video.mp4',
       });
 
-      await pollMotionJob('job-1', 'minimax_h3_max');
+      await stamped('job-1', 'minimax_h3_max');
 
       expect(mockFalVideo).toHaveBeenCalledWith(
         'minimax/h3-max/image-to-video',
@@ -992,6 +1016,7 @@ describe('Motion Service', () => {
       await expect(
         submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/still.jpg',
           prompt: 'Move like LONG_TAKE',
@@ -1021,6 +1046,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'Move like SHORT_TAKE',
@@ -1049,6 +1075,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'Move like MYSTERY',
@@ -1080,6 +1107,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1100,6 +1128,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1120,6 +1149,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1150,6 +1180,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
@@ -1215,6 +1246,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1235,6 +1267,7 @@ describe('Motion Service', () => {
 
       const result = await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1261,6 +1294,7 @@ describe('Motion Service', () => {
       try {
         const result = await submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'A person walking',
@@ -1282,6 +1316,7 @@ describe('Motion Service', () => {
         mockGenerateVideo.mockClear();
         await submitMotionJob({
           heldSeedanceEditSeconds: null,
+          gateway: null,
           arkAssets: registeredAssets,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'A person walking',
@@ -1306,6 +1341,7 @@ describe('Motion Service', () => {
         await expect(
           submitMotionJob({
             heldSeedanceEditSeconds: null,
+            gateway: null,
             arkAssets: registeredAssets,
             imageUrl: 'https://example.com/image.jpg',
             prompt: 'A person walking',
@@ -1328,6 +1364,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
@@ -1368,6 +1405,7 @@ describe('Motion Service', () => {
 
       await submitMotionJob({
         heldSeedanceEditSeconds: null,
+        gateway: null,
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
@@ -1417,7 +1455,7 @@ describe('Motion Service', () => {
     });
   });
 
-  describe('pollMotionJob via google', () => {
+  describe('pollVideoJob via google', () => {
     it('polls Google when the submission stamped via google', async () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGetVideoJobStatus.mockResolvedValue({
@@ -1427,12 +1465,7 @@ describe('Motion Service', () => {
         usage: { promptTokens: 0, completionTokens: 28_960, totalTokens: 0 },
       });
 
-      const result = await pollMotionJob(
-        'google-job',
-        'gemini_omni_flash',
-        undefined,
-        'google'
-      );
+      const result = await stamped('google-job', 'gemini_omni_flash', 'google');
 
       expect(result.status).toBe('completed');
       expect(mockCreateGeminiVideo).toHaveBeenCalled();
@@ -1440,7 +1473,7 @@ describe('Motion Service', () => {
 
     it('throws when a google-stamped job has no key to poll with', async () => {
       await expect(
-        pollMotionJob('google-job', 'gemini_omni_flash', undefined, 'google')
+        stamped('google-job', 'gemini_omni_flash', 'google')
       ).rejects.toThrow(/no Google key is available/);
     });
 
@@ -1453,10 +1486,9 @@ describe('Motion Service', () => {
         status: 'processing',
       });
       try {
-        const result = await pollMotionJob(
+        const result = await stamped(
           'google-job',
           'gemini_omni_flash',
-          undefined,
           'google'
         );
         expect(result.status).toBe('processing');
@@ -1544,12 +1576,16 @@ describe('Motion Service', () => {
     });
   });
 
-  describe('motionCostFromUsage', () => {
+  describe('videoCostFromUsage', () => {
     it('uses xAI’s reported cost and skips fal usage sampling', async () => {
-      const billing = await motionCostFromUsage(
-        'xai',
+      const billing = await videoCostFromUsage(
+        {
+          via: 'xai',
+          endpointId: 'grok-imagine-video-1.5',
+          modelKey: 'grok_imagine_video_1_5',
+        },
         { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0.4 },
-        { modelKey: 'grok_imagine_video_1_5', hasReferenceImages: false }
+        'motion'
       );
       expect(billing.cost).toBe(400_000);
       expect(billing.recordFalUsage).toBe(false);
@@ -1559,41 +1595,42 @@ describe('Motion Service', () => {
     it('prices Google video-output tokens and skips fal usage sampling', async () => {
       // 5s of 720p video = 28,960 output tokens @ $12/1M = $0.34752
       // plus 120 prompt tokens @ $1.50/1M = $0.00018.
-      const billing = await motionCostFromUsage(
-        'google',
+      const billing = await videoCostFromUsage(
+        {
+          via: 'google',
+          endpointId: 'gemini-omni-1.2-flash',
+          modelKey: 'gemini_omni_flash',
+        },
         { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 },
-        { modelKey: 'gemini_omni_flash', hasReferenceImages: false }
+        'motion'
       );
       expect(billing.cost).toBe(347_700);
       expect(billing.recordFalUsage).toBe(false);
       expect(billing.endpointId).toBe('gemini-omni-1.2-flash');
     });
 
-    // The post-run charge re-resolves the row submit used, so the two must
-    // agree on all three fal routes (#873, #1521).
-    it.each([
-      [false, false, 'bytedance/seedance-2.5/image-to-video'],
-      [true, true, 'bytedance/seedance-2.5/reference-to-video'],
-      [false, true, 'bytedance/seedance-2.5/text-to-video'],
-    ] as const)(
-      'prices the fal row the shot hit (refs=%s, referenceOnly=%s)',
-      async (hasReferenceImages, referenceOnly, endpointId) => {
-        const billing = await motionCostFromUsage(
-          'fal',
-          {
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            billed: { quantity: 5, unit: 'units' },
-          },
-          { modelKey: 'seedance_v2_5', hasReferenceImages, referenceOnly }
-        );
-        expect(billing.endpointId).toBe(endpointId);
-        expect(billing.unitsBilled).toBe(5);
-        expect(billing.billedUnit).toBe('units');
-        expect(billing.recordFalUsage).toBe(true);
-      }
-    );
+    it('prices the fal row the job was stamped with', async () => {
+      const billing = await videoCostFromUsage(
+        {
+          via: 'fal',
+          endpointId: 'bytedance/seedance-2.5/reference-to-video',
+          modelKey: 'seedance_v2_5',
+        },
+        {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          billed: { quantity: 5, unit: 'units' },
+        },
+        'motion'
+      );
+      expect(billing.endpointId).toBe(
+        'bytedance/seedance-2.5/reference-to-video'
+      );
+      expect(billing.unitsBilled).toBe(5);
+      expect(billing.billedUnit).toBe('units');
+      expect(billing.recordFalUsage).toBe(true);
+    });
   });
 
   describe('resolveMotionVia', () => {
@@ -1607,5 +1644,32 @@ describe('Motion Service', () => {
     it('falls back to fal for Omni Flash when no Google key exists', async () => {
       await expect(resolveMotionVia('gemini_omni_flash')).resolves.toBe('fal');
     });
+  });
+});
+
+describe('motionGatewayTarget (#2435)', () => {
+  it('routes the endpoint the submit sends to on that via', () => {
+    expect(motionGatewayTarget({ model: 'kling_v3_pro' }, 'fal')).toEqual({
+      provider: 'fal',
+      modelId: 'fal-ai/kling-video/v3/pro/image-to-video',
+    });
+    expect(
+      motionGatewayTarget({ model: 'grok_imagine_video_1_5' }, 'xai')
+    ).toEqual({ provider: 'grok', modelId: 'grok-imagine-video-1.5' });
+  });
+
+  it('routes nothing on Google, for a draft or for its final', () => {
+    expect(
+      motionGatewayTarget({ model: 'gemini_omni_flash' }, 'google')
+    ).toBeNull();
+    expect(
+      motionGatewayTarget({ model: 'seedance_v2_5', draft: true }, 'byteplus')
+    ).toBeNull();
+    expect(
+      motionGatewayTarget(
+        { model: 'seedance_v2_5', finalFromDraftTaskId: 'task-1' },
+        'byteplus'
+      )
+    ).toBeNull();
   });
 });

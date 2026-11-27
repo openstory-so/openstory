@@ -21,6 +21,18 @@ import { UnusableReferencesError } from '@/motion/reference-support';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
+const mockGatewayCharge = vi.fn(async (_step: unknown, job: { via?: string }) =>
+  job.via === 'openstory' ? 480_000 : null
+);
+const mockGatewayTarget = vi.fn((options: { model: string }, via: string) => ({
+  provider: via,
+  modelId: options.model,
+}));
+const mockRouteVideoJob = vi.fn(
+  async (_db: unknown, target: { modelId: string }) => ({
+    [target.modelId]: { via: 'direct', reason: 'test' },
+  })
+);
 const mockPoll = vi.fn();
 const mockSoften = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
@@ -33,20 +45,36 @@ const mockIngestArkAssets = vi.fn(
 );
 const mockRecordMediaGenerationSpan = vi.fn();
 const emit = vi.fn(async () => {});
+const mockPersistCompletion = vi.fn(
+  async (): Promise<{ status: 'completed' | 'cancelled' }> => ({
+    status: 'completed',
+  })
+);
 
 vi.doMock('@/motion/server/motion-generation', () => ({
   submitMotionJob: mockSubmit,
-  pollMotionJob: mockPoll,
   canRenderReferenceOnly: async () => true,
   calculateMotionMetadata: mockCalculateMotionMetadata,
-  motionCostFromUsage: () => ({
-    cost: 0,
-    unitsBilled: 0,
-    endpointId: 'fal/x',
-    recordFalUsage: false,
-  }),
   resolveMotionVia: mockResolveMotionVia,
   arkStillsForMotion: () => [],
+  motionGatewayTarget: mockGatewayTarget,
+}));
+const mockVideoCost = vi.fn(async () => ({
+  cost: 0,
+  unitsBilled: 0,
+  endpointId: 'fal/x',
+  recordFalUsage: false,
+}));
+vi.doMock('@/motion/server/video-job', () => ({
+  pollVideoJob: mockPoll,
+  releaseTimedOutVideoJob: vi.fn(async () => {}),
+  readGatewayCharge: mockGatewayCharge,
+  // A gateway job here stands for one run on Ark.
+  videoJobProviderVia: (job: { via?: string }) =>
+    job.via === 'openstory' ? 'byteplus' : job.via,
+  videoGatewayStore: (upload: unknown) => upload,
+  routeVideoJob: mockRouteVideoJob,
+  videoCostFromUsage: mockVideoCost,
 }));
 vi.doMock('@/models/server/byteplus-asset-steps', () => ({
   ingestArkAssets: mockIngestArkAssets,
@@ -83,7 +111,7 @@ vi.doMock('@/platform/realtime', () => ({
 }));
 vi.doMock('./motion-workflow-persist', () => ({
   rescuedMotionPromptOf: () => null,
-  persistMotionCompletion: async () => ({ status: 'completed' }),
+  persistMotionCompletion: mockPersistCompletion,
   persistMotionFailure: async () => {},
 }));
 vi.doMock('@/stills/server/workflows/content-soften', () => ({
@@ -280,6 +308,12 @@ const rescueEmit = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   mockSubmit.mockImplementation(async () => job());
+  mockVideoCost.mockResolvedValue({
+    cost: 0,
+    unitsBilled: 0,
+    endpointId: 'fal/x',
+    recordFalUsage: false,
+  });
   mockPoll.mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
   mockSoften.mockResolvedValue('the softened prompt');
   mockResolveMotionVia.mockResolvedValue('fal');
@@ -312,6 +346,61 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
     // The second job's polls are not the first job's steps.
     expect(step.names).toContain('motion-poll-batch-0-0');
     expect(step.names).toContain('motion-poll-batch-0-0-internal');
+  });
+
+  it('a gateway job on Ark also gets one new job, under a new key (#2435)', async () => {
+    mockSubmit.mockResolvedValue({
+      ...job(),
+      via: 'openstory',
+      modelKey: 'seedance_v2_5',
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion-internal',
+        }),
+      })
+    );
+    expect(step.names).toContain('route-motion-internal');
+  });
+
+  it('a gateway job on Ark says the provider is busy, not its raw error (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error: 'QuotaSharedPoolExceeded: shared pool exhausted',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toBeInstanceOf(NonRetryableError);
+    await expect(run).rejects.not.toThrow(/QuotaSharedPoolExceeded/);
+  });
+
+  it('a gateway job on Ark never shows the stored url behind a refused reference (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error:
+        'InvalidParameter: the image could not be decoded (/r2/stills/secret.png)',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toThrow(/You were not charged/);
+    await expect(run).rejects.not.toThrow(/secret\.png/);
   });
 
   it('stops at once when the references cannot be used, with no step retry', async () => {
@@ -388,6 +477,73 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
     ).rejects.toThrow(/temporary error.*not charged/);
     expect(mockSubmit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('MotionWorkflow on the openstory via (#2435)', () => {
+  const charged = {
+    cost: 1_000_000,
+    unitsBilled: 5,
+    endpointId: 'fal/x',
+    recordFalUsage: false,
+  };
+
+  it('leaves the charge to the gateway: the run neither prices nor deducts', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockVideoCost.mockResolvedValue(charged);
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({ reservationId: 'res-run' }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(mockSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion',
+          reservation: { id: 'res-run' },
+        }),
+      })
+    );
+    expect(mockPoll).toHaveBeenCalledWith(
+      expect.objectContaining({ via: 'openstory' }),
+      expect.objectContaining({ gateway: expect.anything() })
+    );
+    expect(mockVideoCost).not.toHaveBeenCalled();
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+  });
+
+  it('records the gateway charge on the span (#2435)', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openstory', costMicros: 480_000 })
+    );
+  });
+
+  it('still prices and deducts a direct clip', async () => {
+    mockVideoCost.mockResolvedValue(charged);
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockDeductWorkflowCredits).toHaveBeenCalledOnce();
+  });
+
+  it('a render cancelled mid-flight adds no charge of the run to the gateway one', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'openstory' });
+    mockVideoCost.mockResolvedValue(charged);
+    mockPersistCompletion.mockResolvedValueOnce({ status: 'cancelled' });
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
   });
 });
 
@@ -476,6 +632,31 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
       promptSoftened: false,
       modelFallback: true,
     });
+  });
+
+  it('a model swap routes the rescue model in its own step and sends it under its own key (#2435)', async () => {
+    rejectReseeds(STILL);
+    const { scopedDb } = makeScopedDb();
+    const step = makeStep();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(step.names).toEqual(
+      expect.arrayContaining(['route-motion', 'route-motion-rescue'])
+    );
+    expect(mockGatewayTarget).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: GROK }),
+      'fal'
+    );
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        model: GROK,
+        gateway: expect.objectContaining({
+          idempotencyKey: 'run-1:submit-motion-rescue',
+          routes: { [GROK]: { via: 'direct', reason: 'test' } },
+        }),
+      })
+    );
   });
 
   it('both flagged: softens AND swaps; the fallback hash covers the softened manifest', async () => {

@@ -218,7 +218,8 @@ actually emitted, not the presence of a still (#1809). `adaptive` is sent
 only with a real `start_frame`.
 
 Billing prices the reference-to-video endpoint the job actually hits, not the
-image-to-video row — the post-hoc charge (`motionCostFromUsage`), the workflow
+image-to-video row — the post-hoc charge (`videoCostFromUsage`, which prices
+the endpoint stamped on the job), the workflow
 estimate (`calculateMotionMetadata`), AND the pre-flight credit gates, which
 take `referenceOnly` through `estimateVideoCost`. A reference-only shot routes
 to r2v (or its t2v sibling with nothing matched), so resolving on
