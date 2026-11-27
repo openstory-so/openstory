@@ -36,6 +36,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import type { GatewayModel } from '@/gateway/server/catalog';
+import type { GatewayJobInput } from '@/gateway/schema';
 import type { GatewayPoll, GatewayStart } from '@/gateway/server/providers';
 import { rateCardSchema } from '@modelschemas/rate-card/schema';
 import { micros } from '@/billing/money';
@@ -126,7 +127,13 @@ const store = vi.fn(async (_media: unknown, index: number) => ({
 const workflowDb = () =>
   toWorkflowScopedDb(createScopedDb(organizationId, userId));
 
-function transport(model: GatewayModel, reservationId: string | null = null) {
+function transport(
+  model: GatewayModel,
+  reservationId: string | null = null,
+  wireBody: (body: GatewayJobInput) => Promise<GatewayJobInput> = async (
+    body
+  ) => body
+) {
   return inProcessGateway({
     scopedDb: workflowDb(),
     model,
@@ -134,6 +141,7 @@ function transport(model: GatewayModel, reservationId: string | null = null) {
     store,
     uploadRightsChecked: submitJob.UPLOAD_RIGHTS_CHECKED,
     reservation: reservationId ? { id: reservationId } : null,
+    wireBody,
   });
 }
 
@@ -219,6 +227,120 @@ const answered: GatewayStart = {
 };
 
 describe('the openstory adapter, in-process', () => {
+  it('replays a retried step whose references were uploaded again: no second call, the stored outputs', async () => {
+    const withRefs: GatewayModel = {
+      ...IMAGE,
+      id: 'grok-image-refs',
+      inputSchema: {
+        ...SCHEMA,
+        properties: {
+          ...SCHEMA.properties,
+          image_urls: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    };
+    const held = { ...BODY, image_urls: ['/r2/uploads/a.png'] };
+    let upload = 0;
+    // Each attempt's upload is a new URL, as fal storage gives without a CDN.
+    const wireBody = vi.fn(async (body: GatewayJobInput) => ({
+      ...body,
+      image_urls: [`https://fal.media/files/${++upload}.png`],
+    }));
+    start.mockResolvedValue(answered);
+    const attempt = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(
+          withRefs.id,
+          transport(withRefs, null, wireBody),
+          { idempotencyKey: 'run-9:image' }
+        ),
+        prompt: '',
+        modelOptions: held,
+      });
+    await attempt();
+    const replay = await attempt();
+
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls[0]?.[1]).toMatchObject({
+      image_urls: ['https://fal.media/files/1.png'],
+    });
+    expect(replay.images).toEqual([{ url: '/r2/out-0.png' }]);
+    const job = await onlyJob(withRefs.id);
+    expect(job.input).toMatchObject({ image_urls: ['/r2/uploads/a.png'] });
+    expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
+  });
+
+  it('wireBody failing leaves nothing held; the retry holds and starts the job once', async () => {
+    const wireBody = vi
+      .fn<(body: GatewayJobInput) => Promise<GatewayJobInput>>()
+      .mockRejectedValueOnce(new Error('fal storage is down'))
+      .mockImplementation(async (body) => body);
+    start.mockResolvedValue(answered);
+    const attempt = () =>
+      generateImage({
+        threadId: 'thread-1',
+        adapter: openstoryImage(IMAGE.id, transport(IMAGE, null, wireBody), {
+          idempotencyKey: 'run-11:image',
+        }),
+        prompt: '',
+        modelOptions: BODY,
+      });
+    await expect(attempt()).rejects.toThrow('fal storage is down');
+    // No job, so no hold (`gateway:<job>`) and nothing for the sweep.
+    expect(
+      await db
+        .select()
+        .from(gatewayJobs)
+        .where(eq(gatewayJobs.modelKey, IMAGE.id))
+    ).toEqual([]);
+
+    await attempt();
+    expect(start).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(IMAGE.id);
+    expect(await chargesFor(job.id)).toMatchObject({ debits: 1 });
+  });
+
+  it('replays a retried video submit whose references were uploaded again: one provider start', async () => {
+    const withRefs: GatewayModel = {
+      ...VIDEO,
+      id: 'grok-video-refs',
+      inputSchema: {
+        ...SCHEMA,
+        properties: {
+          ...SCHEMA.properties,
+          image_urls: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    };
+    let upload = 0;
+    const wireBody = vi.fn(async (body: GatewayJobInput) => ({
+      ...body,
+      image_urls: [`https://fal.media/files/${++upload}.png`],
+    }));
+    start.mockResolvedValue({ jobId: 'provider-video-1' });
+    const submit = () =>
+      generateVideo({
+        threadId: 'thread-1',
+        adapter: openstoryVideo(
+          withRefs.id,
+          transport(withRefs, null, wireBody),
+          { idempotencyKey: 'run-10:submit' }
+        ),
+        prompt: '',
+        modelOptions: { ...BODY, image_urls: ['/r2/talent/org/sheets/a.png'] },
+      });
+    const first = await submit();
+    const retried = await submit();
+
+    expect(retried.jobId).toBe(first.jobId);
+    expect(start).toHaveBeenCalledTimes(1);
+    const job = await onlyJob(withRefs.id);
+    expect(job.input).toMatchObject({
+      image_urls: ['/r2/talent/org/sheets/a.png'],
+    });
+  });
+
   it('charges one image exactly once, at the card price', async () => {
     start.mockResolvedValue(answered);
     const result = await generateImage({

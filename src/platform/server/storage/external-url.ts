@@ -37,7 +37,7 @@ import { getEnv } from '#env';
 import { createFalClient } from '@fal-ai/client';
 import { readStorageObject } from '#storage';
 import { sniffImageMimeType } from './file';
-import { r2KeyFromUrl, toCdnUrl } from './buckets';
+import { r2KeyFromUrl, storedUrlOwnedBy, toCdnUrl } from './buckets';
 
 export function isReplayMode(): boolean {
   const env = getEnv();
@@ -104,6 +104,118 @@ export async function ensureExternallyFetchableUrls(
   return Promise.all(
     urls.map((url) => ensureExternallyFetchableUrl(url, falApiKey))
   );
+}
+
+/** Whether we serve this URL ourselves (`/r2/<key>` or this app's origin) and, when known, it is `organizationId`'s object. */
+function isOwnStoredUrl(url: string, organizationId: string | null): boolean {
+  if (r2KeyFromUrl(url) === null) return false;
+  const appUrl = getEnv().VITE_APP_URL;
+  const ours =
+    url.startsWith('/') ||
+    (!!appUrl &&
+      URL.canParse(url) &&
+      new URL(url).origin === new URL(appUrl).origin);
+  return (
+    ours && (organizationId === null || storedUrlOwnedBy(url, organizationId))
+  );
+}
+
+/**
+ * A stored-media URL as an absolute address that is the same on every
+ * attempt: the CDN's, else the app's own `/r2/` route. What the gateway holds
+ * and checks against `format: uri`; the fal upload waits for the send.
+ * Another host, or another organization's object, passes through untouched.
+ */
+export function stableMediaUrl(
+  url: string,
+  organizationId: string | null
+): string {
+  if (isReplayMode() || !isOwnStoredUrl(url, organizationId)) return url;
+  const cdnUrl = toCdnUrl(url);
+  if (cdnUrl) return cdnUrl;
+  const appUrl = getEnv().VITE_APP_URL;
+  return appUrl && url.startsWith('/') ? new URL(url, appUrl).href : url;
+}
+
+/** {@link stableMediaUrl} on every string in a JSON body. */
+export function stableMediaBody(
+  body: unknown,
+  organizationId: string | null
+): unknown {
+  if (typeof body === 'string') return stableMediaUrl(body, organizationId);
+  if (Array.isArray(body)) {
+    return body.map((item) => stableMediaBody(item, organizationId));
+  }
+  if (body !== null && typeof body === 'object') {
+    return Object.fromEntries(
+      Object.entries(body).map(([field, value]) => [
+        field,
+        stableMediaBody(value, organizationId),
+      ])
+    );
+  }
+  return body;
+}
+
+/** Every stored-media string in a JSON body made fetchable by fal; another host's or organization's as it was. */
+export async function fetchableFalBody(
+  body: unknown,
+  organizationId: string | null,
+  falApiKey?: string
+): Promise<unknown> {
+  if (typeof body === 'string') {
+    return isOwnStoredUrl(body, organizationId)
+      ? ensureExternallyFetchableUrl(body, falApiKey)
+      : body;
+  }
+  if (Array.isArray(body)) {
+    return Promise.all(
+      body.map((item) => fetchableFalBody(item, organizationId, falApiKey))
+    );
+  }
+  if (body !== null && typeof body === 'object') {
+    return Object.fromEntries(
+      await Promise.all(
+        Object.entries(body).map(async ([field, value]) => [
+          field,
+          await fetchableFalBody(value, organizationId, falApiKey),
+        ])
+      )
+    );
+  }
+  return body;
+}
+
+/**
+ * A fetch that makes a JSON body's stored-media URLs fetchable as it sends:
+ * the direct fal path, so a builder keeps the stored URLs and the gateway
+ * holds those (`fetchableFalBody` runs only when a job starts).
+ */
+export function fetchableFalFetch(
+  falApiKey: string | undefined,
+  base: typeof fetch
+): typeof fetch {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    if (
+      request.method === 'GET' ||
+      request.method === 'HEAD' ||
+      request.body === null ||
+      !request.headers.get('content-type')?.includes('application/json')
+    ) {
+      return base(request);
+    }
+    // The direct send knows no organization: our own hosts only.
+    const body = await fetchableFalBody(await request.json(), null, falApiKey);
+    const headers = new Headers(request.headers);
+    headers.delete('content-length');
+    return base(request.url, {
+      method: request.method,
+      headers,
+      body: JSON.stringify(body),
+      signal: request.signal,
+    });
+  };
 }
 
 /**

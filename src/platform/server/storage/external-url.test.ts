@@ -16,6 +16,9 @@ vi.doMock('@fal-ai/client', () => ({ createFalClient }));
 const {
   ensureExternallyFetchableUrl,
   ensureExternallyFetchableUrls,
+  fetchableFalBody,
+  fetchableFalFetch,
+  stableMediaUrl,
   toVisionImageSource,
 } = await import('./external-url');
 
@@ -323,5 +326,99 @@ describe('toVisionImageSource', () => {
       value: payload,
       mimeType: 'image/png',
     });
+  });
+});
+
+describe('fetchableFalFetch (the direct fal send)', () => {
+  it('uploads the stored URLs in a JSON body as it sends, and nothing else', async () => {
+    setEnv({ FAL_KEY: 'test-key' });
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/png',
+    });
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.png');
+    const base = vi.fn<typeof fetch>(async () => new Response('{}'));
+
+    await fetchableFalFetch('own-key', base)('https://queue.fal.run/x', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Mara turns at the door',
+        image_urls: ['/r2/thumbnails/org/org-1/shot.png'],
+        duration: 5,
+      }),
+    });
+
+    expect(createFalClient).toHaveBeenCalledWith({ credentials: 'own-key' });
+    const body = base.mock.calls[0]?.[1]?.body;
+    if (typeof body !== 'string') throw new Error('expected a JSON body');
+    expect(JSON.parse(body)).toEqual({
+      prompt: 'Mara turns at the door',
+      image_urls: ['https://v3.fal.media/files/b/abc/shot.png'],
+      duration: 5,
+    });
+  });
+
+  it('passes a bodyless GET through, though fal sets a JSON content type on it', async () => {
+    const base = vi.fn<typeof fetch>(async () => new Response('{}'));
+    await fetchableFalFetch('own-key', base)('https://queue.fal.run/x/status', {
+      method: 'GET',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(base).toHaveBeenCalledOnce();
+    expect(createFalClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('stableMediaUrl and fetchableFalBody: only our hosts, only the run organization', () => {
+  const CDN = {
+    R2_PUBLIC_STORAGE_DOMAIN: 'media.example.com',
+    VITE_APP_URL: 'https://app.example.com',
+  };
+
+  it('rewrites the run organization object, relative or on the app origin', () => {
+    setEnv(CDN);
+    for (const url of [
+      '/r2/thumbnails/org/org-1/x.png',
+      'https://app.example.com/r2/thumbnails/org/org-1/x.png',
+    ]) {
+      expect(stableMediaUrl(url, 'org-1')).toBe(
+        'https://media.example.com/thumbnails/org/org-1/x.png'
+      );
+    }
+  });
+
+  it('leaves another host with an /r2/ path untouched, even with our key in it', async () => {
+    setEnv(CDN);
+    const url = 'https://evil.example/r2/thumbnails/org/org-1/x.png';
+    expect(stableMediaUrl(url, 'org-1')).toBe(url);
+    expect(stableMediaUrl(url, null)).toBe(url);
+    await expect(
+      fetchableFalBody({ image_urls: [url] }, 'org-1')
+    ).resolves.toEqual({ image_urls: [url] });
+    await expect(
+      fetchableFalBody({ image_urls: [url] }, null)
+    ).resolves.toEqual({ image_urls: [url] });
+  });
+
+  it("never turns another organization's object into a CDN URL or an upload", async () => {
+    setEnv({
+      ...CDN,
+      R2_PUBLIC_STORAGE_DOMAIN: undefined,
+      FAL_KEY: 'test-key',
+    });
+    for (const url of [
+      '/r2/thumbnails/org/org-2/x.png',
+      'https://app.example.com/r2/thumbnails/org/org-2/x.png',
+    ]) {
+      expect(stableMediaUrl(url, 'org-1')).toBe(url);
+      await expect(fetchableFalBody([url], 'org-1')).resolves.toEqual([url]);
+    }
+    setEnv(CDN);
+    const url = 'https://app.example.com/r2/thumbnails/org/org-2/x.png';
+    expect(stableMediaUrl(url, 'org-1')).toBe(url);
+    await expect(fetchableFalBody([url], 'org-1')).resolves.toEqual([url]);
+    expect(readStorageObject).not.toHaveBeenCalled();
+    expect(falUpload).not.toHaveBeenCalled();
   });
 });

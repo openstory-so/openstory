@@ -51,8 +51,9 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { applyMotionTransform } from '@/motion/server/endpoint-map';
+import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import {
-  ensureExternallyFetchableUrls,
+  fetchableFalFetch,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 import {
@@ -127,24 +128,21 @@ export type StudioVideoJobSubmission = {
 
 /**
  * Reference: the T2V body plus the stills/clips/audio fields. Frames: see
- * below. Stored `/r2/` URLs are made fetchable first.
+ * below. Built on the stored `/r2/` URLs; the send makes them fetchable.
  */
-async function buildStudioImageModeInput(
+function buildStudioImageModeInput(
   options: StudioVideoJobOptions,
   modelKey: ImageToVideoModel,
-  mode: Exclude<StudioVideoMode, 'text'>,
-  falApiKey: string
-): Promise<{ endpointId: string; built: StudioVideoRequest }> {
+  mode: Exclude<StudioVideoMode, 'text'>
+): { endpointId: string; built: StudioVideoRequest } {
   if (mode === 'reference') {
     // Reference siblings share the T2V body shape (duration / aspect / audio
     // / resolution) plus the stills, so reuse that builder and add the field.
     const reference = studioReferenceEndpoint(modelKey);
     if (!reference) throw new Error(`${modelKey} has no reference endpoint`);
-    const [imageUrls, videoUrls, audioUrls] = await Promise.all([
-      ensureExternallyFetchableUrls(options.referenceImages ?? [], falApiKey),
-      ensureExternallyFetchableUrls(options.referenceVideos ?? [], falApiKey),
-      ensureExternallyFetchableUrls(options.referenceAudio ?? [], falApiKey),
-    ]);
+    const imageUrls = options.referenceImages ?? [];
+    const videoUrls = options.referenceVideos ?? [];
+    const audioUrls = options.referenceAudio ?? [];
     const built = buildStudioVideoInput({
       prompt: tagStudioReferences(options.prompt, modelKey),
       model: modelKey,
@@ -175,10 +173,9 @@ async function buildStudioImageModeInput(
   // against (`MOTION_TRANSFORMS`), so field names, duration encoding and
   // prompt limits come from the generated schemas.
   const endpointId = IMAGE_TO_VIDEO_MODELS[modelKey].id;
-  const stored = [options.startImageUrl, options.endImageUrl].filter(
+  const urls = [options.startImageUrl, options.endImageUrl].filter(
     (url): url is string => Boolean(url)
   );
-  const urls = await ensureExternallyFetchableUrls(stored, falApiKey);
   const resolution = studioVideoResolution(modelKey, options.resolution);
   const snapped = endFrameDurationCap(
     snapStudioVideoDuration(options.duration, modelKey),
@@ -228,11 +225,10 @@ async function submitFalStudioVideoJob(
   }
   if (mode !== 'text') {
     const key = await resolveFalKey(options.credentials);
-    const { endpointId, built } = await buildStudioImageModeInput(
+    const { endpointId, built } = buildStudioImageModeInput(
       options,
       modelKey,
-      mode,
-      key.key
+      mode
     );
     const sent = await sendVideoJob({
       gateway: options.gateway,
@@ -242,7 +238,7 @@ async function submitFalStudioVideoJob(
       modelId: endpointId,
       threadId,
       usedOwnKey: key.source === 'organization',
-      send: (fetch) =>
+      send: (fetch = fetchableFalFetch(key.key, workersSafeFetch)) =>
         generateVideo({
           adapter: falVideo(endpointId, { apiKey: key.key, fetch }),
           prompt: built.prompt,

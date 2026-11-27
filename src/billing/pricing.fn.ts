@@ -73,6 +73,7 @@ export type CatalogFalPricingRow = {
    * params are an open record, which a server fn cannot return directly.
    */
   rateCardJson?: string;
+  gatewayHolds?: Record<string, number>;
 };
 
 export type CatalogFalPricingMap = Record<string, CatalogFalPricingRow>;
@@ -97,6 +98,14 @@ function toCatalogRows(
         },
       }),
       ...(row.rateCard && { rateCardJson: JSON.stringify(row.rateCard) }),
+      ...(row.gatewayHolds && {
+        gatewayHolds: Object.fromEntries(
+          Object.entries(row.gatewayHolds).map(([shape, hold]) => [
+            shape,
+            Number(hold),
+          ])
+        ),
+      }),
     };
   }
   return out;

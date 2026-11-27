@@ -153,12 +153,16 @@ export function inProcessGateway(params: {
   uploadRightsChecked: typeof UPLOAD_RIGHTS_CHECKED;
   /** The caller's run reservation: jobs charge it instead of holding their own; null holds per job. */
   reservation: { readonly id: string } | null;
+  /** The body as sent, from the one held: made before the hold, so a failure here leaves nothing held; a replay compares the held body. */
+  wireBody: (body: GatewayJobInput) => Promise<GatewayJobInput>;
 }): GatewayTransport {
   const { scopedDb, store } = params;
   const credentials = platformOnlyCredentials(scopedDb);
   return {
     ...inProcessPoller({ scopedDb, store }),
     submit: async (body: GatewayJobInput, idempotencyKey: string) => {
+      // Before the hold: an upload that keeps failing never strands one.
+      const wire = await params.wireBody(body);
       let run: GatewayRun;
       let job: GatewayJob;
       try {
@@ -205,7 +209,7 @@ export function inProcessGateway(params: {
       // Started but never stamped: `claimAndStartGatewayRun` fails it rather than send again.
       const started = await claimAndStartGatewayRun(
         scopedDb,
-        run,
+        { ...run, input: wire },
         credentials,
         store
       );

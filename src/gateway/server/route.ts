@@ -128,6 +128,19 @@ function snapshotRoute(route: GatewayRoute): GatewayRouteSnapshot {
     : route;
 }
 
+// ponytail: cleared whole at 64 entries; there are tens of snapshot models, so it rarely fills.
+const parsedModels = new Map<string, GatewayModel>();
+
+/** A snapshotted model, parsed once per isolate: a quote checks every shape against it. */
+function parsedModel(json: string): GatewayModel {
+  const hit = parsedModels.get(json);
+  if (hit) return hit;
+  if (parsedModels.size >= 64) parsedModels.clear();
+  const model = storedModelSchema.parse(JSON.parse(json));
+  parsedModels.set(json, model);
+  return model;
+}
+
 /**
  * The route a run applies: its payload snapshot plus the pure body check, no
  * read, so a step retry takes the same route. Absent routes are a payload
@@ -142,7 +155,7 @@ export function gatewayRunRoute(
   const route = routes[gatewayRouteKey(target.provider, target.modelId)];
   if (!route) return { via: 'direct', reason: 'not routed at the trigger' };
   if (route.via === 'direct') return route;
-  const model = storedModelSchema.parse(JSON.parse(route.model));
+  const model = parsedModel(route.model);
   const reason = gatewayCannotRun(model, body);
   return reason ? { via: 'direct', reason } : { via: 'openstory', model };
 }

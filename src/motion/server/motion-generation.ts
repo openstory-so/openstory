@@ -61,7 +61,7 @@ import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import { snapDuration } from '@/motion/snap-duration';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
-  ensureExternallyFetchableUrl,
+  fetchableFalFetch,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 import { bindableReferences } from './build-reference-video-prompt';
@@ -297,37 +297,9 @@ async function prepareFalMotionJob(
   const { endpoint } = motionEndpoint(modelKey, options, 'fal');
   const key = await resolveFalKey(options.credentials);
 
-  // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
-  // for a fal-storage upload first (no-op in prod and e2e replay).
-  const imageUrl = options.imageUrl
-    ? await ensureExternallyFetchableUrl(options.imageUrl, key.key)
-    : undefined;
-
-  // Reference URLs only need to be fetchable when they go on the wire
-  // (`endpoint` or `inline`). Models with `references: 'none'` keep the raw
-  // URLs: they are never sent, but the builder still needs tokens +
-  // descriptions to substitute entity names in the prompt.
-  const referenceImages =
-    endpoint.references !== 'none' && options.referenceImages?.length
-      ? await Promise.all(
-          options.referenceImages.map(async (ref) => ({
-            ...ref,
-            referenceImageUrl: await ensureExternallyFetchableUrl(
-              ref.referenceImageUrl,
-              key.key
-            ),
-          }))
-        )
-      : options.referenceImages;
-
-  const optionsWithFetchableUrls = {
-    ...options,
-    imageUrl,
-    referenceImages,
-    model: modelKey,
-  };
+  // Built on the stored URLs; the send makes them fetchable (`fetchableFalFetch`), so the gateway holds the stored body.
   const modelInput = buildMotionRequest(
-    optionsWithFetchableUrls,
+    { ...options, model: modelKey },
     modelKey
   ).input;
 
@@ -337,7 +309,7 @@ async function prepareFalMotionJob(
   }
 
   return {
-    send: (fetch = workersSafeFetch) =>
+    send: (fetch = fetchableFalFetch(key.key, workersSafeFetch)) =>
       generateVideo({
         adapter: falVideo(endpoint.endpointId, {
           apiKey: key.key,

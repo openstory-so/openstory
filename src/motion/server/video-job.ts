@@ -4,6 +4,10 @@
  * (docs/architecture/media-vias.md § The openstory via).
  */
 
+import {
+  fetchableFalBody,
+  stableMediaBody,
+} from '@/platform/server/storage/external-url';
 import { getEnv } from '#env';
 import { billedFields } from '@/billing/billed-quantity';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
@@ -238,7 +242,13 @@ export async function sendVideoJob(params: {
 }): Promise<{ jobId: string; via: ProductVia; usedOwnKey: boolean }> {
   const gateway = params.draft ? null : params.gateway;
   if (gateway) {
-    const body = await captureVideoBody(params.send);
+    // Held and checked with stored URLs absolute and stable; fal's upload waits for the start.
+    const body = jsonBody.parse(
+      stableMediaBody(
+        await captureVideoBody(params.send),
+        gateway.scopedDb.organizationId
+      )
+    );
     const route = gatewayRunRoute(
       gateway.routes,
       { provider: params.provider, modelId: params.modelId },
@@ -259,6 +269,14 @@ export async function sendVideoJob(params: {
         // Uploads were gated when saved or at the click; reference clips in `check-reference-clip-rights`.
         uploadRightsChecked: UPLOAD_RIGHTS_CHECKED,
         reservation: gateway.reservation,
+        // Held with the stored URLs; fal gets fetchable ones when the job starts.
+        wireBody:
+          params.provider === 'fal'
+            ? async (held) =>
+                jsonBody.parse(
+                  await fetchableFalBody(held, gateway.scopedDb.organizationId)
+                )
+            : async (held) => held,
       });
       const job = await generateVideo({
         adapter: openstoryVideo(route.model.id, transport, {

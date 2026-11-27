@@ -400,7 +400,13 @@ function makeContext(
       )
   );
   const stub = {
-    apiKeys: { hasUsableKey: vi.fn(async () => true) },
+    apiKeys: {
+      hasUsableKey: vi.fn(async () => true),
+      resolveOptionalKey: vi.fn(async () => ({
+        key: 'own',
+        source: 'organization',
+      })),
+    },
     billing: {
       hasEnoughCredits: vi.fn(async () => false),
       createReservation: vi.fn(async () => ({ ok: false })),

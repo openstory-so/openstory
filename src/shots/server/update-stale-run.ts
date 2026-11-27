@@ -73,7 +73,7 @@ export const UPDATE_STALE_CREDIT_PROVIDERS = ['fal'] as const;
 
 /** One still at its cheapest: with references it may take another route and price. */
 async function cheapestStill(
-  scopedDb: Pick<ScopedDb, 'apiKeys'>,
+  scopedDb: Pick<ScopedDb, 'userId' | 'apiKeys'>,
   sequence: Pick<Sequence, 'imageModel' | 'aspectRatio' | 'resolution'>
 ): Promise<Microdollars> {
   const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
@@ -146,7 +146,7 @@ export async function prepareUpdateStale(args: {
  */
 export async function launchUpdateStale(input: {
   /** Resolves the run's gateway routes at the trigger. */
-  scopedDb: Pick<ScopedDb, 'apiKeys'>;
+  scopedDb: Pick<ScopedDb, 'userId' | 'apiKeys'>;
   userId: string;
   organizationId: string;
   sequenceId: string;
@@ -161,7 +161,7 @@ export async function launchUpdateStale(input: {
       sequenceId: input.sequenceId,
       plan: input.plan,
       gatewayRoutes: await resolveGatewayRoutes(input.scopedDb, [
-        ...imageRouteTargets(),
+        ...(await imageRouteTargets(input.scopedDb)),
         ...AUDIO_ROUTE_TARGETS,
       ]),
     },
