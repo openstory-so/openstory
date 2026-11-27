@@ -7,7 +7,7 @@
 import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { estimateImageCost, estimatePlanCost } from '@/billing/cost-estimation';
 import type { Microdollars } from '@/billing/money';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
@@ -80,9 +80,10 @@ export async function estimateContinueCost(args: {
   work: readonly PlanUnit[];
   generateStartFrames: boolean;
   draftMotion: boolean;
+  scopedDb: Pick<ScopedDb, 'apiKeys'>;
 }): Promise<{ micros: Microdollars; priced: boolean }> {
   const { sequence, shots } = args;
-  const pricing = await getEffectiveFalPricing();
+  const pricing = await imageQuotePricing(args.scopedDb);
   const imageModel = safeTextToImageModel(
     sequence.imageModel,
     DEFAULT_IMAGE_MODEL
@@ -158,6 +159,7 @@ export async function prepareContinue(args: {
     work,
     generateStartFrames: requested.generateStartFrames,
     draftMotion: args.draftMotion,
+    scopedDb,
   });
   return { work, stopAt, estimate };
 }

@@ -140,6 +140,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       logTag: '[LocationSheetWorkflow:cf]',
       subject: `reference for ${input.locationName}`,
       stepName: 'generate-reference-image',
+      gatewayRoutes: input.gatewayRoutes,
       params: builtParams,
       meta: { locationDbId },
       store: (result) =>
@@ -164,27 +165,33 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const imageMetadata = generation.metadata;
     const generationParams = generation.params;
 
+    // An `openstory` still was held and charged by the gateway (#2434).
+    const charged = generation.via === 'openstory';
     // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
+    const falUsage: { requestId?: string } = charged
+      ? {}
+      : await recordFalUsageStep(step, scopedDb, imageMetadata);
 
     // Deduct credits for image generation (skip if organization used own fal key)
-    await step.do('deduct-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: extractImageCost(imageMetadata),
-        usedOwnKey: imageMetadata.usedOwnKey,
-        description: `Location sheet (${generationParams.model})`,
-        idempotencyKey: `${event.instanceId}:sheet`,
-        reservationId: input.reservationId,
-        metadata: {
-          ...falUsage,
-          model: generationParams.model,
-          locationName: input.locationName,
-          locationDbId,
-        },
-        workflowName: 'LocationSheetWorkflow',
+    if (!charged) {
+      await step.do('deduct-credits', async () => {
+        await deductWorkflowCredits({
+          scopedDb,
+          costMicros: extractImageCost(imageMetadata),
+          usedOwnKey: imageMetadata.usedOwnKey,
+          description: `Location sheet (${generationParams.model})`,
+          idempotencyKey: `${event.instanceId}:sheet`,
+          reservationId: input.reservationId,
+          metadata: {
+            ...falUsage,
+            model: generationParams.model,
+            locationName: input.locationName,
+            locationDbId,
+          },
+          workflowName: 'LocationSheetWorkflow',
+        });
       });
-    });
+    }
 
     let referenceImageUrl: string = storageResult.url;
     const referenceImagePath: string = storageResult.path;

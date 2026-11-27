@@ -59,7 +59,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
-import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useOrganizationFalPricing } from '@/billing/ui/use-fal-pricing';
 import { useSequence } from '@/sequences/ui/use-sequences';
 import type { TextToImageModel } from '@/models/models';
 import { estimateImageCost } from '@/billing/cost-estimation';
@@ -391,7 +391,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
-  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } =
+    useOrganizationFalPricing();
   const sheetCostEstimate = useMemo(() => {
     if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {

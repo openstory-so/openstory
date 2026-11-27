@@ -5,6 +5,7 @@ import { planCounts, planWork } from '@/sequences/generation-plan';
 import { computePlan } from '@/shots/server/update-stale-plan';
 import { estimatePlanCost } from '@/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { withGatewayImageQuotes } from '@/stills/server/image-gateway-routes';
 import { resolveImageModels } from '@/models/resolve-image-models';
 import { resolveVideoModels } from '@/models/resolve-video-models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
@@ -71,7 +72,10 @@ export async function freezeFreshGenerationPlan(
     draftMotion: input.draftMotion ?? false,
     audioModels,
     audioDurationSeconds: musicRequestDurationSeconds(shots),
-    pricing: await getEffectiveFalPricing(),
+    pricing: withGatewayImageQuotes(
+      await getEffectiveFalPricing(),
+      input.gatewayRoutes ?? {}
+    ),
   });
   return { plan, remainingCost };
 }

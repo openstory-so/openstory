@@ -655,6 +655,7 @@ describe('submitGatewayJob', () => {
         rights: { scopedDb, request },
         idempotencyKey: 'hold-1',
         oauthClientId: null,
+        runReservationId: null,
       });
     const first = await hold();
     const again = await hold();
@@ -693,6 +694,7 @@ describe('submitGatewayJob', () => {
         rights: { scopedDb, request },
         idempotencyKey: 'hold-2',
         oauthClientId: null,
+        runReservationId: null,
       });
     await hold(BODY);
     await expect(hold({ ...BODY, prompt: 'Another shot' })).rejects.toThrow(

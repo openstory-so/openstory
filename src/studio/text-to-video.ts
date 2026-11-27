@@ -27,7 +27,12 @@ import {
   warnLongPrompt,
 } from '@/models/prompt-length';
 import { motionResolutionTokensForModel } from '@/motion/model-capabilities';
-import type { AspectRatio } from '@/models/aspect-ratios';
+import {
+  aspectRatioToImageSize,
+  type AspectRatio,
+} from '@/models/aspect-ratios';
+import type { ImageGenerationParams } from '@/stills/build-image-request';
+import type { StudioRunInput } from '@/studio/schema';
 import {
   DEFAULT_RESOLUTION,
   pickVideoResolution,
@@ -648,4 +653,22 @@ export function buildStudioVideoInput(
   }
 
   return { prompt, duration, auto: snapped === 'auto', modelOptions };
+}
+
+/** The still a Studio image run asks for: built once, read by the trigger's route check and the run. */
+export function studioImageParams(
+  input: Extract<StudioRunInput, { activity: 'image' }>
+): ImageGenerationParams {
+  return {
+    model: input.imageModel,
+    prompt: input.referenceImages.length
+      ? tagStudioReferences(input.prompt)
+      : input.prompt,
+    imageSize: aspectRatioToImageSize(input.aspectRatio),
+    resolution: input.resolution,
+    numImages: 1,
+    ...(input.referenceImages.length > 0 && {
+      referenceImageUrls: input.referenceImages,
+    }),
+  };
 }

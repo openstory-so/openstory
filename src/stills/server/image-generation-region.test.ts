@@ -34,7 +34,8 @@ const mockCreateGeminiImage = vi.fn(() => ({
   name: 'gemini',
   model: 'gemini-3.1-flash-lite-image',
 }));
-vi.doMock('@tanstack/ai-gemini', () => ({
+vi.doMock('@tanstack/ai-gemini', async () => ({
+  ...(await vi.importActual('@tanstack/ai-gemini')),
   ThinkingLevel: { MINIMAL: 'MINIMAL' },
   createGeminiImage: mockCreateGeminiImage,
 }));

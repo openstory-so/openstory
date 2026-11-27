@@ -61,7 +61,7 @@ import { regenerateShotPromptFn } from '@/shots/prompt-variants.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
 import { useFalBillingGate } from '@/billing/ui/use-billing-gate';
-import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useOrganizationFalPricing } from '@/billing/ui/use-fal-pricing';
 import { segmentKeys } from './use-segments';
 import { shotKeys, useSelectSegmentVideoVersion } from './use-shots';
 import {
@@ -1234,7 +1234,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       : [];
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
-  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } =
+    useOrganizationFalPricing();
   const imageCostEstimate = useMemo(() => {
     if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(

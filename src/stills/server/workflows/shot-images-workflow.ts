@@ -312,6 +312,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         variantOnly: false,
         organizationId: input.organizationId,
         reservationId: input.reservationId,
+        gatewayRoutes: input.gatewayRoutes,
         prompt: visualPrompt,
         model,
         imageSize,

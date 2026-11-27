@@ -63,7 +63,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { Switch } from '@/ui/shadcn/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
-import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useOrganizationFalPricing } from '@/billing/ui/use-fal-pricing';
 import {
   useCreateStudioAssets,
   useDraftStudioPrompt,
@@ -363,7 +363,7 @@ export function StudioComposer({
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
-  const { pricing, isPending: pricingPending } = useFalPricing();
+  const { pricing, isPending: pricingPending } = useOrganizationFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);

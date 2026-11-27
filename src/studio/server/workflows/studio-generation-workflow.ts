@@ -38,7 +38,6 @@ import {
   recordFalUsageStep,
 } from '@/billing/server/workflow-deduction';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
-import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/platform/server/db/schema';
 import { generateImageWithProvider } from '@/stills/server/image-generation';
@@ -58,7 +57,7 @@ import {
   arkStillsForStudio,
   submitStudioVideoJob,
 } from '@/studio/server/studio-video-generation';
-import { tagStudioReferences } from '@/studio/text-to-video';
+import { studioImageParams } from '@/studio/text-to-video';
 import { uploadStudioImage, uploadStudioVideo } from '@/studio/server/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
@@ -113,7 +112,6 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
     const { assetId, organizationId, userId } = event.payload;
     const { imageModel } = input;
-    const imageSize = aspectRatioToImageSize(input.aspectRatio);
 
     // Generate and store in ONE step: a via that answers with inline bytes
     // has no URL to pass on, and the whole image would otherwise ride the
@@ -122,29 +120,22 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       logger.info(
         `[StudioGenerationWorkflow] Generating image ${assetId} with ${imageModel}`
       );
-      const result = await generateImageWithProvider(
-        {
-          model: imageModel,
-          prompt: input.referenceImages.length
-            ? tagStudioReferences(input.prompt)
-            : input.prompt,
-          imageSize,
-          resolution: input.resolution,
-          numImages: 1,
-          ...(input.referenceImages.length > 0 && {
-            referenceImageUrls: input.referenceImages,
-          }),
+      const result = await generateImageWithProvider(studioImageParams(input), {
+        credentials: scopedDb.credentials,
+        gateway: {
+          routes: event.payload.gatewayRoutes,
+          runReservationId: event.payload.reservationId,
+          scopedDb,
+          runId: event.instanceId,
+          idempotencyKey: `${event.instanceId}:generate-image`,
         },
-        {
-          credentials: scopedDb.credentials,
-          observability: {
-            observationName: 'studio-image',
-            tags: ['studio', 'image'],
-            userId,
-            metadata: { assetId, model: imageModel },
-          },
-        }
-      );
+        observability: {
+          observationName: 'studio-image',
+          tags: ['studio', 'image'],
+          userId,
+          metadata: { assetId, model: imageModel },
+        },
+      });
 
       const generatedImageUrl = result.imageUrls[0];
       if (!generatedImageUrl) {
@@ -167,7 +158,12 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    if (imageCost > 0 && !imageMetadata.usedOwnKey) {
+    // An `openstory` still was held and charged by the gateway (#2434).
+    if (
+      generated.via !== 'openstory' &&
+      imageCost > 0 &&
+      !imageMetadata.usedOwnKey
+    ) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,

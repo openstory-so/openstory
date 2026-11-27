@@ -1,3 +1,4 @@
+import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateStalePlan } from './update-stale-plan';
 import { asStub } from '@/test/as-stub';
@@ -7,6 +8,10 @@ const emit = vi.fn();
 const history = vi.fn();
 const getWorkflowRunOutcome = vi.fn();
 
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: async () => ({}),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit }),
@@ -42,6 +47,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     triggerWorkflow.mockResolvedValue(runId);
     await expect(
       launchUpdateStale({
+        scopedDb: asStub({}),
         userId: 'u',
         organizationId: 't',
         sequenceId,
@@ -59,6 +65,7 @@ describe('Update all runs are visible to every editor (#1979)', () => {
     emit.mockRejectedValueOnce(new Error('DO down'));
     await expect(
       launchUpdateStale({
+        scopedDb: asStub({}),
         userId: 'u',
         organizationId: 't',
         sequenceId,

@@ -22,8 +22,8 @@ import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { storedShotSpec } from '@/shots/shot-list.schema';
 
-vi.doMock('@/billing/server/fal-pricing-live', () => ({
-  getEffectiveFalPricing: async () => ({}),
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageQuotePricing: async () => ({}),
 }));
 const requireCredits = vi.fn(async () => undefined);
 vi.doMock('@/billing/server/preflight', () => ({

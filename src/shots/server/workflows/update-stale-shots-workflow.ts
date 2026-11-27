@@ -496,6 +496,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               ...payload,
               sheetVersionId,
               reservationId: input.reservationId,
+              gatewayRoutes: input.gatewayRoutes,
             },
             spawnStepName: `spawn-character-sheet-${id}`,
             awaitStepName: `await-character-sheet-${id}`,
@@ -573,6 +574,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 ...payload,
                 referenceVersionId,
                 reservationId: input.reservationId,
+                gatewayRoutes: input.gatewayRoutes,
               },
               spawnStepName: `spawn-location-sheet-${id}`,
               awaitStepName: `await-location-sheet-${id}`,
@@ -608,6 +610,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     childPayload: {
                       ...payload,
                       reservationId: input.reservationId,
+                      gatewayRoutes: input.gatewayRoutes,
                     },
                     spawnStepName: 'spawn-element-sheets',
                     awaitStepName: 'await-element-sheets',
@@ -877,6 +880,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 : (claims.imageVariantId ?? undefined),
               variantOnly: alternate,
               reservationId: input.reservationId,
+              gatewayRoutes: input.gatewayRoutes,
             });
           } catch (error) {
             // Running out of credits is terminal, not transient: retrying

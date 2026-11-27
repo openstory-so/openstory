@@ -702,6 +702,18 @@ skip. `adapter/in-process.test.ts` fails if a generation is charged twice
 (a retried step, a replayed poll) or zero times, or if the wallet drops by
 anything but the charge.
 
+A run that already holds credits for its work (motion, studio video) passes
+its reservation as `inProcessGateway({ reservation: { id } })` (#2435). The
+hold still prices the card and refuses what it cannot price, and still
+writes the job row, but takes no second reservation: the settle captures
+the card's charge against the run's, under the same `gateway:<job>:settle`
+key, so a balance that covers the run is not asked to cover the job again.
+Such a run carries `ownsReservation: false`: a failed job is marked failed
+without zeroing the run's reservation, and the job row records no
+reservation, so the stale-job sweep cannot zero it either. Only an
+in-process caller can pass one; the public submit always holds its own
+(`runReservationId: null`), and the Models page passes none.
+
 ### The Models page
 
 `createGeneratedAsset` (`src/models/server/generated-assets.ts`) picks the
@@ -749,6 +761,89 @@ One gateway job, one hold and one debit each; the lines summed to the debit.
 adapter's first product caller and the own-key path needs a run too.
 `extractAssetOutputs` moved to `providers.ts`, `outputExtension` and the
 bucket map to `storage.ts`, `isFalValidationError` to `src/models/fal-error.ts`.
+
+## Product stills on the gateway (#2434)
+
+Only Grok stills with no reference images go through the gateway today.
+
+The trigger decides the route and puts it on the payload as
+`gatewayRoutes` (`imageGatewayRoutes`, `src/stills/server/image-gateway-routes.ts`):
+one `resolveGatewayRoute` per Grok image model, so a run that falls back to
+another Grok model mid-run still has its answer. It reads the stored
+snapshot only (`getSnapshotGatewayModel`): a miss is direct, a provider
+with no platform key on this server (`GATEWAY_DRIVERS[provider].configured`)
+is direct, and a modelschemas outage cannot stop a trigger. The run reads its route only
+through `gatewayRunRoute`, the snapshot plus the pure body check, so a step
+retry takes the same route. A run triggered before
+#2434 has no routes and stays direct. `generateImageWithProvider` is the one
+place the route is applied (`gatewayImageRequest`): an `openstory` route plus
+a body the endpoint takes (`gatewayCannotRun`) runs the `openstory` adapter
+over `inProcessGateway`; anything else goes direct as before.
+
+- Each attempt is its own job and hold: the idempotency key is
+  `<runId>:<stepName>`, and the softening loops name a step per attempt.
+- A Grok refusal is a provider 4xx: the hold is released, the job is
+  `CONTENT_REJECTED`, and the message reaches `isContentRejectionError`
+  unchanged, so softening runs as before.
+- An `openstory` still is charged by the gateway; the workflows skip their
+  image `deductWorkflowCredits` on that via. Studio takes no trigger hold for
+  it.
+- Proof (2026-11-26, `bun dev`): one Studio Grok still through
+  `StudioGenerationWorkflow`. One hold of $0.06, one `credit_usage` of $0.06
+  (`gateway:<job>:settle`), no other debit, output in R2. Repeated with
+  the route read from the stored snapshot (after `bun
+  scripts/refresh-fal-pricing.ts`): the same, once.
+
+Routed today: Studio images; shot image and variant regenerations; character
+and location sheet regenerations; the sequence pipeline (storyboard and
+continue, Update stale, smart retry, add model), each child inheriting
+`gatewayRoutes` from its parent like `reservationId`. A root merges its
+image routes into any it was given (`{ ...input.gatewayRoutes, ...image }`).
+Shot previews render Nano Banana, which the gateway does not hold. These
+children carry no routes and go direct: Recast location's `RegenerateShots`
+children, shot previews and Replace element's children. Stay direct:
+
+- Grok stills with reference images: modelschemas has no `v1/images/edits`
+  for Grok ([TanStack/schemas#758](https://github.com/TanStack/schemas/issues/758)).
+- Upscales (an edit), sheet portraits that edit, posters (fal).
+- fal Flux and Seedream: the cards have a usage lever with no estimate
+  (#2432). Gemini images: TanStack/schemas#755.
+
+Quotes: `imageQuotePricing` gives a trigger the fal map with each
+`openstory` Grok still priced at `gatewayHoldMicros` of its card estimate,
+the number the hold takes ($0.06 for Grok 2.0 at `quality: medium`, where
+the fal map says $0.04). Direct routes keep the fal map. Signed-in pages
+read the same map through `getOrganizationFalPricingFn`
+(`useOrganizationFalPricing`): Studio, the character and location sheets,
+the scene list and the shot prompts. The public `getCatalogFalPricingFn` is
+for signed-out pages only.
+
+No double hold: a run that owns a reservation (the pipeline envelope, a
+shot or sheet trigger) passes it as `runReservationId`, and the gateway job
+charges that reservation instead of holding its own. A run with none (Studio
+on the `openstory` route) holds per job.
+
+Known differences from direct:
+
+- A transient xAI 5xx fails an `openstory` still; the direct path retried it.
+- A still is written to R2 twice: the gateway stores its output under
+  `gateway/<id>/`, then the step copies it to the still's own key. The
+  product's store callbacks take a URL, not media, so passing the final key
+  into the transport changes every still's store; the gateway copy stays as
+  the job's output record.
+- Every quote reads the same map: preflight, Continue, Update stale, smart
+  retry, sheet references and the freeze-plan gate (from the payload's
+  routes, no read), so the run envelope reserves what the gateway charges.
+- The map prices both endpoints a still can take by the run's own decision
+  (`gatewayImageRequest`): the generation endpoint with no references, the
+  edit endpoint with one. A quote that knows its references passes
+  `edit`: shot image, variants (always an edit of the current still), smart
+  retry, add model per shot, Studio, and the sheet pages. Update stale's
+  floor takes the cheaper of the two. Plan envelopes (storyboard, Continue,
+  freeze-plan) price every still with no references, because which shots
+  carry references is not known per unit; today that is the higher of the
+  two for Grok ($0.06 hold against $0.04 edit), so a cast-heavy plan
+  reserves more than it spends and settle releases the rest.
 
 ## Every model can be priced (#2432)
 

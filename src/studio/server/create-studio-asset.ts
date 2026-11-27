@@ -69,6 +69,7 @@ import {
   studioCanEditSource,
   studioUsedUploadedReferenceVideo,
   studioBillableSeconds,
+  studioImageParams,
 } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
 import { isResolution } from '@/models/resolutions';
@@ -78,6 +79,8 @@ import {
   draftTaskUsable,
 } from '@/motion/draft-mode';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { gatewayImageRequest } from '@/stills/server/image-generation';
+import { imageRoutesAndQuotes } from '@/stills/server/image-gateway-routes';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 
@@ -435,7 +438,8 @@ export async function createStudioAssets(
         : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
-  const pricing = await getEffectiveFalPricing();
+  const { routes: gatewayRoutes, pricing } =
+    await imageRoutesAndQuotes(scopedDb);
   const perItemCost = estimateStudioCost({ ...input, count: 1 }, pricing);
   const creditErrorMessage =
     input.activity === 'video'
@@ -481,6 +485,11 @@ export async function createStudioAssets(
     }
   }
 
+  // The gateway holds and charges an `openstory` still itself (#2434).
+  const onGateway =
+    input.activity === 'image' &&
+    gatewayImageRequest(studioImageParams(input), gatewayRoutes) !== null;
+
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve
   // failing after earlier rows exist would leave a partial click.
@@ -488,9 +497,11 @@ export async function createStudioAssets(
   try {
     for (let index = 0; index < input.count; index += 1) {
       reservationIds.push(
-        await reserveRunCredits(scopedDb, perItemCost, {
-          errorMessage: creditErrorMessage,
-        })
+        onGateway
+          ? undefined
+          : await reserveRunCredits(scopedDb, perItemCost, {
+              errorMessage: creditErrorMessage,
+            })
       );
     }
   } catch (error) {
@@ -532,6 +543,7 @@ export async function createStudioAssets(
             assetId: row.id,
             reservationId,
             ownsReservation: true,
+            gatewayRoutes,
             input: runInput,
             noPersonImages,
             ...(options.finalFromDraftTaskId && {

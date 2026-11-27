@@ -56,7 +56,6 @@ import {
   loadVoiceMovedShotIds,
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -85,6 +84,10 @@ import {
 } from '@/platform/server/workflow/client';
 import { simpleHash } from '@/platform/hash';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import {
+  imageQuotePricing,
+  imageRoutesAndQuotes,
+} from '@/stills/server/image-gateway-routes';
 import {
   notifySequenceReady,
   sequenceScenesUrl,
@@ -330,7 +333,7 @@ export async function executeSmartRetry(
       generateVoices: sequence.generateVoices,
       draftMotion: sequence.draftMotion,
       targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-      pricing: await getEffectiveFalPricing(),
+      pricing: await imageQuotePricing(context.scopedDb),
     });
     creditProviders = ['fal', 'openrouter'];
     const fullResult = {
@@ -432,7 +435,9 @@ export async function executeSmartRetry(
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
-  const pricing = await getEffectiveFalPricing();
+  const { routes: gatewayRoutes, pricing } = await imageRoutesAndQuotes(
+    context.scopedDb
+  );
 
   // 1. Retry failed images
   if (failedImageShots.length > 0) {
@@ -472,6 +477,7 @@ export async function executeSmartRetry(
         estimateImageCost(imageModel, sequence.aspectRatio, 1, {
           pricing,
           resolution: sequence.resolution,
+          edit: referenceImages.length > 0,
         }),
         { model: imageModel, operation: 'smart-retry:image' }
       );
@@ -496,6 +502,7 @@ export async function executeSmartRetry(
         organizationId,
         reservationId,
         ownsReservation: true,
+        gatewayRoutes,
         prompt,
         model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),

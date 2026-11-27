@@ -185,6 +185,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         organizationId: input.organizationId,
         sequenceId: input.sequenceId,
         reservationId: input.reservationId,
+        gatewayRoutes: input.gatewayRoutes,
         characterDbId,
         lookId: created.lookId,
         lookVersionId: created.lookVersionId,

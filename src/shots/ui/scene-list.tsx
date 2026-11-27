@@ -60,7 +60,7 @@ import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { DEFAULT_RESOLUTION, type Resolution } from '@/models/resolutions';
 import { MotionResolutionPicker } from '@/models/ui/pickers/motion-resolution-picker';
-import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useOrganizationFalPricing } from '@/billing/ui/use-fal-pricing';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import {
   useGenerationSliceEstimate,
@@ -603,7 +603,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   // Batch cost = sum of per-shot motion at the selected video model
   // (+ optional music track) (#1140). Matches server `data.model` override.
-  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } =
+    useOrganizationFalPricing();
   const batchCostEstimate = useMemo((): Microdollars | null | undefined => {
     if (notStartedShots.length === 0) return null;
     if (!falPricing) return pricingPending ? undefined : null;

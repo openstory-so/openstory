@@ -1,3 +1,4 @@
+import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 /**
  * Tests for the storyboard launcher + generation mutex (#839).
  *
@@ -27,6 +28,10 @@ vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
 beforeEach(() => {
   getRequestHeader.mockReset();
 });
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: async () => ({}),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
 }));
@@ -278,6 +283,8 @@ describe('triggerStoryboard', () => {
       // No stopAt on the trigger and no generationStopAt on the row → flags
       // collapse to images (legacy stills-only).
       stopAt: 'images',
+      // Resolved at the trigger, never mid-run (#2434).
+      gatewayRoutes: {},
     });
   });
 

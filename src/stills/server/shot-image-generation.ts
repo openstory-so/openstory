@@ -30,6 +30,10 @@ import {
 } from '@/shots/server/shot-image-input';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import {
+  imageGatewayRoutes,
+  imageRoutesAndQuotes,
+} from '@/stills/server/image-gateway-routes';
 import type {
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
@@ -152,7 +156,11 @@ export async function generateShotImage(
   try {
     workflowRunId = await triggerWorkflow(
       '/image',
-      { ...workflowInput, targetVariantId: claim.id },
+      {
+        ...workflowInput,
+        targetVariantId: claim.id,
+        gatewayRoutes: await imageGatewayRoutes(context.scopedDb),
+      },
       {
         // Claim-scoped: stable across retries of THIS enqueue (CF collapses
         // duplicate create()s), fresh per claim so a deliberate re-roll
@@ -197,6 +205,9 @@ export async function generateShotImageVariants(
   }
 
   const numImages = data.numImages ?? 1;
+  const { routes: gatewayRoutes, pricing } = await imageRoutesAndQuotes(
+    context.scopedDb
+  );
   await requireCredits(
     context.scopedDb,
     gateEstimate(
@@ -205,8 +216,10 @@ export async function generateShotImageVariants(
         sequence.aspectRatio,
         numImages,
         {
-          pricing: await getEffectiveFalPricing(),
+          pricing,
           resolution: sequence.resolution,
+          // A variant always edits the shot's current still.
+          edit: true,
         }
       ),
       {
@@ -277,9 +290,16 @@ export async function generateShotImageVariants(
       : null,
   };
 
-  const workflowRunId = await triggerWorkflow('/variant-image', workflowInput, {
-    deduplicationId: `variant-${shot.id}-${Date.now()}`,
-  });
+  const workflowRunId = await triggerWorkflow(
+    '/variant-image',
+    {
+      ...workflowInput,
+      gatewayRoutes,
+    },
+    {
+      deduplicationId: `variant-${shot.id}-${Date.now()}`,
+    }
+  );
 
   return { workflowRunId, shotId: shot.id };
 }

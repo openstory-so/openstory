@@ -1,3 +1,4 @@
+import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asStub } from '@/test/as-stub';
 
@@ -9,6 +10,11 @@ vi.doMock('@/shots/server/rescan-continuity-from-prompt', () => ({
 vi.doMock('@/shots/server/shot-image-input', () => ({
   prepareShotImageWorkflowInput: prepare,
   getSceneLocationReferenceImages: vi.fn(),
+}));
+vi.doMock('@/stills/server/image-gateway-routes', () => ({
+  imageGatewayRoutes: vi.fn(async () => ({})),
+  imageQuotePricing: async () => TEST_FAL_PRICING,
+  imageRoutesAndQuotes: async () => ({ routes: {}, pricing: TEST_FAL_PRICING }),
 }));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: vi.fn(async () => 'run-1'),

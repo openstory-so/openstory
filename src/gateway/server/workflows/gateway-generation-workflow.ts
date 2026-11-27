@@ -32,7 +32,9 @@ const POLL_INTERVAL_MS = 3_000;
 const MAX_BATCHES = 60;
 
 export interface GatewayGenerationWorkflowInput
-  extends Omit<UserWorkflowContext, 'reservationId'>, GatewayRun {}
+  extends
+    Omit<UserWorkflowContext, 'reservationId' | 'ownsReservation'>,
+    GatewayRun {}
 
 type Event = Readonly<WorkflowEvent<GatewayGenerationWorkflowInput>>;
 

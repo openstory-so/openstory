@@ -35,7 +35,7 @@ import type { Sequence } from '@/platform/server/db/schema';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import { requireCredits, type Provider } from '@/billing/server/preflight';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import type { Microdollars } from '@/billing/money';
 import { sha256Hex } from '@/shots/input-hash';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
@@ -314,7 +314,7 @@ async function prepareGeneration(
     });
     const estimateMicros = buildUpdateStalePreview(
       plan,
-      await getEffectiveFalPricing(),
+      await imageQuotePricing(scopedDb),
       sequence.musicModel,
       await seedanceRunsOnArk(toWorkflowScopedDb(scopedDb).credentials)
     ).costByLevel[request.depth];
@@ -331,6 +331,7 @@ async function prepareGeneration(
       launch: async (runKey, onLaunched) => {
         await onLaunched(
           await launchUpdateStale({
+            scopedDb,
             userId: actor.userId,
             organizationId: actor.organizationId,
             sequenceId: sequence.id,

@@ -7,7 +7,7 @@ import type { Scene } from '@/shots/scene-analysis.schema';
  * server-side without duplicating the logic.
  */
 
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { imageQuotePricing } from '@/stills/server/image-gateway-routes';
 import type { ShotPromptContextRefs } from './prompt-context';
 import { isValidTextToImageModel } from '@/models/models';
 import { resolveImageModel } from '@/models/resolve-asset-models';
@@ -272,8 +272,13 @@ export async function prepareShotImageWorkflowInput(args: {
     scopedDb,
     gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
-        pricing: await getEffectiveFalPricing(),
+        pricing: await imageQuotePricing(scopedDb),
         resolution: sequence.resolution,
+        edit:
+          characterReferences.length +
+            locationReferences.length +
+            elementReferences.length >
+          0,
       }),
       { model, operation: 'shot-image' }
     ),

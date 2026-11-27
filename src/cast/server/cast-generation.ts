@@ -10,6 +10,7 @@ import { castChannelId, locationChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { imageGatewayRoutes } from '@/stills/server/image-gateway-routes';
 import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type {
   CharacterSheetWorkflowInput,
@@ -118,6 +119,7 @@ export async function regenerateCharacterSheet(
     const claimed: CharacterSheetWorkflowInput = {
       ...payload,
       sheetVersionId,
+      gatewayRoutes: await imageGatewayRoutes(scopedDb),
     };
     workflowRunId = await triggerWorkflow('/character-sheet', claimed, {
       // Explicit regen must not reuse the bible-child id
@@ -282,6 +284,7 @@ export async function regenerateLocationSheet(
     const claimed: LocationSheetWorkflowInput = {
       ...payload,
       referenceVersionId,
+      gatewayRoutes: await imageGatewayRoutes(scopedDb),
     };
     workflowRunId = await triggerWorkflow('/location-sheet', claimed, {
       // Explicit regen must not reuse the bible-child id

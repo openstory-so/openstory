@@ -125,8 +125,8 @@ export async function drawSheetPortrait(args: {
         numImages: 1,
         referenceImageUrls: [sheetUrl],
       },
-      // The credentials half, as every workflow image call passes it.
-      { credentials: scopedDb.credentials }
+      // A Gemini edit of the sheet: blocked on the gateway (TanStack/schemas#755).
+      { credentials: scopedDb.credentials, gateway: null }
     );
   } catch (error) {
     await scopedDb.billing.zeroReservation(hold.reservationId);

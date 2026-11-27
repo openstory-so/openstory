@@ -14,6 +14,8 @@ const DEFINED_IN = 'src/gateway/server/submit-job';
 const ALLOWED: readonly string[] = [
   // The Models page run: `createGeneratedAsset` checked every URL when it held at the click.
   'src/studio/server/workflows/asset-generation-workflow.ts',
+  // Product stills (#2434): refs are stored uploads, classified when they were uploaded.
+  'src/stills/server/image-generation.ts',
 ];
 
 function* walk(dir: string): Generator<string> {

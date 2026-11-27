@@ -13,7 +13,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 // A row written by an older deploy is checked, not trusted.
-const storedModelSchema = z.object({
+export const storedModelSchema = z.object({
   provider: z.enum(GATEWAY_PROVIDERS),
   id: z.string(),
   name: z.string(),

@@ -334,6 +334,8 @@ async function processTask(
         resolution: '1080p',
       },
       {
+        // A script on the platform key: no run carries routes.
+        gateway: null,
         onQueueUpdate: (update) => {
           try {
             // Always update task status when we receive an update

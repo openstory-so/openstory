@@ -62,8 +62,6 @@ function okResult(p: ImageGenerationParams): ImageGenerationResult {
       prompt: p.prompt,
       model: p.model,
       endpointId: 'fal-ai/nano-banana-2',
-      dimensions: [],
-      file_sizes: [],
       usedOwnKey: false,
     },
   };
@@ -93,6 +91,7 @@ function run(
     scopedDb,
     workflowRunId: 'wf-1',
     userId: 'u1',
+    gatewayRoutes: undefined,
     sequenceId: 'seq_1',
     kind: 'character-sheet',
     logTag: '[Test]',

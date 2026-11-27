@@ -369,7 +369,13 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    if (imageCostMicros > 0 && organizationId && !imageMetadata.usedOwnKey) {
+    // An `openstory` still was held and charged by the gateway (#2434).
+    if (
+      generation.via !== 'openstory' &&
+      imageCostMicros > 0 &&
+      organizationId &&
+      !imageMetadata.usedOwnKey
+    ) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,

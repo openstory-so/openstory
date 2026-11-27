@@ -161,6 +161,10 @@ describe('AssetGenerationWorkflow', () => {
       }),
       db
     );
-    expect(releaseGatewayRun).toHaveBeenCalledWith(db, hold, 'boom');
+    expect(releaseGatewayRun).toHaveBeenCalledWith(
+      db,
+      { ...hold, ownsReservation: true },
+      'boom'
+    );
   });
 });

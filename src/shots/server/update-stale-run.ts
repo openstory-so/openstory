@@ -6,13 +6,16 @@
 
 import { z } from 'zod';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import {
+  imageGatewayRoutes,
+  imageQuotePricing,
+} from '@/stills/server/image-gateway-routes';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
 import { getLogger } from '@/platform/logger';
 import { getChannelHistory, getGenerationChannel } from '@/platform/realtime';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ValidationError } from '@/platform/errors';
@@ -66,6 +69,26 @@ const updateStaleShotsResultSchema = z.object({
 /** Whose keys waive the floor: Update all's renders are fal's. */
 export const UPDATE_STALE_CREDIT_PROVIDERS = ['fal'] as const;
 
+/** One still at its cheapest: with references it may take another route and price. */
+async function cheapestStill(
+  scopedDb: Pick<ScopedDb, 'apiKeys'>,
+  sequence: Pick<Sequence, 'imageModel' | 'aspectRatio' | 'resolution'>
+): Promise<Microdollars> {
+  const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
+  const pricing = await imageQuotePricing(scopedDb);
+  const still = (edit: boolean) =>
+    gateEstimate(
+      estimateImageCost(model, sequence.aspectRatio, 1, {
+        pricing,
+        resolution: sequence.resolution,
+        edit,
+      }),
+      { model, operation: 'update-stale-shots' }
+    );
+  const [plain, edit] = [still(false), still(true)] as const;
+  return edit < plain ? edit : plain;
+}
+
 export async function prepareUpdateStale(args: {
   scopedDb: ScopedDb;
   userId: string;
@@ -97,17 +120,8 @@ export async function prepareUpdateStale(args: {
       'Drafts need the BytePlus route, but Seedance is routed to fal for this organization — update without drafts'
     );
   }
-  const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
   const creditFloorMicros =
-    depth === 'prompts'
-      ? ZERO_MICROS
-      : gateEstimate(
-          estimateImageCost(model, sequence.aspectRatio, 1, {
-            pricing: await getEffectiveFalPricing(),
-            resolution: sequence.resolution,
-          }),
-          { model, operation: 'update-stale-shots' }
-        );
+    depth === 'prompts' ? ZERO_MICROS : await cheapestStill(scopedDb, sequence);
   const plan = await planUpdateAll({
     scopedDb,
     sequenceId: sequence.id,
@@ -129,6 +143,8 @@ export async function prepareUpdateStale(args: {
  * instance lives.
  */
 export async function launchUpdateStale(input: {
+  /** Resolves the run's gateway routes at the trigger. */
+  scopedDb: Pick<ScopedDb, 'apiKeys'>;
   userId: string;
   organizationId: string;
   sequenceId: string;
@@ -142,6 +158,7 @@ export async function launchUpdateStale(input: {
       organizationId: input.organizationId,
       sequenceId: input.sequenceId,
       plan: input.plan,
+      gatewayRoutes: await imageGatewayRoutes(input.scopedDb),
     },
     { deduplicationId: input.runKey }
   );

@@ -52,6 +52,8 @@ export type GatewayRun = {
   oauthClientId: string | null;
   /** The hold; every gateway job is held before it runs. */
   reservationId: string;
+  /** False when the hold is the caller's run reservation: the job charges it but never zeroes it. */
+  ownsReservation: boolean;
 };
 
 /** Streams one output into the caller's storage, inside the step that received it (#1645). */
@@ -222,13 +224,15 @@ export async function finishGatewayRun(
   return settleGatewayRun(scopedDb, run, stored, idempotencyKey);
 }
 
-/** Ends a failed run: the hold zeroed first (safe once the run is over), then the job failed; a charged job stays succeeded. */
+/** Ends a failed run: its own hold zeroed first (safe once the run is over), then the job failed; a charged job stays succeeded. */
 export async function releaseGatewayRun(
   scopedDb: Pick<WorkflowScopedDb, 'billing' | 'gatewayJobs'>,
-  run: Pick<GatewayRun, 'jobId' | 'reservationId'>,
+  run: Pick<GatewayRun, 'jobId' | 'reservationId' | 'ownsReservation'>,
   error: string
 ): Promise<void> {
-  await scopedDb.billing.zeroReservation(run.reservationId);
+  if (run.ownsReservation) {
+    await scopedDb.billing.zeroReservation(run.reservationId);
+  }
   await scopedDb.gatewayJobs.markFailed(run.jobId, {
     code: gatewayErrorCode(error),
     message: error,
