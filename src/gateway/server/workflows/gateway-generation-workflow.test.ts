@@ -226,6 +226,8 @@ const INPUT: GatewayJobInput = {
   model: 'grok-imagine-video',
   prompt: 'Mara, a ferry mechanic, wipes her hands on a rag in the engine room',
   duration: 5,
+  // SYNC returns two outputs; the hold covers what the request asks for.
+  n: 2,
 };
 const TARGET = {
   modelId: 'grok-imagine-video',

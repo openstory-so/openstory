@@ -35,7 +35,11 @@ import { getGatewayModel, type GatewayModel } from '@/gateway/server/catalog';
 import { withPlatformLlmKey } from '@/gateway/server/platform-credentials';
 import { GATEWAY_DRIVERS } from '@/gateway/server/providers';
 import type { GatewayRun } from '@/gateway/server/phases';
-import { priceGatewayJob } from '@/gateway/server/price';
+import {
+  COUNT_FIELDS,
+  countFieldWhere,
+  priceGatewayJob,
+} from '@/gateway/server/price';
 import type { GatewayGenerationWorkflowInput } from '@/gateway/server/workflows/gateway-generation-workflow';
 import { cardParams, RateCardError } from '@modelschemas/rate-card/evaluator';
 import { z } from 'zod';
@@ -90,17 +94,6 @@ const MODEL_IN_BODY: ReadonlySet<GatewayProvider> = new Set([
   'grok',
   'byteplus',
 ]);
-
-// ponytail: a name list, not the card. Drop it when every card prices its own count lever.
-const COUNT_FIELDS = [
-  'n',
-  'num_images',
-  'num_outputs',
-  'num_videos',
-  'number_of_images',
-  'sample_count',
-  'max_images',
-];
 
 function isObject(
   value: JsonValue | undefined
@@ -188,11 +181,24 @@ function validatedBody(
     );
   }
 
+  const malformed = countFieldWhere(
+    body,
+    (count) => !Number.isInteger(count) || Number(count) < 1
+  );
+  if (malformed) {
+    throw new ValidationError(
+      `\`${malformed}\` must be a whole number of at least 1`
+    );
+  }
   const priced = new Set(cardParams(model.card).request);
-  const unpriced = COUNT_FIELDS.find((field) => {
-    const count = body[field];
-    return typeof count === 'number' && count > 1 && !priced.has(field);
-  });
+  const unpriced =
+    COUNT_FIELDS.find((field) => {
+      const count = body[field];
+      return typeof count === 'number' && count > 1 && !priced.has(field);
+    }) ??
+    Object.values(body)
+      .map((inner) => countFieldWhere(inner, (count) => Number(count) > 1))
+      .find(Boolean);
   if (unpriced) {
     throw new ValidationError(
       `The rate card does not price \`${unpriced}\` above 1 for this model`
@@ -202,6 +208,8 @@ function validatedBody(
 }
 
 const INLINE = 'Send media as a URL, not inline data';
+// WHATWG special schemes: `https:host` and `https:/host` still parse as URLs.
+const FETCHED_SCHEMES = new Set(['http', 'https', 'ftp']);
 // Bare base64 with no `data:` prefix: Gemini's parts and Seed Audio's references.
 const INLINE_KEYS = new Set([
   'inlineData',
@@ -210,6 +218,38 @@ const INLINE_KEYS = new Set([
   'image_data',
 ]);
 
+/** Percent-encodes what the URL parser may encode, so a written URL and its href compare. */
+function encodeLikeParser(url: string): string {
+  return url.replace(/[^\x21-\x7e]|["'<>`{}|^]/gu, (char) =>
+    [...new TextEncoder().encode(char)]
+      .map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, '0')}`)
+      .join('')
+  );
+}
+
+/**
+ * The href of a plain http(s) URL, or null. It must read back as written,
+ * up to scheme and host case, the root slash and percent-encoding.
+ */
+function plainHttpHref(body: string): string | null {
+  if (body.includes('\\')) return null;
+  let url: URL;
+  try {
+    url = new URL(body);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  const written = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(body);
+  if (!written) return null;
+  const [, scheme = '', authority = '', rest = ''] = written;
+  const at = authority.lastIndexOf('@') + 1;
+  const normalised = `${scheme.toLowerCase()}://${authority.slice(0, at)}${authority.slice(at).toLowerCase()}${rest.startsWith('/') ? '' : '/'}${rest}`;
+  return encodeLikeParser(normalised) === encodeLikeParser(url.href)
+    ? url.href
+    : null;
+}
+
 /**
  * Every URL in the body, for the likeness check. Anything else that could
  * carry media is refused: the check is keyed on a URL, and bytes it cannot
@@ -217,20 +257,32 @@ const INLINE_KEYS = new Set([
  */
 export function gatedUrls(body: JsonValue, found: string[] = []): string[] {
   if (typeof body === 'string') {
-    const trimmed = body.trim();
+    // As a URL parser reads it: C0 controls and spaces at either end are dropped.
+    // oxlint-disable-next-line no-control-regex
+    const trimmed = body.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '');
     // `data:<type>,<bytes>` and `blob:<url>`; a prompt that starts "Data: ..." is neither.
     if (/^data:[^\s,]*,/i.test(trimmed) || /^blob:\S/i.test(trimmed)) {
       throw new ValidationError(INLINE);
     }
-    const scheme = /^([a-z][a-z0-9+.-]*):\/\//i
-      .exec(trimmed)?.[1]
-      ?.toLowerCase();
-    if (scheme !== undefined || trimmed.startsWith('//')) {
-      // Only http(s), exactly as sent: a provider may fetch what we did not check.
-      if ((scheme !== 'http' && scheme !== 'https') || trimmed !== body) {
+    // The parser also drops every tab, LF and CR inside the string.
+    const parsed = trimmed.replace(/[\t\n\r]/g, '');
+    const [, fetched = '', next = ''] =
+      /^([a-z][a-z0-9+.-]*):(.?)/i.exec(parsed) ?? [];
+    const urlLike =
+      /^[\\/]{2}/.test(parsed) ||
+      // `http: the old protocol` is prose: no host follows the scheme.
+      (FETCHED_SCHEMES.has(fetched.toLowerCase()) &&
+        next !== '' &&
+        !/\s/.test(next)) ||
+      // Any other scheme with an authority, as written: `Label:\n//note` is prose.
+      /^[a-z][a-z0-9+.-]*:[\\/]{2}/i.test(trimmed);
+    if (urlLike) {
+      // Only http(s), as the parser writes it: a provider may fetch what we did not check.
+      const href = plainHttpHref(body);
+      if (href === null) {
         throw new ValidationError('Media URLs must be plain http(s) URLs');
       }
-      found.push(body);
+      found.push(href);
     } else if (trimmed.startsWith('/r2/')) {
       // Our own stored uploads are origin-relative; they are checked too.
       found.push(trimmed);

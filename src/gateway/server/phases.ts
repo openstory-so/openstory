@@ -17,7 +17,7 @@ import {
   type GatewayProvider,
 } from '@/gateway/schema';
 import type { GatewayCredentials } from '@/gateway/server/platform-credentials';
-import { priceGatewayJob } from '@/gateway/server/price';
+import { heldOutputs, priceGatewayJob } from '@/gateway/server/price';
 import {
   GATEWAY_DRIVERS,
   type GatewayMedia,
@@ -29,6 +29,7 @@ import {
   RateCardError,
   type RateCard,
 } from '@modelschemas/rate-card/evaluator';
+import { cardParams } from '@modelschemas/rate-card/evaluator';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { z } from 'zod';
 
@@ -103,6 +104,33 @@ export async function storeGatewayResult(
   };
 }
 
+/** Only the outputs the hold covers are stored and charged; extras are dropped. */
+/** A usage lever that grows with what the model returns: output tokens, megapixels, seconds, generated images; never an input. */
+function isOutputLever(name: string): boolean {
+  return (
+    !/input|cached|reference|prompt/i.test(name) &&
+    /output|generated|completion|megapixel|^tokens$|duration|seconds|minutes/i.test(
+      name
+    )
+  );
+}
+
+function heldResult(
+  run: GatewayRun,
+  result: GatewayRunResult
+): GatewayRunResult {
+  // A card that charges each output from usage pays for every output it returns.
+  if (cardParams(run.card).usage.some(isOutputLever)) return result;
+  const held = heldOutputs(run.input);
+  if (result.media.length <= held) return result;
+  logger.warn('gateway model returned more outputs than were held', {
+    jobId: run.jobId,
+    returned: result.media.length,
+    held,
+  });
+  return { ...result, media: result.media.slice(0, held) };
+}
+
 /** Sends the body. A provider that answers at once has its media stored here. */
 export async function startGatewayRun(
   run: GatewayRun,
@@ -116,7 +144,9 @@ export async function startGatewayRun(
   );
   return 'jobId' in start
     ? { providerJobId: start.jobId }
-    : { stored: await storeGatewayResult(start.result, store) };
+    : {
+        stored: await storeGatewayResult(heldResult(run, start.result), store),
+      };
 }
 
 /** One poll of a queued job; the poll that sees it finish stores its media. */
@@ -135,7 +165,7 @@ export async function pollGatewayRun(
   if (poll.status === 'pending') return { kind: 'pending' };
   return {
     kind: 'stored',
-    stored: await storeGatewayResult(poll.result, store),
+    stored: await storeGatewayResult(heldResult(run, poll.result), store),
   };
 }
 

@@ -20,10 +20,10 @@ const GENERATE_PATHS = [/^\/sequences\/?$/, /^\/scripts\/enhance\/?$/];
  * (root discovery, OpenAPI document, device-code login).
  */
 export function requiredOAuthScope(request: Request): OAuthApiScope | null {
-  const pathname = new URL(request.url).pathname;
+  // Read the whole path as the router matches it: case-insensitive, decoded, empty segments dropped.
+  const pathname = routerPath(new URL(request.url).pathname);
   if (!pathname.startsWith(API_V1_BASE)) return null;
-  // Read as the router matches: case-insensitive, decoded, empty segments dropped.
-  const relative = routerPath(pathname.slice(API_V1_BASE.length)) || '/';
+  const relative = pathname.slice(API_V1_BASE.length) || '/';
   const method = request.method.toUpperCase();
 
   if (
@@ -44,11 +44,22 @@ export function requiredOAuthScope(request: Request): OAuthApiScope | null {
 }
 
 function routerPath(path: string): string {
-  let decoded = path;
+  return decodeLikeRouter(path)
+    .toLowerCase()
+    .replace(/\/{2,}/g, '/');
+}
+
+/** As router-core's `decodePath`; defence in depth, since Start already answers 400 to a path `decodeURI` refuses. */
+function decodeLikeRouter(path: string): string {
   try {
-    decoded = decodeURI(path);
+    return decodeURI(path);
   } catch {
-    // Malformed escapes: match on the raw path.
+    return path.replace(/%[0-9a-f]{2}/gi, (escape) => {
+      try {
+        return decodeURI(escape);
+      } catch {
+        return escape;
+      }
+    });
   }
-  return decoded.toLowerCase().replace(/\/{2,}/g, '/');
 }

@@ -125,6 +125,7 @@ const MODELS: Record<string, GatewayModel> = {
         prompt: { type: 'string' },
         duration: { type: 'number' },
         n: { type: 'number' },
+        options: { type: 'array' },
       },
       required: ['prompt', 'duration'],
     },
@@ -431,6 +432,81 @@ describe('submitGatewayJob', () => {
     ).resolves.toMatchObject({ replay: false });
   });
 
+  it('refuses a count the card does not price below the top level', async () => {
+    const error = await refused({
+      provider: 'grok',
+      modelId: 'grok-imagine-loose',
+      body: { ...BODY, options: [{ candidateCount: 4 }] },
+    });
+    expect(error).toMatchObject({
+      message:
+        'The rate card does not price `candidateCount` above 1 for this model',
+    });
+  });
+
+  it('reads no count inside a JSON schema the body carries (a property named `n`)', async () => {
+    const scopedDb = createScopedDb(organizationId, userId);
+    const { job } = await submitGatewayJob(
+      {
+        provider: 'grok',
+        modelId: 'grok-imagine-loose',
+        body: {
+          ...BODY,
+          options: [
+            {
+              type: 'object',
+              properties: { n: { type: 'integer' }, numberOfImages: {} },
+              examples: [{ n: 3 }],
+              default: { sampleCount: 0 },
+            },
+          ],
+        },
+      },
+      ctx(scopedDb)
+    );
+    expect(job.input).toMatchObject({ options: [expect.any(Object)] });
+  });
+
+  it('refuses the camelCase and batch count spellings above 1 when the card does not price them', async () => {
+    for (const field of [
+      'sampleCount',
+      'numberOfImages',
+      'numberOfVideos',
+      'batch_size',
+      'num_samples',
+    ]) {
+      const error = await refused({
+        provider: 'grok',
+        modelId: 'grok-imagine-loose',
+        body: { ...BODY, options: [{ [field]: 2 }] },
+      });
+      expect(error).toMatchObject({
+        message: `The rate card does not price \`${field}\` above 1 for this model`,
+      });
+    }
+  });
+
+  it('refuses a count that is not a whole number of at least 1, at any depth', async () => {
+    const loose = { provider: 'grok', modelId: 'grok-imagine-loose' } as const;
+    // The schema already refuses a string or an array where it says number.
+    for (const n of ['4', [4]]) {
+      expect(await refused({ ...loose, body: { ...BODY, n } })).toBeInstanceOf(
+        ValidationError
+      );
+    }
+    for (const body of [
+      { ...BODY, n: 1.5 },
+      { ...BODY, n: 0 },
+      { ...BODY, options: [{ candidateCount: '2' }] },
+    ]) {
+      expect(await refused({ ...loose, body })).toMatchObject({
+        message: expect.stringContaining(
+          'must be a whole number of at least 1'
+        ),
+      });
+    }
+  });
+
   it('refuses a body the schema refuses, with no row and no hold', async () => {
     const error = await refused({
       ...VIDEO,
@@ -491,7 +567,7 @@ describe('submitGatewayJob', () => {
       content: [
         {
           type: 'image_url',
-          image_url: { url: 'HTTP://media.example.com/engine-room.png' },
+          image_url: { url: 'http://media.example.com/engine-room.png' },
         },
         { type: 'text', text: 'not a url: /r2/x.png' },
       ],
@@ -505,7 +581,7 @@ describe('submitGatewayJob', () => {
       expect.anything(),
       [
         'https://media.example.com/mara.png',
-        'HTTP://media.example.com/engine-room.png',
+        'http://media.example.com/engine-room.png',
       ],
       request
     );
@@ -745,10 +821,65 @@ describe('gatedUrls', () => {
     }
   });
 
+  it('refuses every spelling a URL parser still reads as a fetchable URL', () => {
+    for (const value of [
+      'https:/a.example/1.png',
+      'https:a.example/1.png',
+      'HTTPS:a.example/1.png',
+      'https:\\\\a.example\\1.png',
+      '\\\\a.example/1.png',
+      '/\\a.example/1.png',
+      '\x01https://a.example/1.png',
+      'https://a.example/1.png\n',
+      'https://a.example:443/1.png',
+      'https://a.example/x/../1.png',
+      'https://\u200ba.example/1.png',
+      'https:// a.example/1.png',
+      'ht\ntps://a.example/1.png',
+      'htt\tps://a.example/1.png',
+      'https:\r//a.example/1.png',
+      '/\n/a.example/1.png',
+    ]) {
+      expect(() => gatedUrls({ image: value })).toThrow(
+        'Media URLs must be plain http(s) URLs'
+      );
+    }
+  });
+
+  it('gates the href of a URL that differs only in case, the root slash or percent-encoding', () => {
+    expect(
+      gatedUrls({
+        a: 'HTTPS://A.EXAMPLE/1.png',
+        b: 'https://a.example',
+        c: 'https://a.example?take=2',
+        d: 'https://a.example/stills/Mara café.png',
+        e: 'https://Mara@A.example/1.png',
+      })
+    ).toEqual([
+      'https://a.example/1.png',
+      'https://a.example/',
+      'https://a.example/?take=2',
+      'https://a.example/stills/Mara%20caf%C3%A9.png',
+      'https://Mara@a.example/1.png',
+    ]);
+  });
+
   it('leaves a prompt alone that only looks like a scheme', () => {
     expect(
       gatedUrls({
+        label: 'Label:\n//note from the director',
+        tab: 'Scene:\t//cut here',
+        history: 'http: the old protocol Mara still swears by',
+        empty: 'https:',
+      })
+    ).toEqual([]);
+  });
+
+  it('leaves a prompt alone that only looks like a scheme, data or blob', () => {
+    expect(
+      gatedUrls({
         prompt: 'Data: the ferry log, read aloud. Mara: "Scene one."',
+        script: 'MARA:\n\tThe engine is dead.\nJONAH:\tThen we row.',
         note: 'blob: a shapeless thing',
       })
     ).toEqual([]);
