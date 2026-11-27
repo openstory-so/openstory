@@ -1,4 +1,9 @@
-# Run your install on one OpenStory key
+---
+title: Self-hosted on one key
+description: Run providers your install has no key for on openstory.so with one OpenStory key
+section: Developer Guide
+order: 6
+---
 
 An install with `OPENSTORY_API_KEY` set runs every provider it has no key for on openstory.so. That organization's credits pay; your install charges nothing and needs no balance of its own.
 
@@ -13,7 +18,7 @@ A provider key you set (`FAL_KEY`, `XAI_API_KEY`, …) still wins for its provid
 ## What runs on it today
 
 - Grok stills and sheets with no reference images.
-- Video clips (sequence and studio) and Models page runs whose model the hosted card can price (Grok video, the fal Kling and Seedance models in `docs/architecture/model-gateway.md` § Holdable today).
+- Video clips (sequence and studio) and Models page runs whose model the hosted card can price (Grok video, the fal Kling and Seedance models in `docs/architecture/model-gateway.md` § Still on the direct path).
 - LLM calls with text and structured output: scene split and shot specs, music prompts, character voices, location matching, auto style, content softening, dialogue fitting, prompt shortening, duration estimates and style suggestions.
 
 ## What still needs a key here
